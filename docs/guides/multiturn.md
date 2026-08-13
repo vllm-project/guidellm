@@ -1,0 +1,575 @@
+# Multiturn Conversation Benchmarking
+
+This guide demonstrates how to utilize GuideLLM to orchestrate multi-turn benchmarks for simulating user conversations in a multi-request/response pattern.
+
+## Setup
+
+First, ensure you have a running inference server and compatible model. GuideLLM supports any OpenAI-compatible server that can handle conversational interactions. For the benchmarking examples below, we'll use vLLM serving a conversational model.
+
+```bash
+# Example: vLLM with a conversational model
+vllm serve meta-llama/Llama-3.1-8B-Instruct
+```
+
+Next, either on the same instance or another machine that can reach your server, install GuideLLM:
+
+```bash
+pip install guidellm[recommended]
+```
+
+## Understanding Multiturn Data Structure
+
+Multiturn benchmarking in GuideLLM uses indexed columns to represent conversational exchanges. Each turn in a conversation is represented by a set of columns with a numeric suffix indicating the turn index. Turn indexes can be any numerical value but we recommend ascending from 0 for simplicity.
+
+### Turn-indexed Column Format
+
+For a 3-turn conversation, the dataset could contain the following columns:
+
+- **prefix**: Optional system prompt that becomes a system message (applies to first turn)
+- **prompt_0**, **output_tokens_count_0**: Turn 1 prompt and requested output tokens
+- **prompt_1**, **output_tokens_count_1**: Turn 2 prompt and requested output tokens
+- **prompt_2**, **output_tokens_count_2**: Turn 3 prompt and requested output tokens
+
+Indexed columns remain the authoring format for file / HuggingFace datasets. After mapping, both indexed rows and graph payloads share one finalizer pathway: normalize to `ConversationGraphData`, expand client tool-call turns into tool-call + injection nodes, then build a runtime conversation graph.
+
+### Synthetic Data Always Emits a Graph
+
+Synthetic multiturn data (including single-turn and branched sub-agent configs) emits a `conversation_turns` JSON column rather than indexed `prompt_0` / `prompt_1` columns. The same finalizer pathway consumes that graph payload.
+
+### How Multiturn Orchestration Works
+
+When executing a multiturn benchmark, GuideLLM:
+
+1. **Sends a turn** (prefix + prompt_0) to the model and captures the response
+2. **Return the request** Store the request/response in the aggregator as a single request
+3. **Builds conversation history** by combining the requests and the model's responses
+4. **Sends the next turn** (prompt_i) along with the conversation history
+5. **Repeat from (2)** for the `n` given turns
+
+For `/v1/chat/completions`, the conversation history is passed as a messages array with alternating user and assistant roles. For `/v1/responses`, the history is either passed as alternating user and assistant roles, or as a previous request ID. For `/v1/completions`, the history is concatenated as a single prompt string.
+
+For more information see [Request Formatting](#request-formatting) and [Server-Side Conversation History](#server-side-conversation-history-v1responses-only).
+
+### Prefix Columns and System Prompts
+
+Prefix columns (if present) are treated specially:
+
+- In `/v1/chat/completions`, the prefix becomes a system message in the conversation array
+- In `/v1/responses`, the prefix becomes the `instructions` field
+- In `/v1/completions`, the prefix is prepended to the turn's prompt
+- Prefixes can be specified with a turn index if desired; however the recommended use-case is a single prefix for the first turn
+- Synthetic data only supports a prefix on the first turn
+
+## Processing Options
+
+All standard benchmarking arguments apply to multiturn tasks, such as `--profile`, profile rate parameters, and `--constraint kind=max_requests,count=<n>`. Any options that operate on "requests" will treat each turn as a separate request (e.g. A dataset row with 3 turns will count as 3 requests).
+
+### Synthetic Data Configuration
+
+GuideLLM can automatically generate multiturn synthetic data using the `turns` parameter in the synthetic data configuration.
+
+#### Basic Synthetic Multiturn
+
+To generate multiturn synthetic data, use the `--data` argument with `turns` specified:
+
+```bash
+--data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=3
+```
+
+This creates a 3-turn conversation where each turn samples independently from the configured `prompt_tokens` / `output_tokens` distribution (here, fixed at 256 and 128 when no standard deviation is set).
+
+#### First Message Size
+
+By default every turn (including the first) uses the same `prompt_tokens` / `output_tokens` distribution. Set optional `first_prompt_tokens` / `first_output_tokens` (with the usual `_stdev` / `_min` / `_max` knobs) when the opening message should differ—for example mocking a conversation that starts with a large file or essay to review, followed by shorter question prompts:
+
+```bash
+--data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=4,first_prompt_tokens=4096
+```
+
+This keeps follow-up turns around 256 prompt tokens while the first user message averages 4096 tokens. Sub-agent branches inherit the parent `first_*` settings for their first turn unless a branch overrides them (see [Sub-Agent Branches](#sub-agent-branches)).
+
+#### Synthetic Data with Prefixes
+
+You can add system prompts (prefixes) to synthetic conversations using two approaches:
+
+**Simple Prefix Configuration:**
+
+```bash
+--data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=3,prefix_count=5,prefix_tokens=50
+```
+
+This generates 5 unique prefixes of 50 tokens. Every conversation will select one of these 5 at random as the system message.
+
+**Advanced Prefix Configuration:**
+
+For more complex scenarios, use `prefix_buckets` to create weighted distributions of different prefix configurations. This requires passing a JSON configuration:
+
+```bash
+--data '{
+  "kind": "synthetic_text",
+  "prompt_tokens": 256,
+  "output_tokens": 128,
+  "turns": 3,
+  "prefix_buckets": [
+    {
+      "bucket_weight": 60,
+      "prefix_count": 10,
+      "prefix_tokens": 100
+    },
+    {
+      "bucket_weight": 40,
+      "prefix_count": 1,
+      "prefix_tokens": 50
+    }
+  ]
+}'
+```
+
+For this configuration:
+
+- 60% of conversations use one of the 10 prefixes which are 100 tokens each
+- 40% of conversations use the prefix of 50 tokens
+
+#### Sub-Agent Branches
+
+GuideLLM supports simulating multi-agent workloads where an orchestrator spawns parallel sub-agents during a conversation. Use the `branches` parameter to specify sub-agent branches that fork from the main conversation at a specific turn and merge back later.
+
+Each branch:
+
+- **Spawns** at `at_turn` with fresh context (the sub-agent does not see the main conversation history)
+- **Runs** for `turns` turns independently
+- **Merges** back at `at_turn + merge_after` (default `merge_after=1`), where the main conversation receives the sub-agent's final output
+
+Multiple branches at the same turn are supported and may have different lengths. All branches must complete before the main conversation continues past the merge point.
+
+**Basic Example:**
+
+```bash
+--data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128,"turns":5,"branches":[{"at_turn":2,"turns":3}]}'
+```
+
+This creates a 5-turn main conversation with one sub-agent branch that spawns at turn 2, runs for 3 turns, and merges back at turn 3.
+
+**Delayed Merge:**
+
+```bash
+--data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128,"turns":5,"branches":[{"at_turn":1,"turns":2,"merge_after":2}]}'
+```
+
+This spawns a sub-agent at turn 1 that runs for 2 turns and merges back at turn 3 (`at_turn + merge_after`), while the main conversation continues through turn 2 in parallel.
+
+**Multiple Branches:**
+
+```bash
+--data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128,"turns":5,"branches":[{"at_turn":2,"turns":3},{"at_turn":2,"turns":1,"agent_id":"reviewer"}]}'
+```
+
+This spawns two sub-agents at turn 2: one that runs for 3 turns and one that runs for 1 turn. Both merge back at turn 3. The main conversation at turn 3 receives the full history from turns 0-2 plus the final output from each sub-agent.
+
+**History length and turn index in results:**
+
+Each per-request entry in `benchmarks.json` includes:
+
+- `info.history_len`: the number of prior messages in the assembled history sent to the server with that request. Because history can include messages from diverging paths that merge via `last` edges, `history_len` may jump at merge points rather than increment by one. Branch roots spawned with fresh (`new`) context start at `0`.
+- `info.turn_index`: a simpler path-depth counter. It resets to `0` on `new` edges, increments by one through `full` edges, and treats each `last` edge as adding up to `1` without walking further into that parent’s ancestors. When a node has multiple parents, `turn_index` is the maximum over those contributions (the longest path).
+
+At a merge after a sub-agent branch, `history_len` often exceeds `turn_index` because merged `last` outputs are counted in assembled history but only add up to a non-recursive `1` toward path depth (and do not increase `turn_index` when the `full` path is already longer).
+
+**Branch Configuration Fields:**
+
+| Field                 | Type          | Default    | Description                                                                |
+| --------------------- | ------------- | ---------- | -------------------------------------------------------------------------- |
+| `at_turn`             | `int`         | (required) | Main chain turn index where the branch spawns                              |
+| `turns`               | `int`         | (required) | Number of turns in this branch                                             |
+| `agent_id`            | `str`         | `"worker"` | Agent identity for branch nodes                                            |
+| `merge_after`         | `int`         | `1`        | Main-chain turns after `at_turn` before merge                              |
+| `first_prompt_tokens` | `int \| null` | `null`     | First-turn prompt size override (defaults to parent `first_prompt_tokens`) |
+| `first_output_tokens` | `int \| null` | `null`     | First-turn output size override (defaults to parent `first_output_tokens`) |
+
+Branch turns sample from the main `prompt_tokens` / `output_tokens` distribution. Unset branch `first_*` fields inherit the parent conversation's `first_*` settings (and fall back to the main distribution when those are also unset). The same `_stdev` / `_min` / `_max` distribution knobs are supported on branch `first_*` fields.
+
+> [!NOTE]\
+> `at_turn + merge_after` must be less than `turns` so that a merge point exists. Branching that would merge at or past the end of the main conversation is not allowed.
+
+### Request Formatting
+
+Multiturn conversations are formatted differently depending on the request format:
+
+#### Chat Completions (`/v1/chat/completions`)
+
+For chat completions, GuideLLM creates a `messages` array with the conversation history:
+
+```json
+{
+  "messages": [
+    {"role": "system", "content": "prefix content"},
+    {"role": "user", "content": [{"type": "text", "text": "prompt_0 content"}]},
+    {"role": "assistant", "content": "response to prompt_0"},
+    {"role": "user", "content": [{"type": "text", "text": "prompt_1 content"}]},
+    {"role": "assistant", "content": "response to prompt_1"},
+    {"role": "user", "content": [{"type": "text", "text": "prompt_2 content"}]}
+  ]
+}
+```
+
+#### Responses API (`/v1/responses`)
+
+For the Responses API with `server_history` disabled, GuideLLM creates an `input` array with the conversation history and sets the prefix as `instructions`:
+
+```json
+{
+  "instructions": "prefix content",
+  "input": [
+    {"role": "user", "content": [{"type": "input_text", "text": "prompt_0 content"}]},
+    {"role": "assistant", "content": "response to prompt_0"},
+    {"role": "user", "content": [{"type": "input_text", "text": "prompt_1 content"}]},
+    {"role": "assistant", "content": "response to prompt_1"},
+    {"role": "user", "content": [{"type": "input_text", "text": "prompt_2 content"}]}
+  ]
+}
+```
+
+#### Text Completions (`/v1/completions`)
+
+For text completions, the conversation history is concatenated:
+
+```text
+prefix content prompt_0 content response to prompt_0 prompt_1 content response to prompt_1 prompt_2 content
+```
+
+### Server-Side Conversation History (`/v1/responses` only)
+
+By default, GuideLLM replays the full conversation history in each request (client-side history). For the Responses API, you can instead use **server-side history** via the `previous_response_id` field, where the server stores and manages conversation context.
+
+Enable server-side history in the backend configuration:
+
+```bash
+guidellm run \
+  --backend kind=openai_http'target=http://localhost:8000,request_format=/v1/responses,server_history=true' \
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3
+```
+
+When enabled, GuideLLM sends only the current turn's input and references the previous response by ID. The server reconstructs the full conversation context internally.
+
+**Requirements:**
+
+- The server must support `previous_response_id` with response storage enabled. For vLLM, set the `VLLM_ENABLE_RESPONSES_API_STORE=1` environment variable when starting the server.
+- If the server does not support response storage, requests on turn 2+ will fail with an error (typically a 404).
+- This option is only valid with `/v1/responses`. Using it with other request formats raises an error at startup.
+
+## Tool Calling
+
+Multi-turn tool calling is supported as part of multi-turn benchmarks. See the dedicated [Tool Calling Guide](tool_calling.md) for full documentation on server setup, tool definitions, tool choice configuration, and edge cases.
+
+## The TurnPivot Preprocessor
+
+GuideLLM supports passing multiple `--data` options, each pointing to a separate dataset. If there are matches for the same column type across multiple datasets, they are treated as separate batches. Normally this is useful for layering columns from different datasets within the same request. For example adding a text column from one dataset to another with images or combining multiple normally-distributed synthetic datasets into a multimodal distribution. We can use the **TurnPivot** preprocessor to transpose turn columns and dataset batches.
+
+For instance, given the following datasets:
+
+| prompt_0           | prompt_1           | output_tokens_0 | output_tokens_1 |
+| ------------------ | ------------------ | --------------- | --------------- |
+| dataset_0 prompt_0 | dataset_0 prompt_1 | 11              | 12              |
+
+| prompt_0           | prompt_1           | output_tokens_0 | output_tokens_1 |
+| ------------------ | ------------------ | --------------- | --------------- |
+| dataset_1 prompt_0 | dataset_1 prompt_1 | 21              | 22              |
+
+without **TurnPivot** the second turn will be:
+
+```json
+{
+  "messages": [
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "dataset_0 prompt_0"},
+            {"type": "text", "text": "dataset_1 prompt_0"}
+        ]
+    },
+    {"role": "assistant", "content": "32 token response to prompt_0"},
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "dataset_0 prompt_1"},
+            {"type": "text", "text": "dataset_1 prompt_1"}
+        ]
+    }
+  ],
+  "output_completion_tokens": 34,
+  ...
+}
+```
+
+with **TurnPivot** the second turn will be:
+
+```json
+{
+  "messages": [
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "dataset_0 prompt_0"},
+            {"type": "text", "text": "dataset_0 prompt_1"}
+        ]
+    },
+    {"role": "assistant", "content": "23 token response to dataset_0"},
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "dataset_1 prompt_0"},
+            {"type": "text", "text": "dataset_1 prompt_1"}
+        ]
+    }
+  ],
+  "output_completion_tokens": 43,
+  ...
+}
+```
+
+### Usage
+
+To use TurnPivot in the CLI, specify it as a data preprocessor:
+
+```bash
+--data kind=huggingface,source=dataset0.jsonl \
+--data kind=huggingface,source=dataset1.jsonl \
+--data-preprocessor kind=encode_media \
+--data-preprocessor kind=turn_pivot
+```
+
+> [!WARNING]\
+> Setting `--data-preprocessor` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
+
+## Examples
+
+### 1. Basic Multiturn with Synthetic Data
+
+This example demonstrates a simple 3-turn conversation benchmark using synthetic data.
+
+**Command:**
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=concurrent,streams=6 \
+  --constraint kind=max_requests,count=30 \
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3
+```
+
+**Key Parameters:**
+
+- `--backend`: Server URL, model, and request format
+- `--profile`: Benchmark execution profile (`concurrent` maintains a fixed number of concurrent requests)
+- `--constraint kind=max_requests,count=30`: Maximum number of requests to send (30 requests ~= 10 conversations with 3 turns each)
+- `--data`: Synthetic data configuration with 200 prompt tokens, 100 output tokens, and 3 turns
+
+This command benchmarks 10 three-turn conversations, where each turn uses the configured token sizes (200 prompt / 100 output when no stdev is set). The model maintains conversation history across all three turns.
+
+### 2. Multiturn with System Prompts (Prefixes)
+
+This example shows how to include system prompts in multiturn conversations, useful for many case including emulating agentic systems.
+
+**Command:**
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=constant,rate=2.0 \
+  --constraint kind=max_requests,count=100 \
+  --data kind=synthetic_text,prompt_tokens=150,output_tokens=75,turns=4,prefix_tokens=100
+```
+
+**Key Parameters:**
+
+- `--profile kind=constant,rate=2.0`: Send requests at a constant rate of 2 per second
+- `--constraint kind=max_requests,count=100`: Maximum number of requests (100 requests ~= 25 conversations with 4 turns each)
+- `--data`: Added `prefix_tokens=100` to generate a system prompt of 100 tokens
+
+In this benchmark, each conversation includes a system message (prefix) at the beginning, followed by 4 turns of user-assistant interaction. In real use-cases the system prompt establishes context or instructions that apply to the entire conversation and is often common to all users.
+
+> [!NOTE]\
+> `turns=4` + `--constraint kind=max_requests,count=100` will result in 25 **or more** conversations. Follow-up turns can only be scheduled when the previous turn completes. When a turn is complete the conversation is placed at the front of the queue for the current worker.
+
+### 3. Advanced Prefix Distribution
+
+This example demonstrates using multiple prefix configurations with weighted distributions, useful for testing various system prompt scenarios.
+
+**Command:**
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=constant,rate=1.5 \
+  --constraint kind=max_duration,seconds=60 \
+  --data '{
+  "kind": "synthetic_text",
+  "prompt_tokens": 180,
+  "output_tokens": 90,
+  "turns": 3,
+  "prefix_buckets": [
+    {
+      "bucket_weight": 60,
+      "prefix_count": 5,
+      "prefix_tokens": 100
+    },
+    {
+      "bucket_weight": 40,
+      "prefix_count": 1,
+      "prefix_tokens": 0
+    }
+  ]
+}'
+```
+
+**Key Parameters:**
+
+- `--profile kind=constant,rate=1.5`: Send requests at a constant rate of 1.5 per second
+- `--constraint kind=max_duration,seconds=60`: Run each strategy for up to 60 seconds
+- `--data`: JSON configuration with `prefix_buckets` defining two prefix distributions
+
+This creates a distribution where 60% of conversations have one of 5 prefixes (100 tokens each) and 40% have a prefix of 0 tokens (effectively no prefix).
+
+### 4. File-based Dataset with Multiturn
+
+This example shows how to use an existing dataset file with multiturn structure.
+
+**Example JSONL File** (multiturn_conversations.jsonl):
+
+```json
+{"prefix": "You are a helpful assistant.", "prompt_0": "What is Python?", "output_tokens_count_0": 50, "prompt_1": "How do I install it?", "output_tokens_count_1": 40}
+{"prefix": "You are a coding expert.", "prompt_0": "Explain functions", "output_tokens_count_0": 60, "prompt_1": "Give me an example", "output_tokens_count_1": 45}
+```
+
+**Command:**
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=concurrent,streams=10 \
+  --constraint kind=max_requests,count=200 \
+  --data kind=huggingface,source=multiturn_conversations.jsonl
+```
+
+**Key Parameters:**
+
+- `--profile kind=concurrent,streams=10`: Maintain 10 concurrent requests
+- `--constraint kind=max_requests,count=200`: Maximum number of requests (200 requests ~= 100 conversations with 2 turns each)
+- `--data`: Path to JSONL file with turn-indexed columns
+
+### 5. Using TurnPivot with Multiple Datasets
+
+This example demonstrates using the TurnPivot preprocessor to build a synthetic dataset where each turn follows a different distribution.
+
+**Command:**
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=concurrent,streams=10 \
+  --constraint kind=max_requests,count=150 \
+  --data kind=synthetic_text,prefix_tokens=512,prompt_tokens=128,output_tokens=256 \
+  --data kind=synthetic_text,prompt_tokens=256,prompt_token_stdev=32,output_tokens=128 \
+  --data kind=synthetic_text,prompt_tokens=64,output_tokens=128,output_tokens_stdev=16 \
+  --data-preprocessor kind=turn_pivot
+```
+
+**Key Parameters:**
+
+- `--constraint kind=max_requests,count=150`: Maximum number of requests (150 requests ~= 50 conversations with 3 turns each)
+- `--data`: Specified separately for each dataset; can also be specified once as an array
+- `--data-preprocessor kind=turn_pivot`: Transpose datasets and turn columns
+
+> [!WARNING]\
+> In the current CLI design, setting `--data-preprocessor` overrides **all** preprocessors, *except for the column mapper*, so take care to specify any preprocessor required for your use-case.
+
+## Reasoning in History
+
+Reasoning models emit chain-of-thought tokens before their final answer. By default, these are discarded from conversation history on follow-up turns. Enable `multiturn_reasoning` in the backend configuration to include them:
+
+- `false` (default) — reasoning not included in history
+- `true` — wraps in `<think>...</think>` tags (equivalent to `"<think>{reasoning}</think>"`)
+- A format string containing `{reasoning}` — custom wrapping
+
+### Think Tags (most models)
+
+```bash
+--backend kind=openai_http'target=http://localhost:8000,multiturn_reasoning=true'
+```
+
+Results in the following being sent for the turn in the conversation history:
+
+```json
+{"role": "assistant", "content": "<think>step-by-step reasoning...</think>Final answer."}
+```
+
+### Granite Format
+
+```bash
+--backend 'kind=openai_http,target=http://localhost:8000,multiturn_reasoning="Here is my thought process:{reasoning}Here is my response:"'
+```
+
+### Raw (no delimiters)
+
+```bash
+--backend 'kind=openai_http,target=http://localhost:8000,multiturn_reasoning="{reasoning}"'
+```
+
+### Common Model Pairings
+
+| Model Family                                                       | Recommended Value                                              |
+| ------------------------------------------------------------------ | -------------------------------------------------------------- |
+| DeepSeek R1, QwQ, Qwen3, Gemma 4, GLM-4.5, Holo2, Cohere Command A | `true`                                                         |
+| IBM Granite 3.2                                                    | `"Here is my thought process:{reasoning}Here is my response:"` |
+| OpenAI o-series (o1, o3)                                           | `false` (reasoning not replayable via API)                     |
+| Custom / no delimiters                                             | `"{reasoning}"`                                                |
+
+### Other Notes Regarding Reasoning:
+
+Reasoning is only recognized if "reasoning" chunks are sent to the client. This is typically only done if a reasoning parser is included. Otherwise, GuideLLM will interpret them as non-reasoning tokens. Regarding KVCache, reasoning parsers reformat the reasoning, which has a side effect of making it so that despite sending back reasoning tokens, kvcache likely won't match exactly, causing a partial cache miss. Settings to evict reasoning from vLLM's cache are in review as of the time of this writing.
+
+It is recommended that you research the design of the model you're using and the model server to ensure reasoning history is set up correctly.
+
+## Limitations and Considerations
+
+### Supported Request Formats
+
+Multiturn benchmarking is currently supported for:
+
+- `/v1/chat/completions` - Utilizing chat template formatting
+- `/v1/responses` - Using the OpenAI Responses API input format
+- `/v1/completions` - With basic concatenated history
+
+Audio endpoints (`/v1/audio/transcriptions`, `/v1/audio/translations`) do not support multiturn benchmarking.
+
+### Column Naming Requirements
+
+Turn-indexed columns must follow the naming conventions:
+
+- Column mapping applies to the base name. For example, `--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"text_column": "prompt"}}'`
+- Turn indices can be in the form of `-0` or `_0`. Exact numbering does not matter, turns will be re-numbered to avoid holes.
+- All turn columns must use the same base name. E.g. `prompt_0`, `prompt_2`, etc.
+
+### Model Context Considerations
+
+Multiturn conversations accumulate conversation history, which increases memory usage:
+
+- Each turn includes the full conversation history from all previous turns
+- Longer conversations (more turns) result in larger prompt sizes
+- Token counts grow with each turn as history accumulates
+- Consider the model's context window when configuring the number of turns and token counts
+
+For example, `--data kind=synthetic_text,prefix_tokens=50,prompt_tokens=100,output_tokens=200,turns=5` will have:
+
+- Turn 1: 150 tokens in; 200 tokens out
+- Turn 2: (150 + 200) + 100 = 450 tokens in; 200 tokens out
+- Turn 3: (450 + 200) + 100 = 750 tokens in; 200 tokens out
+- Turn 4: (750 + 200) + 100 = 1050 tokens in; 200 tokens out
+- Turn 5: (1050 + 200) + 100 = 1350 tokens in; 200 tokens out
+
+### Additional Considerations
+
+Multi-turn benchmarking has additional characteristics to consider when compared to single-turn:
+
+- Expect high request-based metric variance due to the wide distribution of turn sizes
+- Any error will end the entire conversation (if one turn fails the rest of the conversation is canceled)

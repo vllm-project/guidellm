@@ -1,0 +1,20 @@
+{
+  "short_name": "guidellm-ui",
+  "name": "guidellm-ui",
+  "icons": [
+    {
+      "src": "favicon.png",
+      "sizes": "119x119",
+      "type": "image/png"
+    },
+    {
+      "src": "favicon-192x192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+}

@@ -1,0 +1,34 @@
+queue_rules:
+  - name: default
+    queue_conditions:
+      - "#approved-reviews-by >= 1"
+      - "#changes-requested-reviews-by = 0"
+      - check-success = DCO
+      - check-success = update-description
+      - -draft
+      - -closed
+    merge_method: squash
+    branch_protection_injection_mode: merge
+    batch_size: 1
+    commit_message_format:
+      title: pr-title
+      body: pr-body
+
+pull_request_rules:
+  - name: comment-dco-failure
+    description: Comment on PR when DCO check fails
+    conditions:
+      - check-failure = DCO
+      - -closed
+      - -draft
+    actions:
+      comment:
+        message: |
+          Hi @{{author}}, the DCO check has failed. Please click on DCO in the Checks section for instructions on how to resolve this.
+
+merge_protections_settings:
+  reporting_method: check-runs
+  auto_merge_conditions:
+    - "#approved-reviews-by >= 2"
+    - "#changes-requested-reviews-by = 0"
+    - "#review-threads-unresolved = 0"

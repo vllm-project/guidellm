@@ -1,0 +1,287 @@
+"""
+Request schema definitions for generation operations.
+
+Contains request models and data structures used to define and execute generation
+requests across different backend services. Provides standardized interfaces for
+request arguments, usage metrics tracking, and request type definitions that enable
+consistent interaction with various AI generation APIs.
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any, Literal
+
+from pydantic import Field, computed_field
+
+from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
+from guidellm.utils.dict import deep_update
+
+TurnType = Literal[
+    "standard",
+    "client_tool_call",
+    "tool_response_injection",
+    "server_tool_call",
+]
+
+__all__ = [
+    "GenerationRequest",
+    "GenerationRequestArguments",
+    "TurnType",
+    "UsageMetrics",
+]
+
+
+class GenerationRequestArguments(StandardBaseDict):
+    """
+    HTTP request arguments for generation operations.
+
+    Encapsulates all necessary HTTP request components including method, headers,
+    parameters, and payload data required to execute generation requests against
+    backend services. Supports file uploads and streaming responses.
+    """
+
+    method: str | None = Field(
+        default=None,
+        description="The HTTP method to use for the request (e.g., 'POST', 'GET').",
+    )
+    stream: bool | None = Field(
+        default=None,
+        description="Whether to stream the response, if applicable.",
+    )
+    headers: dict[str, str] | None = Field(
+        default=None,
+        description="Any headers to include in the request, if applicable.",
+    )
+    params: dict[str, Any] | None = Field(
+        default=None,
+        description="Query parameters to include in the request, if applicable.",
+    )
+    body: dict[str, Any] | None = Field(
+        default=None,
+        description="Content to include in the main request body.",
+        examples=[
+            {
+                "temperature": 0.5,
+                "max_tokens": 100,
+            }
+        ],
+    )
+    files: dict[str, Any] | None = Field(
+        default=None,
+        description="Files to include in the request, if applicable.",
+    )
+    content: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Additional fields to include in generated text content objects, "
+            "if applicable."
+        ),
+    )
+
+    def model_combine(
+        self, additional: GenerationRequestArguments | dict[str, Any]
+    ) -> GenerationRequestArguments:
+        """
+        Merge additional request arguments into the current instance.
+
+        Combines method and stream fields by overwriting, while merging collection
+        fields like headers, params, body, and files by extending existing values.
+
+        :param additional: Additional arguments to merge with current instance
+        :return: Updated instance with merged arguments
+        """
+        additional_dict = (
+            additional.model_dump()
+            if isinstance(additional, GenerationRequestArguments)
+            else additional
+        )
+
+        for overwrite in ("method", "stream"):
+            if (val := additional_dict.get(overwrite)) is not None:
+                setattr(self, overwrite, val)
+
+        for combine in ("headers", "params", "body", "files"):
+            if (val := additional_dict.get(combine)) is not None:
+                current = getattr(self, combine, None) or {}
+                deep_update(current, val)
+                setattr(self, combine, current)
+
+        return self
+
+
+class UsageMetrics(StandardBaseDict):
+    """
+    Multimodal usage metrics for generation requests.
+
+    Tracks resource consumption across different modalities including text, images,
+    video, and audio. Provides granular metrics for tokens, bytes, duration, and
+    format-specific measurements to enable comprehensive usage monitoring and billing.
+    """
+
+    # Text stats
+    text_tokens: int | None = Field(
+        default=None, description="Number of text tokens processed/generated."
+    )
+    cached_tokens: int | None = Field(
+        default=None,
+        description=(
+            "Number of input tokens served from the prefix cache (KV cache hit)."
+        ),
+    )
+    text_words: int | None = Field(
+        default=None, description="Number of text words processed/generated."
+    )
+    text_characters: int | None = Field(
+        default=None, description="Number of text characters processed/generated."
+    )
+
+    # Vision image stats
+    image_tokens: int | None = Field(
+        default=None, description="Number of image tokens processed/generated."
+    )
+    image_count: int | None = Field(
+        default=None, description="Number of images processed/generated."
+    )
+    image_pixels: int | None = Field(
+        default=None, description="Number of image pixels processed/generated."
+    )
+    image_bytes: int | None = Field(
+        default=None, description="Number of image bytes processed/generated."
+    )
+
+    # Vision video stats
+    video_tokens: int | None = Field(
+        default=None, description="Number of video tokens processed/generated."
+    )
+    video_frames: int | None = Field(
+        default=None, description="Number of video frames processed/generated."
+    )
+    video_seconds: float | None = Field(
+        default=None, description="Duration of video processed/generated in seconds."
+    )
+    video_bytes: int | None = Field(
+        default=None, description="Number of video bytes processed/generated."
+    )
+
+    # Audio stats
+    audio_tokens: int | None = Field(
+        default=None, description="Number of audio tokens processed/generated."
+    )
+    audio_samples: int | None = Field(
+        default=None, description="Number of audio samples processed/generated."
+    )
+    audio_seconds: float | None = Field(
+        default=None, description="Duration of audio processed/generated in seconds."
+    )
+    audio_bytes: int | None = Field(
+        default=None, description="Number of audio bytes processed/generated."
+    )
+
+    # Tool call stats (subset of text_tokens)
+    tool_call_tokens: int | None = Field(
+        default=None,
+        description=(
+            "Output completion token total for tool-only turns (content null). "
+            "Equal to text_tokens when the entire completion is tool output; "
+            "None on mixed or text-only turns. Subset of text_tokens. "
+            "See mixed_content_tool_tokens for the mixed case."
+        ),
+    )
+    mixed_content_tool_tokens: int | None = Field(
+        default=None,
+        description=(
+            "Output completion token total for mixed content + tool call turns. "
+            "Equal to text_tokens when both natural language text and tool calls "
+            "are present; None on text-only or tool-only turns. Subset of "
+            "text_tokens."
+        ),
+    )
+    tool_call_count: int | None = Field(
+        default=None,
+        description=(
+            "Number of tool calls generated. Set whenever the response includes "
+            "tool calls, regardless of whether content is also present."
+        ),
+    )
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def total_tokens(self) -> int | None:
+        """
+        Calculate total tokens across all modalities.
+
+        :return: Sum of text, image, video, and audio tokens, or None if all are None
+        """
+        token_metrics = [
+            self.text_tokens,
+            self.image_tokens,
+            self.video_tokens,
+            self.audio_tokens,
+        ]
+        # NOTE: None should indicate no data rather than zero usage
+        if token_metrics.count(None) == len(token_metrics):
+            return None
+        else:
+            return sum(token or 0 for token in token_metrics)
+
+    def add_text_metrics(self, text):
+        """
+        Adds the metrics from the given text to the fields
+        `text_characters` and `text_words`.
+
+        :param text: Text to add metrics from
+        """
+        self.text_characters = (self.text_characters or 0) + len(text)
+        self.text_words = (self.text_words or 0) + len(text.split())
+
+
+class GenerationRequest(StandardBaseModel):
+    """
+    Complete request specification for backend generation operations.
+
+    Encapsulates all components needed to execute a generation request including
+    unique identification, request type specification, HTTP arguments, and input/output
+    usage metrics. Serves as the primary interface between the scheduler and backend
+    services for coordinating AI generation tasks.
+
+    Example::
+        request = GenerationRequest(
+            arguments=GenerationRequestArguments(
+                method="POST",
+                body={"prompt": "Hello world", "max_tokens": 100}
+            )
+        )
+    """
+
+    request_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description="Unique identifier for the request.",
+    )
+    columns: dict[str, list[Any]] = Field(
+        default_factory=dict,
+        description=(
+            "Columnar data associated with the request, structured as a dictionary "
+            "where keys are column names and values are lists of column entries."
+        ),
+    )
+    turn_type: TurnType = Field(
+        default="standard",
+        description="Discriminator for the kind of turn this request represents. "
+        "'standard' is a normal user turn. "
+        "'client_tool_call' expects the server to produce tool calls that the "
+        "client will handle by injecting tool responses in a follow-up turn. "
+        "'tool_response_injection' sends tool output back to the server and "
+        "expects a text response. "
+        "'server_tool_call' is a turn where the server handles tool execution "
+        "end-to-end; it prevents tool_choice='none' from being set so that "
+        "server-configured tools remain usable.",
+    )
+    input_metrics: UsageMetrics = Field(
+        default_factory=UsageMetrics,
+        description="Input statistics including counts, sizes, and durations.",
+    )
+    output_metrics: UsageMetrics = Field(
+        default_factory=UsageMetrics,
+        description="Output statistics including counts, sizes, and durations.",
+    )

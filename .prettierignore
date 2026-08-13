@@ -1,0 +1,18 @@
+# === Don't touch ===
+*.md
+*.mdx
+*.yaml
+*.yml
+
+# === Skip all JSON …
+*.json
+
+# === include relevant json ===
+!src/ui/**/*.json
+!tests/ui/**/*.json
+
+# Root-level configs to format
+!/.eslint.config.js
+!/tsconfig*.json
+!/*.config.{js,ts}
+!/jest.setup.ts

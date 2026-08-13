@@ -1,0 +1,531 @@
+# Datasets
+
+GuideLLM supports various dataset configurations to enable benchmarking and evaluation of large language models (LLMs). This document provides a comprehensive guide to configuring datasets for different use cases, along with detailed examples and rationale for choosing specific pathways.
+
+## Data Arguments Overview
+
+Dataset and processing options use the "kind" pattern to select a registered implementation and configure parameters:
+
+```bash
+guidellm run --data kind=<TYPE>,key=value,... [other options...]
+```
+
+Repeat `--data` to combine multiple sources. Use comma-separated key=value pairs for flat settings, or serialized JSON when any value is nested.
+
+### Dataset Source and Type
+
+The following arguments configure datasets and their processing:
+
+- Dataset source and type. Accepted types:
+  - `synthetic_text` — generates synthetic prompts on the fly. Required field: `prompt_tokens`. Optional: `output_tokens`, `turns`, `prefix_tokens`, `prefix_count`, `prefix_buckets`, and distribution controls (`prompt_tokens_stdev`, `output_tokens_stdev`, etc.).
+  - `huggingface` (alias `hf`) — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (for example `split`, `name`) via `load_kwargs`.
+  - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `db_file`, `tar_file` — loads from a local file. Required field: `path`.
+  - `trace_synthetic`, `mooncake` — loads a JSONL, JSON, CSV, or Parquet trace file for replay benchmarking. Required field: `path`. Optional: `timestamp_column` (default: `timestamp`), `prompt_tokens_column` (default: `input_length`), `output_tokens_column` (default: `output_length`).
+  - `weka` - Similar to `trace_synthetic`, but with the following changes to the optional field defaults: `timestamp_column` (default: `t`), `prompt_tokens_column` (default: `in`), `output_tokens_column` (default: `out`).
+
+In addition, you can specify additional arguments to the dataset loading with the data argument `load_kwargs`:
+
+- load_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}'`.
+
+### Data Loader
+
+You can specify the data loader with `--data-loader` and a configuration string. The only current type is `pytorch`:
+
+- `--data-loader kind=pytorch,samples=1000,num_workers=4,shuffle=true`
+
+### Tokenizer
+
+You can specify the tokenizer with `--tokenizer` and a configuration string. The only current type is `huggingface_auto`:
+
+- `--tokenizer '{"kind":"huggingface_auto","model":"path/to/processor","load_kwargs":{"use_fast":false}}'`
+
+If a HuggingFace model requires custom code to load, pass `trust_remote_code` in `load_kwargs`. See [Troubleshooting: trust_remote_code](troubleshooting.md#trust_remote_code-required-by-tokenizer).
+
+If your dataset uses non-standard column names, you can use `--data-column-mapper` to map your columns to GuideLLM's expected column names. This is particularly useful when:
+
+1. Your dataset uses different column names (e.g., `question` instead of `prompt`, `instruction` instead of `text_column`)
+2. You have multiple datasets and need to specify which dataset's columns to use
+3. Your dataset has system prompts or prefixes in a separate column
+
+### Column Mapping
+
+The `--data-column-mapper` accepts a string mapping column types to column names:
+
+```bash
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}'
+```
+
+### Preprocessors
+
+With `--data-preprocessor` you can control the GuideLLM preprocessors to apply: preprocessors include `encode_media`, `tool_calling_message_extractor`, `turn_pivot`.
+
+### Data Finalizer
+
+With `--data-finalizer` you can control how dataset rows are converted to requests (default: `generative`).
+
+### Random Seed
+
+Use `--seed` with a configuration string to control how sequences (in scheduling and synthetic data generation) are randomized: For example, `--seed kind=static,value=42`.
+
+### Example Usage
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}' \
+  --tokenizer '{"kind":"huggingface_auto","model":"path/to/processor","load_kwargs":{"use_fast":false}}' \
+  --data-loader kind=pytorch,shuffle=true
+```
+
+## Dataset Types
+
+GuideLLM supports several types of datasets, each with its own advantages and use cases. Below are the main dataset types supported by GuideLLM, including synthetic data, Hugging Face datasets, file-based datasets, and in-memory datasets.
+
+### Synthetic Data
+
+Synthetic datasets allow you to generate data on the fly with customizable parameters. This is useful for controlled experiments, stress testing, and simulating specific scenarios. For example, you might want to evaluate how a model handles long prompts or generates outputs with specific characteristics.
+
+GuideLLM supports both synthetic *text* — described below — and synthetic *visual* data (images and short videos) for benchmarking Vision-Language Models. See [Synthetic Visual Data](multimodal/synthetic_vision.md) for the `synthetic_image` and `synthetic_video` `--data` kinds, which can be combined with `synthetic_text` for multimodal prompts.
+
+#### Example Commands
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+```
+
+Or using a JSON config string:
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128}'
+```
+
+#### Configuration Options
+
+- `prompt_tokens`: Average number of tokens in prompts. If nothing else is specified, all requests will have this number of tokens.
+- `prompt_tokens_stdev`: Standard deviation for prompt tokens. If not supplied and min/max are not specified, no deviation is applied. If not supplied and min/max are specified, a uniform distribution is used.
+- `prompt_tokens_min`: Minimum number of tokens in prompts. If unset and `prompt_tokens_stdev` is set, the minimum is 1.
+- `prompt_tokens_max`: Maximum number of tokens in prompts. If unset and `prompt_tokens_stdev` is set, the maximum is 5 times the standard deviation.
+- `output_tokens`: Average number of tokens in outputs. Optional; omit when benchmarking endpoints that do not produce output tokens (for example embeddings).
+- `output_tokens_stdev`: Standard deviation for output tokens. If not supplied and min/max are not specified, no deviation is applied. If not supplied and min/max are specified, a uniform distribution is used.
+- `output_tokens_min`: Minimum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the minimum is 1.
+- `output_tokens_max`: Maximum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the maximum is 5 times the standard deviation.
+- `samples`: Number of samples to generate (default: 1000). More samples will increase the time taken to generate the dataset before benchmarking, but will also decrease the likelihood of caching requests.
+- `source`: Source text for generation (default: `data:prideandprejudice.txt.gz`). This can be any text file, URL containing a text file, or a compressed text file. The text is used to sample from at a word and punctuation granularity and then combined into a single string of the desired lengths.
+
+#### Notes
+
+- A tokenizer is required. By default, the model from the backend is used. If unavailable, use `--tokenizer kind=huggingface_auto,model=<path-or-id>` to specify a directory or Hugging Face model ID containing the tokenizer files.
+
+### Hugging Face Datasets
+
+GuideLLM supports datasets from the Hugging Face Hub or local directories that follow the `datasets` library format. This allows you to easily leverage a wide range of datasets for benchmarking and evaluation with real-world data.
+
+#### Example Commands
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data kind=huggingface,source=garage-bAInd/Open-Platypus
+```
+
+Or using a local dataset directory:
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data kind=huggingface,source=path/to/dataset
+```
+
+Pass HuggingFace `load_dataset` options through `load_kwargs`:
+
+```bash
+--data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"train"}}'
+```
+
+#### Notes
+
+- Hugging Face datasets can be specified by ID, a local directory, or a path to a local Python file.
+- A supported Hugging Face datasets format is defined as one that can be loaded using the `datasets` library with the `load_dataset` function and therefore it is representable as a `Dataset`, `DatasetDict`, `IterableDataset`, or `IterableDatasetDict`. More information on the supported data types and additional args for the underlying use of `load_dataset` can be found in the [Hugging Face datasets documentation](https://huggingface.co/docs/datasets/en/loading#hugging-face-hub).
+- A tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the tokenizer must be specified using `--tokenizer kind=huggingface_auto,model=...`. If not set, the tokenizer will be set to the model passed in or retrieved from the backend.
+
+### File-Based Datasets
+
+GuideLLM supports various file formats for datasets, including text, CSV, JSON, and more. These datasets can be used for benchmarking and evaluation, allowing you to work with structured data in a familiar format that matches your use case.
+
+#### Supported Formats with Examples
+
+- **Text files (`.txt`, `.text`)**: Where each line is a separate prompt to use.
+
+  ```
+  Hello, how are you?
+  What is your name?
+  ```
+
+- **CSV files (`.csv`)**: Where each row is a separate dataset entry and the first row contains the column names. The columns should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional columns can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
+
+  ```csv
+  prompt,output_tokens_count,additional_column,additional_column2
+  Hello, how are you?,5,foo,bar
+  What is your name?,3,baz,qux
+  ```
+
+- **JSON Lines files (`.jsonl`)**: Where each line is a separate JSON object. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
+
+  ```json
+  {"prompt": "Hello, how are you?", "output_tokens_count": 5, "additional_column": "foo", "additional_column2": "bar"}
+  {"prompt": "What is your name?", "output_tokens_count": 3, "additional_column": "baz", "additional_column2": "qux"}
+  ```
+
+- **Trace files (`.jsonl`, `.json`, `.csv` or `.parquet` with a supported trace file format)**: Specialized files for replay. Used with `--profile kind=replay` to replay trace events using each row's timestamp and token lengths. Timestamps must be numbers expressed in seconds on a shared timeline with any consistent zero point; GuideLLM sorts them and converts them to offsets from the first event before scheduling. Date strings are not parsed yet, so provide timestamps as numbers. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
+
+  ```json
+  {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
+  {"timestamp": 1234500.5, "input_length": 512, "output_length": 64}
+  ```
+
+  In this example, the second request is scheduled 0.5 seconds after the first request. Trace rows are ordered by timestamp before GuideLLM schedules requests and generates synthetic payloads. This keeps each scheduled event aligned with the prompt and output token lengths from the same row.
+
+  Use a supported [trace file format](./trace_replay.md#supported-formats) to enable trace loading:
+
+  ```bash
+  guidellm run \
+    --backend kind=openai_http,target=http://localhost:8000 \
+    --profile kind=replay,time_scale=1.0 \
+    --data kind=trace_synthetic,path=path/to/trace.jsonl
+  ```
+
+  All trace formats by default look for the columns "timestamp", "input_length", and "output_length". If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
+
+  ```bash
+  guidellm run \
+    --backend kind=openai_http,target=http://localhost:8000 \
+    --profile kind=replay,time_scale=1.0 \
+    --data kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
+  ```
+
+  For replay, `time_scale` on the profile is a time scale for the intervals between trace events rather than requests per second. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. Use `--constraint kind=max_requests,count=<n>` only as a runtime completion constraint; it does not limit the trace rows loaded from the file.
+
+- **JSON files (`.json`)**: Where the entire dataset is represented as a JSON array of objects nested under a specific key. To surface the correct key to use, a `--data-column-mapper` argument must be passed in of `"field": "NAME"` for where the array exists. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
+
+  ```json
+  {
+    "version": "1.0",
+    "data": [
+      {"prompt": "Hello, how are you?", "output_tokens_count": 5, "additional_column": "foo", "additional_column2": "bar"},
+      {"prompt": "What is your name?", "output_tokens_count": 3, "additional_column": "baz", "additional_column2": "qux"}
+    ]
+  }
+  ```
+
+- **Parquet files (`.parquet`)** Example: A binary columnar storage format for efficient data processing. For more information on the supported formats, see the Hugging Face dataset documentation linked in the [Notes](#notes) section.
+
+- **Arrow files (`.arrow`)** Example: A cross-language development platform for in-memory data. For more information on the supported formats, see the Hugging Face dataset documentation linked in the [Notes](#notes) section.
+
+- **HDF5 files (`.hdf5`)** Example: A hierarchical data format for storing large amounts of data. For more information on the supported formats, see the Hugging Face dataset documentation linked in the [Notes](#notes) section.
+
+#### Example Commands
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data kind=json_file,path=path/to/dataset.json \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}'
+```
+
+Replace `json_file` with `csv_file`, `text_file`, `parquet_file`, `arrow_file`, or `hdf5_file` for other formats.
+
+#### Notes
+
+- Ensure the file format matches the expected structure for the dataset and is listed as a supported format.
+- The `--data-column-mapper` argument can be used to specify additional parameters for parsing the dataset, such as the prompt column name or the split to use.
+- More information on the supported formats and additional args for the underlying use of `load_dataset` can be found in the [Hugging Face datasets documentation](https://huggingface.co/docs/datasets/en/loading#local-and-remote-files).
+
+### In-Memory Datasets
+
+In-memory datasets allow you to directly pass data as Python objects, making them ideal for quick prototyping and testing without the need to save data to disk.
+
+#### Supported Formats with Examples
+
+- **Dictionary of columns and values**: Where each key is a column name and the values are lists of data points. The keys should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional columns can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
+  ```python
+  {
+      "column1": ["value1", "value2"],
+      "column2": ["value3", "value4"]
+  }
+  ```
+- **List of dictionaries**: Where each dictionary represents a single data point with key-value pairs. The dictionaries should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
+  ```python
+  [
+      {"column1": "value1", "column2": "value3"},
+      {"column1": "value2", "column2": "value4"}
+  ]
+  ```
+- **List of items**: Where each item is a single data point. The items should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
+  ```python
+  [
+      "value1",
+      "value2",
+      "value3"
+  ]
+
+  ```
+
+#### Example Usage
+
+```python
+from guidellm.benchmark import benchmark_generative_text
+
+data = [
+    {"prompt": "Hello", "output": "Hi"},
+    {"prompt": "How are you?", "output": "I'm fine."}
+]
+
+benchmark_generative_text(data=data, ...)
+```
+
+#### Notes
+
+- Ensure that the data format is consistent and adheres to one of the supported structures.
+- For dictionaries, all columns must have the same number of samples.
+- For lists of dictionaries, all items must have the same keys.
+- For lists of items, all elements must be of the same type.
+- A tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the tokenizer must be specified using `--tokenizer kind=huggingface_auto,model=...`. If not set, the tokenizer will be set to the model passed in or retrieved from the server.
+
+## Preprocessing Datasets
+
+GuideLLM provides a preprocessing command that allows you to process datasets to have specific prompt and output token sizes. This is particularly useful when you need to standardize your dataset for benchmarking or when your dataset has prompts that don't match your target token requirements.
+
+The preprocessing command can:
+
+- Resize prompts to target token lengths
+- Handle prompts that are shorter or longer than the target length using registry-backed strategies
+- Map columns from your dataset to GuideLLM's expected column names
+- Generate output token counts based on your strategy configuration
+- Save the processed dataset in various formats
+
+### Basic Usage
+
+```bash
+guidellm preprocess dataset \
+    kind=<DATA_TYPE>,key=value,... \
+    <OUTPUT_PATH> \
+    --tokenizer kind=huggingface_auto,model=<MODEL> \
+    --strategy kind=<STRATEGY>,prompt_tokens=<N>,output_tokens=<N>
+```
+
+### Required Arguments
+
+| Argument      | Description                                                                                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATA`        | Identify the dataset to process. Supports all dataset formats documented in the [Dataset Configurations](#datasets). Pass loader options via `load_kwargs` on this descriptor. |
+| `OUTPUT_PATH` | Path to save the processed dataset, including file suffix (e.g., `processed_dataset.jsonl`, `output.csv`).                                                                     |
+| `--tokenizer` | **Required.** Tokenizer configuration using registry syntax, for example `--tokenizer kind=huggingface_auto,model=gpt2`. Optional constructor kwargs go in `load_kwargs`.      |
+| `--strategy`  | **Required.** Preprocess strategy including token targets and short-prompt handling. See [Preprocess Strategy](#preprocess-strategy).                                          |
+
+### Example
+
+```bash
+guidellm preprocess dataset \
+    kind=json_file,path=path/to/input_dataset.jsonl \
+    "path/to/processed_dataset.jsonl" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
+    --strategy kind=ignore,prompt_tokens=512,output_tokens=256,prefix_tokens_max=100
+```
+
+### Preprocess Strategy
+
+The `--strategy` option uses the same registry form as other GuideLLM options (`kind=<name>,...` or JSON). It combines target token-count settings with a short-prompt handling kind.
+
+**Shared fields (all kinds):**
+
+- `prompt_tokens`: Average number of tokens in prompts. If nothing else is specified, all prompts will be resized to this number of tokens.
+- `prompt_tokens_stdev`: Standard deviation for prompt tokens. If not supplied and min/max are not specified, no deviation is applied. If not supplied and min/max are specified, a uniform distribution is used.
+- `prompt_tokens_min`: Minimum number of tokens in prompts. If unset and `prompt_tokens_stdev` is set, the minimum is 1.
+- `prompt_tokens_max`: Maximum number of tokens in prompts. If unset and `prompt_tokens_stdev` is set, the maximum is 5 times the standard deviation.
+- `output_tokens`: Average number of tokens in outputs. If nothing else is specified, all outputs will have this number of tokens.
+- `output_tokens_stdev`: Standard deviation for output tokens. If not supplied and min/max are not specified, no deviation is applied. If not supplied and min/max are specified, a uniform distribution is used.
+- `output_tokens_min`: Minimum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the minimum is 1.
+- `output_tokens_max`: Maximum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the maximum is 5 times the standard deviation.
+- `prefix_tokens_max`: Maximum number of prefix tokens to keep. If set, prefixes will be trimmed to this maximum length.
+- `count_prefix`: When `true`, include prefix tokens in the prompt token budget (default: `false`).
+
+**Strategy kinds:**
+
+| Kind          | Description                                                                    | Kind-specific fields                                      |
+| ------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| `ignore`      | Drop prompts that are shorter than the target length                           | —                                                         |
+| `concatenate` | Concatenate multiple short prompts together until the target length is reached | `delimiter` (string between joined prompts; default `""`) |
+| `pad`         | Pad short prompts with a character/string until the target length is reached   | `pad` (padding string; default `""`)                      |
+| `error`       | Raise an error if a prompt is shorter than the target length                   | —                                                         |
+
+**Example strategies:**
+
+```bash
+# Ignore short prompts (default style)
+--strategy kind=ignore,prompt_tokens=512,output_tokens=256
+
+# Concatenate short prompts
+--strategy kind=concatenate,prompt_tokens=512,output_tokens=256,delimiter="\n\n"
+
+# Pad short prompts
+--strategy kind=pad,prompt_tokens=512,output_tokens=256,pad=" "
+
+# JSON form with count_prefix
+--strategy '{"kind":"ignore","prompt_tokens":512,"output_tokens":256,"count_prefix":true}'
+```
+
+The `--tokenizer` argument specifies the tokenizer to use for calculating token counts (same registry form as `guidellm run --tokenizer`). This is required because the preprocessing command needs to tokenize prompts to ensure they match the target token sizes. For information about using tokenizers in benchmarks, see the [Data Arguments Overview](#data-arguments-overview) section.
+
+### Column Mapping
+
+When your dataset uses non-standard column names, you can use `--data-column-mapper` to map your columns to GuideLLM's expected column names. This is particularly useful when:
+
+1. **Your dataset uses different column names** (e.g., `question` instead of `prompt`, `instruction` instead of `text_column`)
+2. **You have multiple datasets** and need to specify which dataset's columns to use
+3. **Your dataset has system prompts or prefixes** in a separate column
+
+**Column mapping format:** The `--data-column-mapper` option uses registry syntax (same as `guidellm run`):
+
+```bash
+--data-column-mapper kind=generative_column_mapper,column_mappings.text_column=question,column_mappings.prefix_column=system_prompt
+
+# Or as JSON:
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {
+  "text_column": "question",
+  "prefix_column": "system_prompt",
+  "prompt_tokens_count_column": "input_tokens",
+  "output_tokens_count_column": "completion_tokens"
+}}'
+```
+
+**Supported column types:**
+
+- `text_column`: The main prompt text (defaults: `prompt`, `instruction`, `question`, `input`, `context`, `content`, `text`)
+- `prefix_column`: System prompt or prefix (defaults: `system_prompt`, `system`, `prefix`)
+- `prompt_tokens_count_column`: Column containing prompt token counts (defaults: `prompt_tokens_count`, `input_tokens_count`)
+- `output_tokens_count_column`: Column containing output token counts (defaults: `output_tokens_count`, `completion_tokens_count`)
+- `image_column`: Image data column
+- `video_column`: Video data column
+- `audio_column`: Audio data column
+
+**Example: Mapping custom column names**
+
+If your dataset has a CSV file with columns `user_query` and `system_message`:
+
+```csv
+user_query,system_message
+"What is AI?","You are a helpful assistant."
+"How does ML work?","You are a technical expert."
+```
+
+You would use:
+
+```bash
+guidellm preprocess dataset \
+    "kind=csv_file,path=dataset.csv" \
+    "processed.jsonl" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
+    --strategy kind=ignore,prompt_tokens=512,output_tokens=256 \
+    --data-column-mapper kind=generative_column_mapper,column_mappings.text_column=user_query,column_mappings.prefix_column=system_message
+```
+
+**Example: Multiple datasets**
+
+If you're working with multiple datasets and need to specify which dataset's columns to use, you can use the format `<dataset_index>.<column_name>` or `<dataset_name>.<column_name>`:
+
+```bash
+--data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"text_column": "0.prompt", "prefix_column": "1.system"}}'
+```
+
+### Additional Options
+
+| Option                  | Description                                                                                                                                                                 |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--data-column-mapper`  | Column mapping preprocessor configuration (default: `kind=generative_column_mapper`).                                                                                       |
+| `--data-loader`         | Data loader configuration (default: `kind=pytorch`). Use `samples` to limit how many processed rows are written. `shuffle` and `num_workers` are ignored for preprocessing. |
+| `--seed`                | Random seed configuration for reproducible token sampling (default: `kind=static,value=42`).                                                                                |
+| `--push-to-hub`         | Push the processed dataset to Hugging Face Hub (flag).                                                                                                                      |
+| `--hub-dataset-id <ID>` | Hugging Face Hub dataset ID for upload (required if `--push-to-hub` is set).                                                                                                |
+
+### Complete Examples
+
+**Example 1: Basic preprocessing with custom column names**
+
+```bash
+guidellm preprocess dataset \
+    kind=csv_file,path=my_dataset.csv \
+    "processed_dataset.jsonl" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
+    --strategy kind=ignore,prompt_tokens=512,output_tokens=256 \
+    --data-column-mapper kind=generative_column_mapper,column_mappings.text_column=user_question,column_mappings.prefix_column=system_instruction
+```
+
+**Example 2: Preprocessing with distribution and concatenate strategy**
+
+```bash
+guidellm preprocess dataset \
+    "kind=json_file,path=dataset.jsonl" \
+    "processed.jsonl" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
+    --strategy kind=concatenate,prompt_tokens=512,prompt_tokens_stdev=50,output_tokens=256,output_tokens_stdev=25,delimiter="\n\n" \
+    --seed kind=static,value=123
+```
+
+**Example 3: Preprocessing with tokenizer load kwargs, prefix limits, and count_prefix**
+
+```bash
+guidellm preprocess dataset \
+    "kind=json_file,path=dataset.jsonl" \
+    "processed.jsonl" \
+    --tokenizer kind=huggingface_auto,model=gpt2,load_kwargs.use_fast=false \
+    --strategy kind=ignore,prompt_tokens=512,output_tokens=256,prefix_tokens_max=100,count_prefix=true
+```
+
+**Example 4: Limit processed rows with --data-loader**
+
+```bash
+guidellm preprocess dataset \
+    "kind=json_file,path=large_dataset.jsonl" \
+    "processed.jsonl" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
+    --strategy kind=ignore,prompt_tokens=512,output_tokens=256 \
+    --data-loader kind=pytorch,samples=1000
+```
+
+**Example 5: Preprocessing and uploading to Hugging Face Hub**
+
+```bash
+guidellm preprocess dataset \
+    "kind=json_file,path=my_dataset.jsonl" \
+    "processed.jsonl" \
+    --tokenizer kind=huggingface_auto,model=gpt2 \
+    --strategy kind=ignore,prompt_tokens=512,output_tokens=256 \
+    --push-to-hub \
+    --hub-dataset-id "username/processed-dataset"
+```
+
+### Notes
+
+- The `--strategy` option accepts a `PreprocessStrategyArgs` registry type that includes token-count fields (`prompt_tokens`, `output_tokens`, and related distribution fields), `prefix_tokens_max`, `count_prefix`, and a short-prompt `kind`. See [Preprocess Strategy](#preprocess-strategy).
+- The tokenizer is required because the preprocessing command needs to tokenize prompts to ensure they match target token sizes. See the [Data Arguments Overview](#data-arguments-overview) for tokenizer usage in benchmarks.
+- Dataset loader kwargs belong on the positional `DATA` descriptor (`load_kwargs=...`), not a separate `--data-args` flag.
+- Use `--data-loader kind=pytorch,samples=<N>` to stop after writing `N` processed rows. `shuffle` and `num_workers` are accepted for CLI parity with `guidellm run` but are ignored during preprocessing.
+- Column mappings are only needed when your dataset uses non-standard column names. GuideLLM will automatically try common column names if no mapping is provided.
+- The output file format is determined by the file suffix in `OUTPUT_PATH` (e.g., `.json`, `.jsonl`, `.csv`, `.parquet`).

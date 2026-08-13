@@ -1,0 +1,22 @@
+name: Development
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  tests:
+    strategy:
+      matrix:
+        python: ["3.10"]
+    uses: ./.github/workflows/testing.yml
+    with:
+      python: ${{ matrix.python }}
+
+  quality:
+    strategy:
+      matrix:
+        python: ["3.10"]
+    uses: ./.github/workflows/quality.yml
+    with:
+      python: ${{ matrix.python }}

@@ -1,0 +1,829 @@
+"""
+Unit tests for GenerationRequest, GenerationRequestArguments, and UsageMetrics.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from pydantic import ValidationError
+
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationRequestArguments,
+    StandardBaseDict,
+    StandardBaseModel,
+    UsageMetrics,
+)
+
+
+class TestGenerationRequestArguments:
+    """Test cases for GenerationRequestArguments model."""
+
+    @pytest.fixture(
+        params=[
+            {},
+            {"method": "POST", "body": {"prompt": "test"}},
+            {
+                "method": "GET",
+                "headers": {"Authorization": "Bearer token"},
+                "params": {"key": "value"},
+            },
+            {
+                "method": "POST",
+                "stream": True,
+                "headers": {"Content-Type": "application/json"},
+                "params": {"limit": 10},
+                "body": {"prompt": "hello"},
+                "files": {"file": "data.txt"},
+                "content": {"metadata": {"category": "support"}},
+            },
+        ],
+        ids=["empty", "method_body", "method_headers_params", "all_fields"],
+    )
+    def valid_instances(self, request):
+        """Fixture providing valid GenerationRequestArguments instances."""
+        constructor_args = request.param
+        instance = GenerationRequestArguments(**constructor_args)
+        return instance, constructor_args
+
+    @pytest.mark.smoke
+    def test_class_signatures(self):
+        """Test GenerationRequestArguments inheritance and type relationships."""
+        assert issubclass(GenerationRequestArguments, StandardBaseDict)
+        assert hasattr(GenerationRequestArguments, "model_dump")
+        assert hasattr(GenerationRequestArguments, "model_validate")
+        assert hasattr(GenerationRequestArguments, "model_combine")
+
+        # Check fields
+        fields = GenerationRequestArguments.model_fields
+        expected_fields = [
+            "method",
+            "stream",
+            "headers",
+            "params",
+            "body",
+            "files",
+            "content",
+        ]
+        for field in expected_fields:
+            assert field in fields
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances):
+        """Test GenerationRequestArguments initialization."""
+        instance, constructor_args = valid_instances
+        assert isinstance(instance, GenerationRequestArguments)
+
+        # Check field values
+        for key, expected_value in constructor_args.items():
+            assert getattr(instance, key) == expected_value
+
+        # Check defaults for fields not provided
+        for field in [
+            "method",
+            "stream",
+            "headers",
+            "params",
+            "body",
+            "files",
+            "content",
+        ]:
+            if field not in constructor_args:
+                assert getattr(instance, field) is None
+
+    @pytest.mark.sanity
+    def test_invalid_initialization_values(self):
+        """Test GenerationRequestArguments with invalid field values."""
+        # Invalid method type
+        with pytest.raises(ValidationError):
+            GenerationRequestArguments(method=123)
+
+        # Invalid stream type
+        with pytest.raises(ValidationError):
+            GenerationRequestArguments(stream="not_bool")
+
+        # Invalid headers type
+        with pytest.raises(ValidationError):
+            GenerationRequestArguments(headers="not_dict")
+
+        # Invalid params type
+        with pytest.raises(ValidationError):
+            GenerationRequestArguments(params="not_dict")
+
+        # Invalid body type
+        with pytest.raises(ValidationError):
+            GenerationRequestArguments(body="not_dict")
+
+        # Invalid content type
+        with pytest.raises(ValidationError):
+            GenerationRequestArguments(content="not_dict")
+
+    @pytest.mark.sanity
+    def test_invalid_initialization_missing(self):
+        """Test GenerationRequestArguments initialization without any fields."""
+        # Should succeed since all fields are optional
+        instance = GenerationRequestArguments()
+        assert isinstance(instance, GenerationRequestArguments)
+        assert instance.method is None
+        assert instance.stream is None
+        assert instance.headers is None
+        assert instance.params is None
+        assert instance.body is None
+        assert instance.files is None
+        assert instance.content is None
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        (
+            "base_kwargs",
+            "additional_kwargs",
+            "expected_method",
+            "expected_headers",
+            "expected_body",
+        ),
+        [
+            (
+                {
+                    "method": "POST",
+                    "headers": {"Auth": "token1"},
+                    "body": {"key1": "val1"},
+                },
+                {
+                    "method": "GET",
+                    "headers": {"Type": "json"},
+                    "body": {"key2": "val2"},
+                },
+                "GET",
+                {"Auth": "token1", "Type": "json"},
+                {"key1": "val1", "key2": "val2"},
+            ),
+            (
+                {"method": "POST"},
+                {"stream": True, "headers": {"Auth": "token"}},
+                "POST",
+                {"Auth": "token"},
+                None,
+            ),
+            (
+                {"params": {"page": 1}, "files": {"file1": "data"}},
+                {"params": {"limit": 10}, "files": {"file2": "more"}},
+                None,
+                None,
+                None,
+            ),
+        ],
+        ids=["overwrite_and_merge", "partial_merge", "params_and_files"],
+    )
+    def test_model_combine(
+        self,
+        base_kwargs,
+        additional_kwargs,
+        expected_method,
+        expected_headers,
+        expected_body,
+    ):
+        """Test GenerationRequestArguments.model_combine method."""
+        base_args = GenerationRequestArguments(**base_kwargs)
+        additional_args = GenerationRequestArguments(**additional_kwargs)
+
+        # Combine args
+        result = base_args.model_combine(additional_args)
+
+        # Check method and stream (overwrite behavior)
+        if expected_method is not None:
+            assert result.method == expected_method
+        elif "method" in base_kwargs:
+            assert result.method == base_kwargs["method"]
+
+        if "stream" in additional_kwargs:
+            assert result.stream == additional_kwargs["stream"]
+        elif "stream" in base_kwargs:
+            assert result.stream == base_kwargs.get("stream")
+
+        # Check headers (merge behavior)
+        if expected_headers is not None:
+            assert result.headers == expected_headers
+
+        # Check body (merge behavior)
+        if expected_body is not None:
+            assert result.body == expected_body
+
+        # Check params merge
+        if "params" in base_kwargs and "params" in additional_kwargs:
+            expected_params = {**base_kwargs["params"], **additional_kwargs["params"]}
+            assert result.params == expected_params
+
+        # Check files merge
+        if "files" in base_kwargs and "files" in additional_kwargs:
+            expected_files = {**base_kwargs["files"], **additional_kwargs["files"]}
+            assert result.files == expected_files
+
+    @pytest.mark.smoke
+    def test_model_combine_with_dict(self):
+        """Test GenerationRequestArguments.model_combine with dict input."""
+        base_args = GenerationRequestArguments(
+            method="POST",
+            headers={"Authorization": "Bearer token1"},
+        )
+
+        additional_dict = {
+            "method": "GET",
+            "headers": {"Content-Type": "application/json"},
+        }
+
+        # Combine with dict
+        result = base_args.model_combine(additional_dict)
+
+        # Method should be overwritten
+        assert result.method == "GET"
+
+        # Headers should be merged
+        assert result.headers == {
+            "Authorization": "Bearer token1",
+            "Content-Type": "application/json",
+        }
+
+    @pytest.mark.sanity
+    def test_marshalling(self, valid_instances):
+        """Test GenerationRequestArguments serialization and deserialization."""
+        instance, constructor_args = valid_instances
+        data_dict = instance.model_dump()
+        assert isinstance(data_dict, dict)
+
+        # Test reconstruction
+        reconstructed = GenerationRequestArguments.model_validate(data_dict)
+        for key, expected_value in constructor_args.items():
+            assert getattr(reconstructed, key) == expected_value
+
+    @pytest.mark.regression
+    def test_model_combine_deep_merge_nested_dicts(self):
+        """
+        Test that nested dicts in headers and body are merged, not replaced.
+
+        This is the PRIMARY REGRESSION TEST for the shallow merge bug fix.
+        Before the fix, merging nested dicts would completely replace them.
+        After the fix using deep_update(), nested values are properly merged.
+
+        ### WRITTEN BY AI ###
+        """
+        base = GenerationRequestArguments(
+            headers={"Authorization": "Bearer token1"},
+            body={"model": "gpt-4", "parameters": {"temperature": 0.5, "top_p": 0.9}},
+        )
+        additional = GenerationRequestArguments(
+            headers={"Content-Type": "application/json"},
+            body={"parameters": {"temperature": 0.7, "max_tokens": 100}},
+        )
+
+        result = base.model_combine(additional)
+
+        # Headers should be merged (both keys preserved)
+        assert result.headers == {
+            "Authorization": "Bearer token1",
+            "Content-Type": "application/json",
+        }
+
+        # Body should be merged, with nested parameters also merged
+        assert result.body == {
+            "model": "gpt-4",
+            "parameters": {
+                "temperature": 0.7,  # Overwritten
+                "top_p": 0.9,  # Preserved from base
+                "max_tokens": 100,  # Added from additional
+            },
+        }
+
+    @pytest.mark.regression
+    def test_model_combine_deep_merge_params(self):
+        """
+        Test deep merge for params field.
+
+        ### WRITTEN BY AI ###
+        """
+        base = GenerationRequestArguments(
+            params={"page": 1, "filters": {"type": "active", "status": "open"}},
+        )
+        additional = GenerationRequestArguments(
+            params={"limit": 10, "filters": {"type": "archived"}},
+        )
+
+        result = base.model_combine(additional)
+
+        assert result.params == {
+            "page": 1,
+            "limit": 10,
+            "filters": {
+                "type": "archived",  # Overwritten
+                "status": "open",  # Preserved
+            },
+        }
+
+    @pytest.mark.regression
+    def test_model_combine_deep_merge_files(self):
+        """
+        Test deep merge for files field.
+
+        ### WRITTEN BY AI ###
+        """
+        base = GenerationRequestArguments(
+            files={"file1": "data1", "config": {"format": "json", "encoding": "utf-8"}},
+        )
+        additional = GenerationRequestArguments(
+            files={"file2": "data2", "config": {"compress": True}},
+        )
+
+        result = base.model_combine(additional)
+
+        assert result.files == {
+            "file1": "data1",
+            "file2": "data2",
+            "config": {
+                "format": "json",  # Preserved
+                "encoding": "utf-8",  # Preserved
+                "compress": True,  # Added
+            },
+        }
+
+    @pytest.mark.regression
+    def test_model_combine_multiple_levels_nesting(self):
+        """
+        Test deep merge with 3+ levels of nesting.
+
+        ### WRITTEN BY AI ###
+        """
+        base = GenerationRequestArguments(
+            body={
+                "level1": {
+                    "level2": {
+                        "level3": {"a": 1, "b": 2},
+                        "other": "value",
+                    },
+                },
+            },
+        )
+        additional = GenerationRequestArguments(
+            body={
+                "level1": {
+                    "level2": {
+                        "level3": {"b": 99, "c": 3},
+                    },
+                },
+            },
+        )
+
+        result = base.model_combine(additional)
+
+        assert result.body == {
+            "level1": {
+                "level2": {
+                    "level3": {"a": 1, "b": 99, "c": 3},
+                    "other": "value",
+                },
+            },
+        }
+
+
+class TestUsageMetrics:
+    """Test cases for UsageMetrics model."""
+
+    @pytest.fixture(
+        params=[
+            {},
+            {"text_tokens": 100, "text_words": 50},
+            {"image_tokens": 200, "image_count": 5, "image_pixels": 1024},
+            {"audio_tokens": 150, "audio_seconds": 30.5},
+            {
+                "video_tokens": 75,
+                "video_frames": 300,
+                "video_seconds": 10.0,
+                "video_bytes": 5000000,
+            },
+            {
+                "text_tokens": 100,
+                "image_tokens": 50,
+                "video_tokens": 25,
+                "audio_tokens": 25,
+            },
+        ],
+        ids=[
+            "empty",
+            "text_metrics",
+            "image_metrics",
+            "audio_metrics",
+            "video_metrics",
+            "all_token_types",
+        ],
+    )
+    def valid_instances(self, request):
+        """Fixture providing valid UsageMetrics instances."""
+        constructor_args = request.param
+        instance = UsageMetrics(**constructor_args)
+        return instance, constructor_args
+
+    @pytest.mark.smoke
+    def test_class_signatures(self):
+        """Test UsageMetrics inheritance and type relationships."""
+        assert issubclass(UsageMetrics, StandardBaseDict)
+        assert hasattr(UsageMetrics, "model_dump")
+        assert hasattr(UsageMetrics, "model_validate")
+        assert hasattr(UsageMetrics, "add_text_metrics")
+
+        # Check fields
+        fields = UsageMetrics.model_fields
+        expected_fields = [
+            "text_tokens",
+            "text_words",
+            "text_characters",
+            "image_tokens",
+            "image_count",
+            "image_pixels",
+            "image_bytes",
+            "video_tokens",
+            "video_frames",
+            "video_seconds",
+            "video_bytes",
+            "audio_tokens",
+            "audio_samples",
+            "audio_seconds",
+            "audio_bytes",
+        ]
+        for field in expected_fields:
+            assert field in fields
+
+        # Check computed property
+        assert hasattr(UsageMetrics, "total_tokens")
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances):
+        """Test UsageMetrics initialization."""
+        instance, constructor_args = valid_instances
+        assert isinstance(instance, UsageMetrics)
+
+        # Check field values
+        for key, expected_value in constructor_args.items():
+            assert getattr(instance, key) == expected_value
+
+        # Check defaults for fields not provided
+        all_fields = [
+            "text_tokens",
+            "text_words",
+            "text_characters",
+            "image_tokens",
+            "image_count",
+            "image_pixels",
+            "image_bytes",
+            "video_tokens",
+            "video_frames",
+            "video_seconds",
+            "video_bytes",
+            "audio_tokens",
+            "audio_samples",
+            "audio_seconds",
+            "audio_bytes",
+        ]
+        for field in all_fields:
+            if field not in constructor_args:
+                assert getattr(instance, field) is None
+
+    @pytest.mark.sanity
+    def test_invalid_initialization_values(self):
+        """Test UsageMetrics with invalid field values."""
+        # Invalid token count type
+        with pytest.raises(ValidationError):
+            UsageMetrics(text_tokens="not_int")
+
+        # Invalid seconds type
+        with pytest.raises(ValidationError):
+            UsageMetrics(audio_seconds="not_float")
+
+        # Invalid image count type
+        with pytest.raises(ValidationError):
+            UsageMetrics(image_count=1.5)
+
+        # Invalid video frames type
+        with pytest.raises(ValidationError):
+            UsageMetrics(video_frames="invalid")
+
+    @pytest.mark.sanity
+    def test_invalid_initialization_missing(self):
+        """Test UsageMetrics initialization without any fields."""
+        # Should succeed since all fields are optional
+        metrics = UsageMetrics()
+        assert isinstance(metrics, UsageMetrics)
+        assert metrics.text_tokens is None
+        assert metrics.image_tokens is None
+        assert metrics.video_tokens is None
+        assert metrics.audio_tokens is None
+
+    @pytest.mark.smoke
+    def test_optional_fields(self):
+        """Test that all usage metric fields are optional."""
+        # Should be able to create with no fields
+        metrics = UsageMetrics()
+        assert metrics.text_tokens is None
+        assert metrics.image_tokens is None
+        assert metrics.audio_tokens is None
+        assert metrics.video_tokens is None
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("metrics_kwargs", "expected_total"),
+        [
+            ({}, None),
+            ({"text_tokens": 0}, 0),
+            ({"text_tokens": 100}, 100),
+            ({"text_tokens": 100, "image_tokens": 50}, 150),
+            (
+                {
+                    "text_tokens": 100,
+                    "image_tokens": 50,
+                    "video_tokens": 25,
+                    "audio_tokens": 25,
+                },
+                200,
+            ),
+            ({"image_tokens": 50, "video_tokens": 25}, 75),
+        ],
+        ids=[
+            "no_tokens",
+            "zero_tokens",
+            "text_only",
+            "text_and_image",
+            "all_modalities",
+            "image_and_video",
+        ],
+    )
+    def test_total_tokens_property(self, metrics_kwargs, expected_total):
+        """Test UsageMetrics.total_tokens computed property."""
+        metrics = UsageMetrics(**metrics_kwargs)
+        assert metrics.total_tokens == expected_total
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("initial_chars", "initial_words", "text", "expected_chars", "expected_words"),
+        [
+            (None, None, "Hello world", 11, 2),
+            (0, 0, "Hello world", 11, 2),
+            (11, 2, "Test message", 23, 4),
+            (0, 0, "One", 3, 1),
+            (10, 5, "", 10, 5),
+        ],
+        ids=[
+            "first_text",
+            "from_zero",
+            "accumulate",
+            "single_word",
+            "empty_string",
+        ],
+    )
+    def test_add_text_metrics(
+        self,
+        initial_chars,
+        initial_words,
+        text,
+        expected_chars,
+        expected_words,
+    ):
+        """Test UsageMetrics.add_text_metrics method."""
+        metrics = UsageMetrics(
+            text_characters=initial_chars,
+            text_words=initial_words,
+        )
+        metrics.add_text_metrics(text)
+        assert metrics.text_characters == expected_chars
+        assert metrics.text_words == expected_words
+
+    @pytest.mark.sanity
+    def test_total_tokens_excludes_tool_call_tokens(self):
+        """
+        Verify tool_call_tokens is not double-counted in total_tokens.
+
+        tool_call_tokens is a subset of text_tokens, so total_tokens should
+        only reflect text_tokens (and other modality tokens), not add
+        tool_call_tokens on top.
+
+        ## WRITTEN BY AI ##
+        """
+        metrics = UsageMetrics(
+            text_tokens=50,
+            tool_call_tokens=50,
+            tool_call_count=2,
+        )
+        assert metrics.total_tokens == 50
+
+    @pytest.mark.sanity
+    def test_marshalling(self, valid_instances):
+        """Test UsageMetrics serialization and deserialization."""
+        instance, constructor_args = valid_instances
+        data_dict = instance.model_dump()
+        assert isinstance(data_dict, dict)
+
+        # Test reconstruction
+        reconstructed = UsageMetrics.model_validate(data_dict)
+        for key, expected_value in constructor_args.items():
+            assert getattr(reconstructed, key) == expected_value
+
+
+class TestGenerationRequest:
+    """Test cases for GenerationRequest model."""
+
+    @pytest.fixture(
+        params=[
+            {
+                "columns": {"text_column": ["Hello world"]},
+            },
+            {
+                "columns": {
+                    "text_column": ["Translate this"],
+                    "prompt_tokens_count_column": [50],
+                },
+                "input_metrics": UsageMetrics(text_tokens=50),
+                "output_metrics": UsageMetrics(text_tokens=100),
+            },
+            {
+                "request_id": "custom-id",
+                "columns": {"text_column": ["Test prompt"]},
+            },
+            {
+                "columns": {
+                    "text_column": ["Describe this image"],
+                    "image_column": ["path/to/image.jpg"],
+                },
+                "input_metrics": UsageMetrics(text_tokens=10, image_tokens=256),
+            },
+            {
+                "columns": {
+                    "audio_column": ["path/to/audio.mp3"],
+                },
+                "input_metrics": UsageMetrics(audio_seconds=30.0),
+                "output_metrics": UsageMetrics(text_tokens=100),
+            },
+        ],
+        ids=[
+            "minimal",
+            "with_token_counts",
+            "custom_id",
+            "multimodal",
+            "audio",
+        ],
+    )
+    def valid_instances(self, request):
+        """Fixture providing valid GenerationRequest instances."""
+        constructor_args = request.param
+        instance = GenerationRequest(**constructor_args)
+        return instance, constructor_args
+
+    @pytest.mark.smoke
+    def test_class_signatures(self):
+        """Test GenerationRequest inheritance and type relationships."""
+        assert issubclass(GenerationRequest, StandardBaseModel)
+        assert hasattr(GenerationRequest, "model_dump")
+        assert hasattr(GenerationRequest, "model_validate")
+
+        # Check all expected fields are defined
+        fields = GenerationRequest.model_fields
+        expected_fields = [
+            "request_id",
+            "columns",
+            "input_metrics",
+            "output_metrics",
+        ]
+        for field in expected_fields:
+            assert field in fields
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances):
+        """Test GenerationRequest initialization."""
+        instance, constructor_args = valid_instances
+        assert isinstance(instance, GenerationRequest)
+
+        # Check columns
+        expected_columns = constructor_args.get("columns", {})
+        assert instance.columns == expected_columns
+
+        # Check request_id
+        if "request_id" in constructor_args:
+            assert instance.request_id == constructor_args["request_id"]
+        else:
+            assert isinstance(instance.request_id, str)
+            # Should be valid UUID
+            uuid.UUID(instance.request_id)
+
+        # Check metrics defaults
+        if "input_metrics" in constructor_args:
+            assert instance.input_metrics == constructor_args["input_metrics"]
+        else:
+            assert isinstance(instance.input_metrics, UsageMetrics)
+
+        if "output_metrics" in constructor_args:
+            assert instance.output_metrics == constructor_args["output_metrics"]
+        else:
+            assert isinstance(instance.output_metrics, UsageMetrics)
+
+    @pytest.mark.sanity
+    def test_invalid_initialization_values(self):
+        """Test GenerationRequest with invalid field values."""
+        # Invalid columns type (not a dict)
+        with pytest.raises(ValidationError):
+            GenerationRequest(
+                columns="not_a_dict",
+            )
+
+        # Invalid input_metrics type
+        with pytest.raises(ValidationError):
+            GenerationRequest(
+                columns={"text_column": ["test"]},
+                input_metrics="invalid",
+            )
+
+        # Invalid output_metrics type
+        with pytest.raises(ValidationError):
+            GenerationRequest(
+                columns={"text_column": ["test"]},
+                output_metrics=123,
+            )
+
+    @pytest.mark.sanity
+    def test_initialization_all_optional(self):
+        """Test GenerationRequest initialization without any fields."""
+        # Should succeed since all fields are optional
+        request = GenerationRequest()
+        assert isinstance(request, GenerationRequest)
+        assert isinstance(request.request_id, str)
+        assert request.columns == {}
+        assert isinstance(request.input_metrics, UsageMetrics)
+        assert isinstance(request.output_metrics, UsageMetrics)
+
+    @pytest.mark.smoke
+    def test_auto_id_generation(self):
+        """Test that request_id is auto-generated if not provided."""
+        request1 = GenerationRequest()
+        request2 = GenerationRequest()
+
+        assert request1.request_id != request2.request_id
+        assert len(request1.request_id) > 0
+        assert len(request2.request_id) > 0
+
+        # Should be valid UUIDs
+        uuid.UUID(request1.request_id)
+        uuid.UUID(request2.request_id)
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("columns", "expected_columns"),
+        [
+            ({"text_column": ["Hello"]}, {"text_column": ["Hello"]}),
+            (
+                {"text_column": ["Test"], "prompt_tokens_count_column": [50]},
+                {"text_column": ["Test"], "prompt_tokens_count_column": [50]},
+            ),
+            (
+                {"image_column": ["img.jpg"], "text_column": ["Describe"]},
+                {"image_column": ["img.jpg"], "text_column": ["Describe"]},
+            ),
+            ({"audio_column": ["audio.mp3"]}, {"audio_column": ["audio.mp3"]}),
+        ],
+        ids=[
+            "text_only",
+            "text_with_token_count",
+            "multimodal_image",
+            "audio",
+        ],
+    )
+    def test_column_types(self, columns, expected_columns):
+        """Test GenerationRequest with different column types."""
+        request = GenerationRequest(columns=columns)
+        assert request.columns == expected_columns
+
+    @pytest.mark.smoke
+    def test_metrics_defaults(self):
+        """Test that input_metrics and output_metrics are initialized."""
+        request = GenerationRequest()
+
+        assert isinstance(request.input_metrics, UsageMetrics)
+        assert isinstance(request.output_metrics, UsageMetrics)
+        assert request.input_metrics.total_tokens is None
+        assert request.output_metrics.total_tokens is None
+
+    @pytest.mark.sanity
+    def test_marshalling(self, valid_instances):
+        """Test GenerationRequest serialization and deserialization."""
+        instance, constructor_args = valid_instances
+        data_dict = instance.model_dump()
+        assert isinstance(data_dict, dict)
+        assert "columns" in data_dict
+        assert "input_metrics" in data_dict
+        assert "output_metrics" in data_dict
+
+        # Test reconstruction
+        reconstructed = GenerationRequest.model_validate(data_dict)
+        assert reconstructed.columns == instance.columns
+        assert reconstructed.request_id == instance.request_id
+        assert reconstructed.input_metrics.model_dump() == (
+            instance.input_metrics.model_dump()
+        )
+        assert reconstructed.output_metrics.model_dump() == (
+            instance.output_metrics.model_dump()
+        )

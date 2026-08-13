@@ -1,0 +1,34 @@
+body {
+  margin: 0;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu',
+    'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+@font-face {
+  font-family: 'Spezia';
+  font-style: 'normal';
+  font-weight: 400;
+  src: url('./assets/fonts/spezia/spezia-regular.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Spezia';
+  font-style: 'normal';
+  font-weight: 500;
+  src: url('./assets/fonts/spezia/spezia-medium.ttf') format('truetype');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'SpeziaMono';
+  font-style: 'normal';
+  font-weight: 500;
+  src: url('./assets/fonts/spezia/spezia-mono-medium.ttf') format('truetype');
+  font-display: swap;
+}

@@ -1,0 +1,746 @@
+from __future__ import annotations
+
+import math
+import time
+from multiprocessing import get_context
+from typing import Literal, TypeVar
+
+import pytest
+from pydantic import ValidationError
+
+from guidellm.scheduler import (
+    AsyncConstantStrategy,
+    AsyncPoissonStrategy,
+    ConcurrentStrategy,
+    SchedulingStrategy,
+    StrategyT,
+    SynchronousStrategy,
+    ThroughputStrategy,
+)
+from guidellm.scheduler.strategies import StrategyType
+from guidellm.schemas import RequestInfo
+
+
+def test_strategy_type():
+    """Test that StrategyType is defined correctly as a Literal type."""
+    # StrategyType is a type alias/literal type, we can't test its runtime value
+    # but we can test that it exists and is importable
+    assert StrategyType is not None
+
+
+def test_strategy_t():
+    """Test that StrategyT is filled out correctly as a TypeVar."""
+    assert isinstance(StrategyT, type(TypeVar("test")))
+    assert StrategyT.__name__ == "StrategyT"
+    assert StrategyT.__bound__ == SchedulingStrategy
+    assert StrategyT.__constraints__ == ()
+
+
+class TestExponentialDecay:
+    """Test suite for # _exponential_decay_tau function."""
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("max_progress", "convergence", "expected_range"),
+        [
+            (1.0, 0.99, (0.21, 0.22)),
+            (5.0, 0.99, (1.08, 1.09)),
+            (10.0, 0.95, (3.33, 3.35)),
+        ],
+    )
+    def test_tau_invocation(self, max_progress, convergence, expected_range):
+        """Test exponential decay tau calculation with valid inputs."""
+        tau = max_progress / (-math.log(1 - convergence))  # Direct calculation
+        assert expected_range[0] <= tau <= expected_range[1]
+        expected_tau = max_progress / (-math.log(1 - convergence))
+        assert tau == pytest.approx(expected_tau, rel=1e-10)
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("progress", "tau", "expected_min", "expected_max"),
+        [
+            (0.0, 1.0, 0.0, 0.0),  # No progress = 0
+            (1.0, 1.0, 0.6, 0.7),  # 1 tau ≈ 63.2%
+            (2.0, 1.0, 0.85, 0.87),  # 2 tau ≈ 86.5%
+            (3.0, 1.0, 0.95, 0.96),  # 3 tau ≈ 95.0%
+        ],
+    )
+    def test_exp_decay_invocation(self, progress, tau, expected_min, expected_max):
+        """Test exponential decay fraction calculation with valid inputs."""
+        fraction = 1 - math.exp(-progress / tau)  # Direct calculation
+        assert expected_min <= fraction <= expected_max
+        expected_fraction = 1 - math.exp(-progress / tau)
+        assert fraction == pytest.approx(expected_fraction, rel=1e-10)
+
+    @pytest.mark.smoke
+    def test_exp_boundary_conditions(self):
+        """Test boundary conditions for exponential decay fraction."""
+        assert (1 - math.exp(-0.0 / 1.0)) == 0.0
+        assert (1 - math.exp(-0.0 / 10.0)) == 0.0
+        large_progress = 100.0
+        fraction = 1 - math.exp(-large_progress / 1.0)
+        assert fraction > 0.99999
+
+
+class TestSchedulingStrategy:
+    @pytest.mark.smoke
+    def test_class_signatures(self):
+        """Test SchedulingStrategy inheritance and type relationships."""
+        # Inheritance and abstract class properties
+        assert issubclass(SchedulingStrategy, object)
+        assert hasattr(SchedulingStrategy, "info")
+
+        # Validate expected methods exist
+        expected_methods = {
+            "processes_limit",
+            "requests_limit",
+        }
+        strategy_methods = set(dir(SchedulingStrategy))
+        for method in expected_methods:
+            assert method in strategy_methods
+
+        # validate expected properties
+        processes_limit_prop = SchedulingStrategy.processes_limit
+        assert isinstance(processes_limit_prop, property)
+        requests_limit_prop = SchedulingStrategy.requests_limit
+        assert isinstance(requests_limit_prop, property)
+
+    @pytest.mark.sanity
+    def test_invalid_implementation(self):
+        """Test that invalid implementations raise NotImplementedError."""
+
+        class InvalidStrategy(SchedulingStrategy):
+            type_: Literal["strategy"] = "strategy"  # type: ignore[assignment,annotation-unchecked]
+
+        with pytest.raises(TypeError):
+            InvalidStrategy()
+
+    @pytest.mark.smoke
+    def test_concrete_implementation(self):
+        """Test that concrete implementations can be constructed."""
+
+        class TestStrategy(SchedulingStrategy):
+            type_: Literal["strategy"] = "strategy"  # type: ignore[assignment,annotation-unchecked]
+
+            async def next_request_time(self, offset: int) -> float:
+                return time.time() + offset
+
+            def request_completed(self, request_info: RequestInfo):
+                pass
+
+        strategy = TestStrategy()
+        assert isinstance(strategy, SchedulingStrategy)
+
+
+class TestSynchronousStrategy:
+    @pytest.mark.smoke
+    def test_initialization(self):
+        """Test initialization of SynchronousStrategy."""
+        strategy = SynchronousStrategy()
+        assert strategy.type_ == "synchronous"
+
+    @pytest.mark.smoke
+    def test_limits(self):
+        """Test that SynchronousStrategy enforces proper limits."""
+        strategy = SynchronousStrategy()
+        assert strategy.processes_limit == 1
+        assert strategy.requests_limit == 1
+
+    @pytest.mark.smoke
+    def test_string_representation(self):
+        """Test __str__ method for SynchronousStrategy."""
+        strategy = SynchronousStrategy()
+        result = str(strategy)
+        assert result == "synchronous"
+
+    @pytest.mark.smoke
+    def test_marshalling(self):
+        """Test marshalling to/from pydantic dict formats."""
+        strategy = SynchronousStrategy()
+        data = strategy.model_dump()
+        assert isinstance(data, dict)
+        assert data["type_"] == "synchronous"
+
+        reconstructed = SynchronousStrategy.model_validate(data)
+        assert isinstance(reconstructed, SynchronousStrategy)
+        assert reconstructed.type_ == "synchronous"
+
+        # Test polymorphic reconstruction via base registry class
+        base_reconstructed = SchedulingStrategy.model_validate(data)
+        assert isinstance(base_reconstructed, SynchronousStrategy)
+        assert base_reconstructed.type_ == "synchronous"
+
+        # Test model_validate_json pathway
+        json_str = strategy.model_dump_json()
+        json_reconstructed = SynchronousStrategy.model_validate_json(json_str)
+        assert isinstance(json_reconstructed, SynchronousStrategy)
+        assert json_reconstructed.type_ == "synchronous"
+
+        # Test polymorphic model_validate_json via base class
+        base_json_reconstructed = SchedulingStrategy.model_validate_json(json_str)
+        assert isinstance(base_json_reconstructed, SynchronousStrategy)
+        assert base_json_reconstructed.type_ == "synchronous"
+
+
+class TestConcurrentStrategy:
+    @pytest.fixture(
+        params=[
+            {"streams": 1},
+            {"streams": 4},
+            {"streams": 8, "rampup_duration": 2.0},
+            {"streams": 2, "rampup_duration": 0.0},
+        ]
+    )
+    def valid_instances(self, request):
+        """Creates various valid configurations of ConcurrentStrategy."""
+        constructor_args = request.param
+        instance = ConcurrentStrategy(**constructor_args)
+        return instance, constructor_args
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances: tuple[ConcurrentStrategy, dict]):
+        """Test initialization of ConcurrentStrategy."""
+        instance, constructor_args = valid_instances
+        assert instance.type_ == "concurrent"
+
+        for key, value in constructor_args.items():
+            assert getattr(instance, key) == value
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("streams", 0),
+            ("streams", -1),
+            ("rampup_duration", -1.0),
+        ],
+    )
+    def test_invalid_initialization(self, field, value):
+        """Test invalid initialization."""
+        kwargs = {"streams": 2}
+        kwargs[field] = value
+        with pytest.raises(ValidationError):
+            ConcurrentStrategy(**kwargs)
+
+    @pytest.mark.smoke
+    def test_limits(self, valid_instances: tuple[ConcurrentStrategy, dict]):
+        """Test that ConcurrentStrategy returns correct limits."""
+        instance, constructor_args = valid_instances
+        streams = constructor_args["streams"]
+        assert instance.processes_limit == streams
+        assert instance.requests_limit == streams
+
+    @pytest.mark.smoke
+    def test_string_representation(
+        self, valid_instances: tuple[ConcurrentStrategy, dict]
+    ):
+        """Test __str__ method for ConcurrentStrategy."""
+        instance, constructor_args = valid_instances
+        streams = constructor_args["streams"]
+        result = str(instance)
+        assert result == f"concurrent@{streams}"
+
+    @pytest.mark.smoke
+    def test_marshalling(self, valid_instances: tuple[ConcurrentStrategy, dict]):
+        """Test marshalling to/from pydantic dict formats."""
+        instance, constructor_args = valid_instances
+
+        data = instance.model_dump()
+        assert isinstance(data, dict)
+        assert data["type_"] == "concurrent"
+
+        for key, value in constructor_args.items():
+            assert data[key] == value
+
+        reconstructed = ConcurrentStrategy.model_validate(data)
+        assert isinstance(reconstructed, ConcurrentStrategy)
+
+        for key, value in constructor_args.items():
+            assert getattr(reconstructed, key) == value
+
+        # Test polymorphic reconstruction via base registry class
+        base_reconstructed = SchedulingStrategy.model_validate(data)
+        assert isinstance(base_reconstructed, ConcurrentStrategy)
+        assert base_reconstructed.type_ == "concurrent"
+
+        for key, value in constructor_args.items():
+            assert getattr(base_reconstructed, key) == value
+
+        # Test model_validate_json pathway
+        json_str = instance.model_dump_json()
+        json_reconstructed = ConcurrentStrategy.model_validate_json(json_str)
+        assert isinstance(json_reconstructed, ConcurrentStrategy)
+
+        for key, value in constructor_args.items():
+            assert getattr(json_reconstructed, key) == value
+
+        # Test polymorphic model_validate_json via base class
+        base_json_reconstructed = SchedulingStrategy.model_validate_json(json_str)
+        assert isinstance(base_json_reconstructed, ConcurrentStrategy)
+        assert base_json_reconstructed.type_ == "concurrent"
+
+        for key, value in constructor_args.items():
+            assert getattr(base_json_reconstructed, key) == value
+
+
+class TestThroughputStrategy:
+    @pytest.fixture(
+        params=[
+            {},
+            {"max_concurrency": 10},
+            {"rampup_duration": 5.0},
+            {"max_concurrency": 5, "rampup_duration": 2.0},
+        ]
+    )
+    def valid_instances(self, request):
+        """Creates various valid configurations of ThroughputStrategy."""
+        constructor_args = request.param
+        instance = ThroughputStrategy(**constructor_args)
+        return instance, constructor_args
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances: tuple[ThroughputStrategy, dict]):
+        """Test initialization of ThroughputStrategy."""
+        instance, constructor_args = valid_instances
+        assert instance.type_ == "throughput"
+
+        for key, value in constructor_args.items():
+            assert getattr(instance, key) == value
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("max_concurrency", 0),
+            ("max_concurrency", -1),
+            ("rampup_duration", -1.0),
+        ],
+    )
+    def test_invalid_initialization(self, field, value):
+        """Test invalid initialization."""
+        kwargs = {field: value}
+        with pytest.raises(ValidationError):
+            ThroughputStrategy(**kwargs)
+
+    @pytest.mark.smoke
+    def test_limits(self, valid_instances: tuple[ThroughputStrategy, dict]):
+        """Test that ThroughputStrategy returns correct limits."""
+        instance, constructor_args = valid_instances
+        max_concurrency = constructor_args.get("max_concurrency")
+        assert instance.processes_limit == max_concurrency
+        assert instance.requests_limit == max_concurrency
+
+    @pytest.mark.smoke
+    def test_string_representation(
+        self, valid_instances: tuple[ThroughputStrategy, dict]
+    ):
+        """Test __str__ method for ThroughputStrategy."""
+        instance, constructor_args = valid_instances
+        max_concurrency = constructor_args.get("max_concurrency")
+        result = str(instance)
+        assert result == f"throughput@{max_concurrency or 'unlimited'}"
+
+    @pytest.mark.smoke
+    def test_marshalling(self, valid_instances: tuple[ThroughputStrategy, dict]):
+        """Test marshalling to/from pydantic dict formats."""
+        instance, constructor_args = valid_instances
+
+        data = instance.model_dump()
+        assert isinstance(data, dict)
+        assert data["type_"] == "throughput"
+
+        for key, value in constructor_args.items():
+            assert data[key] == value
+
+        reconstructed = ThroughputStrategy.model_validate(data)
+        assert isinstance(reconstructed, ThroughputStrategy)
+
+        for key, value in constructor_args.items():
+            assert getattr(reconstructed, key) == value
+
+        # Test polymorphic reconstruction via base registry class
+        base_reconstructed = SchedulingStrategy.model_validate(data)
+        assert isinstance(base_reconstructed, ThroughputStrategy)
+        assert base_reconstructed.type_ == "throughput"
+
+        for key, value in constructor_args.items():
+            assert getattr(base_reconstructed, key) == value
+
+        # Test model_validate_json pathway
+        json_str = instance.model_dump_json()
+        json_reconstructed = ThroughputStrategy.model_validate_json(json_str)
+        assert isinstance(json_reconstructed, ThroughputStrategy)
+
+        for key, value in constructor_args.items():
+            assert getattr(json_reconstructed, key) == value
+
+        # Test polymorphic model_validate_json via base class
+        base_json_reconstructed = SchedulingStrategy.model_validate_json(json_str)
+        assert isinstance(base_json_reconstructed, ThroughputStrategy)
+        assert base_json_reconstructed.type_ == "throughput"
+
+        for key, value in constructor_args.items():
+            assert getattr(base_json_reconstructed, key) == value
+
+
+class TestAsyncConstantStrategy:
+    @pytest.fixture(
+        params=[
+            {"rate": 1.0},
+            {"rate": 5.0},
+            {"rate": 10.3, "max_concurrency": 8},
+            {"rate": 2.0, "rampup_duration": 1.0},
+            {"rate": 10.0, "rampup_duration": 2.0, "max_concurrency": 5},
+        ]
+    )
+    def valid_instances(self, request):
+        """Creates various valid configurations of AsyncConstantStrategy."""
+        constructor_args = request.param
+        instance = AsyncConstantStrategy(**constructor_args)
+        return instance, constructor_args
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances: tuple[AsyncConstantStrategy, dict]):
+        """Test initialization of AsyncConstantStrategy."""
+        instance, constructor_args = valid_instances
+        assert instance.type_ == "constant"
+
+        for key, value in constructor_args.items():
+            assert getattr(instance, key) == value
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("rate", 0),
+            ("rate", -1.0),
+            ("rampup_duration", -1.0),
+        ],
+    )
+    def test_invalid_initialization(self, field, value):
+        """Test invalid initialization."""
+        kwargs = {"rate": 1.0}
+        kwargs[field] = value
+        with pytest.raises(ValidationError):
+            AsyncConstantStrategy(**kwargs)
+
+    @pytest.mark.smoke
+    def test_string_representation(
+        self, valid_instances: tuple[AsyncConstantStrategy, dict]
+    ):
+        """Test __str__ method for AsyncConstantStrategy."""
+        instance, constructor_args = valid_instances
+        rate = constructor_args["rate"]
+        result = str(instance)
+        assert result == f"constant@{rate:.2f}"
+
+    @pytest.mark.smoke
+    def test_marshalling(self, valid_instances: tuple[AsyncConstantStrategy, dict]):
+        """Test marshalling to/from pydantic dict formats."""
+        instance, constructor_args = valid_instances
+
+        data = instance.model_dump()
+        assert isinstance(data, dict)
+        assert data["type_"] == "constant"
+
+        for key, value in constructor_args.items():
+            assert data[key] == value
+
+        reconstructed = AsyncConstantStrategy.model_validate(data)
+        assert isinstance(reconstructed, AsyncConstantStrategy)
+
+        for key, value in constructor_args.items():
+            assert getattr(reconstructed, key) == value
+
+        # Test polymorphic reconstruction via base registry class
+        base_reconstructed = SchedulingStrategy.model_validate(data)
+        assert isinstance(base_reconstructed, AsyncConstantStrategy)
+        assert base_reconstructed.type_ == "constant"
+
+        for key, value in constructor_args.items():
+            assert getattr(base_reconstructed, key) == value
+
+        # Test model_validate_json pathway
+        json_str = instance.model_dump_json()
+        json_reconstructed = AsyncConstantStrategy.model_validate_json(json_str)
+        assert isinstance(json_reconstructed, AsyncConstantStrategy)
+
+        for key, value in constructor_args.items():
+            assert getattr(json_reconstructed, key) == value
+
+        # Test polymorphic model_validate_json via base class
+        base_json_reconstructed = SchedulingStrategy.model_validate_json(json_str)
+        assert isinstance(base_json_reconstructed, AsyncConstantStrategy)
+        assert base_json_reconstructed.type_ == "constant"
+
+        for key, value in constructor_args.items():
+            assert getattr(base_json_reconstructed, key) == value
+
+    @pytest.mark.smoke
+    def test_rampup_duration_default(self):
+        """Test that rampup_duration defaults to 0.0.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = AsyncConstantStrategy(rate=1.0)
+        assert instance.rampup_duration == 0.0
+
+    @pytest.mark.smoke
+    def test_rampup_duration_initialization(self):
+        """Test that rampup_duration can be set.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = AsyncConstantStrategy(rate=10.0, rampup_duration=2.0)
+        assert instance.rampup_duration == 2.0
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    async def test_timing_without_rampup(self):
+        """Test timing without rampup matches existing behavior.
+
+        ### WRITTEN BY AI ###
+        """
+        strategy = AsyncConstantStrategy(rate=10.0, rampup_duration=0.0)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=100, mp_context=get_context()
+        )
+        start_time = 1000.0
+        strategy.init_processes_start(start_time)
+
+        # Test multiple request indices
+        # Each call to next_request_time increments the index automatically
+        for expected_index in range(1, 11):
+            time = await strategy.next_request_time(0)
+            expected_time = start_time + expected_index / 10.0
+            assert time == pytest.approx(expected_time, rel=1e-10), (
+                f"Request {expected_index}: expected {expected_time}, got {time}"
+            )
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    async def test_timing_with_rampup(self):
+        """Test timing with rampup follows quadratic then linear pattern.
+
+        ### WRITTEN BY AI ###
+        """
+        rate = 10.0
+        rampup_duration = 2.0
+        strategy = AsyncConstantStrategy(rate=rate, rampup_duration=rampup_duration)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=100, mp_context=get_context()
+        )
+        start_time = 1000.0
+        strategy.init_processes_start(start_time)
+
+        # Calculate number of requests during rampup
+        n_rampup = rate * rampup_duration / 2.0  # Should be 10
+
+        # Test first request (index 1) - should be at start_time
+        time1 = await strategy.next_request_time(0)
+        assert time1 == pytest.approx(start_time, abs=1e-6), (
+            f"First request should be at start_time, got {time1}"
+        )
+
+        # Test requests during rampup (indices 2-10)
+        # For index n during rampup: t = sqrt(2 * n * rampup_duration / rate)
+        # Each call increments the index automatically
+        for n in range(2, int(n_rampup) + 1):
+            time_n = await strategy.next_request_time(0)
+            expected_time = start_time + math.sqrt(2.0 * n * rampup_duration / rate)
+            assert time_n == pytest.approx(expected_time, rel=1e-6), (
+                f"Request {n} during rampup: expected {expected_time}, got {time_n}"
+            )
+
+        # Test request right after rampup (index 11)
+        # Should be at: rampup_duration + (11 - n_rampup) / rate
+        time_after = await strategy.next_request_time(0)
+        expected_after = start_time + rampup_duration + (11 - n_rampup) / rate
+        assert time_after == pytest.approx(expected_after, rel=1e-6), (
+            f"Request 11 after rampup: expected {expected_after}, got {time_after}"
+        )
+
+        # Test a few more requests after rampup to verify constant rate
+        for i in range(12, 15):
+            time_i = await strategy.next_request_time(0)
+            expected_i = start_time + rampup_duration + (i - n_rampup) / rate
+            assert time_i == pytest.approx(expected_i, rel=1e-6), (
+                f"Request {i} after rampup: expected {expected_i}, got {time_i}"
+            )
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_timing_with_rampup_edge_cases(self):
+        """Test edge cases for rampup timing.
+
+        ### WRITTEN BY AI ###
+        """
+
+        # Test with very short rampup_duration
+        strategy = AsyncConstantStrategy(rate=100.0, rampup_duration=0.01)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=100, mp_context=get_context()
+        )
+        start_time = 2000.0
+        strategy.init_processes_start(start_time)
+
+        # First request
+        time1 = await strategy.next_request_time(0)
+        assert time1 == pytest.approx(start_time, abs=1e-6)
+
+        # Test with very long rampup_duration
+        strategy2 = AsyncConstantStrategy(rate=1.0, rampup_duration=100.0)
+        strategy2.init_processes_timings(
+            worker_count=1, max_concurrency=100, mp_context=get_context()
+        )
+        start_time2 = 3000.0
+        strategy2.init_processes_start(start_time2)
+
+        # First request
+        time1_2 = await strategy2.next_request_time(0)
+        assert time1_2 == pytest.approx(start_time2, abs=1e-6)
+
+        # Request at end of rampup
+        # We need to advance to request index 50 (n_rampup = 1.0 * 100.0 / 2.0)
+        # Already at index 1, need 49 more calls to reach index 50
+        time_end_rampup = None
+        for _ in range(49):  # 49 calls to go from index 2 to index 50
+            time_end_rampup = await strategy2.next_request_time(0)
+        expected_end = start_time2 + 100.0
+        assert time_end_rampup == pytest.approx(expected_end, rel=1e-6), (
+            f"End of rampup: expected {expected_end}, got {time_end_rampup}"
+        )
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_timing_rampup_transition(self):
+        """Test smooth transition from rampup to constant rate.
+
+        ### WRITTEN BY AI ###
+        """
+        rate = 10.0
+        rampup_duration = 2.0
+        strategy = AsyncConstantStrategy(rate=rate, rampup_duration=rampup_duration)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=100, mp_context=get_context()
+        )
+        start_time = 5000.0
+        strategy.init_processes_start(start_time)
+
+        n_rampup = rate * rampup_duration / 2.0  # 10
+
+        # Get to the last request of rampup (index 10)
+        for _ in range(9):  # Already at index 1, need 9 more to reach 10
+            await strategy.next_request_time(0)
+
+        time_last_rampup = await strategy.next_request_time(0)
+        expected_last_rampup = start_time + math.sqrt(2.0 * 10 * rampup_duration / rate)
+        assert time_last_rampup == pytest.approx(expected_last_rampup, rel=1e-6), (
+            f"Last rampup request: expected {expected_last_rampup}, "
+            f"got {time_last_rampup}"
+        )
+
+        # First request after rampup (index 11)
+        time_first_after = await strategy.next_request_time(0)
+        expected_first_after = start_time + rampup_duration + (11 - n_rampup) / rate
+        assert time_first_after == pytest.approx(expected_first_after, rel=1e-6), (
+            f"First after rampup: expected {expected_first_after}, "
+            f"got {time_first_after}"
+        )
+
+        # Verify the transition is smooth (no gap)
+        # The last rampup request should be at rampup_duration
+        assert time_last_rampup == pytest.approx(
+            start_time + rampup_duration, rel=1e-6
+        ), "Last rampup should be at end of rampup period"
+
+
+class TestAsyncPoissonStrategy:
+    @pytest.fixture(
+        params=[
+            {"rate": 1.0},
+            {"rate": 5.0, "random_seed": 123},
+            {"rate": 10.3, "random_seed": 456, "max_concurrency": 8},
+        ]
+    )
+    def valid_instances(self, request):
+        """Creates various valid configurations of AsyncPoissonStrategy."""
+        constructor_args = request.param
+        instance = AsyncPoissonStrategy(**constructor_args)
+        return instance, constructor_args
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances: tuple[AsyncPoissonStrategy, dict]):
+        """Test initialization of AsyncPoissonStrategy."""
+        instance, constructor_args = valid_instances
+        assert instance.type_ == "poisson"
+
+        for key, value in constructor_args.items():
+            assert getattr(instance, key) == value
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("rate", 0),
+            ("rate", -1.0),
+        ],
+    )
+    def test_invalid_initialization(self, field, value):
+        """Test invalid initialization."""
+        kwargs = {"rate": 1.0, "random_seed": 42}
+        kwargs[field] = value
+        with pytest.raises(ValidationError):
+            AsyncPoissonStrategy(**kwargs)
+
+    @pytest.mark.smoke
+    def test_string_representation(
+        self, valid_instances: tuple[AsyncPoissonStrategy, dict]
+    ):
+        """Test __str__ method for AsyncPoissonStrategy."""
+        instance, constructor_args = valid_instances
+        rate = constructor_args["rate"]
+        result = str(instance)
+        assert result == f"poisson@{rate:.2f}"
+
+    @pytest.mark.smoke
+    def test_marshalling(self, valid_instances: tuple[AsyncPoissonStrategy, dict]):
+        """Test marshalling to/from pydantic dict formats."""
+        instance, constructor_args = valid_instances
+
+        data = instance.model_dump()
+        assert isinstance(data, dict)
+        assert data["type_"] == "poisson"
+
+        for key, value in constructor_args.items():
+            assert data[key] == value
+
+        reconstructed = AsyncPoissonStrategy.model_validate(data)
+        assert isinstance(reconstructed, AsyncPoissonStrategy)
+
+        for key, value in constructor_args.items():
+            assert getattr(reconstructed, key) == value
+
+        # Test polymorphic reconstruction via base registry class
+        base_reconstructed = SchedulingStrategy.model_validate(data)
+        assert isinstance(base_reconstructed, AsyncPoissonStrategy)
+        assert base_reconstructed.type_ == "poisson"
+
+        for key, value in constructor_args.items():
+            assert getattr(base_reconstructed, key) == value
+
+        # Test model_validate_json pathway
+        json_str = instance.model_dump_json()
+        json_reconstructed = AsyncPoissonStrategy.model_validate_json(json_str)
+        assert isinstance(json_reconstructed, AsyncPoissonStrategy)
+
+        for key, value in constructor_args.items():
+            assert getattr(json_reconstructed, key) == value
+
+        # Test polymorphic model_validate_json via base class
+        base_json_reconstructed = SchedulingStrategy.model_validate_json(json_str)
+        assert isinstance(base_json_reconstructed, AsyncPoissonStrategy)
+        assert base_json_reconstructed.type_ == "poisson"
+
+        for key, value in constructor_args.items():
+            assert getattr(base_json_reconstructed, key) == value

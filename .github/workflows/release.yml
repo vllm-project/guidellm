@@ -1,0 +1,115 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  tests:
+    strategy:
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    uses: ./.github/workflows/testing.yml
+    with:
+      python: ${{ matrix.python }}
+
+  build-and-publish:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Setup Python with UV
+        uses: ./.github/actions/python-uv
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dependencies
+        run: |
+          uv pip install --system tox tox-pdm
+      - name: Build the package
+        run: |
+          export GUIDELLM_BUILD_TYPE=release
+          tox -e build
+      - name: Upload build artifacts
+        id: artifact-upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-artifacts
+          path: dist/*
+          compression-level: 6
+          if-no-files-found: error
+          retention-days: 90
+      - name: Log artifact location
+        run: |
+          echo "Artifacts uploaded to: ${{ steps.artifact-upload.outputs.artifact-url }}"
+      - name: Push wheel to PyPI
+        uses: neuralmagic/nm-actions/actions/publish-whl@1db28bd7b210523049e533d6f14ee3d4b2ff2b32 # v1.24.0
+        with:
+          username: ${{ secrets.PYPI_PUBLIC_USER }}
+          password: ${{ secrets.PYPI_PUBLIC_AUTH }}
+          whl: $(find dist -name '*.whl')
+      - name: Push tar.gz to PyPI
+        uses: neuralmagic/nm-actions/actions/publish-whl@1db28bd7b210523049e533d6f14ee3d4b2ff2b32 # v1.24.0
+        with:
+          username: ${{ secrets.PYPI_PUBLIC_USER }}
+          password: ${{ secrets.PYPI_PUBLIC_AUTH }}
+          whl: $(find dist -name '*.tar.gz')
+
+  extract-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+    steps:
+      - name: Get version from tag
+        id: get-version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          if [ -z "$VERSION" ]; then
+            echo "Error: Could not extract version from tag"
+            exit 1
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+  docs-deploy:
+    needs: extract-version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Setup Python with UV
+        uses: ./.github/actions/python-uv
+        with:
+          python-version: "3.13"
+      - name: Install mkdocs dependencies
+        run: |
+          # Sync GuideLLM install
+          uv sync --frozen
+          # Install mkdocs
+          uv pip install "mkdocs<2.0.0" mkdocs-material mike \
+            mkdocs-gen-files mkdocs-nav-weight mkdocs-section-index \
+            mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
+      - name: Deploy docs
+        run: |
+          VERSION="${{ needs.extract-version.outputs.version }}"
+          VERSION="${VERSION#v}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          uv run --no-sync mike deploy $VERSION stable --push --update-aliases
+
+  build-and-push-container:
+    needs: extract-version
+    permissions:
+      packages: write
+    uses: ./.github/workflows/build-multiarch-container.yml
+    with:
+      build-type: release
+      tag: ${{ needs.extract-version.outputs.version }}

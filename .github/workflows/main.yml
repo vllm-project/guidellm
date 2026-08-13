@@ -1,0 +1,24 @@
+name: Main
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  tests:
+    strategy:
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    uses: ./.github/workflows/testing.yml
+    with:
+      python: ${{ matrix.python }}
+      args: -m "smoke"
+
+  quality:
+    strategy:
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    uses: ./.github/workflows/quality.yml
+    with:
+      python: ${{ matrix.python }}
