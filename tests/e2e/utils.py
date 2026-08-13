@@ -9,6 +9,8 @@ from typing import Any
 
 from loguru import logger
 
+from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
+
 
 def get_guidellm_executable() -> str:
     """Get the path to the guidellm executable in the current environment."""
@@ -50,7 +52,8 @@ class GuidellmClient:
         max_error_rate: float | None = None,
         over_saturation: dict[str, Any] | None = None,
         data: str = "kind=synthetic_text,prompt_tokens=256,output_tokens=128",
-        processor: str = "gpt2",
+        processor: str | None = None,
+        backend: str | None = None,
         additional_args: str = "",
         extra_env: dict[str, str] | None = None,
     ) -> None:
@@ -64,18 +67,36 @@ class GuidellmClient:
         :param max_error_rate: Maximum error rate before stopping
         :param over_saturation: Over-saturation detection configuration (dict).
         :param data: Data configuration string (kind=<type>,key=val,...)
-        :param processor: Processor/tokenizer to use
+        :param processor: Processor/tokenizer to use (defaults to vendored minimal path)
+        :param backend: Full ``--backend`` config string. Defaults to openai_http
+            targeting ``self.target``. Pass this to set request_format or other
+            backend fields without emitting a second ``--backend`` flag.
         :param additional_args: Additional command line arguments
         :param extra_env: Additional environment variables to set
         """
         guidellm_exe = get_guidellm_executable()
         output_path = self.output_dir / self.outputs
+        # Default to the vendored tokenizer so E2E never contacts HuggingFace Hub.
+        if processor is not None:
+            tokenizer_model = processor
+        else:
+            tokenizer_model = str(MINIMAL_TOKENIZER_DIR)
+
+        # Force offline Hub access; accidental downloads must fail fast.
+        offline_env = {
+            "HF_HUB_OFFLINE": "1",
+            "TRANSFORMERS_OFFLINE": "1",
+            "HF_DATASETS_OFFLINE": "1",
+        }
+        if extra_env:
+            offline_env.update(extra_env)
+
+        backend_config = backend or f"kind=openai_http,target={self.target}"
 
         cmd_parts = [
-            *([f"{k}={v}" for k, v in extra_env.items()] if extra_env else []),
-            "HF_HOME=" + str(self.output_dir / "huggingface_cache"),
+            *([f"{k}={v}" for k, v in offline_env.items()]),
             f"{guidellm_exe} run",
-            f'--backend "kind=openai_http,target={self.target}"',
+            f'--backend "{backend_config}"',
             f'--profile "kind={profile},rate={rate}"',
         ]
 
@@ -105,7 +126,7 @@ class GuidellmClient:
         cmd_parts.extend(
             [
                 f'--data "{data}"',
-                f'--tokenizer "kind=huggingface_auto,model={processor}"',
+                f'--tokenizer "kind=huggingface_auto,model={tokenizer_model}"',
                 f'--output "kind=json,path={output_path}"',
                 "--disable-console",
             ]

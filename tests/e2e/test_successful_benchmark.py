@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.e2e.conftest import E2EServer
 from tests.e2e.utils import (
     GuidellmClient,
     assert_constraint_triggered,
@@ -11,40 +12,18 @@ from tests.e2e.utils import (
     assert_successful_requests_fields,
     load_benchmark_report,
 )
-from tests.e2e.vllm_sim_server import VllmSimServer
-
-
-@pytest.fixture(scope="module")
-def server():
-    """
-    Pytest fixture to start and stop the server for the entire module
-    using the TestServer class.
-    """
-    server = VllmSimServer(
-        port=8000,
-        model="databricks/dolly-v2-12b",
-        mode="random",
-        time_to_first_token=1,  # 1ms TTFT
-        inter_token_latency=1,  # 1ms ITL
-    )
-    try:
-        server.start()
-        yield server  # Yield the URL for tests to use
-    finally:
-        server.stop()  # Teardown: Stop the server after tests are done
 
 
 @pytest.mark.timeout(60)
 @pytest.mark.sanity
-def test_max_seconds_benchmark(server: VllmSimServer, tmp_path: Path):
+def test_max_seconds_benchmark(server: E2EServer, tmp_path: Path):
     """
     Test that the max seconds constraint is properly triggered.
     """
     report_name = "max_duration_benchmarks.json"
     report_path = tmp_path / report_name
     rate = 4
-    duration = 5
-    max_seconds = duration
+    max_seconds = 2
     # Create and configure the guidellm client
     client = GuidellmClient(
         target=server.get_url(),
@@ -56,8 +35,8 @@ def test_max_seconds_benchmark(server: VllmSimServer, tmp_path: Path):
     client.start_benchmark(
         rate=rate,
         max_seconds=max_seconds,
+        data="kind=synthetic_text,prompt_tokens=64,output_tokens=16",
     )
-
     # Wait for the benchmark to complete
     client.wait_for_completion(timeout=30)
 
@@ -78,15 +57,14 @@ def test_max_seconds_benchmark(server: VllmSimServer, tmp_path: Path):
 
 @pytest.mark.timeout(60)
 @pytest.mark.sanity
-def test_max_requests_benchmark(server: VllmSimServer, tmp_path: Path):
+def test_max_requests_benchmark(server: E2EServer, tmp_path: Path):
     """
     Test that the max requests constraint is properly triggered.
     """
     report_name = "max_number_benchmarks.json"
     report_path = tmp_path / report_name
     rate = 4
-    duration = 5
-    max_requests = rate * duration
+    max_requests = 8
 
     # Create and configure the guidellm client
     client = GuidellmClient(
@@ -99,8 +77,8 @@ def test_max_requests_benchmark(server: VllmSimServer, tmp_path: Path):
     client.start_benchmark(
         rate=rate,
         max_requests=max_requests,
+        data="kind=synthetic_text,prompt_tokens=64,output_tokens=16",
     )
-
     # Wait for the benchmark to complete
     client.wait_for_completion(timeout=30)
 

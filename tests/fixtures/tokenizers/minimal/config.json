@@ -1,0 +1,7 @@
+{
+  "architectures": [
+    "GPT2LMHeadModel"
+  ],
+  "model_type": "gpt2",
+  "transformers_version": "4.0.0"
+}

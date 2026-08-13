@@ -92,6 +92,24 @@ __all__ = ["mock_server"]
     type=float,
     help="Output tokens standard deviation (normal distribution).",
 )
+@click.option(
+    "--fail-after-requests",
+    default=None,
+    type=int,
+    help=(
+        "After this many generation requests, return HTTP 500 for subsequent "
+        "generation requests. Useful for testing error-rate constraints."
+    ),
+)
+@click.option(
+    "--max-concurrent-requests",
+    default=None,
+    type=int,
+    help=(
+        "Limit in-flight generation requests (others wait). Useful for testing "
+        "over-saturation detection."
+    ),
+)
 def mock_server(
     host: str,
     port: int,
@@ -106,6 +124,8 @@ def mock_server(
     itl_ms_std: float,
     output_tokens: int,
     output_tokens_std: float,
+    fail_after_requests: int | None,
+    max_concurrent_requests: int | None,
 ):
     config = MockServerConfig(
         host=host,
@@ -121,6 +141,8 @@ def mock_server(
         itl_ms_std=itl_ms_std,
         output_tokens=output_tokens,
         output_tokens_std=output_tokens_std,
+        fail_after_requests=fail_after_requests,
+        max_concurrent_requests=max_concurrent_requests,
     )
 
     server = MockServer(config)

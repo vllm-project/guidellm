@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import multiprocessing
+import os
 import socket
 import subprocess
 import sys
@@ -26,13 +27,15 @@ import pytest
 
 from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.server import MockServer
+from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 pytestmark = [pytest.mark.smoke]
 
 
 def _start_server_process(config: MockServerConfig) -> None:
     server = MockServer(config)
-    server.run()
+    # Disable Sanic access logs / MOTD so ANSI formatters do not clobber pytest's TTY.
+    server.run(access_log=False)
 
 
 def _free_port() -> int:
@@ -108,15 +111,21 @@ def _run_benchmark(
         "--constraint",
         f"kind=max_duration,seconds={max_seconds}",
         "--tokenizer",
-        "kind=huggingface_auto,model=Xenova/gpt-4",
+        f"kind=huggingface_auto,model={MINIMAL_TOKENIZER_DIR}",
         "--output",
         f"kind=json,path={output_path}",
         "--disable-console",
     ]
     for item in data:
         cmd.extend(["--data", item])
+    env = {
+        **os.environ,
+        "HF_HUB_OFFLINE": "1",
+        "TRANSFORMERS_OFFLINE": "1",
+        "HF_DATASETS_OFFLINE": "1",
+    }
     return subprocess.run(  # noqa: S603
-        cmd, capture_output=True, text=True, timeout=180, check=False
+        cmd, capture_output=True, text=True, timeout=180, check=False, env=env
     )
 
 

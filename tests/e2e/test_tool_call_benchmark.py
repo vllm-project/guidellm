@@ -1,42 +1,23 @@
 # E2E tests for client-side tool calling benchmark scenarios
 
-import multiprocessing
-import socket
-import time
+from collections.abc import Iterator
 from pathlib import Path
 
-import httpx
 import pytest
 
-from guidellm.mock_server.config import MockServerConfig
-from guidellm.mock_server.server import MockServer
+from tests.e2e.conftest import E2EServer, start_mock_server
 from tests.e2e.utils import (
     GuidellmClient,
     assert_no_python_exceptions,
     load_benchmark_report,
 )
 
-MOCK_SERVER_HOST = "127.0.0.1"
-
 # macOS workers segfault with fork; use spawn for maximum compatibility
 _BENCHMARK_ENV = {"GUIDELLM__MP_CONTEXT_TYPE": "spawn"}
 
 
-def _free_port() -> int:
-    """Bind to port 0 and return the OS-assigned free port."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind((MOCK_SERVER_HOST, 0))
-        return int(sock.getsockname()[1])
-
-
-def _start_mock_server(config: MockServerConfig) -> None:
-    """Start the MockServer in a subprocess."""
-    server = MockServer(config)
-    server.run()
-
-
 @pytest.fixture(scope="module")
-def server():
+def server() -> Iterator[E2EServer]:
     """
     Start and stop a MockServer for tool calling E2E tests.
 
@@ -45,53 +26,21 @@ def server():
     ephemeral port so a leftover listener on a fixed port cannot mask
     a failed bind.
     """
-    config = MockServerConfig(
-        host=MOCK_SERVER_HOST,
-        port=_free_port(),
+    handle = start_mock_server(
         model="test-tool-model",
         ttft_ms=5.0,
         itl_ms=1.0,
         output_tokens=32,
     )
-    base_url = f"http://{config.host}:{config.port}"
-    server_process = multiprocessing.Process(
-        target=_start_mock_server, args=(config,), daemon=True
-    )
-    server_process.start()
-
-    # Poll until *this* process is serving /health (not a leftover listener)
-    deadline = time.time() + 30.0
-    while time.time() < deadline:
-        if not server_process.is_alive():
-            server_process.join(timeout=5)
-            pytest.fail(
-                f"MockServer process exited before becoming ready "
-                f"(exitcode={server_process.exitcode})"
-            )
-        try:
-            resp = httpx.get(f"{base_url}/health", timeout=1.0)
-            if resp.status_code == 200:
-                break
-        except (httpx.RequestError, httpx.TimeoutException):
-            pass
-        time.sleep(0.5)
-    else:
-        server_process.terminate()
-        server_process.join(timeout=5)
-        pytest.fail("MockServer failed to start within 30 seconds")
-
-    yield base_url
-
-    server_process.terminate()
-    server_process.join(timeout=5)
-    if server_process.is_alive():
-        server_process.kill()
-        server_process.join(timeout=5)
+    try:
+        yield handle  # Yield the URL for tests to use
+    finally:
+        handle.stop()  # Teardown: Stop the server after tests are done
 
 
 @pytest.mark.timeout(90)
 @pytest.mark.sanity
-def test_client_tool_call_single_turn(server: str, tmp_path: Path):
+def test_client_tool_call_single_turn(server: E2EServer, tmp_path: Path):
     """
     Test single-turn client tool calling: turns=1, tool_call_turns=1.
 
@@ -106,7 +55,7 @@ def test_client_tool_call_single_turn(server: str, tmp_path: Path):
     max_requests = 10
 
     client = GuidellmClient(
-        target=server,
+        target=server.get_url(),
         output_dir=tmp_path,
         outputs=report_name,
     )
@@ -151,7 +100,7 @@ def test_client_tool_call_single_turn(server: str, tmp_path: Path):
 
 @pytest.mark.timeout(90)
 @pytest.mark.sanity
-def test_client_tool_call_multi_turn(server: str, tmp_path: Path):
+def test_client_tool_call_multi_turn(server: E2EServer, tmp_path: Path):
     """
     Test multi-turn client tool calling: turns=3, tool_call_turns=2.
 
@@ -167,7 +116,7 @@ def test_client_tool_call_multi_turn(server: str, tmp_path: Path):
     max_requests = 10
 
     client = GuidellmClient(
-        target=server,
+        target=server.get_url(),
         output_dir=tmp_path,
         outputs=report_name,
     )
@@ -209,7 +158,7 @@ def test_client_tool_call_multi_turn(server: str, tmp_path: Path):
 
 
 @pytest.mark.timeout(90)
-def test_client_tool_call_with_tool_response_tokens(server: str, tmp_path: Path):
+def test_client_tool_call_with_tool_response_tokens(server: E2EServer, tmp_path: Path):
     """
     Test tool calling with configured tool_response_tokens.
 
@@ -224,7 +173,7 @@ def test_client_tool_call_with_tool_response_tokens(server: str, tmp_path: Path)
     max_requests = 6
 
     client = GuidellmClient(
-        target=server,
+        target=server.get_url(),
         output_dir=tmp_path,
         outputs=report_name,
     )
@@ -264,7 +213,7 @@ def test_client_tool_call_with_tool_response_tokens(server: str, tmp_path: Path)
 
 @pytest.mark.timeout(90)
 @pytest.mark.sanity
-def test_client_tool_call_responses_api(server: str, tmp_path: Path):
+def test_client_tool_call_responses_api(server: E2EServer, tmp_path: Path):
     """
     Test client-side tool calling over the Responses API (/v1/responses).
 
@@ -279,17 +228,13 @@ def test_client_tool_call_responses_api(server: str, tmp_path: Path):
     max_requests = 10
 
     client = GuidellmClient(
-        target=server,
+        target=server.get_url(),
         output_dir=tmp_path,
         outputs=report_name,
     )
 
     # Override the default backend to use Responses API format
-    backend_arg = (
-        '--backend "kind=openai_http,target='
-        + server
-        + ',request_format=/v1/responses"'
-    )
+    # Single --backend including Responses API format (duplicates are illegal).
     client.start_benchmark(
         rate=4,
         max_requests=max_requests,
@@ -297,8 +242,10 @@ def test_client_tool_call_responses_api(server: str, tmp_path: Path):
             "kind=synthetic_text,prompt_tokens=64,output_tokens=32,"
             "turns=1,tool_call_turns=1"
         ),
+        backend=(
+            f"kind=openai_http,target={server.get_url()},request_format=/v1/responses"
+        ),
         extra_env=_BENCHMARK_ENV,
-        additional_args=backend_arg,
     )
 
     client.wait_for_completion(timeout=60)

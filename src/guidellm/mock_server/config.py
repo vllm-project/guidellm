@@ -78,6 +78,22 @@ class MockServerConfig(BaseSettings):
         default=0.0,
         description="Standard deviation for output token count variation",
     )
+    fail_after_requests: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "After this many generation requests have been accepted, subsequent "
+            "generation requests return HTTP 500. None disables the limit."
+        ),
+    )
+    max_concurrent_requests: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Maximum number of in-flight generation requests. Additional requests "
+            "wait for a slot. None disables the concurrency limit."
+        ),
+    )
 
     class Config:
         env_prefix = "GUIDELLM_MOCK_SERVER_"
