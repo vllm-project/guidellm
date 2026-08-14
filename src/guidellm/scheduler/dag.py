@@ -345,8 +345,10 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         the chain of ``full`` parents, stopping when a node has no ``full``
         incoming edge (i.e., it was reached via ``new``, ``last``, or is a
         root). At intermediate nodes where the walk continues, also collects
-        ``last`` parent outputs. ``last`` parents at the stopping node are
-        NOT collected -- they belong to the stopping node's own context.
+        ``last`` parent outputs, positioned immediately before that node's
+        own pair (the point in the chain where the merge occurred). ``last``
+        parents at the stopping node are NOT collected -- they belong to the
+        stopping node's own context.
 
         Every node on the walk (and its mid-chain ``last`` parents) must
         already be in ``_completed``.
@@ -356,8 +358,10 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         :raises ValueError: If a required ancestor or mid-chain ``last``
             parent has not completed.
         """
-        chain_reversed: list[tuple[_RequestT, _ResponseT | None]] = []
-        interleaved_last: list[tuple[_RequestT, _ResponseT | None]] = []
+        # Segment = a node's mid-chain last-parent pairs (if any) plus its
+        # own pair. Reversing the segment list, not the flattened pairs,
+        # keeps each merge adjacent to the node it merged into.
+        segments: list[list[tuple[_RequestT, _ResponseT | None]]] = []
         current_id: str | None = start_node_id
 
         while current_id is not None:
@@ -367,21 +371,22 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
                     f"Cannot assemble history: parent '{current_id}' has not completed"
                 )
 
-            chain_reversed.append((completed.request, completed.response))
-
             current_incoming = self._incoming_edges.get(current_id, [])
             full_edge = self._find_full_parent_edge(current_incoming)
 
             # Only collect last parents at nodes where the walk CONTINUES
             # (has a full parent). At the stopping node, last parents are
             # the node's own context, not part of downstream history.
+            segment: list[tuple[_RequestT, _ResponseT | None]] = []
             if full_edge is not None:
-                interleaved_last.extend(self._collect_last_pairs(current_incoming))
+                segment.extend(self._collect_last_pairs(current_incoming))
+            segment.append((completed.request, completed.response))
+            segments.append(segment)
 
             current_id = full_edge.source_node_id if full_edge is not None else None
 
-        chain_reversed.reverse()
-        return chain_reversed + interleaved_last
+        segments.reverse()
+        return [pair for segment in segments for pair in segment]
 
     def get_remaining_node_ids(self) -> list[str]:
         """
