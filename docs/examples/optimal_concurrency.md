@@ -33,7 +33,7 @@ Open the console output or JSON report. For each strategy, look at these metrics
 | Metric                            | What it tells you                                          |
 | --------------------------------- | ---------------------------------------------------------- |
 | `output_tokens_per_second` (mean) | Server throughput — how much work is getting done          |
-| `time_to_first_token_ms` (p50)    | Typical user-perceived wait before they receive a response |
+| `time_to_first_token_ms` (p50)    | Median user-perceived wait before they receive a response |
 | `time_to_first_token_ms` (p99)    | Worst-case wait — important for tail latency SLOs          |
 | `inter_token_latency_ms` (p50)    | How smooth the streaming experience feels                  |
 | `request_latency` (p50)           | Total end-to-end time per request                          |
@@ -74,7 +74,8 @@ To get a precise answer, run a few concurrency levels around your candidate:
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --data kind=synthetic_text,prompt_tokens=512,output_tokens=256 \
-  --profile '{"kind":"concurrent","streams":[24,28,32,36,40]}' \
+  --profile kind=concurrent \
+  --override profile.streams 24,28,32,36,40 \
   --constraint kind=max_duration,seconds=180 \
   --seed kind=static,value=42 \
   --output kind=json,path=boundary_test.json

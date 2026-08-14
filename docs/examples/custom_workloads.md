@@ -1,6 +1,6 @@
 # Benchmarking Different Workload Shapes
 
-Not all LLM workloads are the same. A chatbot, a summarization pipeline, and a code generator stress your server in completely different ways. This guide shows how to configure GuideLLM for each specific workload type and explains why metrics behave differently.
+Not all LLM workloads are the same. A chatbot, a summarization pipeline, and a code generator stress your server in completely different ways. This guide shows how to configure GuideLLM for specific workload type and explains why metrics behave differently.
 
 ## Prerequisites
 
@@ -17,6 +17,8 @@ LLM requests have two phases:
 The ratio of input to output tokens shifts which phase dominates. A workload with long prompts and short responses is prefill-bound. A workload with short prompts and long responses is decode-bound. Each has different bottlenecks and different metrics to watch.
 
 ## The Four Common Shapes
+
+**NOTE:** _Current workloads gear towards a **heavy prefill** (tokens in) due to multiple files, longer system prompts, multiturn etc... so these may not reflect real-world use cases. If you have custom workload, then configure these to your specific use-case_
 
 ### 1. Chat / Conversational
 
@@ -86,12 +88,16 @@ guidellm run \
 
 Run all four shapes on the same server and compare the results side by side.
 
+**Recommended**: _Change shapes to your custom workload_
+
 | Workload      | Tokens (in/out) | Throughput (tok/s) | TTFT p50 (ms) | ITL p50 (ms) | Bottleneck     |
 | ------------- | --------------- | ------------------ | ------------- | ------------ | -------------- |
 | Chat          | 256 / 512       | 1850               | 35            | 12           | Mixed          |
 | Summarization | 2048 / 128      | 920                | 180           | 9            | Prefill (TTFT) |
 | Code gen      | 128 / 1024      | 2100               | 18            | 14           | Decode (ITL)   |
 | Balanced      | 1000 / 1000     | 1350               | 95            | 13           | Mixed          |
+
+
 
 Key observations:
 
