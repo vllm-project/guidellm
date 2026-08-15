@@ -68,7 +68,7 @@ For deeper analysis, GuideLLM saves detailed results to multiple files by defaul
 
 - `benchmarks.json`: Complete benchmark data in JSON format
 - `benchmarks.csv`: Summary of key metrics in CSV format
-- `benchmarks.html`: Interactive HTML report with visualizations
+- `benchmarks.html`: Self-contained HTML report with visualizations
 
 ### File Formats
 
@@ -77,7 +77,7 @@ GuideLLM supports multiple output formats that can be customized:
 - **JSON**: Complete benchmark data in JSON format with full request samples
 - **YAML**: Complete benchmark data in YAML format with full request samples
 - **CSV**: Summary of key metrics in CSV format suitable for spreadsheets
-- **HTML**: Interactive HTML report with tables and visualizations
+- **HTML**: Self-contained HTML report with charts and tables
 - **Console**: Terminal output displayed during execution
 
 To specify which formats to generate, and where to save them, use the `--output` option, which can be repeated for multiple formats:

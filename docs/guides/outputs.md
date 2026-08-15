@@ -61,7 +61,7 @@ GuideLLM supports saving benchmark results to files in various formats, includin
 1. **JSON**: Contains all benchmark results, including full statistics and request data. This format is ideal for reloading into Python for in-depth analysis.
 2. **YAML**: Contains all benchmark results, including full statistics and request data, in YAML format which is human-readable and easy to work with in various tools.
 3. **CSV**: Provides a summary of the benchmark data, focusing on key metrics and statistics. Note that CSV does not include detailed request-level data.
-4. **HTML**: Interactive HTML report with tables and visualizations of benchmark results.
+4. **HTML**: Self-contained static HTML report with throughput/latency charts and tables (no CDN or external assets).
 5. **PLOT**: Static image chart of benchmark metrics. The image format is selected from the `path` file extension — supported formats are PNG, JPG/JPEG, SVG, and PDF. A path with no extension defaults to `.png`, and an unsupported extension raises an error. The `dpi` parameter (default `100`) sets the output image resolution in dots per inch — for example, `--output kind=plot,path=plot.png,dpi=72`.
 6. **Console**: Terminal output displayed during execution (can be disabled).
 

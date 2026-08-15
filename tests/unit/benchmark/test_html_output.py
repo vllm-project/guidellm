@@ -1,165 +1,343 @@
+"""
+Unit tests for the self-contained HTML benchmark report output.
+
 ## WRITTEN BY AI ##
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
 from guidellm.benchmark.outputs.html import (
-    _filter_duplicate_percentiles,
-    _TabularDistributionSummary,
+    TEMPLATE_ASSET_MAX_BYTES,
+    GenerativeBenchmarkerHTML,
+    HTMLBenchmarkOutputArgs,
+    build_report_view,
+    render_html_report,
+    template_asset_bytes,
 )
-from guidellm.schemas import Percentiles
+from guidellm.schemas.benchmark import BenchmarkOutputArgs, BenchmarkScenario
 
 
-def test_filter_all_same_values():
-    """Test filtering when all percentiles have the same value."""
-    percentiles = {
-        "p001": 15.288091352804853,
-        "p01": 15.288091352804853,
-        "p05": 15.288091352804853,
-        "p10": 15.288091352804853,
-        "p25": 15.288091352804853,
-        "p50": 15.288091352804853,
-        "p75": 15.288091352804853,
-        "p90": 15.288091352804853,
-        "p95": 15.288091352804853,
-        "p99": 15.288091352804853,
-        "p999": 15.288091352804853,
-    }
-
-    filtered = _filter_duplicate_percentiles(percentiles)
-
-    # Should only keep the largest (p999) for mathematical accuracy
-    assert filtered == {"p999": 15.288091352804853}
+class MockPercentiles:
+    def __init__(self, p95: float = 10.0, p99: float = 12.0, p50: float = 5.0):
+        self.p95 = p95
+        self.p99 = p99
+        self.p50 = p50
 
 
-def test_filter_consecutive_duplicates():
-    """Test filtering when some consecutive percentiles have the same value."""
-    percentiles = {
-        "p001": 15.288091352804853,
-        "p01": 15.288091352804853,
-        "p05": 15.288091352804853,
-        "p10": 15.288091352804853,
-        "p25": 15.288091352804853,
-        "p50": 16.41327511776994,  # Different value
-        "p75": 16.41327511776994,
-        "p90": 17.03541629998259,  # Different value
-        "p95": 17.03541629998259,
-        "p99": 17.03541629998259,
-        "p999": 17.03541629998259,
-    }
-
-    filtered = _filter_duplicate_percentiles(percentiles)
-
-    # Should keep largest of each group for mathematical accuracy
-    assert filtered == {
-        "p25": 15.288091352804853,
-        "p75": 16.41327511776994,
-        "p999": 17.03541629998259,
-    }
+class MockDistribution:
+    def __init__(
+        self,
+        mean: float = 5.0,
+        median: float = 4.0,
+        p95: float = 10.0,
+        p99: float = 12.0,
+        count: int = 10,
+    ):
+        self.mean = mean
+        self.median = median
+        self.count = count
+        self.percentiles = MockPercentiles(p95=p95, p99=p99, p50=median)
 
 
-def test_no_duplicates():
-    """Test that unique values are all preserved."""
-    percentiles = {
-        "p001": 13.181080445834912,
-        "p01": 13.181080445834912,  # Same as p001
-        "p05": 13.530595573836457,  # Different
-        "p10": 13.843972502554365,
-        "p25": 14.086376978251748,
-        "p50": 14.403258051191058,
-        "p75": 14.738608817056042,
-        "p90": 15.18136631856698,
-        "p95": 15.7213110894772,
-        "p99": 15.7213110894772,  # Same as p95
-        "p999": 15.7213110894772,  # Same as p99
-    }
-
-    filtered = _filter_duplicate_percentiles(percentiles)
-
-    # Should keep largest of each duplicate group (e.g. p999 instead of p95)
-    assert filtered == {
-        "p01": 13.181080445834912,
-        "p05": 13.530595573836457,
-        "p10": 13.843972502554365,
-        "p25": 14.086376978251748,
-        "p50": 14.403258051191058,
-        "p75": 14.738608817056042,
-        "p90": 15.18136631856698,
-        "p999": 15.7213110894772,
-    }
+class MockStatusDistribution:
+    def __init__(
+        self,
+        mean: float = 5.0,
+        median: float = 4.0,
+        p95: float = 10.0,
+        p99: float = 12.0,
+        count: int = 10,
+    ):
+        self.successful = MockDistribution(mean, median, p95, p99, count)
+        self.incomplete = MockDistribution(0.0, 0.0, 0.0, 0.0, 0)
+        self.errored = MockDistribution(0.0, 0.0, 0.0, 0.0, 0)
+        self.total = MockDistribution(mean, median, p95, p99, count)
 
 
-def test_empty_percentiles():
-    """Test with empty percentiles dictionary."""
-    filtered = _filter_duplicate_percentiles({})
-    assert filtered == {}
+class MockRequestTotals:
+    def __init__(
+        self,
+        successful: int = 10,
+        incomplete: int = 0,
+        errored: int = 0,
+    ):
+        self.successful = successful
+        self.incomplete = incomplete
+        self.errored = errored
+        self.total = successful + incomplete + errored
 
 
-def test_single_percentile():
-    """Test with only one percentile."""
-    percentiles = {"p50": 14.403258051191058}
-    filtered = _filter_duplicate_percentiles(percentiles)
-    assert filtered == {"p50": 14.403258051191058}
+class MockMetrics:
+    def __init__(self, rps: float = 1.5, tps: float = 30.0):
+        self.request_totals = MockRequestTotals()
+        self.requests_per_second = MockStatusDistribution(mean=rps)
+        self.request_concurrency = MockStatusDistribution(mean=4.0)
+        self.request_latency = MockStatusDistribution(
+            mean=0.25, median=0.22, p95=0.3, p99=0.35
+        )
+        self.time_to_first_token_ms = MockStatusDistribution(
+            mean=100.0, median=90.0, p95=150.0, p99=180.0
+        )
+        self.time_to_first_output_token_ms = MockStatusDistribution(
+            mean=100.0, median=90.0, p95=150.0, p99=180.0
+        )
+        self.inter_token_latency_ms = MockStatusDistribution(
+            mean=15.0, median=14.0, p95=18.0, p99=22.0
+        )
+        self.time_per_output_token_ms = MockStatusDistribution(
+            mean=20.0, median=18.0, p95=25.0, p99=30.0
+        )
+        self.tokens_per_second = MockStatusDistribution(mean=tps)
+        self.prompt_tokens_per_second = MockStatusDistribution(mean=10.0)
+        self.output_tokens_per_second = MockStatusDistribution(mean=20.0)
+        self.prompt_token_count = MockStatusDistribution(
+            mean=128.0, median=128.0, p95=140.0, p99=150.0
+        )
+        self.output_token_count = MockStatusDistribution(
+            mean=64.0, median=64.0, p95=80.0, p99=90.0
+        )
+        self.avg_round_trip_time_ms = MockStatusDistribution(
+            mean=0.0, median=0.0, p95=0.0, p99=0.0, count=0
+        )
+        self.time_to_last_round_trip_ms = MockStatusDistribution(
+            mean=0.0, median=0.0, p95=0.0, p99=0.0, count=0
+        )
+        self.text = SimpleNamespace()
+        self.image = SimpleNamespace()
+        self.video = SimpleNamespace()
+        self.audio = SimpleNamespace()
+        self.tool_call = SimpleNamespace()
 
 
-def test_two_different_values():
-    """Test with two different values."""
-    percentiles = {
-        "p25": 14.086376978251748,
-        "p50": 14.403258051191058,
-    }
-    filtered = _filter_duplicate_percentiles(percentiles)
-    assert filtered == percentiles
+class MockBenchmark:
+    def __init__(
+        self,
+        strategy: str = "constant",
+        rps: float = 1.5,
+        tps: float = 30.0,
+        requests: list | None = None,
+        start_time: float = 1_700_000_000.0,
+    ):
+        self.metrics = MockMetrics(rps=rps, tps=tps)
+        self.config = SimpleNamespace(strategy=SimpleNamespace(type_=strategy))
+        self.requests = SimpleNamespace(
+            successful=requests or [],
+            incomplete=[],
+            errored=[],
+        )
+        self.start_time = start_time
 
 
-def test_partial_percentiles():
-    """Test that order is maintained even with partial percentiles."""
-    percentiles = {
-        "p50": 16.41327511776994,
-        "p10": 15.288091352804853,
-        "p90": 17.03541629998259,
-    }
+def _scenario() -> BenchmarkScenario:
+    return BenchmarkScenario.model_validate(
+        {
+            "spec": {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000/v1",
+                    "model": "test-model",
+                },
+                "data": [{"kind": "huggingface", "source": "test_data.jsonl"}],
+                "profile": {"kind": "constant", "rate": 10.0},
+            },
+        }
+    )
 
-    filtered = _filter_duplicate_percentiles(percentiles)
 
-    # Should maintain order from percentile_order list
-    assert list(filtered.keys()) == ["p10", "p50", "p90"]
-
-
-def test_model_dump_filters_duplicates():
-    """Test that model_dump applies percentile filtering."""
-    # Create a distribution with duplicate percentiles (typical of small datasets)
-    dist = _TabularDistributionSummary(
-        mean=15.5,
-        median=15.288091352804853,
-        mode=15.288091352804853,
-        variance=0.1,
-        std_dev=0.316,
-        min=15.288091352804853,
-        max=17.03541629998259,
-        count=3,
-        total_sum=46.5,
-        percentiles=Percentiles(
-            p001=15.288091352804853,
-            p01=15.288091352804853,
-            p05=15.288091352804853,
-            p10=15.288091352804853,
-            p25=15.288091352804853,
-            p50=16.41327511776994,
-            p75=16.41327511776994,
-            p90=17.03541629998259,
-            p95=17.03541629998259,
-            p99=17.03541629998259,
-            p999=17.03541629998259,
+def _mock_request(
+    turn_index: int,
+    *,
+    latency_s: float,
+    ttft_ms: float,
+    itl_ms: float,
+    prompt_tokens: int,
+    history_len: int,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        request_latency=latency_s,
+        time_to_first_token_ms=ttft_ms,
+        inter_token_latency_ms=itl_ms,
+        prompt_tokens=prompt_tokens,
+        info=SimpleNamespace(
+            turn_index=turn_index,
+            history_len=history_len,
+            agent_id="default",
         ),
     )
 
-    data = dist.model_dump()
 
-    # Check that percentiles were filtered, keeping largest of each group
-    assert data["percentiles"] == {
-        "p25": 15.288091352804853,
-        "p75": 16.41327511776994,
-        "p999": 17.03541629998259,
-    }
+@pytest.mark.smoke
+def test_from_args_creates_instance():
+    """
+    HTML args should construct a GenerativeBenchmarkerHTML instance.
 
-    # Ensure other fields remain unchanged
-    assert data["mean"] == 15.5
-    assert data["median"] == 15.288091352804853
-    assert data["count"] == 3
+    ## WRITTEN BY AI ##
+    """
+    args = HTMLBenchmarkOutputArgs(path=Path("report.html"))
+    output = GenerativeBenchmarkerHTML.from_args(args)
+    assert output.output_path == Path("report.html")
+
+
+@pytest.mark.smoke
+def test_from_args_rejects_wrong_type():
+    """
+    Non-HTML args should raise TypeError.
+
+    ## WRITTEN BY AI ##
+    """
+
+    class DummyArgs(BenchmarkOutputArgs):
+        kind: str = "dummy"
+
+    with pytest.raises(TypeError, match="Expected HTMLBenchmarkOutputArgs"):
+        GenerativeBenchmarkerHTML.from_args(DummyArgs(kind="dummy"))
+
+
+@pytest.mark.smoke
+def test_template_assets_under_size_budget():
+    """
+    Packaged HTML/CSS/JS shell must stay within the 1 MB non-benchmark budget.
+
+    ## WRITTEN BY AI ##
+    """
+    size = template_asset_bytes()
+    assert size > 0
+    assert size <= TEMPLATE_ASSET_MAX_BYTES
+
+
+@pytest.mark.sanity
+def test_build_report_view_single_and_multi_run():
+    """
+    Compact view should expose P95/P99 and peak-throughput KPIs for multi-run.
+
+    ## WRITTEN BY AI ##
+    """
+    single = SimpleNamespace(
+        config=_scenario(),
+        metadata=SimpleNamespace(guidellm_version="0.0.0-test"),
+        benchmarks=[MockBenchmark(strategy="constant", rps=2.0, tps=40.0)],
+    )
+    single_view = build_report_view(single)
+    assert single_view["header"]["multi_run"] is False
+    assert single_view["header"]["has_multi_turn"] is False
+    assert single_view["runs"][0]["ttft_p95_ms"] == 150.0
+    assert single_view["runs"][0]["ttft_p99_ms"] == 180.0
+    assert single_view["kpis"]["tokens_per_second"] == 40.0
+
+    multi = SimpleNamespace(
+        config=_scenario(),
+        metadata=SimpleNamespace(guidellm_version="0.0.0-test"),
+        benchmarks=[
+            MockBenchmark(strategy="rate_1", rps=1.0, tps=20.0),
+            MockBenchmark(strategy="rate_2", rps=2.0, tps=50.0),
+        ],
+    )
+    multi_view = build_report_view(multi)
+    assert multi_view["header"]["multi_run"] is True
+    assert multi_view["header"]["peak_index"] == 1
+    assert multi_view["kpis"]["tokens_per_second"] == 50.0
+    assert multi_view["kpis"]["strategy"] == "concurrent@4"
+    assert multi_view["runs"][1]["label"] == "concurrent@4"
+
+
+@pytest.mark.sanity
+def test_build_report_view_multi_turn():
+    """
+    Multi-turn requests should produce by_turn aggregates with latency percentiles.
+
+    ## WRITTEN BY AI ##
+    """
+    requests = [
+        _mock_request(
+            0, latency_s=0.2, ttft_ms=80, itl_ms=10, prompt_tokens=50, history_len=0
+        ),
+        _mock_request(
+            0, latency_s=0.22, ttft_ms=85, itl_ms=11, prompt_tokens=55, history_len=0
+        ),
+        _mock_request(
+            1, latency_s=0.4, ttft_ms=120, itl_ms=14, prompt_tokens=120, history_len=1
+        ),
+        _mock_request(
+            1, latency_s=0.45, ttft_ms=130, itl_ms=15, prompt_tokens=130, history_len=1
+        ),
+        _mock_request(
+            2, latency_s=0.7, ttft_ms=180, itl_ms=18, prompt_tokens=220, history_len=2
+        ),
+    ]
+    report = SimpleNamespace(
+        config=_scenario(),
+        metadata=SimpleNamespace(guidellm_version="0.0.0-test"),
+        benchmarks=[MockBenchmark(requests=requests)],
+    )
+    view = build_report_view(report)
+    assert view["header"]["has_multi_turn"] is True
+    assert view["by_turn"] is not None
+    assert [row["turn_index"] for row in view["by_turn"]] == [0, 1, 2]
+    assert view["by_turn"][2]["prompt_tokens_median"] == 220.0
+    assert view["by_turn"][2]["request_latency_p95_ms"] is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.sanity
+async def test_finalize_writes_self_contained_html(tmp_path: Path):
+    """
+    finalize() should write a standalone HTML file with embedded metrics.
+
+    ## WRITTEN BY AI ##
+    """
+    report = SimpleNamespace(
+        config=_scenario(),
+        metadata=SimpleNamespace(guidellm_version="0.0.0-test"),
+        benchmarks=[
+            MockBenchmark(strategy="a", rps=1.0, tps=20.0),
+            MockBenchmark(strategy="b", rps=2.0, tps=45.0),
+        ],
+    )
+    output_file = tmp_path / "benchmarks.html"
+    path = await GenerativeBenchmarkerHTML(output_path=output_file).finalize(
+        report  # type: ignore[arg-type]
+    )
+    assert path == output_file
+    assert path.exists()
+    content = path.read_text(encoding="utf-8")
+
+    assert "GuideLLM" in content
+    assert "window.GUIDELLM_REPORT" in content
+    assert "ttft_p95_ms" in content
+    assert "ttft_p99_ms" in content
+    assert "total_tps" in content
+    # Header may include localhost target from the scenario; forbid remote asset loads.
+    assert re.search(r'<link[^>]+href=["\']https?://', content) is None
+    assert re.search(r'<script[^>]+src=["\']https?://', content) is None
+    assert "vllm-project.github.io" not in content
+
+
+@pytest.mark.sanity
+def test_render_html_includes_embedded_assets():
+    """
+    Rendered HTML should inline CSS/JS and not leave template placeholders.
+
+    ## WRITTEN BY AI ##
+    """
+    report = SimpleNamespace(
+        config=_scenario(),
+        metadata=SimpleNamespace(guidellm_version="0.0.0-test"),
+        benchmarks=[MockBenchmark()],
+    )
+    html = render_html_report(build_report_view(report))
+    assert "<style>" in html
+    assert "function" in html
+    assert "__GUIDELLM_REPORT_CSS__" not in html
+    assert "__GUIDELLM_REPORT_JS__" not in html
+    assert "__GUIDELLM_REPORT_JSON__" not in html
+    assert 'class="help-q"' in html
+    assert "Time to First Token (TTFT)" in html
+    assert "var HELP" in html
+    assert "help-tip-also" in html
+    assert 'also: ["p95", "p99"]' in html
