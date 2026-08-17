@@ -104,6 +104,9 @@ class RegistryConfigOption(click.Option):
 
     Used by :class:`RegistryAwareCommand` to enrich missing-argument errors
     with the expected format and valid kinds.
+
+    For non-``multiple`` options, also rejects duplicate flag occurrences at
+    parse time (Click would otherwise keep only the last value).
     """
 
     def __init__(
@@ -114,6 +117,41 @@ class RegistryConfigOption(click.Option):
     ) -> None:
         self.registry_type = registry_type
         super().__init__(*args, **kwargs)
+
+    def add_to_parser(self, parser: Any, ctx: click.Context) -> None:
+        """
+        Register with Click's parser and reject duplicate non-repeatable uses.
+
+        When ``multiple`` is false, wraps the parser's ``process`` callback so a
+        second occurrence raises instead of overwriting (Click's default
+        last-wins behavior).
+
+        :param parser: Click option parser receiving this option
+        :param ctx: Click context for the active command
+        """
+        super().add_to_parser(parser, ctx)
+        if self.multiple:
+            return
+
+        # Hook process at the store site so Click's option matching handles
+        # --flag, --flag=value, and short forms; reject before last-wins overwrite.
+        def process(value: Any, state: Any) -> None:
+            if self.name in state.opts:
+                raise click.BadParameter(
+                    f"Option {self.opts[0]} cannot be specified multiple times.",
+                    ctx=ctx,
+                    param=self,
+                )
+            previous(value, state)
+
+        for name in self.opts:
+            # Click has no public API to wrap option process; this is the
+            # established Option.add_to_parser extension pattern.
+            opt = parser._long_opt.get(name) or parser._short_opt.get(name)  # noqa: SLF001
+            if opt is not None:
+                previous = opt.process
+                opt.process = process
+                break
 
 
 class RegistryAwareCommand(click.Command):
@@ -127,7 +165,7 @@ class RegistryAwareCommand(click.Command):
 
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
         """
-        Override to intercept missing-value errors for registry options.
+        Override to enrich missing-value errors for registry options.
 
         :param ctx: Click context
         :param args: Command-line arguments to parse
