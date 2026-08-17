@@ -253,14 +253,14 @@
       ],
     },
     lat_vs_turn: {
-      title: "Latency vs turn",
+      title: "Latency & prompt size by turn",
       lines: [
-        "E2E: full response time (P95 and P99).",
-        "TTFT: time to first token (P95).",
-        "ITL: average time between later tokens (P95).",
-        "Watch whether later turns get slower as history grows.",
+        "E2E: full response time (P95 and P99) — left axis.",
+        "TTFT: time to first token (P95) — left axis.",
+        "ITL: average time between later tokens (P95) — left axis.",
+        "Prompt median: typical prompt size in tokens — right axis, dashed.",
       ],
-      also: ["p95", "p99"],
+      also: ["p95", "p99", "median"],
     },
     prompt_vs_turn: {
       title: "Prompt tokens vs turn",
@@ -658,6 +658,13 @@
     document.querySelectorAll(".panel").forEach(function (panel) {
       panel.classList.toggle("active", panel.id === "panel-" + name);
     });
+    // Hidden panels report clientWidth 0, so charts baked a narrow viewBox and
+    // letterboxed. Redraw once the panel is visible to fill the card width.
+    if (name === "summary" || name === "performance" || name === "turn") {
+      requestAnimationFrame(function () {
+        renderCharts();
+      });
+    }
   }
 
   function setupTabs() {
@@ -870,7 +877,7 @@
     });
   }
 
-  function drawAxes(svg, plot, xExt, yExt, xLabel, yLabel, logX, logY, skipXTicks) {
+  function drawAxes(svg, plot, xExt, yExt, xLabel, yLabel, logX, logY, skipXTicks, y2Ext, y2Label, logY2) {
     svg.appendChild(
       svgEl("rect", {
         x: plot.left,
@@ -906,6 +913,26 @@
       });
       label.textContent = fmt(yVal);
       svg.appendChild(label);
+      if (y2Ext) {
+        var y2Val = logY2
+          ? Math.pow(
+              10,
+              Math.log10(Math.max(y2Ext.min, 1e-9)) +
+                yRatio *
+                  (Math.log10(Math.max(y2Ext.max, 1e-8)) -
+                    Math.log10(Math.max(y2Ext.min, 1e-9)))
+            )
+          : y2Ext.min + yRatio * (y2Ext.max - y2Ext.min);
+        var y2lab = svgEl("text", {
+          x: plot.left + plot.width + 8,
+          y: y + 4,
+          "text-anchor": "start",
+          fill: COLORS.muted,
+          "font-size": "11",
+        });
+        y2lab.textContent = fmt(y2Val);
+        svg.appendChild(y2lab);
+      }
     }
     if (!skipXTicks) {
       for (var j = 0; j <= 4; j++) {
@@ -947,6 +974,19 @@
       });
       yl.textContent = yLabel;
       svg.appendChild(yl);
+    }
+    if (y2Label && y2Ext) {
+      var y2x = plot.left + plot.width + 40;
+      var y2l = svgEl("text", {
+        x: y2x,
+        y: plot.top + plot.height / 2,
+        "text-anchor": "middle",
+        fill: COLORS.ink,
+        "font-size": "12",
+        transform: "rotate(90 " + y2x + " " + (plot.top + plot.height / 2) + ")",
+      });
+      y2l.textContent = y2Label;
+      svg.appendChild(y2l);
     }
   }
 
@@ -1096,22 +1136,48 @@
     clear(host);
     var width = host.clientWidth || 480;
     var height = host.clientHeight || 280;
-    var plot = { left: 52, top: 16, width: width - 72, height: height - 64 };
+    var leftSeries = series.filter(function (s) {
+      return s.axis !== "right";
+    });
+    var rightSeries = series.filter(function (s) {
+      return s.axis === "right";
+    });
+    var hasRight = rightSeries.length > 0;
+    var plot = {
+      left: 52,
+      top: 16,
+      width: Math.max(120, width - (hasRight ? 108 : 72)),
+      height: height - 64,
+    };
     var log = scaleMode === "log";
     var logX = !!(options && options.logX && log);
     var logY = !!(options && options.logY && log);
+    // Right-axis series (e.g. prompt tokens) stay linear for readable counts.
+    var logY2 = !!(options && options.logY2 && log);
     var xs = [];
     var ys = [];
-    series.forEach(function (s) {
+    var y2s = [];
+    leftSeries.forEach(function (s) {
       s.points.forEach(function (p) {
         if (p[0] != null) xs.push(p[0]);
         if (p[1] != null) ys.push(p[1]);
       });
     });
+    rightSeries.forEach(function (s) {
+      s.points.forEach(function (p) {
+        if (p[0] != null) xs.push(p[0]);
+        if (p[1] != null) y2s.push(p[1]);
+      });
+    });
     var xExt = extent(xs, logX);
     var yExt = extent(ys, logY);
+    var y2Ext = hasRight ? extent(y2s, logY2) : null;
+    if (y2Ext && !logY2) y2Ext.min = Math.min(0, y2Ext.min);
     var svg = svgEl("svg", {
       viewBox: "0 0 " + width + " " + height,
+      width: String(width),
+      height: String(height),
+      preserveAspectRatio: "xMidYMid meet",
       role: "img",
     });
     drawAxes(
@@ -1122,31 +1188,41 @@
       options && options.xLabel,
       options && options.yLabel,
       logX,
-      logY
+      logY,
+      false,
+      y2Ext,
+      options && options.y2Label,
+      logY2
     );
     series.forEach(function (s) {
+      var useRight = s.axis === "right";
+      var yE = useRight ? y2Ext : yExt;
+      var useLogY = useRight ? logY2 : logY;
       var rawPts = s.points.filter(function (p) {
-        return p[0] != null && p[1] != null && (!logX || p[0] > 0) && (!logY || p[1] > 0);
+        return (
+          p[0] != null &&
+          p[1] != null &&
+          (!logX || p[0] > 0) &&
+          (!useLogY || p[1] > 0)
+        );
       });
       var pts = rawPts.map(function (p) {
         return [
           scale(p[0], xExt.min, xExt.max, plot.left, plot.left + plot.width, logX),
-          scale(p[1], yExt.min, yExt.max, plot.top + plot.height, plot.top, logY),
+          scale(p[1], yE.min, yE.max, plot.top + plot.height, plot.top, useLogY),
         ];
       });
       if (!pts.length) return;
-      svg.appendChild(
-        svgEl("path", {
-          d: linePath(pts),
-          fill: "none",
-          stroke: s.color,
-          "stroke-width": s.width || 2.5,
-          "stroke-dasharray": s.dash || null,
-        })
-      );
+      var pathAttrs = {
+        d: linePath(pts),
+        fill: "none",
+        stroke: s.color,
+        "stroke-width": s.width || 2.5,
+      };
+      if (s.dash) pathAttrs["stroke-dasharray"] = s.dash;
+      svg.appendChild(svgEl("path", pathAttrs));
       pts.forEach(function (p, pi) {
         var marker = drawMarker(svg, s.shape || "circle", p[0], p[1], s.color, 4);
-        // Larger invisible hit target for easier hover.
         var hit = svgEl("circle", {
           cx: p[0],
           cy: p[1],
@@ -1155,32 +1231,34 @@
         });
         svg.appendChild(hit);
         var xLabel = (options && options.xLabel) || "X";
-        var yLabel = (options && options.yLabel) || "Y";
-        bindChartTip(hit, s.label || "Series", [
+        var yLabel = useRight
+          ? (options && options.y2Label) || "Y2"
+          : (options && options.yLabel) || "Y";
+        var tipLines = [
           xLabel + ": " + fmt(rawPts[pi][0]),
           yLabel + ": " + fmt(rawPts[pi][1]),
-        ]);
-        if (marker) bindChartTip(marker, s.label || "Series", [
-          xLabel + ": " + fmt(rawPts[pi][0]),
-          yLabel + ": " + fmt(rawPts[pi][1]),
-        ]);
+        ];
+        bindChartTip(hit, s.label || "Series", tipLines);
+        if (marker) bindChartTip(marker, s.label || "Series", tipLines);
       });
     });
     var legendY = 14;
-    var legendGap = Math.max(78, Math.min(110, plot.width / Math.max(series.length, 1)));
+    var legendGap = Math.max(
+      78,
+      Math.min(110, plot.width / Math.max(series.length, 1))
+    );
     series.forEach(function (s, idx) {
       var x = plot.left + idx * legendGap;
-      svg.appendChild(
-        svgEl("line", {
-          x1: x,
-          y1: legendY - 3,
-          x2: x + 14,
-          y2: legendY - 3,
-          stroke: s.color,
-          "stroke-width": "2.5",
-          "stroke-dasharray": s.dash || null,
-        })
-      );
+      var legAttrs = {
+        x1: x,
+        y1: legendY - 3,
+        x2: x + 14,
+        y2: legendY - 3,
+        stroke: s.color,
+        "stroke-width": "2.5",
+      };
+      if (s.dash) legAttrs["stroke-dasharray"] = s.dash;
+      svg.appendChild(svgEl("line", legAttrs));
       drawMarker(svg, s.shape || "circle", x + 7, legendY - 3, s.color, 3.5);
       var t = svgEl("text", {
         x: x + 18,
@@ -2327,11 +2405,11 @@
 
     renderSelectedRunCharts();
 
-    // By turn
+    // By turn: latency (left) + prompt median tokens (right, dashed).
     var turns = data.by_turn || [];
     if (turns.length) {
       drawLineChart(
-        "chart-turn-lat",
+        "chart-turn-combined",
         [
           {
             label: "E2E P95",
@@ -2365,30 +2443,23 @@
               return [t.turn_index, t.itl_p95_ms];
             }),
           },
-        ],
-        { xLabel: "Turn index", yLabel: "Latency (ms)", logY: true }
-      );
-      drawLineChart(
-        "chart-turn-tokens",
-        [
           {
             label: "Prompt median",
             color: COLORS.input,
             shape: "circle",
+            dash: "6 4",
+            axis: "right",
             points: turns.map(function (t) {
               return [t.turn_index, t.prompt_tokens_median];
             }),
           },
-          {
-            label: "Prompt P95",
-            color: COLORS.p99,
-            shape: "square",
-            points: turns.map(function (t) {
-              return [t.turn_index, t.prompt_tokens_p95];
-            }),
-          },
         ],
-        { xLabel: "Turn index", yLabel: "Prompt tokens" }
+        {
+          xLabel: "Turn index",
+          yLabel: "Latency (ms)",
+          y2Label: "Prompt tokens",
+          logY: true,
+        }
       );
     }
   }
@@ -2568,34 +2639,41 @@
             return;
           }
 
-          // Single-run: compact input/output rows (avoid full-width sparse cards).
+          // Single-run: quiet Input/Output × Mean/P95 table (no colored pills).
           metricRows.forEach(function (row) {
-            var compact = document.createElement("div");
-            compact.className = "modality-compact";
+            var table = document.createElement("table");
+            table.className = "modality-table";
+            var thead = document.createElement("thead");
+            var hr = document.createElement("tr");
+            ["", "Mean", "P95"].forEach(function (label) {
+              var th = document.createElement("th");
+              th.textContent = label;
+              hr.appendChild(th);
+            });
+            thead.appendChild(hr);
+            table.appendChild(thead);
+            var tbody = document.createElement("tbody");
             ["input", "output"].forEach(function (side) {
               var mean = row[side + "_mean"];
               var p95 = row[side + "_p95"];
               if (mean == null && p95 == null) return;
-              var sideRow = document.createElement("div");
-              sideRow.className = "modality-compact-row";
-              var sideLabel = document.createElement("div");
-              sideLabel.className = "side-label";
-              sideLabel.appendChild(labelWithHelp(side, "in_out"));
-              var sideVals = document.createElement("div");
-              sideVals.className = "side-vals";
-              var meanSpan = document.createElement("span");
-              meanSpan.innerHTML = "<strong>" + fmt(mean) + "</strong>";
-              meanSpan.appendChild(labelWithHelp("mean", "mean"));
-              var p95Span = document.createElement("span");
-              p95Span.innerHTML = "<strong>" + fmt(p95) + "</strong>";
-              p95Span.appendChild(labelWithHelp("p95", "p95"));
-              sideVals.appendChild(meanSpan);
-              sideVals.appendChild(p95Span);
-              sideRow.appendChild(sideLabel);
-              sideRow.appendChild(sideVals);
-              compact.appendChild(sideRow);
+              var tr = document.createElement("tr");
+              var sideTh = document.createElement("th");
+              sideTh.scope = "row";
+              sideTh.textContent = side === "input" ? "Input" : "Output";
+              tr.appendChild(sideTh);
+              var meanTd = document.createElement("td");
+              meanTd.className = "num";
+              meanTd.textContent = fmt(mean);
+              tr.appendChild(meanTd);
+              var p95Td = document.createElement("td");
+              p95Td.className = "num";
+              p95Td.textContent = fmt(p95);
+              tr.appendChild(p95Td);
+              tbody.appendChild(tr);
             });
-            block.appendChild(compact);
+            table.appendChild(tbody);
+            block.appendChild(table);
           });
           card.appendChild(block);
         });

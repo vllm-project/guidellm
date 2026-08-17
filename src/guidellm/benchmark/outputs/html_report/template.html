@@ -184,24 +184,14 @@ __GUIDELLM_REPORT_CSS__
 
     <section id="panel-turn" class="panel">
       <p class="note" id="turn-note"></p>
-      <div class="grid">
-        <article class="card">
-          <h2>
-            <span class="card-heading">Latency vs turn</span>
-            <button type="button" class="help-q" data-help="lat_vs_turn" aria-label="About Latency vs turn">?</button>
-          </h2>
-          <p class="hint">How latency grows as conversation history lengthens.</p>
-          <div class="chart" id="chart-turn-lat"></div>
-        </article>
-        <article class="card">
-          <h2>
-            <span class="card-heading">Prompt tokens vs turn</span>
-            <button type="button" class="help-q" data-help="prompt_vs_turn" aria-label="About Prompt tokens vs turn">?</button>
-          </h2>
-          <p class="hint">Context growth by turn index.</p>
-          <div class="chart" id="chart-turn-tokens"></div>
-        </article>
-      </div>
+      <article class="card">
+        <h2>
+          <span class="card-heading">Latency &amp; prompt size by turn</span>
+          <button type="button" class="help-q" data-help="lat_vs_turn" aria-label="About Latency and prompt size by turn">?</button>
+        </h2>
+        <p class="hint">Latency on the left axis; prompt median tokens on the right (dashed).</p>
+        <div class="chart chart-turn" id="chart-turn-combined"></div>
+      </article>
       <article class="card" style="margin-top:16px">
         <h2>
           <span class="card-heading">Per-turn table</span>
