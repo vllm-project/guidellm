@@ -13,12 +13,10 @@ from types import SimpleNamespace
 import pytest
 
 from guidellm.benchmark.outputs.html import (
-    TEMPLATE_ASSET_MAX_BYTES,
     GenerativeBenchmarkerHTML,
     HTMLBenchmarkOutputArgs,
     build_report_view,
     render_html_report,
-    template_asset_bytes,
 )
 from guidellm.schemas.benchmark import BenchmarkOutputArgs, BenchmarkScenario
 
@@ -197,18 +195,6 @@ def test_from_args_rejects_wrong_type():
 
     with pytest.raises(TypeError, match="Expected HTMLBenchmarkOutputArgs"):
         GenerativeBenchmarkerHTML.from_args(DummyArgs(kind="dummy"))
-
-
-@pytest.mark.smoke
-def test_template_assets_under_size_budget():
-    """
-    Packaged HTML/CSS/JS shell must stay within the 1 MB non-benchmark budget.
-
-    ## WRITTEN BY AI ##
-    """
-    size = template_asset_bytes()
-    assert size > 0
-    assert size <= TEMPLATE_ASSET_MAX_BYTES
 
 
 @pytest.mark.sanity

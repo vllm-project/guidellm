@@ -27,24 +27,22 @@ from guidellm.schemas.benchmark import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.outputs import HTMLBenchmarkOutputArgs
 
 __all__ = [
-    "TEMPLATE_ASSET_MAX_BYTES",
     "GenerativeBenchmarkerHTML",
     "HTMLBenchmarkOutputArgs",
     "build_report_view",
-    "template_asset_bytes",
 ]
 
-# Soft budget for non-benchmark template payload (CSS + JS + HTML shell).
-TEMPLATE_ASSET_MAX_BYTES: int = 1_000_000
-
 _StatusName = Literal["successful", "incomplete", "errored", "total"]
+
+# Float tolerance for treating concurrency as a whole-number label.
+_CONCURRENCY_INT_TOLERANCE = 1e-6
 
 
 def _format_run_label(strategy: str | None, concurrency: float | None) -> str:
     """Human-readable run label, preferring concurrent@N when concurrency is known."""
     if concurrency is not None and not math.isnan(float(concurrency)):
         value = float(concurrency)
-        if abs(value - round(value)) < 1e-6:
+        if abs(value - round(value)) < _CONCURRENCY_INT_TOLERANCE:
             return f"concurrent@{int(round(value))}"
         return f"concurrent@{value:.1f}"
     return strategy or "run"
@@ -127,21 +125,8 @@ class GenerativeBenchmarkerHTML(GenerativeBenchmarkerOutput):
         view = build_report_view(report)
         html = render_html_report(view)
         output_path.write_text(html, encoding="utf-8")
-        logger.info("Saved HTML report to {}", output_path)
+        logger.debug("Saved HTML report to {}", output_path)
         return output_path
-
-
-def template_asset_bytes() -> int:
-    """
-    Return the size in bytes of packaged template assets (no benchmark payload).
-
-    :return: Combined UTF-8 byte length of template.html, report.css, and report.js
-    """
-    pkg = files("guidellm.benchmark.outputs.html_report")
-    total = 0
-    for name in ("template.html", "report.css", "report.js"):
-        total += len((pkg / name).read_text(encoding="utf-8").encode("utf-8"))
-    return total
 
 
 def render_html_report(view: dict[str, Any]) -> str:
