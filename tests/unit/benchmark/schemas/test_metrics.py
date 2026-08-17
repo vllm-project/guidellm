@@ -8,6 +8,7 @@ from __future__ import annotations
 import pytest
 
 from guidellm.benchmark.schemas.metrics import (
+    GenerativeMetrics,
     GenerativeMetricsSummary,
     GenerativeToolCallMetricsSummary,
 )
@@ -15,6 +16,7 @@ from guidellm.schemas import (
     GenerativeRequestStats,
     RequestInfo,
     RequestTimings,
+    StatusDistributionSummary,
     UsageMetrics,
 )
 
@@ -162,3 +164,52 @@ class TestToolCallMetricsAllErrored:
         assert summary.mixed_tokens is not None
         assert summary.mixed_tokens.input is None
         assert summary.mixed_tokens.output is None
+
+
+@pytest.mark.sanity
+def test_round_trip_metrics_compile():
+    """
+    WebSocket round-trip metrics expose GenerativeMetrics fields and compile
+    into StatusDistributionSummary distributions from request timings.
+
+    ## WRITTEN BY AI ##
+    """
+    timings = RequestTimings(
+        resolve_start=0.0,
+        resolve_end=2.0,
+        request_start=0.0,
+        request_end=2.0,
+        last_request_sent=0.2,
+        last_token_iteration=0.5,
+        request_sent_sum=0.3,  # mean 0.1 over 3 sends
+        request_sent_count=3,
+        token_received_sum=1.2,  # mean 0.4 over 3 receives
+        token_received_count=3,
+    )
+    stats = GenerativeRequestStats(
+        request_id="rtt",
+        info=RequestInfo(request_id="rtt", status="completed", timings=timings),
+        input_metrics=UsageMetrics(),
+        output_metrics=UsageMetrics(),
+    )
+
+    # Schema exposes the new metric fields.
+    assert "time_to_last_round_trip_ms" in GenerativeMetrics.model_fields
+    assert "avg_round_trip_time_ms" in GenerativeMetrics.model_fields
+
+    # The same compile expressions used in GenerativeMetrics.compile().
+    last_round_trip = StatusDistributionSummary.from_values_function(
+        function=lambda req: req.time_to_last_round_trip_ms or 0.0,
+        successful=[stats],
+        incomplete=[],
+        errored=[],
+    )
+    avg_round_trip = StatusDistributionSummary.from_values_function(
+        function=lambda req: req.avg_round_trip_time_ms or 0.0,
+        successful=[stats],
+        incomplete=[],
+        errored=[],
+    )
+
+    assert last_round_trip.successful.mean == pytest.approx(300.0, abs=0.1)
+    assert avg_round_trip.successful.mean == pytest.approx(300.0, abs=0.1)

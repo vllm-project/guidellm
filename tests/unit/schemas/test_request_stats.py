@@ -284,6 +284,8 @@ class TestGenerativeRequestStats:
             "output_tokens_per_second",
             "iter_tokens_per_iteration",
             "output_tokens_per_iteration",
+            "time_to_last_round_trip_ms",
+            "avg_round_trip_time_ms",
         ):
             assert hasattr(GenerativeRequestStats, prop_name)
 
@@ -721,6 +723,78 @@ class TestGenerativeRequestStats:
         )
 
         assert stats.time_to_first_output_token_ms is None
+
+    @pytest.mark.sanity
+    def test_time_to_last_round_trip_ms(self):
+        """
+        Last round trip = last received-token time minus last sent-packet time.
+
+        ## WRITTEN BY AI ##
+        """
+        info = RequestInfo(request_id="ttlrt", status="completed")
+        info.timings.request_start = 0.0
+        info.timings.last_request_sent = 0.2
+        info.timings.last_token_iteration = 0.5
+        info.timings.request_end = 0.6
+        info.timings.resolve_end = 0.6
+
+        stats = GenerativeRequestStats(
+            request_id="ttlrt",
+            info=info,
+            input_metrics=UsageMetrics(text_tokens=5),
+            output_metrics=UsageMetrics(text_tokens=10),
+        )
+
+        assert stats.time_to_last_round_trip_ms == pytest.approx(300.0, abs=0.1)
+
+    @pytest.mark.sanity
+    def test_avg_round_trip_time_ms(self):
+        """
+        Avg RTT (approximate) = mean(received times) minus mean(sent times).
+
+        ## WRITTEN BY AI ##
+        """
+        info = RequestInfo(request_id="avgrtt", status="completed")
+        info.timings.request_start = 0.0
+        info.timings.request_sent_sum = 0.3  # mean 0.1 over 3 sends
+        info.timings.request_sent_count = 3
+        info.timings.token_received_sum = 1.2  # mean 0.4 over 3 receives
+        info.timings.token_received_count = 3
+        info.timings.request_end = 1.0
+        info.timings.resolve_end = 1.0
+
+        stats = GenerativeRequestStats(
+            request_id="avgrtt",
+            info=info,
+            input_metrics=UsageMetrics(text_tokens=5),
+            output_metrics=UsageMetrics(text_tokens=10),
+        )
+
+        assert stats.avg_round_trip_time_ms == pytest.approx(300.0, abs=0.1)
+
+    @pytest.mark.smoke
+    def test_round_trip_metrics_none_without_sends(self):
+        """
+        Round-trip metrics are None when no send timestamps were recorded
+        (e.g. the HTTP backend), keeping them websocket-only.
+
+        ## WRITTEN BY AI ##
+        """
+        info = RequestInfo(request_id="rtt-none", status="completed")
+        info.timings.request_start = 0.0
+        info.timings.last_token_iteration = 0.5
+        info.timings.request_end = 1.0
+        info.timings.resolve_end = 1.0
+
+        stats = GenerativeRequestStats(
+            request_id="rtt-none",
+            info=info,
+            input_metrics=UsageMetrics(text_tokens=5),
+            output_metrics=UsageMetrics(text_tokens=10),
+        )
+
+        assert stats.time_to_last_round_trip_ms is None
+        assert stats.avg_round_trip_time_ms is None
 
     @pytest.mark.sanity
     @pytest.mark.asyncio

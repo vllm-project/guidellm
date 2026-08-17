@@ -656,3 +656,126 @@ def test_openai_websocket_backend_args_invalid_request_format_rejected() -> None
             target="http://localhost:8000",
             request_format="nope",
         )
+
+
+@pytest.mark.asyncio
+async def test_resolve_records_round_trip_timings() -> None:
+    """Round-trip send/receive timestamps are recorded during resolve.
+
+    ## WRITTEN BY AI ##
+    """
+
+    async def handler(ws: object) -> None:
+        await ws.send(
+            json.dumps({"type": "session.created", "id": "sess-rtt", "created": 0})
+        )
+        while True:
+            msg = await ws.recv()
+            data = json.loads(msg if isinstance(msg, str) else msg.decode())
+            if data.get("type") == "input_audio_buffer.commit" and data.get("final"):
+                break
+        await ws.send(json.dumps({"type": "transcription.delta", "delta": "hi"}))
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "transcription.done",
+                    "text": "hi",
+                    "usage": {
+                        "prompt_tokens": 5,
+                        "completion_tokens": 1,
+                        "total_tokens": 6,
+                    },
+                }
+            )
+        )
+
+    async with serve(handler, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        be = _make_ws_backend(
+            target=f"http://127.0.0.1:{port}",
+            model="m",
+            validate_backend=False,
+        )
+        await be.process_startup()
+        req = GenerationRequest(
+            request_id="rtt",
+            columns={
+                "audio_column": [
+                    {"audio": b"fake", "format": "mp3", "file_name": "f.mp3"}
+                ]
+            },
+        )
+        info = RequestInfo(timings=RequestTimings())
+        async for _ in be.resolve(req, info):
+            pass
+        await be.process_shutdown()
+
+    t = info.timings
+    # one patched chunk -> session.update + 1 append + 2 commits = 4 sends
+    assert t.request_sent_count == 4
+    assert t.last_request_sent is not None
+    assert t.request_sent_sum > 0
+    # one non-empty delta received
+    assert t.token_received_count == 1
+    assert t.token_received_sum > 0
+    # tokens arrive after the last packet is sent -> last round trip >= 0
+    assert t.last_token_iteration is not None
+    assert t.last_token_iteration >= t.last_request_sent
+
+
+@pytest.mark.asyncio
+async def test_resolve_records_round_trip_timings_done_only() -> None:
+    """Send/receive timings are recorded when text arrives only on done.
+
+    ## WRITTEN BY AI ##
+    """
+
+    async def handler(ws: object) -> None:
+        await ws.send(
+            json.dumps({"type": "session.created", "id": "sess-done", "created": 0})
+        )
+        while True:
+            msg = await ws.recv()
+            data = json.loads(msg if isinstance(msg, str) else msg.decode())
+            if data.get("type") == "input_audio_buffer.commit" and data.get("final"):
+                break
+        await ws.send(
+            json.dumps(
+                {
+                    "type": "transcription.done",
+                    "text": "hello",
+                    "usage": {
+                        "prompt_tokens": 5,
+                        "completion_tokens": 1,
+                        "total_tokens": 6,
+                    },
+                }
+            )
+        )
+
+    async with serve(handler, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        be = _make_ws_backend(
+            target=f"http://127.0.0.1:{port}",
+            model="m",
+            validate_backend=False,
+        )
+        await be.process_startup()
+        req = GenerationRequest(
+            request_id="rtt-done",
+            columns={
+                "audio_column": [
+                    {"audio": b"fake", "format": "mp3", "file_name": "f.mp3"}
+                ]
+            },
+        )
+        info = RequestInfo(timings=RequestTimings())
+        async for _ in be.resolve(req, info):
+            pass
+        await be.process_shutdown()
+
+    t = info.timings
+    assert t.request_sent_count == 4
+    assert t.last_request_sent is not None
+    assert t.token_received_count == 1
+    assert t.token_received_sum > 0

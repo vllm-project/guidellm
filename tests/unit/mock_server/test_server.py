@@ -16,7 +16,8 @@ from guidellm.mock_server.server import MockServer
 # Start server in a separate process
 def _start_server_process(config: MockServerConfig):
     server = MockServer(config)
-    server.run()
+    # Disable Sanic access logs / MOTD so ANSI formatters do not clobber pytest's TTY.
+    server.run(access_log=False)
 
 
 @pytest_asyncio.fixture(scope="class")
@@ -91,6 +92,8 @@ class TestMockServerConfig:
         assert config.itl_ms_std == 0.0
         assert config.output_tokens == 128
         assert config.output_tokens_std == 0.0
+        assert config.fail_after_requests is None
+        assert config.max_concurrent_requests is None
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -725,3 +728,179 @@ class TestMockServerEndpoints:
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{server_url}/nonexistent", timeout=5.0)
             assert response.status_code == 404
+
+
+@pytest_asyncio.fixture
+async def fail_after_mock_server():
+    """MockServer that fails generation after two accepted requests.
+
+    ## WRITTEN BY AI ##
+    """
+    config = MockServerConfig(
+        host="127.0.0.1",
+        port=8013,
+        model="fail-after-model",
+        ttft_ms=1.0,
+        itl_ms=1.0,
+        request_latency=0.01,
+        output_tokens=4,
+        fail_after_requests=2,
+    )
+    base_url = f"http://{config.host}:{config.port}"
+    server_process = multiprocessing.Process(
+        target=_start_server_process, args=(config,)
+    )
+    server_process.start()
+
+    async def wait_for_startup():
+        async with httpx.AsyncClient() as client:
+            while True:
+                try:
+                    response = await client.get(f"{base_url}/health", timeout=1.0)
+                    if response.status_code == 200:
+                        return
+                except (httpx.RequestError, httpx.TimeoutException):
+                    pass
+                await asyncio.sleep(0.2)
+
+    try:
+        await asyncio.wait_for(wait_for_startup(), timeout=30.0)
+    except TimeoutError:
+        server_process.terminate()
+        server_process.join(timeout=5)
+        pytest.fail("fail_after MockServer failed to start")
+
+    yield base_url
+
+    server_process.terminate()
+    server_process.join(timeout=5)
+    if server_process.is_alive():
+        server_process.kill()
+        server_process.join(timeout=5)
+
+
+@pytest_asyncio.fixture
+async def concurrent_limit_mock_server():
+    """MockServer limited to one in-flight generation request.
+
+    ## WRITTEN BY AI ##
+    """
+    config = MockServerConfig(
+        host="127.0.0.1",
+        port=8014,
+        model="concurrency-model",
+        ttft_ms=200.0,
+        itl_ms=1.0,
+        request_latency=0.2,
+        output_tokens=4,
+        max_concurrent_requests=1,
+    )
+    base_url = f"http://{config.host}:{config.port}"
+    server_process = multiprocessing.Process(
+        target=_start_server_process, args=(config,)
+    )
+    server_process.start()
+
+    async def wait_for_startup():
+        async with httpx.AsyncClient() as client:
+            while True:
+                try:
+                    response = await client.get(f"{base_url}/health", timeout=1.0)
+                    if response.status_code == 200:
+                        return
+                except (httpx.RequestError, httpx.TimeoutException):
+                    pass
+                await asyncio.sleep(0.2)
+
+    try:
+        await asyncio.wait_for(wait_for_startup(), timeout=30.0)
+    except TimeoutError:
+        server_process.terminate()
+        server_process.join(timeout=5)
+        pytest.fail("concurrency MockServer failed to start")
+
+    yield base_url
+
+    server_process.terminate()
+    server_process.join(timeout=5)
+    if server_process.is_alive():
+        server_process.kill()
+        server_process.join(timeout=5)
+
+
+class TestMockServerFailAfterAndConcurrency:
+    """Tests for fail_after_requests and max_concurrent_requests.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_fail_after_requests_returns_500(self, fail_after_mock_server):
+        """Third generation request fails after two successes.
+
+        ## WRITTEN BY AI ##
+        """
+        payload = {
+            "model": "fail-after-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 4,
+            "stream": False,
+        }
+        async with httpx.AsyncClient() as client:
+            first = await client.post(
+                f"{fail_after_mock_server}/v1/chat/completions",
+                json=payload,
+                timeout=10.0,
+            )
+            second = await client.post(
+                f"{fail_after_mock_server}/v1/chat/completions",
+                json=payload,
+                timeout=10.0,
+            )
+            third = await client.post(
+                f"{fail_after_mock_server}/v1/chat/completions",
+                json=payload,
+                timeout=10.0,
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert third.status_code == 500
+        assert third.json()["error"]["code"] == "fail_after_requests"
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_max_concurrent_requests_serializes(
+        self, concurrent_limit_mock_server
+    ):
+        """With max_concurrent_requests=1, overlapping requests complete serially.
+
+        ## WRITTEN BY AI ##
+        """
+        payload = {
+            "model": "concurrency-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 4,
+            "stream": False,
+        }
+
+        async def one_request(client: httpx.AsyncClient) -> float:
+            started = asyncio.get_running_loop().time()
+            response = await client.post(
+                f"{concurrent_limit_mock_server}/v1/chat/completions",
+                json=payload,
+                timeout=30.0,
+            )
+            assert response.status_code == 200
+            return asyncio.get_running_loop().time() - started
+
+        async with httpx.AsyncClient() as client:
+            durations = await asyncio.gather(
+                one_request(client),
+                one_request(client),
+            )
+
+        # Two non-stream requests each sleep ~ttft (0.2s); serialized => slower
+        # request should take at least ~0.3s when they contend for one slot.
+        assert max(durations) >= 0.3

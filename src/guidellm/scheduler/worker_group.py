@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import math
+import sys
 import threading
 import time
 import uuid
@@ -185,7 +186,9 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         per_proc_max_buffer_size = 1
 
         # Initialize multiprocessing components
-        self.mp_context = get_context(settings.mp_context_type)
+        self.mp_context = get_context(
+            "spawn" if sys.platform == "darwin" else settings.mp_context_type
+        )
         self.mp_manager = self.mp_context.Manager()
         self.startup_barrier = self.mp_context.Barrier(num_processes + 1)
         self.requests_generated_event = self.mp_context.Event()
@@ -299,7 +302,10 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             if dead:
                 message = "; ".join(dead)
                 if killed_by_signal:
-                    message += ". Check system logs for details"
+                    message += (
+                        ". Check system logs and "
+                        "docs/guides/troubleshooting.md for details"
+                    )
                 self._worker_error_details = message
                 if self.error_event is not None:
                     self.error_event.set()

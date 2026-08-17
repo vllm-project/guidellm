@@ -152,3 +152,34 @@ def test_run_constraint_missing_field_stays_specific():
     assert result.exit_code != 0
     assert "count" in result.output or "Field required" in result.output
     assert "Expected format" not in result.output
+
+
+@pytest.mark.regression
+def test_run_rejects_duplicate_backend_flags():
+    """
+    Passing ``--backend`` twice is illegal (no silent last-wins override).
+
+    ## WRITTEN BY AI ##
+    """
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            "kind=openai_http,target=http://127.0.0.1:8000",
+            "--backend",
+            (
+                "kind=openai_http,target=http://127.0.0.1:8000,"
+                "request_format=/v1/responses"
+            ),
+            "--data",
+            "kind=synthetic_text,prompt_tokens=16,output_tokens=8",
+            "--constraint",
+            "kind=max_requests,count=1",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "cannot be specified multiple times" in result.output
+    assert "--backend" in result.output

@@ -10,12 +10,16 @@ requiring actual model deployments.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from sanic import Sanic, response
 from sanic.exceptions import NotFound
 from sanic.log import logger
+from sanic.logging.formatter import LegacyAccessFormatter, LegacyFormatter
 from sanic.request import File, Request
 from sanic.response import BaseHTTPResponse, HTTPResponse
 
@@ -28,6 +32,35 @@ from guidellm.mock_server.handlers import (
 )
 
 __all__ = ["MockServer"]
+
+
+def _configure_sanic_logging(*, access_log: bool) -> None:
+    """
+    Configure Sanic loggers for interactive or shared-TTY (test) use.
+
+    When ``access_log`` is false, switch handlers to legacy formatters so start,
+    stop, and error logs still print without ANSI cursor controls that overwrite
+    shared terminal lines. Access logging itself remains controlled by Sanic's
+    ``access_log`` flag on ``app.run``.
+    """
+    if access_log:
+        return
+
+    legacy = LegacyFormatter()
+    legacy_access = LegacyAccessFormatter()
+    for name in (
+        "sanic.root",
+        "sanic.error",
+        "sanic.access",
+        "sanic.server",
+        "sanic.websockets",
+    ):
+        sanic_logger = logging.getLogger(name)
+        for handler in sanic_logger.handlers:
+            if name == "sanic.access":
+                handler.setFormatter(legacy_access)
+            else:
+                handler.setFormatter(legacy)
 
 
 class MockServer:
@@ -59,10 +92,58 @@ class MockServer:
         self.completions_handler = CompletionsHandler(config)
         self.responses_handler = ResponsesHandler(config)
         self.tokenizer_handler = TokenizerHandler(config)
+        # Deterministic test controls: count accepted generation requests and
+        # optionally serialize them with a semaphore (lazy-created in the loop).
+        self._accepted_generation_requests = 0
+        self._concurrency_semaphore: asyncio.Semaphore | None = None
 
         self._setup_middleware()
         self._setup_routes()
         self._setup_error_handlers()
+
+    def _get_concurrency_semaphore(self) -> asyncio.Semaphore | None:
+        """Return the concurrency semaphore, creating it in the running loop."""
+        if self.config.max_concurrent_requests is None:
+            return None
+        if self._concurrency_semaphore is None:
+            self._concurrency_semaphore = asyncio.Semaphore(
+                self.config.max_concurrent_requests
+            )
+        return self._concurrency_semaphore
+
+    async def _run_generation(
+        self,
+        handler: Callable[[Request], Awaitable[HTTPResponse]],
+        request: Request,
+    ) -> HTTPResponse:
+        """
+        Run a generation handler with optional fail-after and concurrency limits.
+
+        :param handler: Async generation endpoint handler
+        :param request: Incoming Sanic request
+        :return: Handler response, or HTTP 500 when fail_after_requests is exceeded
+        """
+        fail_after = self.config.fail_after_requests
+        if fail_after is not None and self._accepted_generation_requests >= fail_after:
+            return response.json(
+                {
+                    "error": {
+                        "message": (
+                            f"Mock server fail_after_requests={fail_after} exceeded"
+                        ),
+                        "type": "server_error",
+                        "code": "fail_after_requests",
+                    }
+                },
+                status=500,
+            )
+
+        self._accepted_generation_requests += 1
+        semaphore = self._get_concurrency_semaphore()
+        if semaphore is None:
+            return await handler(request)
+        async with semaphore:
+            return await handler(request)
 
     def _setup_middleware(self):
         """Setup middleware for CORS, logging, etc."""
@@ -108,19 +189,19 @@ class MockServer:
         async def chat_completions(request: Request):
             if request.method == "OPTIONS":
                 return response.text("", status=204)
-            return await self.chat_handler.handle(request)
+            return await self._run_generation(self.chat_handler.handle, request)
 
         @self.app.route("/v1/completions", methods=["POST", "OPTIONS"])
         async def completions(request: Request):
             if request.method == "OPTIONS":
                 return response.text("", status=204)
-            return await self.completions_handler.handle(request)
+            return await self._run_generation(self.completions_handler.handle, request)
 
         @self.app.route("/v1/responses", methods=["POST", "OPTIONS"])
         async def responses(request: Request):
             if request.method == "OPTIONS":
                 return response.text("", status=204)
-            return await self.responses_handler.handle(request)
+            return await self._run_generation(self.responses_handler.handle, request)
 
         @self.app.route("/tokenize", methods=["POST", "OPTIONS"])
         async def tokenize(request: Request):
@@ -229,18 +310,28 @@ class MockServer:
                 status=404,
             )
 
-    def run(self) -> None:
+    def run(self, *, access_log: bool = True) -> None:
         """
         Start the mock server with configured settings.
 
-        Runs the Sanic application in single-process mode with access logging enabled
-        for debugging and monitoring request patterns during testing.
+        Runs the Sanic application in single-process mode with access logging and
+        the Sanic startup MOTD enabled by default. Pass ``access_log=False`` in
+        shared-TTY test runners to disable access logs and the MOTD, and to use
+        plain (non-ANSI) Sanic formatters so start/stop logs do not overwrite
+        the terminal.
+
+        :param access_log: Whether to enable Sanic per-request access logging and
+            the startup MOTD banner. When false, start/stop logs still print but
+            without ANSI cursor controls.
         """
+        # Reconfigure after Sanic.__init__ so quiet mode applies before serve.
+        _configure_sanic_logging(access_log=access_log)
         self.app.run(
             host=self.config.host,
             port=self.config.port,
             debug=False,
             single_process=True,
-            access_log=True,
+            access_log=access_log,
+            motd=access_log,
             register_sys_signals=True,
         )

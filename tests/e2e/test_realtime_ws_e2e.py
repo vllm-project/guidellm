@@ -89,7 +89,6 @@ def requires_audio_stack():
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(60)
-@pytest.mark.e2e
 async def test_realtime_ws_full_stack_in_one_event_loop(
     requires_audio_stack,
     tmp_path: Path,
