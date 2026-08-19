@@ -12,7 +12,7 @@ import json
 import math
 import statistics
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import datetime, timezone
 from importlib.resources import files
 from pathlib import Path
@@ -22,7 +22,25 @@ from loguru import logger
 from pydantic import Field
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
-from guidellm.benchmark.schemas import GenerativeBenchmarksReport
+from guidellm.benchmark.schemas import (
+    GenerativeBenchmark,
+    GenerativeBenchmarksReport,
+)
+from guidellm.benchmark.schemas.metrics import (
+    GenerativeAudioMetricsSummary,
+    GenerativeImageMetricsSummary,
+    GenerativeMetrics,
+    GenerativeMetricsSummary,
+    GenerativeTextMetricsSummary,
+    GenerativeToolCallMetricsSummary,
+    GenerativeVideoMetricsSummary,
+)
+from guidellm.schemas import (
+    DistributionSummary,
+    GenerativeRequestStats,
+    StatusBreakdown,
+    StatusDistributionSummary,
+)
 from guidellm.schemas.benchmark import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.outputs import HTMLBenchmarkOutputArgs
 
@@ -137,14 +155,14 @@ def render_html_report(view: dict[str, Any]) -> str:
     )
 
 
-def build_report_view(report: Any) -> dict[str, Any]:
+def build_report_view(report: GenerativeBenchmarksReport) -> dict[str, Any]:
     """
     Build the compact JSON view embedded in the HTML report.
 
-    :param report: Benchmark report to summarize (duck-typed for test doubles)
+    :param report: Benchmark report to summarize
     :return: Dictionary consumed by the inlined report JavaScript
     """
-    benchmarks = list(getattr(report, "benchmarks", []) or [])
+    benchmarks = report.benchmarks
     runs = [
         _build_run_row(benchmark, index) for index, benchmark in enumerate(benchmarks)
     ]
@@ -176,36 +194,58 @@ def build_report_view(report: Any) -> dict[str, Any]:
     }
 
 
+def _nonempty_str(value: Any) -> str | None:
+    """Return stripped text, or ``None`` when missing or blank."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _resolve_report_model(report: GenerativeBenchmarksReport) -> str:
+    """Resolve the display model name for the report header."""
+    for benchmark in report.benchmarks:
+        model = _nonempty_str(benchmark.config.backend.get("model"))
+        if model:
+            return model
+
+    backend_config = report.config.spec.backend.model_dump()
+    model = _nonempty_str(backend_config.get("model"))
+    if model:
+        return model
+
+    tokenizer_model = _nonempty_str(report.config.spec.tokenizer.model)
+    if tokenizer_model:
+        return tokenizer_model
+
+    return "N/A"
+
+
 def _build_header(
-    report: Any,
+    report: GenerativeBenchmarksReport,
     runs: Sequence[dict[str, Any]],
     peak_index: int,
     *,
     has_multi_turn: bool,
 ) -> dict[str, Any]:
-    config = getattr(report, "config", None)
-    spec = getattr(config, "spec", config)
-    backend = getattr(spec, "backend", None) if spec is not None else None
-    profile = getattr(spec, "profile", None) if spec is not None else None
-    metadata = getattr(report, "metadata", None)
+    backend_config = report.config.spec.backend.model_dump()
+    target = _nonempty_str(backend_config.get("target")) or "N/A"
+    profile_kind = report.config.spec.profile.kind or "N/A"
 
-    timestamp = None
-    for benchmark in getattr(report, "benchmarks", []) or []:
-        start = getattr(benchmark, "start_time", None)
-        if start is not None:
-            timestamp = max(timestamp or 0.0, float(start))
+    timestamps = [float(benchmark.start_time) for benchmark in report.benchmarks]
+    latest_timestamp = max(timestamps) if timestamps else None
     timestamp_iso = (
-        datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
-        if timestamp
+        datetime.fromtimestamp(latest_timestamp, tz=timezone.utc).isoformat()
+        if latest_timestamp is not None
         else None
     )
 
     return {
-        "model": getattr(backend, "model", None) or "N/A",
-        "target": getattr(backend, "target", None) or "N/A",
-        "profile": getattr(profile, "kind", None) or "N/A",
+        "model": _resolve_report_model(report),
+        "target": target,
+        "profile": profile_kind,
         "timestamp": timestamp_iso,
-        "guidellm_version": getattr(metadata, "guidellm_version", None) or "N/A",
+        "guidellm_version": report.metadata.guidellm_version or "N/A",
         "peak_index": peak_index,
         "multi_run": len(runs) > 1,
         "has_multi_turn": has_multi_turn,
@@ -229,18 +269,13 @@ def _build_kpis(run: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _build_run_row(benchmark: Any, index: int) -> dict[str, Any]:
-    metrics = getattr(benchmark, "metrics", None)
-    config = getattr(benchmark, "config", None)
-    strategy_obj = getattr(config, "strategy", None) if config is not None else None
-    if strategy_obj is not None:
-        label = str(strategy_obj)
-        strategy_name = getattr(strategy_obj, "type_", None) or label
-    else:
-        label = f"run_{index}"
-        strategy_name = label
+def _build_run_row(benchmark: GenerativeBenchmark, index: int) -> dict[str, Any]:
+    metrics = benchmark.metrics
+    strategy = benchmark.config.strategy
+    label = str(strategy)
+    strategy_name = strategy.type_
 
-    request_totals = getattr(metrics, "request_totals", None)
+    request_totals = metrics.request_totals
     successful = _status_total(request_totals, "successful")
     incomplete = _status_total(request_totals, "incomplete")
     errored = _status_total(request_totals, "errored")
@@ -250,44 +285,40 @@ def _build_run_row(benchmark: Any, index: int) -> dict[str, Any]:
     error_rate = (errored / total) if total else 0.0
 
     # Request latency is stored in seconds; convert to ms for chart consistency.
-    req_lat_p95 = _percentile(metrics, "request_latency", "p95")
-    req_lat_p99 = _percentile(metrics, "request_latency", "p99")
-    concurrency = _mean(metrics, "request_concurrency", status="total")
+    req_lat_p95 = _percentile(metrics.request_latency, "p95")
+    req_lat_p99 = _percentile(metrics.request_latency, "p99")
+    concurrency = _mean(metrics.request_concurrency, status="total")
     # Intended parallel-request cap from the strategy (e.g. streams); None = unlimited.
-    configured_concurrency = (
-        getattr(strategy_obj, "requests_limit", None)
-        if strategy_obj is not None
-        else None
-    )
+    configured_concurrency = strategy.requests_limit
 
     return {
         "index": index,
         "strategy": strategy_name,
         "label": label,
-        "request_rate": _mean(metrics, "requests_per_second", status="total"),
+        "request_rate": _mean(metrics.requests_per_second, status="total"),
         "concurrency": concurrency,
         "configured_concurrency": configured_concurrency,
-        "total_tps": _mean(metrics, "tokens_per_second", status="total"),
-        "input_tps": _mean(metrics, "prompt_tokens_per_second", status="total"),
-        "output_tps": _mean(metrics, "output_tokens_per_second", status="total"),
+        "total_tps": _mean(metrics.tokens_per_second, status="total"),
+        "input_tps": _mean(metrics.prompt_tokens_per_second, status="total"),
+        "output_tps": _mean(metrics.output_tokens_per_second, status="total"),
         "request_latency_p95_ms": _ms(req_lat_p95),
         "request_latency_p99_ms": _ms(req_lat_p99),
-        "ttft_p95_ms": _percentile(metrics, "time_to_first_token_ms", "p95"),
-        "ttft_p99_ms": _percentile(metrics, "time_to_first_token_ms", "p99"),
-        "ttfot_p95_ms": _percentile(metrics, "time_to_first_output_token_ms", "p95"),
-        "ttfot_p99_ms": _percentile(metrics, "time_to_first_output_token_ms", "p99"),
-        "itl_p95_ms": _percentile(metrics, "inter_token_latency_ms", "p95"),
-        "itl_p99_ms": _percentile(metrics, "inter_token_latency_ms", "p99"),
-        "tpot_p95_ms": _percentile(metrics, "time_per_output_token_ms", "p95"),
-        "tpot_p99_ms": _percentile(metrics, "time_per_output_token_ms", "p99"),
-        "prompt_tokens_median": _median(metrics, "prompt_token_count"),
-        "prompt_tokens_p95": _percentile(metrics, "prompt_token_count", "p95"),
-        "output_tokens_median": _median(metrics, "output_token_count"),
-        "output_tokens_p95": _percentile(metrics, "output_token_count", "p95"),
-        "rtt_avg_p95_ms": _percentile(metrics, "avg_round_trip_time_ms", "p95"),
-        "rtt_avg_p99_ms": _percentile(metrics, "avg_round_trip_time_ms", "p99"),
-        "rtt_last_p95_ms": _percentile(metrics, "time_to_last_round_trip_ms", "p95"),
-        "rtt_last_p99_ms": _percentile(metrics, "time_to_last_round_trip_ms", "p99"),
+        "ttft_p95_ms": _percentile(metrics.time_to_first_token_ms, "p95"),
+        "ttft_p99_ms": _percentile(metrics.time_to_first_token_ms, "p99"),
+        "ttfot_p95_ms": _percentile(metrics.time_to_first_output_token_ms, "p95"),
+        "ttfot_p99_ms": _percentile(metrics.time_to_first_output_token_ms, "p99"),
+        "itl_p95_ms": _percentile(metrics.inter_token_latency_ms, "p95"),
+        "itl_p99_ms": _percentile(metrics.inter_token_latency_ms, "p99"),
+        "tpot_p95_ms": _percentile(metrics.time_per_output_token_ms, "p95"),
+        "tpot_p99_ms": _percentile(metrics.time_per_output_token_ms, "p99"),
+        "prompt_tokens_median": _median(metrics.prompt_token_count),
+        "prompt_tokens_p95": _percentile(metrics.prompt_token_count, "p95"),
+        "output_tokens_median": _median(metrics.output_token_count),
+        "output_tokens_p95": _percentile(metrics.output_token_count, "p95"),
+        "rtt_avg_p95_ms": _percentile(metrics.avg_round_trip_time_ms, "p95"),
+        "rtt_avg_p99_ms": _percentile(metrics.avg_round_trip_time_ms, "p99"),
+        "rtt_last_p95_ms": _percentile(metrics.time_to_last_round_trip_ms, "p95"),
+        "rtt_last_p99_ms": _percentile(metrics.time_to_last_round_trip_ms, "p99"),
         "successful": successful,
         "incomplete": incomplete,
         "errored": errored,
@@ -298,7 +329,7 @@ def _build_run_row(benchmark: Any, index: int) -> dict[str, Any]:
 
 
 def _build_details(
-    benchmarks: Sequence[Any],
+    benchmarks: Sequence[GenerativeBenchmark],
     runs: Sequence[dict[str, Any]],
 ) -> dict[str, Any]:
     show_ttfot = any(
@@ -393,38 +424,32 @@ def _build_details(
     }
 
 
-def _build_metrics_by_turn(benchmark: Any) -> list[dict[str, Any]] | None:
+def _build_metrics_by_turn(
+    benchmark: GenerativeBenchmark,
+) -> list[dict[str, Any]] | None:
     """
     Aggregate successful request metrics by ``info.turn_index``.
 
     :param benchmark: Benchmark whose requests may include multi-turn metadata
     :return: Per-turn rows, or ``None`` when there is only a single turn (or no data)
     """
-    requests_obj = getattr(benchmark, "requests", None)
-    successful = getattr(requests_obj, "successful", None) or []
+    successful = benchmark.requests.successful or []
     if not successful:
         return None
 
     # Prefer the dominant agent_id so branched/tool graphs do not mix series.
-    by_agent: dict[str | None, list[Any]] = defaultdict(list)
+    by_agent: dict[str | None, list[GenerativeRequestStats]] = defaultdict(list)
     for req in successful:
-        info = getattr(req, "info", None)
-        agent = getattr(info, "agent_id", None)
-        by_agent[agent].append(req)
+        by_agent[req.info.agent_id].append(req)
     preferred_agent = max(by_agent.keys(), key=lambda key: len(by_agent[key]))
     selected = by_agent[preferred_agent]
 
-    buckets: dict[int, list[Any]] = defaultdict(list)
+    buckets: dict[int, list[GenerativeRequestStats]] = defaultdict(list)
     history_lens: set[int] = set()
     for req in selected:
-        info = getattr(req, "info", None)
-        turn_index = getattr(info, "turn_index", None)
-        if turn_index is None:
-            continue
-        buckets[int(turn_index)].append(req)
-        history_len = getattr(info, "history_len", None)
-        if history_len is not None:
-            history_lens.add(int(history_len))
+        turn_index = int(req.info.turn_index)
+        buckets[turn_index].append(req)
+        history_lens.add(int(req.info.history_len))
 
     if len(buckets) <= 1:
         return None
@@ -434,16 +459,13 @@ def _build_metrics_by_turn(benchmark: Any) -> list[dict[str, Any]] | None:
         reqs = buckets[turn_index]
         latencies_ms = [
             float(v) * 1000.0
-            for v in _request_values(reqs, "request_latency")
+            for v in _request_values(reqs, lambda req: req.request_latency)
             if v is not None
         ]
-        ttfts = _request_values(reqs, "time_to_first_token_ms")
-        itls = _request_values(reqs, "inter_token_latency_ms")
-        prompt_tokens = _request_values(reqs, "prompt_tokens")
-        history = [
-            getattr(getattr(req, "info", None), "history_len", None) for req in reqs
-        ]
-        history_clean = [float(h) for h in history if h is not None]
+        ttfts = _request_values(reqs, lambda req: req.time_to_first_token_ms)
+        itls = _request_values(reqs, lambda req: req.inter_token_latency_ms)
+        prompt_tokens = _request_values(reqs, lambda req: req.prompt_tokens)
+        history_clean = [float(req.info.history_len) for req in reqs]
 
         rows.append(
             {
@@ -469,32 +491,31 @@ def _build_metrics_by_turn(benchmark: Any) -> list[dict[str, Any]] | None:
 
 
 def _side_stats(metric_obj: Any, side: str) -> dict[str, Any] | None:
-    dist = getattr(metric_obj, side, None)
+    if metric_obj is None:
+        return None
+    dist = metric_obj.input if side == "input" else metric_obj.output
     successful = _select_distribution(dist, "successful")
     if successful is None:
         return None
-    mean_val = getattr(successful, "mean", None)
+    mean_val = successful.mean
     p95_val = _percentile_from_dist(successful, "p95")
     if mean_val is None and p95_val is None:
         return None
-    count = getattr(successful, "count", 0) or 0
+    count = successful.count
     if count <= 0 and not mean_val:
         return None
     return {"mean": mean_val, "p95": p95_val, "count": count}
 
 
-def _extract_modality_stats(metrics: Any) -> dict[str, Any]:
+def _extract_modality_stats(metrics: GenerativeMetrics) -> dict[str, Any]:
     result: dict[str, Any] = {}
-    if metrics is None:
-        return result
-
     for modality, groups in _MODALITY_GROUPS.items():
-        modality_obj = getattr(metrics, modality, None)
+        modality_obj = _select_modality(metrics, modality)
         if modality_obj is None:
             continue
         modality_data: dict[str, Any] = {}
         for attr, _label in groups:
-            metric_obj = getattr(modality_obj, attr, None)
+            metric_obj = _select_modality_metric(modality_obj, attr)
             if metric_obj is None:
                 continue
             entry: dict[str, Any] = {}
@@ -523,77 +544,217 @@ def _peak_throughput_index(runs: Sequence[dict[str, Any]]) -> int:
     return best_index
 
 
-def _select_distribution(metric: Any, status: _StatusName) -> Any:
+def _select_modality(
+    metrics: GenerativeMetrics,
+    modality: str,
+) -> (
+    GenerativeTextMetricsSummary
+    | GenerativeImageMetricsSummary
+    | GenerativeVideoMetricsSummary
+    | GenerativeAudioMetricsSummary
+    | GenerativeToolCallMetricsSummary
+    | None
+):
+    match modality:
+        case "text":
+            return metrics.text
+        case "image":
+            return metrics.image
+        case "video":
+            return metrics.video
+        case "audio":
+            return metrics.audio
+        case "tool_call":
+            return metrics.tool_call
+        case _:
+            return None
+
+
+def _select_modality_metric(
+    modality: (
+        GenerativeTextMetricsSummary
+        | GenerativeImageMetricsSummary
+        | GenerativeVideoMetricsSummary
+        | GenerativeAudioMetricsSummary
+        | GenerativeToolCallMetricsSummary
+    ),
+    attr: str,
+) -> GenerativeMetricsSummary | None:
+    if isinstance(modality, GenerativeTextMetricsSummary):
+        return _select_text_metric(modality, attr)
+
+    if isinstance(modality, GenerativeImageMetricsSummary):
+        return _select_image_metric(modality, attr)
+
+    if isinstance(modality, GenerativeVideoMetricsSummary):
+        return _select_video_metric(modality, attr)
+
+    if isinstance(modality, GenerativeAudioMetricsSummary):
+        return _select_audio_metric(modality, attr)
+
+    return _select_tool_call_metric(modality, attr)
+
+
+def _select_text_metric(
+    modality: GenerativeTextMetricsSummary,
+    attr: str,
+) -> GenerativeMetricsSummary | None:
+    match attr:
+        case "tokens":
+            return modality.tokens
+        case "words":
+            return modality.words
+        case "characters":
+            return modality.characters
+        case _:
+            return None
+
+
+def _select_image_metric(
+    modality: GenerativeImageMetricsSummary,
+    attr: str,
+) -> GenerativeMetricsSummary | None:
+    match attr:
+        case "tokens":
+            return modality.tokens
+        case "images":
+            return modality.images
+        case "pixels":
+            return modality.pixels
+        case "bytes":
+            return modality.bytes
+        case _:
+            return None
+
+
+def _select_video_metric(
+    modality: GenerativeVideoMetricsSummary,
+    attr: str,
+) -> GenerativeMetricsSummary | None:
+    match attr:
+        case "tokens":
+            return modality.tokens
+        case "frames":
+            return modality.frames
+        case "seconds":
+            return modality.seconds
+        case "bytes":
+            return modality.bytes
+        case _:
+            return None
+
+
+def _select_audio_metric(
+    modality: GenerativeAudioMetricsSummary,
+    attr: str,
+) -> GenerativeMetricsSummary | None:
+    match attr:
+        case "tokens":
+            return modality.tokens
+        case "samples":
+            return modality.samples
+        case "seconds":
+            return modality.seconds
+        case "bytes":
+            return modality.bytes
+        case _:
+            return None
+
+
+def _select_tool_call_metric(
+    modality: GenerativeToolCallMetricsSummary,
+    attr: str,
+) -> GenerativeMetricsSummary | None:
+    match attr:
+        case "tokens":
+            return modality.tokens
+        case "mixed_tokens":
+            return modality.mixed_tokens
+        case "count":
+            return modality.count
+        case _:
+            return None
+
+
+def _select_distribution(
+    metric: StatusDistributionSummary | DistributionSummary | None,
+    status: _StatusName,
+) -> DistributionSummary | None:
     if metric is None:
         return None
-    # StatusDistributionSummary exposes successful/incomplete/errored/total.
-    if hasattr(metric, status):
-        return getattr(metric, status)
-    # Already a DistributionSummary-like object.
-    if hasattr(metric, "mean") or hasattr(metric, "percentiles"):
+    if isinstance(metric, DistributionSummary):
         return metric
-    return None
+    if status == "successful":
+        return metric.successful
+    if status == "incomplete":
+        return metric.incomplete
+    if status == "errored":
+        return metric.errored
+    return metric.total
 
 
 def _mean(
-    metrics: Any,
-    field_name: str,
+    metric: StatusDistributionSummary | DistributionSummary | None,
     *,
     status: _StatusName = "successful",
 ) -> float | None:
-    if metrics is None:
-        return None
-    metric = getattr(metrics, field_name, None)
     distribution = _select_distribution(metric, status)
-    value = getattr(distribution, "mean", None) if distribution is not None else None
+    value = distribution.mean if distribution is not None else None
     return float(value) if value is not None else None
 
 
 def _median(
-    metrics: Any,
-    field_name: str,
+    metric: StatusDistributionSummary | DistributionSummary | None,
     *,
     status: _StatusName = "successful",
 ) -> float | None:
-    if metrics is None:
-        return None
-    metric = getattr(metrics, field_name, None)
     distribution = _select_distribution(metric, status)
-    value = getattr(distribution, "median", None) if distribution is not None else None
+    value = distribution.median if distribution is not None else None
     return float(value) if value is not None else None
 
 
 def _percentile(
-    metrics: Any,
-    field_name: str,
+    metric: StatusDistributionSummary | DistributionSummary | None,
     name: Literal["p50", "p90", "p95", "p99"],
     *,
     status: _StatusName = "successful",
 ) -> float | None:
-    if metrics is None:
-        return None
-    metric = getattr(metrics, field_name, None)
     distribution = _select_distribution(metric, status)
     return _percentile_from_dist(distribution, name)
 
 
 def _percentile_from_dist(
-    distribution: Any,
+    distribution: DistributionSummary | None,
     name: Literal["p50", "p90", "p95", "p99"],
 ) -> float | None:
     if distribution is None:
         return None
-    percentiles = getattr(distribution, "percentiles", None)
-    if percentiles is None:
-        return None
-    value = getattr(percentiles, name, None)
+    percentiles = distribution.percentiles
+    if name == "p99":
+        value = percentiles.p99
+    elif name == "p95":
+        value = percentiles.p95
+    elif name == "p90":
+        value = percentiles.p90
+    else:
+        value = percentiles.p50
     return float(value) if value is not None else None
 
 
-def _status_total(totals: Any, status: _StatusName) -> float:
+def _status_total(
+    totals: StatusBreakdown[int, int, int, int] | None,
+    status: _StatusName,
+) -> float:
     if totals is None:
         return 0.0
-    value = getattr(totals, status, None)
+    if status == "successful":
+        value = totals.successful
+    elif status == "incomplete":
+        value = totals.incomplete
+    elif status == "errored":
+        value = totals.errored
+    else:
+        value = totals.total
     return float(value) if value is not None else 0.0
 
 
@@ -611,10 +772,13 @@ def _ttfot_differs(ttft: float | None, ttfot: float | None) -> bool:
     return not math.isclose(float(ttft), float(ttfot), rel_tol=0.01, abs_tol=0.5)
 
 
-def _request_values(reqs: Iterable[Any], attr: str) -> list[float]:
+def _request_values(
+    reqs: Iterable[GenerativeRequestStats],
+    extractor: Callable[[GenerativeRequestStats], float | int | None],
+) -> list[float]:
     values: list[float] = []
     for req in reqs:
-        value = getattr(req, attr, None)
+        value = extractor(req)
         if value is None:
             continue
         values.append(float(value))
