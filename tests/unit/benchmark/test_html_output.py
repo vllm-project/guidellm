@@ -113,6 +113,24 @@ class MockMetrics:
         self.tool_call = SimpleNamespace()
 
 
+class MockStrategy:
+    """Strategy stand-in with ``type_`` and ``__str__`` like real strategies."""
+
+    def __init__(
+        self,
+        type_: str,
+        label: str | None = None,
+        *,
+        requests_limit: int | None = None,
+    ):
+        self.type_ = type_
+        self._label = label if label is not None else type_
+        self.requests_limit = requests_limit
+
+    def __str__(self) -> str:
+        return self._label
+
+
 class MockBenchmark:
     def __init__(
         self,
@@ -121,9 +139,16 @@ class MockBenchmark:
         tps: float = 30.0,
         requests: list | None = None,
         start_time: float = 1_700_000_000.0,
+        *,
+        strategy_label: str | None = None,
+        requests_limit: int | None = None,
     ):
         self.metrics = MockMetrics(rps=rps, tps=tps)
-        self.config = SimpleNamespace(strategy=SimpleNamespace(type_=strategy))
+        self.config = SimpleNamespace(
+            strategy=MockStrategy(
+                strategy, strategy_label, requests_limit=requests_limit
+            )
+        )
         self.requests = SimpleNamespace(
             successful=requests or [],
             incomplete=[],
@@ -207,21 +232,41 @@ def test_build_report_view_single_and_multi_run():
     single = SimpleNamespace(
         config=_scenario(),
         metadata=SimpleNamespace(guidellm_version="0.0.0-test"),
-        benchmarks=[MockBenchmark(strategy="constant", rps=2.0, tps=40.0)],
+        benchmarks=[
+            MockBenchmark(
+                strategy="constant",
+                strategy_label="constant@2.00",
+                rps=2.0,
+                tps=40.0,
+            )
+        ],
     )
     single_view = build_report_view(single)
     assert single_view["header"]["multi_run"] is False
     assert single_view["header"]["has_multi_turn"] is False
     assert single_view["runs"][0]["ttft_p95_ms"] == 150.0
     assert single_view["runs"][0]["ttft_p99_ms"] == 180.0
+    assert single_view["runs"][0]["label"] == "constant@2.00"
     assert single_view["kpis"]["tokens_per_second"] == 40.0
 
     multi = SimpleNamespace(
         config=_scenario(),
         metadata=SimpleNamespace(guidellm_version="0.0.0-test"),
         benchmarks=[
-            MockBenchmark(strategy="rate_1", rps=1.0, tps=20.0),
-            MockBenchmark(strategy="rate_2", rps=2.0, tps=50.0),
+            MockBenchmark(
+                strategy="concurrent",
+                strategy_label="concurrent@2",
+                requests_limit=2,
+                rps=1.0,
+                tps=20.0,
+            ),
+            MockBenchmark(
+                strategy="concurrent",
+                strategy_label="concurrent@4",
+                requests_limit=4,
+                rps=2.0,
+                tps=50.0,
+            ),
         ],
     )
     multi_view = build_report_view(multi)
@@ -230,6 +275,10 @@ def test_build_report_view_single_and_multi_run():
     assert multi_view["kpis"]["tokens_per_second"] == 50.0
     assert multi_view["kpis"]["strategy"] == "concurrent@4"
     assert multi_view["runs"][1]["label"] == "concurrent@4"
+    # Labels come from strategy __str__, not observed mean concurrency.
+    assert multi_view["runs"][1]["concurrency"] == 4.0
+    assert multi_view["runs"][1]["configured_concurrency"] == 4
+    assert multi_view["runs"][0]["configured_concurrency"] == 2
 
 
 @pytest.mark.sanity

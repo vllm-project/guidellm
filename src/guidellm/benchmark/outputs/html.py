@@ -34,19 +34,6 @@ __all__ = [
 
 _StatusName = Literal["successful", "incomplete", "errored", "total"]
 
-# Float tolerance for treating concurrency as a whole-number label.
-_CONCURRENCY_INT_TOLERANCE = 1e-6
-
-
-def _format_run_label(strategy: str | None, concurrency: float | None) -> str:
-    """Human-readable run label, preferring concurrent@N when concurrency is known."""
-    if concurrency is not None and not math.isnan(float(concurrency)):
-        value = float(concurrency)
-        if abs(value - round(value)) < _CONCURRENCY_INT_TOLERANCE:
-            return f"concurrent@{int(round(value))}"
-        return f"concurrent@{value:.1f}"
-    return strategy or "run"
-
 
 _MODALITY_GROUPS: dict[str, list[tuple[str, str]]] = {
     "text": [("tokens", "Tokens"), ("words", "Words"), ("characters", "Characters")],
@@ -245,9 +232,13 @@ def _build_kpis(run: dict[str, Any]) -> dict[str, Any]:
 def _build_run_row(benchmark: Any, index: int) -> dict[str, Any]:
     metrics = getattr(benchmark, "metrics", None)
     config = getattr(benchmark, "config", None)
-    strategy = (
-        getattr(getattr(config, "strategy", None), "type_", None) or f"run_{index}"
-    )
+    strategy_obj = getattr(config, "strategy", None) if config is not None else None
+    if strategy_obj is not None:
+        label = str(strategy_obj)
+        strategy_name = getattr(strategy_obj, "type_", None) or label
+    else:
+        label = f"run_{index}"
+        strategy_name = label
 
     request_totals = getattr(metrics, "request_totals", None)
     successful = _status_total(request_totals, "successful")
@@ -262,14 +253,20 @@ def _build_run_row(benchmark: Any, index: int) -> dict[str, Any]:
     req_lat_p95 = _percentile(metrics, "request_latency", "p95")
     req_lat_p99 = _percentile(metrics, "request_latency", "p99")
     concurrency = _mean(metrics, "request_concurrency", status="total")
-    strategy_name = str(strategy)
+    # Intended parallel-request cap from the strategy (e.g. streams); None = unlimited.
+    configured_concurrency = (
+        getattr(strategy_obj, "requests_limit", None)
+        if strategy_obj is not None
+        else None
+    )
 
     return {
         "index": index,
         "strategy": strategy_name,
-        "label": _format_run_label(strategy_name, concurrency),
+        "label": label,
         "request_rate": _mean(metrics, "requests_per_second", status="total"),
         "concurrency": concurrency,
+        "configured_concurrency": configured_concurrency,
         "total_tps": _mean(metrics, "tokens_per_second", status="total"),
         "input_tps": _mean(metrics, "prompt_tokens_per_second", status="total"),
         "output_tps": _mean(metrics, "output_tokens_per_second", status="total"),
@@ -335,11 +332,7 @@ def _build_details(
                     continue
                 metric_rows.append(
                     {
-                        "strategy": run.get("label")
-                        or _format_run_label(
-                            run.get("strategy"),
-                            run.get("concurrency"),
-                        ),
+                        "strategy": run.get("label") or run.get("strategy"),
                         "input_mean": input_mean,
                         "input_p95": input_p95,
                         "output_mean": output_mean,
