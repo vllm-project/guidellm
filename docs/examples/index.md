@@ -6,6 +6,12 @@ weight: -4
 
 Welcome to the GuideLLM examples section! This area is designed to showcase practical applications of GuideLLM for evaluating and optimizing LLM deployments in various real-world scenarios. Our goal is to provide you with concrete examples that demonstrate how to use GuideLLM effectively in your own workflows.
 
+## Available Examples
+
+- [Practice on vLLM Simulator](./practice_on_vllm_simulator.md) — run your first benchmark from scratch against the vLLM simulator, no GPU required
+- [Custom JSONL Dataset](./custom-jsonl-dataset.md) — benchmark a deployed endpoint with a local tokenizer and your own JSONL prompts
+- [Kubernetes / OpenShift Client Job](./kubernetes-openshift-job.md) — run GuideLLM as a non-GPU batch Job against an in-cluster OpenAI-compatible Service, with results on a PVC
+
 ## Call for Contributions
 
 Currently, we do not have many specific examples available, but we welcome contributions from the community! If you have examples of how you've used GuideLLM to solve real-world problems or optimize your LLM deployments, we'd love to feature them here.
