@@ -316,6 +316,7 @@ class TestLifecycle:
         await loop.run_in_executor(None, lambda: generate_entered.wait(timeout=5.0))
 
         gen_task.cancel()
+        generate_proceed.set()
         with pytest.raises(asyncio.CancelledError):
             await gen_task
 

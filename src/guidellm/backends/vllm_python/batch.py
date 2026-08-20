@@ -454,6 +454,23 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
         self._pending_batch.clear()
         return batch
 
+    async def _await_shielded_executor(
+        self,
+        batch: list[_BatchedRequest],
+        fut: asyncio.Future[Any],
+    ) -> Any:
+        """Await *fut* under shield; on cancel, wait for executor then re-raise."""
+        try:
+            return await asyncio.shield(fut)
+        except asyncio.CancelledError:
+            try:
+                await fut
+            except Exception as gen_exc:  # noqa: BLE001
+                self._signal_batch_failure(batch, gen_exc)
+            else:
+                self._signal_batch_failure(batch, asyncio.CancelledError())
+            raise
+
     async def _run_generate(self, batch: list[_BatchedRequest]) -> None:
         """Run ``LLM.generate()`` for *batch* and distribute results.
 
@@ -499,12 +516,7 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
                         use_tqdm=False,
                     ),
                 )
-                try:
-                    outputs = await asyncio.shield(fut)
-                except asyncio.CancelledError as exc:
-                    await fut
-                    self._signal_batch_failure(batch, exc)
-                    raise
+                outputs = await self._await_shielded_executor(batch, fut)
             except Exception as exc:  # noqa: BLE001
                 self._signal_batch_failure(batch, exc)
                 return
