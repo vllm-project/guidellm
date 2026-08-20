@@ -24,7 +24,7 @@ guidellm run \
 
 ## Async vs batch backend
 
-| Feature   | `vllm_python_async`                | `vllm_python_batch`             |
+| Feature   | `vllm_python_async`          | `vllm_python_batch`        |
 | --------- | ---------------------------- | -------------------------- |
 | Engine    | `AsyncLLMEngine` (async)     | `LLM` (synchronous, batch) |
 | Streaming | Supported                    | Not supported              |
