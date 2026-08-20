@@ -499,6 +499,18 @@ class TestBackend:
         assert backend._args.model == "test-model"
         assert backend.kind == "vllm_python_async"
 
+    @pytest.mark.regression
+    def test_vllm_python_kind_alias_registered(self):
+        """
+        vllm_python remains accepted as an alias for vllm_python_async.
+        ## WRITTEN BY AI ##
+        """
+        assert Backend.is_registered("vllm_python")
+        args = VLLMPythonAsyncBackendArgs(kind="vllm_python", model="test-model")
+        backend = Backend.create(args)
+        assert isinstance(backend, VLLMPythonAsyncBackend)
+        assert backend._args.kind == "vllm_python"
+
     @pytest.mark.smoke
     def test_backend_registry_functionality(self):
         """Test that backend registry functions work."""

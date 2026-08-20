@@ -288,6 +288,43 @@ class TestLifecycle:
         assert started_backend._llm is None
 
     @pytest.mark.asyncio
+    @pytest.mark.regression
+    @async_timeout(10.0)
+    async def test_run_generate_cancelled_waits_for_executor(self, started_backend):
+        """Cancellation waits for in-flight LLM.generate before releasing lock.
+
+        ## WRITTEN BY AI ##
+        """
+        generate_entered = threading.Event()
+        generate_proceed = threading.Event()
+        generate_finished = threading.Event()
+
+        def slow_generate(*args, **kwargs):
+            generate_entered.set()
+            generate_proceed.wait(timeout=5.0)
+            try:
+                return [_mock_request_output() for _ in args[0]]
+            finally:
+                generate_finished.set()
+
+        started_backend._llm.generate.side_effect = slow_generate
+        req = _BatchedRequest(resolved_prompt="p", multi_modal_data=None, max_tokens=10)
+        batch = [req]
+
+        gen_task = asyncio.create_task(started_backend._run_generate(batch))
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: generate_entered.wait(timeout=5.0))
+
+        gen_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await gen_task
+
+        assert generate_finished.is_set()
+        assert req.ready.is_set()
+        assert isinstance(req.result, asyncio.CancelledError)
+        await started_backend.process_shutdown()
+
+    @pytest.mark.asyncio
     @pytest.mark.smoke
     async def test_validate_passes_after_startup(self, started_backend):
         """Validate succeeds after startup. ## WRITTEN BY AI ##"""
@@ -1073,6 +1110,29 @@ class TestValidateProcessStartedAndRequireLlm:
         """
         result = started_backend._require_llm()
         assert result is started_backend._llm
+
+
+# ------------------------------------------------------------------
+# Chat template fallback
+# ------------------------------------------------------------------
+
+
+class TestChatTemplateFallback:
+    """Chat template fallback for models without a default template."""
+
+    @pytest.mark.regression
+    def test_default_template_falls_back_on_value_error(self, started_backend):
+        """
+        default-template falls back to plain prompt when chat template missing.
+        ## WRITTEN BY AI ##
+        """
+        mock_tokenizer = Mock()
+        mock_tokenizer.apply_chat_template.side_effect = ValueError("no chat template")
+        started_backend._llm.get_tokenizer.return_value = mock_tokenizer
+        messages = [{"role": "user", "content": "Hi"}]
+        prompt = started_backend._extract_prompt_chat_tokenizer(messages)
+        assert prompt == "Hi"
+        mock_tokenizer.apply_chat_template.assert_called_once()
 
 
 # ------------------------------------------------------------------

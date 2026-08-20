@@ -183,8 +183,9 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
     def __setstate__(self, state: dict[str, Any]) -> None:
         """Restore backend state after unpickling in a worker process."""
         self.__dict__.update(state)
-        for attr in _ASYNC_LOCK_ATTRS:
-            setattr(self, attr, None)
+        self._batch_lock = None
+        self._generate_lock = None
+        self._engine_lock = None
 
     def _create_async_locks(self) -> None:
         """Create asyncio locks for the current event loop."""
@@ -490,7 +491,7 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
             raise RuntimeError("Locks not initialized; call process_startup() first.")
         async with self._generate_lock:
             try:
-                outputs = await loop.run_in_executor(
+                fut = loop.run_in_executor(
                     None,
                     lambda: self._llm.generate(  # type: ignore[union-attr]
                         prompts,
@@ -498,6 +499,12 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
                         use_tqdm=False,
                     ),
                 )
+                try:
+                    outputs = await asyncio.shield(fut)
+                except asyncio.CancelledError as exc:
+                    await fut
+                    self._signal_batch_failure(batch, exc)
+                    raise
             except Exception as exc:  # noqa: BLE001
                 self._signal_batch_failure(batch, exc)
                 return
@@ -643,7 +650,7 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
             raise RuntimeError("Locks not initialized; call process_startup() first.")
         async with self._batch_lock:
             if self._processing_task is None or self._processing_task.done():
-                self._processing_task = asyncio.ensure_future(_deferred_flush())
+                self._processing_task = asyncio.create_task(_deferred_flush())
 
     @staticmethod
     def _wire_vllm_metrics(

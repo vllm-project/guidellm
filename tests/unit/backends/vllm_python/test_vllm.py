@@ -586,6 +586,24 @@ class TestVLLMRequestFormat:
         assert call_kw.get("tokenize") is False
         assert call_kw.get("add_generation_prompt") is True
 
+    @pytest.mark.regression
+    def test_request_format_default_template_falls_back_on_value_error(self):
+        """
+        default-template falls back to plain prompt when chat template missing.
+        ## WRITTEN BY AI ##
+        """
+        mock_tokenizer = Mock()
+        mock_tokenizer.apply_chat_template.side_effect = ValueError("no chat template")
+        backend_default = _make_vllm_backend(
+            model="test-model", request_format="default-template"
+        )
+        backend_default._engine = Mock()
+        backend_default._engine.tokenizer = mock_tokenizer
+        request = GenerationRequest(columns={"text_column": ["Hi"]})
+        resolved = backend_default._resolve_request(request)
+        assert resolved.prompt == "Hi"
+        mock_tokenizer.apply_chat_template.assert_called_once()
+
     @pytest.mark.smoke
     def test_request_format_none_uses_apply_chat_template(self):
         """

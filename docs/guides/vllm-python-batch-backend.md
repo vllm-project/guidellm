@@ -16,7 +16,7 @@ Run a benchmark with the vLLM Python batch backend:
 
 ```bash
 guidellm run \
-  --backend kind=vllm_python_batch,model=Qwen/Qwen3-0.6B,batch_size=32 \
+  --backend kind=vllm_python_batch,model=Qwen/Qwen3-0.6B,batch_size=8 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --profile kind=throughput,max_concurrency=20 \
   --constraint kind=max_requests,count=100

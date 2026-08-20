@@ -20,7 +20,11 @@ from .openai import (
     OpenAIWebSocketBackendArgs,
     TextCompletionsRequestHandler,
 )
-from .vllm_python import VLLMPythonAsyncBackend, VLLMResponseHandler
+from .vllm_python import (
+    VLLMPythonAsyncBackend,
+    VLLMPythonBatchBackend,
+    VLLMResponseHandler,
+)
 
 __all__ = [
     "AudioRequestHandler",
@@ -34,5 +38,6 @@ __all__ = [
     "OpenAIWebSocketBackendArgs",
     "TextCompletionsRequestHandler",
     "VLLMPythonAsyncBackend",
+    "VLLMPythonBatchBackend",
     "VLLMResponseHandler",
 ]

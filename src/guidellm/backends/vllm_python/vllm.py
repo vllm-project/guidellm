@@ -42,11 +42,11 @@ _CHAT_TEMPLATE_UNSET: object = object()
 __all__ = ["VLLMPythonAsyncBackend", "VLLMPythonAsyncBackendArgs"]
 
 
-@BackendArgs.register("vllm_python_async")
+@BackendArgs.register(["vllm_python_async", "vllm_python"])
 class VLLMPythonAsyncBackendArgs(BackendArgs):
     """Pydantic model for VLLM Python backend creation arguments."""
 
-    kind: Literal["vllm_python_async"] = Field(
+    kind: Literal["vllm_python_async", "vllm_python"] = Field(
         default="vllm_python_async",
         description="Backend type identifier for VLLM Python backend.",
     )
@@ -135,7 +135,7 @@ def _has_jinja2_markers(s: str) -> bool:
     return "{{" in s or "{%" in s or "{#" in s
 
 
-@Backend.register("vllm_python_async")
+@Backend.register(["vllm_python_async", "vllm_python"])
 class VLLMPythonAsyncBackend(Backend):
     """
     Python API backend for VLLM inference engine.
