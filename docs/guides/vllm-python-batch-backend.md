@@ -1,30 +1,30 @@
-# vLLM Offline Backend
+# vLLM Python Batch Backend
 
-The **vLLM offline backend** (`vllm_offline`) runs batch inference in the same process as GuideLLM using vLLM's synchronous [LLM](https://docs.vllm.ai/) engine. Requests are queued and dispatched in configurable batches via `LLM.generate()`, removing per-request scheduling overhead. This is ideal for throughput benchmarking where latency per individual request is less important than aggregate throughput.
+The **vLLM Python batch backend** (`vllm_python_batch`) runs batch inference in the same process as GuideLLM using vLLM's synchronous [LLM](https://docs.vllm.ai/) engine. Requests are queued and dispatched in configurable batches via `LLM.generate()`, removing per-request scheduling overhead. This is ideal for throughput benchmarking where latency per individual request is less important than aggregate throughput.
 
-Like the `vllm_python` backend, no HTTP server is involved. You do **not** pass a `target`; you **must** pass `model` in the backend configuration.
+Like the `vllm_python_async` backend, no HTTP server is involved. You do **not** pass a `target`; you **must** pass `model` in the backend configuration.
 
 For all engine options and supported models, see vLLM's [Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/) and the [vLLM documentation](https://docs.vllm.ai/).
 
 ## Installation
 
-Installation is the same as for the [vLLM Python backend](vllm-python-backend.md#installation). The offline backend uses the same vLLM package.
+Installation is the same as for the [vLLM Python backend](vllm-python-backend.md#installation). The batch backend uses the same vLLM package.
 
 ## Basic example
 
-Run a benchmark with the vLLM offline backend:
+Run a benchmark with the vLLM Python batch backend:
 
 ```bash
 guidellm run \
-  --backend kind=vllm_offline,model=Qwen/Qwen3-0.6B,batch_size=32 \
+  --backend kind=vllm_python_batch,model=Qwen/Qwen3-0.6B,batch_size=32 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --profile kind=throughput,max_concurrency=20 \
   --constraint kind=max_requests,count=100
 ```
 
-## Offline vs Python backend
+## Async vs batch backend
 
-| Feature   | `vllm_python`                | `vllm_offline`             |
+| Feature   | `vllm_python_async`                | `vllm_python_batch`             |
 | --------- | ---------------------------- | -------------------------- |
 | Engine    | `AsyncLLMEngine` (async)     | `LLM` (synchronous, batch) |
 | Streaming | Supported                    | Not supported              |
@@ -43,7 +43,7 @@ guidellm run \
   Hugging Face model identifier or filesystem path for vLLM to load.
 
 - **`request_format`**\
-  Controls how chat prompts are built. Same options as `vllm_python`: `plain`, `default-template`, or a Jinja2 template path/string.
+  Controls how chat prompts are built. Same options as `vllm_python_async`: `plain`, `default-template`, or a Jinja2 template path/string.
 
 - **`vllm_config`**\
   Engine options passed as a nested dict. Uses vLLM's `EngineArgs` parameter names (Python form, not CLI form). See the [vLLM Python backend docs](vllm-python-backend.md#request-format-and-backend-options) for details on `vllm_config`.
@@ -51,12 +51,12 @@ guidellm run \
   Example with JSON:
 
   ```bash
-  --backend '{"kind":"vllm_offline","model":"Qwen/Qwen3-0.6B","batch_size":64,"vllm_config":{"gpu_memory_utilization":0.8,"max_model_len":4096}}'
+  --backend '{"kind":"vllm_python_batch","model":"Qwen/Qwen3-0.6B","batch_size":64,"vllm_config":{"gpu_memory_utilization":0.8,"max_model_len":4096}}'
   ```
 
 > [!IMPORTANT]
 >
-> The `model` field in the backend configuration is required for `vllm_offline`. If `model` is also set inside `vllm_config`, the top-level `model` field takes precedence.
+> The `model` field in the backend configuration is required for `vllm_python_batch`. If `model` is also set inside `vllm_config`, the top-level `model` field takes precedence.
 
 ## Engine lifecycle
 
@@ -66,11 +66,9 @@ The vLLM `LLM` engine is never loaded during `process_startup()`. Engine creatio
 - **Worker process**: when `multiprocessing.parent_process()` is set (true for both `fork` and `spawn` workers; see `GUIDELLM__MP_CONTEXT_TYPE`), `validate()` calls `_ensure_engine()` to **preload** the engine so the cold-start time is excluded from the timed benchmark phase.
 - **Inference-time safety net**: as requests are generated from the dataset, `_ensure_engine()` is called as an idempotent fallback, so inference works correctly even if `validate()` was skipped.
 
-During benchmarks, GuideLLM lowers vLLM log verbosity in scheduler workers (default `VLLM_LOGGING_LEVEL=ERROR`) so engine startup logs do not corrupt the live progress UI. Set `VLLM_LOGGING_LEVEL=DEBUG` to restore full vLLM output.
-
 ## See also
 
-- [vLLM Python Backend](vllm-python-backend.md) -- Async per-request backend.
+- [vLLM Python Async Backend](vllm-python-backend.md) -- Async per-request backend.
 - [Backends](backends.md) -- Overview of supported backends.
 - [Run a benchmark](../getting-started/benchmark.md) -- General benchmark options.
 - [vLLM Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/) -- CLI-oriented docs; use Python names in `vllm_config`.

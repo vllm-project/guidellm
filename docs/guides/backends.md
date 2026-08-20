@@ -30,11 +30,11 @@ GuideLLM supports OpenAI-compatible HTTP servers, which provide a standardized A
 
 ### vLLM Python Backend
 
-GuideLLM supports running inference in the same process using the **vLLM Python backend** (`vllm_python`). This backend runs inference in the same process as GuideLLM's using vLLM's python API (AsyncLLMEngine), without an HTTP server. For setup, installation options (container, existing vLLM, pip), and examples, see [vLLM Python backend](vllm-python-backend.md).
+GuideLLM supports running inference in the same process using the **vLLM Python backend** (`vllm_python_async`). This backend runs inference in the same process as GuideLLM's using vLLM's python API (AsyncLLMEngine), without an HTTP server. For setup, installation options (container, existing vLLM, pip), and examples, see [vLLM Python backend](vllm-python-backend.md).
 
 ### vLLM Offline Backend
 
-The **vLLM offline backend** (`vllm_offline`) uses vLLM's synchronous `LLM` engine for batch-oriented inference. Requests are queued and dispatched in configurable batches, removing per-request scheduling overhead. This is ideal for throughput benchmarking. For setup and examples, see [vLLM Offline backend](vllm-offline-backend.md).
+The **vLLM Python batch backend** (`vllm_python_batch`) uses vLLM's synchronous `LLM` engine for batch-oriented inference. Requests are queued and dispatched in configurable batches, removing per-request scheduling overhead. This is ideal for throughput benchmarking. For setup and examples, see [vLLM Python batch backend](vllm-python-batch-backend.md).
 
 ## Examples for Spinning Up Compatible Servers
 

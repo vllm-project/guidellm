@@ -1,12 +1,16 @@
 """
 VLLM Python API backend package.
 
-Provides the VLLM Python backend and response handler for building
-GenerationResponse from vLLM output.
+Provides the vLLM Python async and batch backends and response handler for
+building GenerationResponse from vLLM output.
 """
 
-from .offline import VLLMOfflineBackend
-from .vllm import VLLMPythonBackend
+from .batch import VLLMPythonBatchBackend
+from .vllm import VLLMPythonAsyncBackend
 from .vllm_response import VLLMResponseHandler
 
-__all__ = ["VLLMOfflineBackend", "VLLMPythonBackend", "VLLMResponseHandler"]
+__all__ = [
+    "VLLMPythonAsyncBackend",
+    "VLLMPythonBatchBackend",
+    "VLLMResponseHandler",
+]

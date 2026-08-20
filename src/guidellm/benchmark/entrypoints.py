@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any, TypeVar
 
 from guidellm.backends import Backend, BackendArgs
-from guidellm.backends.vllm_python.common import prepare_vllm_benchmark_logging
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerConsole,
@@ -516,8 +515,6 @@ async def benchmark_generative_text(
     )
 
     report = GenerativeBenchmarksReport(config=args)
-    if benchmark_args.backend.kind in ("vllm_offline", "vllm_python"):
-        prepare_vllm_benchmark_logging()
     if console:
         console.print_update(
             title="Setup complete, starting benchmarks...", status="success"

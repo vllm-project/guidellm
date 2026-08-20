@@ -1,5 +1,5 @@
 """
-VLLM Offline (batch) backend implementation for GuideLLM.
+VLLM batch backend implementation for GuideLLM.
 
 Provides batch-oriented inference using vLLM's synchronous LLM engine.
 Requests are queued and processed in configurable batches, removing the
@@ -22,14 +22,13 @@ from pydantic import ConfigDict, Field, PositiveInt
 from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.vllm_python.common import (
     is_scheduler_worker_process,
-    prepare_vllm_benchmark_logging,
     reset_cpu_affinity,
     vllm_benchmark_engine_config,
 )
 from guidellm.backends.vllm_python.vllm import (
     _CHAT_TEMPLATE_UNSET,
-    VLLMPythonBackend,
-    VLLMPythonBackendArgs,
+    VLLMPythonAsyncBackend,
+    VLLMPythonAsyncBackendArgs,
 )
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
 from guidellm.extras import vllm
@@ -41,22 +40,22 @@ from guidellm.schemas import (
     StandardBaseModel,
 )
 
-__all__ = ["VLLMOfflineBackend", "VLLMOfflineBackendArgs"]
+__all__ = ["VLLMPythonBatchBackend", "VLLMPythonBatchBackendArgs"]
 
 _ASYNC_LOCK_ATTRS = ("_batch_lock", "_generate_lock", "_engine_lock")
 
 
-@BackendArgs.register("vllm_offline")
-class VLLMOfflineBackendArgs(VLLMPythonBackendArgs):
+@BackendArgs.register("vllm_python_batch")
+class VLLMPythonBatchBackendArgs(VLLMPythonAsyncBackendArgs):
     """Pydantic model for VLLM Offline backend creation arguments.
 
-    Extends :class:`VLLMPythonBackendArgs` with batch-specific options
+    Extends :class:`VLLMPythonAsyncBackendArgs` with batch-specific options
     and removes the ``stream`` field (offline generation is always
     non-streaming).
     """
 
-    kind: Literal["vllm_offline"] = Field(  # type: ignore[assignment]
-        default="vllm_offline",
+    kind: Literal["vllm_python_batch"] = Field(  # type: ignore[assignment]
+        default="vllm_python_batch",
         description="Backend type identifier for VLLM Offline backend.",
     )
     batch_size: PositiveInt = Field(
@@ -114,8 +113,8 @@ class _BatchedRequest:
     ready: asyncio.Event = field(default_factory=asyncio.Event)
 
 
-@Backend.register("vllm_offline")
-class VLLMOfflineBackend(VLLMPythonBackend):
+@Backend.register("vllm_python_batch")
+class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
     """
     Batch-oriented Python API backend for VLLM inference engine.
 
@@ -126,8 +125,8 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
     Example:
     ::
-        backend = VLLMOfflineBackend(
-            VLLMOfflineBackendArgs(
+        backend = VLLMPythonBatchBackend(
+            VLLMPythonBatchBackendArgs(
                 model="meta-llama/Llama-2-7b-chat-hf",
                 batch_size=16,
             )
@@ -140,18 +139,18 @@ class VLLMOfflineBackend(VLLMPythonBackend):
         await backend.process_shutdown()
     """
 
-    _args: VLLMOfflineBackendArgs
+    _args: VLLMPythonBatchBackendArgs
 
     @classmethod
     def backend_args(cls) -> type[BackendArgs]:
         """Return the Pydantic model for this backend's creation
         arguments.
         """
-        return VLLMOfflineBackendArgs
+        return VLLMPythonBatchBackendArgs
 
     def __init__(
         self,
-        arguments: VLLMOfflineBackendArgs,
+        arguments: VLLMPythonBatchBackendArgs,
     ):
         """
         Initialize VLLM Offline backend.
@@ -221,8 +220,6 @@ class VLLMOfflineBackend(VLLMPythonBackend):
 
         self._in_process = True
         self._shutting_down = False
-
-        prepare_vllm_benchmark_logging()
 
         # Discard any engine handle inherited from the parent process.
         # The worker must create its own via _ensure_engine().

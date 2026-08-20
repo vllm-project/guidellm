@@ -10,7 +10,6 @@ request/token statistics and scheduler state updates.
 
 from __future__ import annotations
 
-import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Generic, Literal
@@ -107,9 +106,7 @@ class GenerativeConsoleBenchmarkerProgress(
 
     Renders live benchmark execution statistics using Rich library components with
     structured progress bars, timing information, request/token metrics, and optional
-    scheduler statistics. Refreshes are driven explicitly by lifecycle callbacks;
-    no background auto-refresh timer is used, so worker-process terminal writes
-    during engine initialisation cannot corrupt the display.
+    scheduler statistics. Updates refresh automatically during benchmark execution.
 
     :cvar display_scheduler_stats: Whether to include scheduler statistics in display
     """
@@ -124,7 +121,7 @@ class GenerativeConsoleBenchmarkerProgress(
         Live.__init__(
             self,
             refresh_per_second=4,
-            auto_refresh=False,
+            auto_refresh=True,
             redirect_stdout=True,
             redirect_stderr=True,
         )
@@ -132,7 +129,6 @@ class GenerativeConsoleBenchmarkerProgress(
         self.run_progress: Progress | None = None
         self.run_progress_task: TaskID | None = None
         self.tasks_progress: _GenerativeProgressTasks | None = None
-        self._last_refresh: float = 0.0
 
     async def on_initialize(self, profile: Profile):
         """
@@ -185,10 +181,6 @@ class GenerativeConsoleBenchmarkerProgress(
         if self.tasks_progress is not None:
             self.tasks_progress.start_benchmark(strategy)
             self._sync_run_progress()
-            # Refresh once before workers spawn so the panel is visible.
-            # No further auto-refresh until the first on_benchmark_update(),
-            # preventing worker-process terminal writes from stacking panels.
-            self._force_refresh()
 
     async def on_benchmark_update(
         self,
@@ -204,7 +196,6 @@ class GenerativeConsoleBenchmarkerProgress(
         if self.tasks_progress is not None:
             self.tasks_progress.update_benchmark(accumulator, scheduler_state)
             self._sync_run_progress()
-            self._throttled_refresh()
 
     async def on_benchmark_complete(self, benchmark: GenerativeBenchmark):
         """
@@ -215,7 +206,6 @@ class GenerativeConsoleBenchmarkerProgress(
         if self.tasks_progress is not None:
             self.tasks_progress.complete_benchmark(benchmark)
             self._sync_run_progress()
-            self._force_refresh()
 
     async def on_finalize(self):
         """Stop display rendering and release resources."""
@@ -224,23 +214,10 @@ class GenerativeConsoleBenchmarkerProgress(
             self._sync_run_progress()
         if self.run_progress is not None and self.run_progress_task is not None:
             self.run_progress.stop_task(self.run_progress_task)
-        self._force_refresh()
         self.stop()
         self.run_progress = None
         self.run_progress_task = None
         self.tasks_progress = None
-
-    def _force_refresh(self) -> None:
-        """Render immediately and reset the throttle clock."""
-        self._last_refresh = time.monotonic()
-        self.refresh()
-
-    def _throttled_refresh(self) -> None:
-        """Render at most refresh_per_second times per second."""
-        now = time.monotonic()
-        if now - self._last_refresh >= 1.0 / self.refresh_per_second:
-            self._last_refresh = now
-            self.refresh()
 
     def _sync_run_progress(self):
         """Synchronize overall progress display with task progress."""

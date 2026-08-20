@@ -15,13 +15,13 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from guidellm.backends.vllm_python.common import is_scheduler_worker_process
-from guidellm.backends.vllm_python.offline import (
-    VLLMOfflineBackend,
-    VLLMOfflineBackendArgs,
+from guidellm.backends.vllm_python.batch import (
+    VLLMPythonBatchBackend,
+    VLLMPythonBatchBackendArgs,
     _BatchedRequest,
     _OfflineResolvedRequest,
 )
+from guidellm.backends.vllm_python.common import is_scheduler_worker_process
 from guidellm.schemas import GenerationRequest, RequestInfo
 from tests.unit.testing_utils import async_timeout
 
@@ -30,9 +30,9 @@ def _fake_sampling_params(**kwargs):
     return SimpleNamespace(**kwargs)
 
 
-def _make_offline_backend(**kwargs) -> VLLMOfflineBackend:
-    args = VLLMOfflineBackendArgs(**kwargs)
-    return VLLMOfflineBackend(args)
+def _make_offline_backend(**kwargs) -> VLLMPythonBatchBackend:
+    args = VLLMPythonBatchBackendArgs(**kwargs)
+    return VLLMPythonBatchBackend(args)
 
 
 def _mock_metrics(**overrides):
@@ -71,11 +71,11 @@ def _mock_request_output(
 
 @pytest.fixture
 def offline_backend():
-    """VLLMOfflineBackend instance without requiring vllm installed."""
+    """VLLMPythonBatchBackend instance without requiring vllm installed."""
     mock_vllm = MagicMock()
     mock_vllm.SamplingParams = _fake_sampling_params
     with (
-        patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+        patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
         patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
     ):
         yield _make_offline_backend(model="test-model", batch_size=4)
@@ -106,7 +106,7 @@ class TestEngineLaziness:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
@@ -124,9 +124,9 @@ class TestEngineLaziness:
         mock_vllm.EngineArgs.return_value = Mock()
         mock_vllm.LLM.from_engine_args.return_value = mock_llm
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
-            patch("guidellm.backends.vllm_python.offline.reset_cpu_affinity"),
+            patch("guidellm.backends.vllm_python.batch.reset_cpu_affinity"),
         ):
             backend = _make_offline_backend(model="test-model")
             await backend.process_startup()
@@ -145,9 +145,9 @@ class TestEngineLaziness:
         mock_vllm.EngineArgs.return_value = Mock()
         mock_vllm.LLM.from_engine_args.return_value = mock_llm
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
-            patch("guidellm.backends.vllm_python.offline.reset_cpu_affinity"),
+            patch("guidellm.backends.vllm_python.batch.reset_cpu_affinity"),
         ):
             backend = _make_offline_backend(model="test-model")
             await backend.process_startup()
@@ -166,9 +166,9 @@ class TestEngineLaziness:
         mock_vllm.EngineArgs.return_value = Mock()
         mock_vllm.LLM.from_engine_args.return_value = mock_llm
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
-            patch("guidellm.backends.vllm_python.offline.reset_cpu_affinity"),
+            patch("guidellm.backends.vllm_python.batch.reset_cpu_affinity"),
         ):
             backend = _make_offline_backend(model="test-model")
             await backend.process_startup()
@@ -187,7 +187,7 @@ class TestEngineLaziness:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
@@ -317,7 +317,7 @@ class TestProcessStartupReset:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
@@ -332,7 +332,7 @@ class TestProcessStartupReset:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
@@ -367,7 +367,7 @@ class TestProcessStartupReset:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
@@ -389,7 +389,7 @@ class TestSpawnPickling:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
@@ -407,7 +407,7 @@ class TestSpawnPickling:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
@@ -431,7 +431,7 @@ class TestSpawnPickling:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
@@ -457,7 +457,7 @@ class TestWorkerBasedPreload:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
@@ -475,11 +475,11 @@ class TestWorkerBasedPreload:
         mock_vllm.EngineArgs.return_value = Mock()
         mock_vllm.LLM.from_engine_args.return_value = mock_llm
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
-            patch("guidellm.backends.vllm_python.offline.reset_cpu_affinity"),
+            patch("guidellm.backends.vllm_python.batch.reset_cpu_affinity"),
             patch(
-                "guidellm.backends.vllm_python.offline.is_scheduler_worker_process",
+                "guidellm.backends.vllm_python.batch.is_scheduler_worker_process",
                 return_value=True,
             ),
         ):
@@ -800,7 +800,7 @@ class TestBatchTimeout:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model")
@@ -812,7 +812,7 @@ class TestBatchTimeout:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
             backend = _make_offline_backend(model="test-model", batch_timeout=0.05)
@@ -824,7 +824,7 @@ class TestBatchTimeout:
         mock_vllm = MagicMock()
         mock_vllm.SamplingParams = _fake_sampling_params
         with (
-            patch("guidellm.backends.vllm_python.offline.vllm", mock_vllm),
+            patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
             pytest.raises(ValueError),
         ):
@@ -843,7 +843,7 @@ class TestWireVllmMetrics:
         request_info = RequestInfo()
         metrics = _mock_metrics(num_generation_tokens=42)
         output = _mock_request_output(metrics=metrics)
-        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        VLLMPythonBatchBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.token_iterations == 42
         assert request_info.timings.request_iterations == 1
 
@@ -853,7 +853,7 @@ class TestWireVllmMetrics:
         request_info = RequestInfo()
         metrics = _mock_metrics(num_generation_tokens=0)
         output = _mock_request_output(token_ids=[1, 2, 3, 4, 5], metrics=metrics)
-        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        VLLMPythonBatchBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.token_iterations == 5
         assert request_info.timings.request_iterations == 1
 
@@ -866,7 +866,7 @@ class TestWireVllmMetrics:
         """
         request_info = RequestInfo()
         output = _mock_request_output(metrics=None)
-        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        VLLMPythonBatchBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.token_iterations == 3  # len(token_ids)
 
     @pytest.mark.smoke
@@ -886,7 +886,7 @@ class TestWireVllmMetrics:
             last_token_ts=110.0,
         )
         output = _mock_request_output(metrics=metrics)
-        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        VLLMPythonBatchBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.first_request_iteration == 1000.0
         # mono_base = queued_ts = 99; offsets relative to queue-arrival
         assert request_info.timings.first_token_iteration == pytest.approx(
@@ -913,7 +913,7 @@ class TestWireVllmMetrics:
             last_token_ts=0.0,
         )
         output = _mock_request_output(metrics=metrics)
-        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        VLLMPythonBatchBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.first_token_iteration is None
         assert request_info.timings.last_token_iteration is None
 
@@ -933,7 +933,7 @@ class TestWireVllmMetrics:
             last_token_ts=60.0,
         )
         output = _mock_request_output(metrics=metrics)
-        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        VLLMPythonBatchBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.first_token_iteration == pytest.approx(
             1000.0 + (52.0 - 50.0)
         )
@@ -954,7 +954,7 @@ class TestWireVllmMetrics:
             last_token_ts=110.0,
         )
         output = _mock_request_output(metrics=metrics)
-        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        VLLMPythonBatchBackend._wire_vllm_metrics(request_info, output)
         # scheduled_at = arrival + (scheduled_ts - queued_ts) = 1000 + 2 = 1002
         assert request_info.timings.scheduled_at == pytest.approx(
             1000.0 + (101.0 - 99.0)
@@ -976,7 +976,7 @@ class TestWireVllmMetrics:
             last_token_ts=60.0,
         )
         output = _mock_request_output(metrics=metrics)
-        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        VLLMPythonBatchBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.scheduled_at is None
 
     @pytest.mark.sanity
@@ -995,7 +995,7 @@ class TestWireVllmMetrics:
             last_token_ts=110.0,
         )
         output = _mock_request_output(metrics=metrics)
-        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        VLLMPythonBatchBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.scheduled_at is None
 
     @pytest.mark.sanity
@@ -1016,7 +1016,7 @@ class TestWireVllmMetrics:
         )
         output = _mock_request_output(metrics=partial)
         # Should not raise; timing fields stay None when timestamps are zero
-        VLLMOfflineBackend._wire_vllm_metrics(request_info, output)
+        VLLMPythonBatchBackend._wire_vllm_metrics(request_info, output)
         assert request_info.timings.token_iterations == 3
         assert request_info.timings.first_token_iteration is None
         assert request_info.timings.scheduled_at is None

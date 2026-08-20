@@ -1,6 +1,6 @@
 # vLLM Python Backend
 
-The **vLLM Python backend** (`vllm_python`) runs inference in the same process as GuideLLM using vLLM's [AsyncLLMEngine](https://docs.vllm.ai/). No HTTP server is involved, eliminating network overhead. This is useful for isolating performance bottlenecks or simplifying your benchmark setup. You do **not** pass a `target`; you **must** pass `model` in the backend configuration, which will then be downloaded and hosted in vLLM.
+The **vLLM Python backend** (`vllm_python_async`) runs inference in the same process as GuideLLM using vLLM's [AsyncLLMEngine](https://docs.vllm.ai/). No HTTP server is involved, eliminating network overhead. This is useful for isolating performance bottlenecks or simplifying your benchmark setup. You do **not** pass a `target`; you **must** pass `model` in the backend configuration, which will then be downloaded and hosted in vLLM.
 
 For all engine options and supported models, see vLLM's [Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/) and the [vLLM documentation](https://docs.vllm.ai/).
 
@@ -24,7 +24,7 @@ Run a benchmark with the vLLM Python backend:
 
 ```bash
 guidellm run \
-  --backend kind=vllm_python,model=Qwen/Qwen3-0.6B \
+  --backend kind=vllm_python_async,model=Qwen/Qwen3-0.6B \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --profile kind=constant,rate=3 \
   --constraint kind=max_duration,seconds=20
@@ -45,14 +45,14 @@ Engine behavior (device, memory, etc.) follows vLLM defaults unless you override
   Example — limit GPU memory use and context length:
 
   ```bash
-  --backend '{"kind":"vllm_python","model":"Qwen/Qwen3-0.6B","vllm_config":{"gpu_memory_utilization":0.8,"max_model_len":4096}}'
+  --backend '{"kind":"vllm_python_async","model":"Qwen/Qwen3-0.6B","vllm_config":{"gpu_memory_utilization":0.8,"max_model_len":4096}}'
   ```
 
   For the full list of options and their types, see vLLM's [Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/) (CLI form) and the [EngineArgs source](https://github.com/vllm-project/vllm/blob/main/vllm/engine/arg_utils.py) (Python field names for `vllm_config`).
 
 > [!IMPORTANT]
 >
-> The `model` field in the backend configuration is required for `vllm_python`. If `model` is also set inside `vllm_config`, the top-level `model` field takes precedence.
+> The `model` field in the backend configuration is required for `vllm_python_async`. If `model` is also set inside `vllm_config`, the top-level `model` field takes precedence.
 
 ## See also
 

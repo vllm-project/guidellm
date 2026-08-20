@@ -17,8 +17,8 @@ import numpy as np
 import pytest
 
 from guidellm.backends.vllm_python.vllm import (
-    VLLMPythonBackend,
-    VLLMPythonBackendArgs,
+    VLLMPythonAsyncBackend,
+    VLLMPythonAsyncBackendArgs,
     _has_jinja2_markers,
     _ResolvedRequest,
 )
@@ -30,10 +30,10 @@ from guidellm.schemas import (
 )
 
 
-def _make_vllm_backend(**kwargs) -> VLLMPythonBackend:
-    """Create a VLLMPythonBackend from keyword arguments via BackendArgs."""
-    args = VLLMPythonBackendArgs(**kwargs)
-    return VLLMPythonBackend(args)
+def _make_vllm_backend(**kwargs) -> VLLMPythonAsyncBackend:
+    """Create a VLLMPythonAsyncBackend from keyword arguments via BackendArgs."""
+    args = VLLMPythonAsyncBackendArgs(**kwargs)
+    return VLLMPythonAsyncBackend(args)
 
 
 def _fake_sampling_params(**kwargs):
@@ -60,7 +60,7 @@ def _mock_audio_decode_result(audio_array: np.ndarray) -> tuple[Mock, str]:
 
 @pytest.fixture
 def backend():
-    """VLLMPythonBackend instance without requiring vllm to be installed."""
+    """VLLMPythonAsyncBackend instance without requiring vllm to be installed."""
     mock_vllm_extras = MagicMock()
     mock_vllm_extras.SamplingParams = _fake_sampling_params
     with patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm_extras):
