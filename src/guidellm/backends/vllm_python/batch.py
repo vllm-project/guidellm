@@ -47,16 +47,16 @@ _ASYNC_LOCK_ATTRS = ("_batch_lock", "_generate_lock", "_engine_lock")
 
 @BackendArgs.register("vllm_python_batch")
 class VLLMPythonBatchBackendArgs(VLLMPythonAsyncBackendArgs):
-    """Pydantic model for VLLM Offline backend creation arguments.
+    """Pydantic model for VLLM Python batch backend creation arguments.
 
     Extends :class:`VLLMPythonAsyncBackendArgs` with batch-specific options
-    and removes the ``stream`` field (offline generation is always
+    and removes the ``stream`` field (batch generation is always
     non-streaming).
     """
 
     kind: Literal["vllm_python_batch"] = Field(  # type: ignore[assignment]
         default="vllm_python_batch",
-        description="Backend type identifier for VLLM Offline backend.",
+        description="Backend type identifier for VLLM Python batch backend.",
     )
     batch_size: PositiveInt = Field(
         default=32,
@@ -76,19 +76,19 @@ class VLLMPythonBatchBackendArgs(VLLMPythonAsyncBackendArgs):
         ),
     )
 
-    # Hide the inherited ``stream`` field -- offline is never streaming.
+    # Hide the inherited ``stream`` field -- batch generation is never streaming.
     stream: Literal[False] = Field(  # type: ignore[assignment]
         default=False,
         exclude=True,
-        description="Offline backend does not support streaming.",
+        description="Batch backend does not support streaming.",
     )
 
 
-class _OfflineResolvedRequest(StandardBaseModel):
-    """Fully resolved request for the offline backend.
+class _BatchResolvedRequest(StandardBaseModel):
+    """Fully resolved request for the batch backend.
 
-    Same as the online ``_ResolvedRequest`` but without a ``stream``
-    field, since offline generation never streams.
+    Same as the async ``_ResolvedRequest`` but without a ``stream``
+    field, since batch generation never streams.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -119,7 +119,7 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
     Batch-oriented Python API backend for VLLM inference engine.
 
     Queues incoming requests and dispatches them in batches via
-    ``vllm.LLM.generate()``, which runs the synchronous offline
+    ``vllm.LLM.generate()``, which runs the synchronous LLM
     engine.  This avoids per-request scheduling overhead and is
     ideal for throughput benchmarking.
 
@@ -153,7 +153,7 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
         arguments: VLLMPythonBatchBackendArgs,
     ):
         """
-        Initialize VLLM Offline backend.
+        Initialize VLLM Python batch backend.
 
         Sets up batch processing state in addition to the base
         backend initialisation.
@@ -324,7 +324,7 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
             raise RuntimeError("Backend not started up for process.")
 
         if is_scheduler_worker_process():
-            logger.debug("Preloading vLLM offline engine in worker process")
+            logger.debug("Preloading vLLM batch engine in worker process")
             await self._ensure_engine()
 
     def _validate_process_started(self) -> None:
@@ -355,7 +355,7 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
         return self._llm
 
     # ------------------------------------------------------------------
-    # Chat template / tokenizer (overrides for offline tokenizer path)
+    # Chat template / tokenizer (overrides for batch tokenizer path)
     # ------------------------------------------------------------------
 
     def _extract_prompt_chat_tokenizer(
@@ -407,19 +407,19 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
 
     def _resolve_request(  # type: ignore[override]
         self, request: GenerationRequest
-    ) -> _OfflineResolvedRequest:
+    ) -> _BatchResolvedRequest:
         """
-        Build a fully resolved request for offline generation.
+        Build a fully resolved request for batch generation.
 
-        Delegates to the parent's resolution logic but returns an
-        ``_OfflineResolvedRequest`` (without a ``stream`` field).
+        Delegates to the parent's resolution logic but returns a
+        ``_BatchResolvedRequest`` (without a ``stream`` field).
 
         :param request: Column-based generation request
         :return: Resolved request with formatted prompt and
             multimodal data
         """
         parent_resolved = super()._resolve_request(request)
-        return _OfflineResolvedRequest(
+        return _BatchResolvedRequest(
             prompt=parent_resolved.prompt,
             multi_modal_data=parent_resolved.multi_modal_data,
         )
@@ -435,7 +435,7 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
     ) -> None:
         """Set *exc* on every waiter and unblock ``resolve()`` callers."""
         logger.error(
-            "vLLM offline batch failed: {}: {}",
+            "vLLM Python batch failed: {}: {}",
             type(exc).__name__,
             exc,
         )

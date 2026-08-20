@@ -1,5 +1,5 @@
 """
-Unit tests for VLLM Offline (batch) backend.
+Unit tests for VLLM Python batch backend.
 
 Tests engine laziness, batch processing, deferred flush, generate-lock
 serialization, shutdown drain, shutting-down guard, and metrics wiring.
@@ -19,7 +19,7 @@ from guidellm.backends.vllm_python.batch import (
     VLLMPythonBatchBackend,
     VLLMPythonBatchBackendArgs,
     _BatchedRequest,
-    _OfflineResolvedRequest,
+    _BatchResolvedRequest,
 )
 from guidellm.backends.vllm_python.common import is_scheduler_worker_process
 from guidellm.schemas import GenerationRequest, RequestInfo
@@ -30,7 +30,7 @@ def _fake_sampling_params(**kwargs):
     return SimpleNamespace(**kwargs)
 
 
-def _make_offline_backend(**kwargs) -> VLLMPythonBatchBackend:
+def _make_batch_backend(**kwargs) -> VLLMPythonBatchBackend:
     args = VLLMPythonBatchBackendArgs(**kwargs)
     return VLLMPythonBatchBackend(args)
 
@@ -70,7 +70,7 @@ def _mock_request_output(
 
 
 @pytest.fixture
-def offline_backend():
+def batch_backend():
     """VLLMPythonBatchBackend instance without requiring vllm installed."""
     mock_vllm = MagicMock()
     mock_vllm.SamplingParams = _fake_sampling_params
@@ -78,19 +78,19 @@ def offline_backend():
         patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
         patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
     ):
-        yield _make_offline_backend(model="test-model", batch_size=4)
+        yield _make_batch_backend(model="test-model", batch_size=4)
 
 
 @pytest.fixture
-def started_backend(offline_backend):
-    """Offline backend with _in_process=True and a mock LLM engine."""
-    offline_backend._create_async_locks()
-    offline_backend._in_process = True
+def started_backend(batch_backend):
+    """Batch backend with _in_process=True and a mock LLM engine."""
+    batch_backend._create_async_locks()
+    batch_backend._in_process = True
     mock_llm = Mock()
     mock_llm.generate.return_value = []
     mock_llm.get_tokenizer.return_value = Mock()
-    offline_backend._llm = mock_llm
-    return offline_backend
+    batch_backend._llm = mock_llm
+    return batch_backend
 
 
 # ------------------------------------------------------------------
@@ -109,7 +109,7 @@ class TestEngineLaziness:
             patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             await backend.process_startup()
         assert backend._llm is None
         assert backend._in_process is True
@@ -128,7 +128,7 @@ class TestEngineLaziness:
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.batch.reset_cpu_affinity"),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             await backend.process_startup()
             result = await backend._ensure_engine()
         assert result is mock_llm
@@ -149,7 +149,7 @@ class TestEngineLaziness:
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.batch.reset_cpu_affinity"),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             await backend.process_startup()
             await backend._ensure_engine()
             await backend._ensure_engine()
@@ -170,7 +170,7 @@ class TestEngineLaziness:
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.batch.reset_cpu_affinity"),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             await backend.process_startup()
             results = await asyncio.gather(
                 backend._ensure_engine(),
@@ -190,7 +190,7 @@ class TestEngineLaziness:
             patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             await backend.process_startup()
             with pytest.raises(RuntimeError, match="already started"):
                 await backend.process_startup()
@@ -233,10 +233,10 @@ class TestLifecycle:
 
     @pytest.mark.asyncio
     @pytest.mark.sanity
-    async def test_shutdown_not_started_raises(self, offline_backend):
+    async def test_shutdown_not_started_raises(self, batch_backend):
         """Shutdown before startup raises RuntimeError. ## WRITTEN BY AI ##"""
         with pytest.raises(RuntimeError, match="not started"):
-            await offline_backend.process_shutdown()
+            await batch_backend.process_shutdown()
 
     @pytest.mark.asyncio
     @pytest.mark.sanity
@@ -295,10 +295,10 @@ class TestLifecycle:
 
     @pytest.mark.asyncio
     @pytest.mark.sanity
-    async def test_validate_fails_before_startup(self, offline_backend):
+    async def test_validate_fails_before_startup(self, batch_backend):
         """Validate before startup raises RuntimeError. ## WRITTEN BY AI ##"""
         with pytest.raises(RuntimeError, match="not started"):
-            await offline_backend.validate()
+            await batch_backend.validate()
 
 
 # ------------------------------------------------------------------
@@ -320,7 +320,7 @@ class TestProcessStartupReset:
             patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
         assert backend._batch_lock is None
         assert backend._generate_lock is None
         assert backend._engine_lock is None
@@ -335,7 +335,7 @@ class TestProcessStartupReset:
             patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             await backend.process_startup()
 
             old_batch_lock = backend._batch_lock
@@ -370,7 +370,7 @@ class TestProcessStartupReset:
             patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             await backend.process_startup()
             backend._llm = Mock()
             await backend.process_shutdown()
@@ -392,7 +392,7 @@ class TestSpawnPickling:
             patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             data = pickle.dumps(backend)
             restored = pickle.loads(data)  # noqa: S301
 
@@ -410,7 +410,7 @@ class TestSpawnPickling:
             patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             restored = pickle.loads(pickle.dumps(backend))  # noqa: S301
             await restored.process_startup()
 
@@ -434,7 +434,7 @@ class TestSpawnPickling:
             patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             await backend.process_startup()
             await backend.process_shutdown()
             restored = pickle.loads(pickle.dumps(backend))  # noqa: S301
@@ -460,7 +460,7 @@ class TestWorkerBasedPreload:
             patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             await backend.process_startup()
             await backend.validate()
         assert backend._llm is None
@@ -483,7 +483,7 @@ class TestWorkerBasedPreload:
                 return_value=True,
             ),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
             await backend.process_startup()
             await backend.validate()
         assert backend._llm is mock_llm
@@ -769,7 +769,7 @@ class TestShuttingDownGuard:
         started_backend._shutting_down = True
         request = GenerationRequest(columns={"text_column": ["test"]})
         request_info = RequestInfo()
-        fake_resolved = _OfflineResolvedRequest(prompt="hello")
+        fake_resolved = _BatchResolvedRequest(prompt="hello")
         with (
             patch.object(
                 started_backend, "_resolve_request", return_value=fake_resolved
@@ -803,7 +803,7 @@ class TestBatchTimeout:
             patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
-            backend = _make_offline_backend(model="test-model")
+            backend = _make_batch_backend(model="test-model")
         assert backend._args.batch_timeout == 0.01
 
     @pytest.mark.sanity
@@ -815,7 +815,7 @@ class TestBatchTimeout:
             patch("guidellm.backends.vllm_python.batch.vllm", mock_vllm),
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
         ):
-            backend = _make_offline_backend(model="test-model", batch_timeout=0.05)
+            backend = _make_batch_backend(model="test-model", batch_timeout=0.05)
         assert backend._args.batch_timeout == 0.05
 
     @pytest.mark.sanity
@@ -828,7 +828,7 @@ class TestBatchTimeout:
             patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm),
             pytest.raises(ValueError),
         ):
-            _make_offline_backend(model="test-model", batch_timeout=0)
+            _make_batch_backend(model="test-model", batch_timeout=0)
 
 
 # ------------------------------------------------------------------
@@ -1029,13 +1029,13 @@ class TestWireVllmMetrics:
 
 class TestValidateProcessStartedAndRequireLlm:
     @pytest.mark.smoke
-    def test_validate_process_started_raises_before_startup(self, offline_backend):
+    def test_validate_process_started_raises_before_startup(self, batch_backend):
         """_validate_process_started raises when not started.
 
         ## WRITTEN BY AI ##
         """
         with pytest.raises(RuntimeError, match="not started"):
-            offline_backend._validate_process_started()
+            batch_backend._validate_process_started()
 
     @pytest.mark.smoke
     def test_validate_process_started_passes_after_startup(self, started_backend):
@@ -1046,24 +1046,24 @@ class TestValidateProcessStartedAndRequireLlm:
         started_backend._validate_process_started()  # must not raise
 
     @pytest.mark.smoke
-    def test_require_llm_raises_before_startup(self, offline_backend):
+    def test_require_llm_raises_before_startup(self, batch_backend):
         """_require_llm raises RuntimeError before process_startup.
 
         ## WRITTEN BY AI ##
         """
         with pytest.raises(RuntimeError, match="not started"):
-            offline_backend._require_llm()
+            batch_backend._require_llm()
 
     @pytest.mark.sanity
-    def test_require_llm_raises_when_llm_none(self, offline_backend):
+    def test_require_llm_raises_when_llm_none(self, batch_backend):
         """_require_llm raises RuntimeError when engine not created.
 
         ## WRITTEN BY AI ##
         """
-        offline_backend._in_process = True
-        offline_backend._llm = None
+        batch_backend._in_process = True
+        batch_backend._llm = None
         with pytest.raises(RuntimeError, match="_ensure_engine"):
-            offline_backend._require_llm()
+            batch_backend._require_llm()
 
     @pytest.mark.smoke
     def test_require_llm_returns_engine_when_ready(self, started_backend):
