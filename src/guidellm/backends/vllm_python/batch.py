@@ -22,6 +22,7 @@ from pydantic import ConfigDict, Field, PositiveInt
 from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.vllm_python.common import (
     is_scheduler_worker_process,
+    prepare_vllm_benchmark_logging,
     reset_cpu_affinity,
     vllm_benchmark_engine_config,
 )
@@ -220,6 +221,8 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
 
         self._in_process = True
         self._shutting_down = False
+
+        prepare_vllm_benchmark_logging()
 
         # Discard any engine handle inherited from the parent process.
         # The worker must create its own via _ensure_engine().

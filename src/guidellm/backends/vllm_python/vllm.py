@@ -22,6 +22,7 @@ from pydantic import ConfigDict, Field, model_validator
 
 from guidellm.backends.backend import Backend, BackendArgs
 from guidellm.backends.vllm_python.common import (
+    prepare_vllm_benchmark_logging,
     reset_cpu_affinity,
     vllm_benchmark_engine_config,
 )
@@ -190,6 +191,7 @@ class VLLMPythonAsyncBackend(Backend):
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
 
+        prepare_vllm_benchmark_logging()
         reset_cpu_affinity()
         engine_args = vllm.AsyncEngineArgs(
             **vllm_benchmark_engine_config(self._args.vllm_config),
