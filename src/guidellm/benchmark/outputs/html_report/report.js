@@ -25,6 +25,28 @@
     ttfotAlt: "#004d99", // interaction-blue-60
   };
 
+  // Canonical metric clauses. Glossary entries expand the acronym; chart tips
+  // reuse the same clause so wording lives in one place.
+  var DEF = {
+    ttft: "time measured before the first piece of the reply appears",
+    ttfot: "time measured before the first visible content token (ignoring reasoning-only tokens)",
+    itl: "average time measured between tokens after the first",
+    tpot: "average time measured per output token, including the first",
+    e2e: "full request time from start to finished response",
+    inTps: "prompt processing rate in tokens per second",
+    outTps: "output generation rate in tokens per second",
+  };
+
+  function defLine(label, key) {
+    return label + ": " + DEF[key] + ".";
+  }
+
+  function defLines(keys) {
+    return keys.map(function (k) {
+      return defLine(k.toUpperCase(), k);
+    });
+  }
+
   // Plain-language glossary for circle-? help.
   // Use `lines` for multiple points (each on its own line).
   // Use `also` for follow-on tips (P95/P99/etc.) shown below the main tip.
@@ -105,7 +127,7 @@
     request_latency: {
       title: "Request latency",
       lines: [
-        "End-to-end time from sending a request until the full response finishes.",
+        defLine("End-to-end", "e2e"),
         "Lower is better for snappy UX.",
       ],
       also: ["p95", "p99"],
@@ -113,7 +135,7 @@
     e2e: {
       title: "E2E latency",
       lines: [
-        "End-to-end (E2E) latency: full request time from start to finished response.",
+        defLine("End-to-end (E2E) latency", "e2e"),
         "Same idea as “request latency.”",
       ],
       also: ["p95", "p99"],
@@ -121,7 +143,7 @@
     ttft: {
       title: "TTFT",
       lines: [
-        "Time to First Token (TTFT): wait until the first piece of the reply appears.",
+        defLine("Time to First Token (TTFT)", "ttft"),
         "High TTFT feels like the UI is stuck before any text shows.",
       ],
       also: ["p95", "p99"],
@@ -129,7 +151,7 @@
     itl: {
       title: "ITL",
       lines: [
-        "Inter-Token Latency (ITL): average time between tokens after the first.",
+        defLine("Inter-Token Latency (ITL)", "itl"),
         "High ITL makes streaming feel choppy or sluggish.",
       ],
       also: ["p95", "p99"],
@@ -137,7 +159,7 @@
     tpot: {
       title: "TPOT",
       lines: [
-        "Time Per Output Token (TPOT): average time to produce each output token, including the first.",
+        defLine("Time Per Output Token (TPOT)", "tpot"),
         "A single “cost per token” speed figure; lower is better.",
       ],
       also: ["p95", "p99"],
@@ -145,7 +167,7 @@
     ttfot: {
       title: "TTFOT",
       lines: [
-        "Time to First Output Token (TTFOT): wait until the first visible content token (ignoring reasoning-only tokens).",
+        defLine("Time to First Output Token (TTFOT)", "ttfot"),
         "Differs from TTFT when the model thinks before showing text.",
       ],
       also: ["p95", "p99"],
@@ -184,18 +206,15 @@
     lat_by_conc: {
       title: "Request latency by concurrency",
       lines: [
-        "E2E is full request time from start to finished response.",
+        defLine("E2E", "e2e"),
         "Rising curves as concurrency increases usually mean the server is saturating.",
       ],
       also: ["p95", "p99"],
     },
     outcomes: {
       title: "Request outcomes",
-      lines: [
-        "Successful: finished normally with a usable response.",
-        "Incomplete: started but never finished (timeout or interrupt).",
-        "Errored: failed with an error.",
-      ],
+      lines: ["How each request finished."],
+      also: ["successful", "incomplete", "errored"],
     },
     successful: {
       title: "Successful",
@@ -211,30 +230,6 @@
       title: "Errored",
       lines: [
         "Requests that failed with an error (bad request, server fault, or invalid response).",
-      ],
-    },
-    lat_components: {
-      title: "Latency components",
-      lines: [
-        "TTFT: wait for the first token.",
-        "ITL: average gap between later tokens.",
-        "TPOT: average time per output token including the first.",
-      ],
-      also: ["p95", "p99"],
-    },
-    gen_latency: {
-      title: "Generation latency",
-      lines: [
-        "ITL: average gap between streamed tokens after the first.",
-        "TPOT: average time per output token including the first.",
-      ],
-      also: ["p95", "p99"],
-    },
-    token_throughput: {
-      title: "Token throughput",
-      lines: [
-        "Input tok/s: prompt processing rate.",
-        "Output tok/s: generation rate.",
       ],
     },
     efficiency: {
@@ -264,9 +259,9 @@
     lat_vs_turn: {
       title: "Latency & prompt size by turn",
       lines: [
-        "E2E: full response time (P95 and P99) — left axis.",
-        "TTFT: time to first token (P95) — left axis.",
-        "ITL: average time between later tokens (P95) — left axis.",
+        "E2E (P95/P99): " + DEF.e2e + " — left axis.",
+        "TTFT (P95): " + DEF.ttft + " — left axis.",
+        "ITL (P95): " + DEF.itl + " — left axis.",
         "Prompt median: typical prompt size in tokens — right axis, dashed.",
       ],
       also: ["p95", "p99", "median"],
@@ -292,21 +287,10 @@
         "Turn 1 is the first exchange; higher numbers have more history.",
       ],
     },
-    extra_latency: {
-      title: "Extra latency",
-      lines: [
-        "TPOT: average time per output token including the first.",
-      ],
-      also: ["p95", "p99"],
-    },
     request_size: {
       title: "Request size",
-      lines: [
-        "Prompt tokens: input size (including history).",
-        "Output tokens: generated response size.",
-        "Bigger prompts often mean higher latency.",
-      ],
-      also: ["median", "p95"],
+      lines: ["Bigger prompts often mean higher latency."],
+      also: ["prompt_tokens", "output_tokens", "median", "p95"],
     },
     prompt_tokens: {
       title: "Prompt tokens",
@@ -324,9 +308,8 @@
       title: "WebSocket round-trip",
       lines: [
         "For realtime WebSocket streaming: timing between packets you send and tokens you receive.",
-        "Avg RTT is typical lag; Last RTT is lag at the end of the stream.",
       ],
-      also: ["p95", "p99"],
+      also: ["avg_rtt", "last_rtt", "p95", "p99"],
     },
     avg_rtt: {
       title: "Avg RTT",
@@ -537,26 +520,22 @@
 
   // Build tips that only list metrics present in the current chart/table.
   function helpLatComponents(showTtfot) {
-    var lines = ["TTFT: wait for the first token."];
-    if (showTtfot) lines.push("TTFOT: wait for the first content token.");
-    lines.push("ITL: average gap between later tokens.");
-    lines.push("TPOT: average time per output token including the first.");
+    var keys = ["ttft"];
+    if (showTtfot) keys.push("ttfot");
+    keys.push("itl", "tpot");
     return {
       title: "Latency components",
-      lines: lines,
+      lines: defLines(keys),
       also: ["p95", "p99"],
     };
   }
 
   function helpFirstToken(showTtfot) {
-    var lines = [
-      "TTFT: wait until the first piece of the reply appears.",
-      "High TTFT feels like the UI is stuck before any text shows.",
-    ];
+    var lines = helpLines(HELP.ttft).slice();
     if (showTtfot) {
-      lines.push(
-        "TTFOT: wait until the first visible content token (ignoring reasoning-only tokens)."
-      );
+      helpLines(HELP.ttfot).forEach(function (line) {
+        lines.push(line);
+      });
     }
     return {
       title: showTtfot ? "First-token latency" : "TTFT",
@@ -568,31 +547,27 @@
   function helpGenLatency() {
     return {
       title: "Generation latency",
-      lines: [
-        "ITL: average gap between streamed tokens after the first.",
-        "TPOT: average time per output token including the first.",
-      ],
+      lines: defLines(["itl", "tpot"]),
       also: ["p95", "p99"],
     };
   }
 
   function helpTokenThroughput(multi) {
+    var rates = [defLine("Input tok/s", "inTps"), defLine("Output tok/s", "outTps")];
     if (multi) {
       return {
         title: "Token throughput",
-        lines: [
-          "Input tok/s: prompt processing rate.",
-          "Output tok/s: generation rate.",
+        lines: rates.concat([
           "Each bar stacks input and output at that concurrency.",
-        ],
+        ]),
       };
     }
     return {
       title: "Throughput rates",
       lines: [
         "Req/s: completed requests per second.",
-        "Input tok/s: prompt processing rate.",
-        "Output tok/s: generation rate.",
+        rates[0],
+        rates[1],
         "Total tok/s: input and output combined.",
       ],
       also: ["mean"],
@@ -600,13 +575,11 @@
   }
 
   function helpExtraLatency(showTtfot) {
-    var lines = [
-      "TPOT: average time per output token including the first.",
-    ];
+    var lines = defLines(["tpot"]);
     if (showTtfot) {
-      lines.push(
-        "TTFOT: time to first content token when it differs from TTFT (for example reasoning before visible text)."
-      );
+      helpLines(HELP.ttfot).forEach(function (line) {
+        lines.push(line);
+      });
     }
     return {
       title: "Extra latency",
