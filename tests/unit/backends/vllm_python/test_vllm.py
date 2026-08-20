@@ -17,8 +17,8 @@ import numpy as np
 import pytest
 
 from guidellm.backends.vllm_python.vllm import (
-    VLLMPythonBackend,
-    VLLMPythonBackendArgs,
+    VLLMPythonAsyncBackend,
+    VLLMPythonAsyncBackendArgs,
     _has_jinja2_markers,
     _ResolvedRequest,
 )
@@ -30,10 +30,10 @@ from guidellm.schemas import (
 )
 
 
-def _make_vllm_backend(**kwargs) -> VLLMPythonBackend:
-    """Create a VLLMPythonBackend from keyword arguments via BackendArgs."""
-    args = VLLMPythonBackendArgs(**kwargs)
-    return VLLMPythonBackend(args)
+def _make_vllm_backend(**kwargs) -> VLLMPythonAsyncBackend:
+    """Create a VLLMPythonAsyncBackend from keyword arguments via BackendArgs."""
+    args = VLLMPythonAsyncBackendArgs(**kwargs)
+    return VLLMPythonAsyncBackend(args)
 
 
 def _fake_sampling_params(**kwargs):
@@ -60,7 +60,7 @@ def _mock_audio_decode_result(audio_array: np.ndarray) -> tuple[Mock, str]:
 
 @pytest.fixture
 def backend():
-    """VLLMPythonBackend instance without requiring vllm to be installed."""
+    """VLLMPythonAsyncBackend instance without requiring vllm to be installed."""
     mock_vllm_extras = MagicMock()
     mock_vllm_extras.SamplingParams = _fake_sampling_params
     with patch("guidellm.backends.vllm_python.vllm.vllm", mock_vllm_extras):
@@ -921,6 +921,26 @@ class TestVLLMLifecycle:
             await backend.process_startup()
         assert backend._engine is mock_engine
         assert backend._in_process is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.smoke
+    async def test_process_startup_calls_reset_cpu_affinity(self):
+        """
+        process_startup() calls reset_cpu_affinity() before engine creation.
+        ## WRITTEN BY AI ##
+        """
+        mock_engine = Mock()
+        with (
+            patch("guidellm.backends.vllm_python.vllm.vllm") as mock_vllm,
+            patch(
+                "guidellm.backends.vllm_python.vllm.reset_cpu_affinity"
+            ) as mock_reset,
+        ):
+            mock_vllm.AsyncEngineArgs.return_value = Mock()
+            mock_vllm.AsyncLLMEngine.from_engine_args = Mock(return_value=mock_engine)
+            backend = _make_vllm_backend(model="test-model")
+            await backend.process_startup()
+        mock_reset.assert_called_once()
 
     @pytest.mark.asyncio
     @pytest.mark.sanity
