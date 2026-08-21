@@ -1,31 +1,7 @@
-import dataclasses
 import json
 from typing import Any
 
 from datasets import Dataset, IterableDataset
-
-
-@dataclasses.dataclass
-class VirtualColumnLocation:
-    wrapper_column: str
-    virtual_column: str
-
-
-def construct_virtual_column_locations(
-    wrapper_column: str, virtual_columns: list[str]
-) -> list[VirtualColumnLocation]:
-    return [VirtualColumnLocation(wrapper_column, c) for c in virtual_columns]
-
-
-def unzip_virtual_column_locations(
-    column_locations: list[VirtualColumnLocation],
-) -> tuple[tuple[str], tuple[str]]:
-    """Returns a tuple of wrapper columns and a tuple of virtual columns,
-    in that order."""
-    wrapper_cols, virt_cols = tuple(
-        zip(*(dataclasses.astuple(c) for c in column_locations), strict=True)
-    ) or ((), ())
-    return (wrapper_cols, virt_cols)
 
 
 def try_json_load(json_string: str) -> Any:

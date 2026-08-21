@@ -13,6 +13,10 @@ from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
 from guidellm.data.deserializers.trace_weka import WEKATraceFormatArgs
 from guidellm.data.schemas import DataNotSupportedError
+from guidellm.data.schemas.conversation_graph_data import (
+    ConversationGraphData,
+    ConversationTurnData,
+)
 
 
 def ascending_processor() -> Mock:
@@ -89,6 +93,11 @@ def generate_weka_trace(
     json_data = [json.loads(s) for s in trace_rows.split("\n")]
     cols = non_wrapper_cols + [TraceColumnGenerator("requests", lambda _: json_data)]
     return generate_trace(num_rows, cols)
+
+
+def load_graph_turns(row: dict) -> list[ConversationTurnData]:
+    graph = ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+    return graph.turns
 
 
 def get_from_kwargs(keys, kwargs) -> dict:
@@ -226,14 +235,15 @@ class TestWEKATraceFormat:
         )
         processor = ascending_processor()
         ds = self.deserialize(deserializer, trace)
-        for i, row in enumerate(ds):
-            in_cnt = row["prompt_tokens_count"]
-            assert in_cnt == prompt_lengths[i]
-            assert row["output_tokens_count"] == output_lengths[i]
+        conv = load_graph_turns(next(iter(ds)))
+        for i, turn in enumerate(conv):
+            n_in = turn.columns["prompt_tokens_count_column"][0]
+            assert n_in == prompt_lengths[i]
+            assert turn.columns["output_tokens_count_column"][0] == output_lengths[i]
 
-            actual_prompt_length = len(processor.encode(row["prompt"]))
-            if actual_prompt_length != in_cnt:
-                pytest.fail(f"{actual_prompt_length} != {in_cnt}")
+            actual_length = len(processor.encode(turn.columns["text_column"][0]))
+            if actual_length != n_in:
+                pytest.fail(f"{actual_length} != {n_in}")
 
     @pytest.mark.smoke
     def test_prompt_matching_or_bordering_block_size(
@@ -259,10 +269,12 @@ class TestWEKATraceFormat:
         )
         processor = ascending_processor()
         ds = self.deserialize(deserializer, trace)
-        for row in ds:
-            actual_prompt_length = len(processor.encode(row["prompt"]))
-            if actual_prompt_length != row["prompt_tokens_count"]:
-                pytest.fail(f"{actual_prompt_length} != {row['prompt_tokens_count']}")
+        conv = load_graph_turns(next(iter(ds)))
+        for turn in conv:
+            in_cnt = turn.columns["prompt_tokens_count_column"][0]
+            actual_length = len(processor.encode(turn.columns["text_column"][0]))
+            if actual_length != in_cnt:
+                pytest.fail(f"{actual_length} != {in_cnt}")
 
     @pytest.mark.sanity
     def test_removes_partially_filled_hash_ids(
@@ -288,35 +300,44 @@ class TestWEKATraceFormat:
         )
         processor = ascending_processor()
         ds = self.deserialize(deserializer, trace)
-        for row in ds:
-            actual_prompt_length = len(processor.encode(row["prompt"]))
-            if actual_prompt_length != row["prompt_tokens_count"]:
-                pytest.fail(f"{actual_prompt_length} != {row['prompt_tokens_count']}")
+        conv = load_graph_turns(next(iter(ds)))
+        for turn in conv:
+            in_cnt = turn.columns["prompt_tokens_count_column"][0]
+            actual_length = len(processor.encode(turn.columns["text_column"][0]))
+            if actual_length != in_cnt:
+                pytest.fail(f"{actual_length} != {in_cnt}")
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
-        ("content", "kwargs", "match"),
+        ("content", "match"),
         [
             (
                 '{"id": "conv0", "requests": [{"t": 0, "in": 10,'
                 '"out": 5, "hash_ids": [-1]}]}\n',
-                {},
                 "non-negative",
             ),
             (
                 '{"id": "conv0", "requests": [{"t": 0, "in": 1024,'
                 '"out": 5, "hash_ids": [1]}]}\n',
-                {},
                 "given 1 blocks",
+            ),
+            (
+                '{"id": "conv0", "requests": [[{"t": 0, "in": 10,'
+                '"out": 5, "hash_ids": []}]]}\n',
+                "Failed to find requests",
+            ),
+            (
+                '{"id": "conv0", "requests": []}\n',
+                "requests was empty",
             ),
         ],
     )
     def test_trace_validation_raises(
-        self, tmp_path: Path, deserializer, content, kwargs, match
+        self, tmp_path: Path, deserializer, content, match
     ):
         trace = write_trace(tmp_path, content)
         with pytest.raises(DataNotSupportedError, match=match):
-            self.deserialize(deserializer, trace, **kwargs)
+            self.deserialize(deserializer, trace)
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(
@@ -345,8 +366,7 @@ class TestWEKATraceFormat:
             random_seed=42,
         )
         with pytest.raises(ValueError, match="generate distinct"):
-            for _ in ds:
-                ...
+            load_graph_turns(next(iter(ds)))
 
     @pytest.mark.smoke
     def test_token_block_distinctness(
@@ -374,8 +394,15 @@ class TestWEKATraceFormat:
             processor_factory=compatible_processor,
             random_seed=42,
         )
+        conv = load_graph_turns(next(iter(ds)))
         root_blocks, sibling_blocks = zip(
-            *[(row["prompt"][: n_in // 2], row["prompt"][n_in // 2 :]) for row in ds],
+            *[
+                (
+                    turn.columns["text_column"][0][: n_in // 2],
+                    turn.columns["text_column"][0][n_in // 2 :],
+                )
+                for turn in conv
+            ],
             strict=False,
         )
         assert all_equal(root_blocks)
@@ -402,10 +429,14 @@ class TestWEKATraceFormat:
             ),
         )
         ds = self.deserialize(deserializer, trace)
-        timestamps = [row["relative_timestamp"] for row in ds]
-        assert timestamps[0] == 0.0
-        assert timestamps[1] != 0.0
-        assert timestamps[3] == 0.0
+        ds_iter = iter(ds)
+        conv1 = load_graph_turns(next(ds_iter))
+        conv2 = load_graph_turns(next(ds_iter))
+        timestamps1 = [turn.columns["relative_timestamp_column"][0] for turn in conv1]
+        timestamps2 = [turn.columns["relative_timestamp_column"][0] for turn in conv2]
+        assert timestamps1[0] == 0.0
+        assert timestamps1[1] != 0.0
+        assert timestamps2[0] == 0.0
 
     @pytest.mark.sanity
     def test_multi_conversation_resets_hash_id_state(
@@ -433,8 +464,12 @@ class TestWEKATraceFormat:
             processor_factory=compatible_processor,
             random_seed=42,
         )
-        prompts = [row["prompt"] for row in ds]
-        assert prompts[0] != prompts[2]
+        ds_iter = iter(ds)
+        conv1 = load_graph_turns(next(ds_iter))
+        conv2 = load_graph_turns(next(ds_iter))
+        prompts1 = [turn.columns["text_column"][0] for turn in conv1]
+        prompts2 = [turn.columns["text_column"][0] for turn in conv2]
+        assert prompts1[0] != prompts2[0]
 
     @pytest.mark.sanity
     def test_zero_prompt_tokens_empty_hash_ids(self, tmp_path: Path, deserializer):
@@ -453,6 +488,7 @@ class TestWEKATraceFormat:
             ),
         )
         ds = self.deserialize(deserializer, trace)
-        rows = list(ds)
-        assert rows[0]["prompt_tokens_count"] == 0
-        assert rows[0]["output_tokens_count"] == 5
+        conv = load_graph_turns(next(iter(ds)))
+        turns = list(conv)
+        assert turns[0].columns["prompt_tokens_count_column"][0] == 0
+        assert turns[0].columns["output_tokens_count_column"][0] == 5
