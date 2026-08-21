@@ -1,0 +1,738 @@
+"""
+VLLM batch backend implementation for GuideLLM.
+
+Provides batch-oriented inference using vLLM's synchronous LLM engine.
+Requests are queued and processed in configurable batches, removing the
+overhead of per-request engine interaction while still integrating with
+the standard GuideLLM scheduler lifecycle.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import gc
+import time
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from typing import Any, Literal, cast
+
+from pydantic import ConfigDict, Field, PositiveInt
+
+from guidellm.backends.backend import Backend, BackendArgs
+from guidellm.backends.vllm_python.common import (
+    is_scheduler_worker_process,
+    reset_cpu_affinity,
+    vllm_benchmark_engine_config,
+)
+from guidellm.backends.vllm_python.vllm import (
+    _CHAT_TEMPLATE_UNSET,
+    VLLMPythonAsyncBackend,
+    VLLMPythonAsyncBackendArgs,
+)
+from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
+from guidellm.extras import vllm
+from guidellm.logger import logger
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationResponse,
+    RequestInfo,
+    StandardBaseModel,
+)
+
+__all__ = ["VLLMPythonBatchBackend", "VLLMPythonBatchBackendArgs"]
+
+_ASYNC_LOCK_ATTRS = ("_batch_lock", "_generate_lock", "_engine_lock")
+
+
+@BackendArgs.register("vllm_python_batch")
+class VLLMPythonBatchBackendArgs(VLLMPythonAsyncBackendArgs):
+    """Pydantic model for VLLM Python batch backend creation arguments.
+
+    Extends :class:`VLLMPythonAsyncBackendArgs` with batch-specific options
+    and removes the ``stream`` field (batch generation is always
+    non-streaming).
+    """
+
+    kind: Literal["vllm_python_batch"] = Field(  # type: ignore[assignment]
+        default="vllm_python_batch",
+        description="Backend type identifier for VLLM Python batch backend.",
+    )
+    batch_size: PositiveInt = Field(
+        default=32,
+        description=(
+            "Maximum number of requests to accumulate before "
+            "dispatching a single vLLM generate() call.  Full "
+            "batches flush immediately; partial batches wait up "
+            "to ``batch_timeout`` seconds."
+        ),
+    )
+    batch_timeout: float = Field(
+        default=0.01,
+        gt=0,
+        description=(
+            "Seconds to wait for more requests before flushing a "
+            "partial batch.  Full batches bypass this delay."
+        ),
+    )
+
+    # Hide the inherited ``stream`` field -- batch generation is never streaming.
+    stream: Literal[False] = Field(  # type: ignore[assignment]
+        default=False,
+        exclude=True,
+        description="Batch backend does not support streaming.",
+    )
+
+
+class _BatchResolvedRequest(StandardBaseModel):
+    """Fully resolved request for the batch backend.
+
+    Same as the async ``_ResolvedRequest`` but without a ``stream``
+    field, since batch generation never streams.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    prompt: str = Field(
+        description="Fully resolved prompt string.",
+    )
+    multi_modal_data: dict[str, Any] | None = Field(
+        default=None,
+        description=("vLLM multi_modal_data from image/audio/video columns."),
+    )
+
+
+@dataclass
+class _BatchedRequest:
+    """Tracks a single request waiting for batch processing."""
+
+    resolved_prompt: str
+    multi_modal_data: dict[str, Any] | None
+    max_tokens: int | None
+    result: Any = None  # vllm.RequestOutput once available
+    ready: asyncio.Event = field(default_factory=asyncio.Event)
+
+
+@Backend.register("vllm_python_batch")
+class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
+    """
+    Batch-oriented Python API backend for VLLM inference engine.
+
+    Queues incoming requests and dispatches them in batches via
+    ``vllm.LLM.generate()``, which runs the synchronous LLM
+    engine.  This avoids per-request scheduling overhead and is
+    ideal for throughput benchmarking.
+
+    Example:
+    ::
+        backend = VLLMPythonBatchBackend(
+            VLLMPythonBatchBackendArgs(
+                model="meta-llama/Llama-2-7b-chat-hf",
+                batch_size=16,
+            )
+        )
+        await backend.process_startup()
+        async for response, request_info in backend.resolve(
+            request, info
+        ):
+            process_response(response)
+        await backend.process_shutdown()
+    """
+
+    _args: VLLMPythonBatchBackendArgs
+
+    @classmethod
+    def backend_args(cls) -> type[BackendArgs]:
+        """Return the Pydantic model for this backend's creation
+        arguments.
+        """
+        return VLLMPythonBatchBackendArgs
+
+    def __init__(
+        self,
+        arguments: VLLMPythonBatchBackendArgs,
+    ):
+        """
+        Initialize VLLM Python batch backend.
+
+        Sets up batch processing state in addition to the base
+        backend initialisation.
+        """
+        super().__init__(arguments)
+
+        # Batch processing state.  Asyncio locks are created in
+        # process_startup() so the backend remains pickleable for spawn
+        # workers (locks are bound to the parent event loop).
+        self._batch_lock: asyncio.Lock | None = None
+        self._generate_lock: asyncio.Lock | None = None
+        self._pending_batch: list[_BatchedRequest] = []
+        self._processing_task: asyncio.Task[None] | None = None
+        self._shutting_down = False
+
+        # The synchronous vLLM LLM engine (set during startup)
+        self._llm: Any = None  # vllm.LLM
+        self._engine_lock: asyncio.Lock | None = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Omit asyncio locks so spawn workers can pickle the backend."""
+        state = self.__dict__.copy()
+        for attr in _ASYNC_LOCK_ATTRS:
+            state.pop(attr, None)
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore backend state after unpickling in a worker process."""
+        self.__dict__.update(state)
+        self._batch_lock = None
+        self._generate_lock = None
+        self._engine_lock = None
+
+    def _create_async_locks(self) -> None:
+        """Create asyncio locks for the current event loop."""
+        self._batch_lock = asyncio.Lock()
+        self._generate_lock = asyncio.Lock()
+        self._engine_lock = asyncio.Lock()
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    async def process_startup(self):
+        """
+        Mark the backend as active and reset process-local state.
+
+        Engine construction is deferred to the first
+        ``_ensure_engine()`` call so that the heavyweight vLLM
+        multiprocess executor is only created inside the worker
+        process that will actually run inference.  This avoids a
+        double-startup that wastes resources reloading model
+        weights and can cause CPU-affinity degradation.
+
+        Asyncio primitives are recreated here because scheduler
+        workers are started in a child process (fork or spawn) with
+        their own event loop.  Locks are not created in
+        ``__init__`` so the backend can be pickled for spawn
+        workers; they are bound here instead.
+
+        :raises RuntimeError: If backend is already initialised
+        """
+        if self._in_process:
+            raise RuntimeError("Backend already started up for process.")
+
+        self._in_process = True
+        self._shutting_down = False
+
+        # Discard any engine handle inherited from the parent process.
+        # The worker must create its own via _ensure_engine().
+        self._llm = None
+
+        # Bind asyncio primitives to the current event loop.
+        self._create_async_locks()
+        self._pending_batch = []
+        self._processing_task = None
+
+    async def _ensure_engine(self) -> Any:
+        """Create the vLLM ``LLM`` engine on first use."""
+        if self._llm is not None:
+            return self._llm
+
+        if self._engine_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
+        async with self._engine_lock:
+            if self._llm is not None:
+                return self._llm
+
+            loop = asyncio.get_running_loop()
+            config = vllm_benchmark_engine_config(self._args.vllm_config)
+            engine_args = vllm.EngineArgs(  # type: ignore[attr-defined]
+                **config,
+            )
+
+            def _create_engine() -> Any:
+                reset_cpu_affinity()
+                return vllm.LLM.from_engine_args(  # type: ignore[attr-defined]
+                    engine_args,
+                )
+
+            self._llm = await loop.run_in_executor(
+                None,
+                _create_engine,
+            )
+            return self._llm
+
+    async def process_shutdown(self):
+        """
+        Drain pending batch and tear down the vLLM LLM engine.
+
+        :raises RuntimeError: If backend was not properly initialised
+        """
+        if not self._in_process:
+            raise RuntimeError("Backend not started up for process.")
+
+        # Set flag under lock so no new requests can enqueue
+        batch: list[_BatchedRequest] = []
+        if self._batch_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
+        async with self._batch_lock:
+            self._shutting_down = True
+            if self._pending_batch:
+                batch = self._take_pending_batch()
+        if batch:
+            await self._run_generate(batch)
+
+        # Wait for any deferred flush to finish naturally.
+        # _shutting_down prevents new enqueues so the loop will
+        # see an empty _pending_batch and exit.
+        if self._processing_task is not None:
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._processing_task
+            self._processing_task = None
+
+        # Serialize with any in-flight _run_generate (e.g. from
+        # _maybe_process_batch in a concurrent resolve()) before
+        # tearing down the engine.
+        if self._generate_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
+        async with self._generate_lock:
+            if self._llm is not None:
+                # vLLM < 0.6 does not expose LLM.shutdown(); safe to skip
+                with contextlib.suppress(AttributeError):
+                    self._llm.shutdown()
+                del self._llm
+                self._llm = None
+                gc.collect()
+
+        self._in_process = False
+
+    async def validate(self):
+        """
+        Validate backend readiness and preload the engine in workers.
+
+        In the main process (``multiprocessing.parent_process()`` is
+        ``None``) this only checks that ``process_startup()`` was
+        called — engine creation is deferred so the parent never loads
+        model weights.
+
+        In a scheduler worker process the engine is eagerly created so
+        that the cold-start time is excluded from the timed benchmark
+        phase.  ``resolve()`` calls ``_ensure_engine()`` as an
+        inference-time safety net, so the engine is guaranteed to exist
+        before the first batch is dispatched.
+
+        :raises RuntimeError: If backend is not initialised
+        """
+        if not self._in_process:
+            raise RuntimeError("Backend not started up for process.")
+
+        if is_scheduler_worker_process():
+            logger.debug("Preloading vLLM batch engine in worker process")
+            await self._ensure_engine()
+
+    def _validate_process_started(self) -> None:
+        """Check that ``process_startup()`` was called.
+
+        :raises RuntimeError: If the backend is not in-process.
+        """
+        if not self._in_process:
+            raise RuntimeError("Backend not started up for process.")
+
+    def _require_llm(self) -> Any:
+        """Return the live vLLM ``LLM`` engine, raising if not ready.
+
+        Checks both that ``process_startup()`` was called **and** that
+        ``_ensure_engine()`` has already created the engine.  Use this
+        in call sites that need the engine object directly (e.g. to
+        call ``get_tokenizer()``).  For call sites that only need to
+        assert the backend is active, prefer ``_validate_process_started()``.
+
+        :raises RuntimeError: If the backend is not started or the engine
+            has not been created yet.
+        :return: The initialised ``vllm.LLM`` instance
+        """
+        if not self._in_process:
+            raise RuntimeError("Backend not started up for process.")
+        if self._llm is None:
+            raise RuntimeError("Engine not yet created; call _ensure_engine() first.")
+        return self._llm
+
+    # ------------------------------------------------------------------
+    # Chat template / tokenizer (overrides for batch tokenizer path)
+    # ------------------------------------------------------------------
+
+    def _extract_prompt_chat_tokenizer(
+        self, formatted_messages: list[dict[str, Any]]
+    ) -> str:
+        """Apply tokenizer chat template to formatted messages.
+
+        Accesses the tokenizer through ``llm.get_tokenizer()``
+        instead of ``engine.tokenizer`` used by the async parent.
+        """
+        llm = self._require_llm()
+        tokenizer = llm.get_tokenizer()
+        if tokenizer is None:
+            raise RuntimeError("Backend engine has no tokenizer.")
+
+        if self._args.request_format in (
+            "plain",
+            "default-template",
+        ):
+            resolved: str | None = None
+        else:
+            if self._resolved_chat_template is _CHAT_TEMPLATE_UNSET:
+                self._resolved_chat_template = self._resolve_chat_template()
+            resolved = cast(
+                "str | None",
+                self._resolved_chat_template,
+            )
+
+        if resolved is not None:
+            tokenizer.chat_template = resolved
+
+        try:
+            prompt = tokenizer.apply_chat_template(
+                formatted_messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        except ValueError:
+            if self._args.request_format == "default-template":
+                return self._extract_prompt_chat_plain(formatted_messages)
+            raise
+        if isinstance(prompt, str):
+            return prompt
+        raise RuntimeError("Backend received unexpected type from tokenizer.")
+
+    # ------------------------------------------------------------------
+    # Request resolution (no ``stream`` field)
+    # ------------------------------------------------------------------
+
+    def _resolve_request(  # type: ignore[override]
+        self, request: GenerationRequest
+    ) -> _BatchResolvedRequest:
+        """
+        Build a fully resolved request for batch generation.
+
+        Delegates to the parent's resolution logic but returns a
+        ``_BatchResolvedRequest`` (without a ``stream`` field).
+
+        :param request: Column-based generation request
+        :return: Resolved request with formatted prompt and
+            multimodal data
+        """
+        parent_resolved = super()._resolve_request(request)
+        return _BatchResolvedRequest(
+            prompt=parent_resolved.prompt,
+            multi_modal_data=parent_resolved.multi_modal_data,
+        )
+
+    # ------------------------------------------------------------------
+    # Batch processing
+    # ------------------------------------------------------------------
+
+    def _signal_batch_failure(
+        self,
+        batch: list[_BatchedRequest],
+        exc: BaseException,
+    ) -> None:
+        """Set *exc* on every waiter and unblock ``resolve()`` callers."""
+        logger.error(
+            "vLLM Python batch failed: {}: {}",
+            type(exc).__name__,
+            exc,
+        )
+        for batched_req in batch:
+            if not batched_req.ready.is_set():
+                batched_req.result = exc
+                batched_req.ready.set()
+
+    def _take_pending_batch(self) -> list[_BatchedRequest]:
+        """Snapshot and clear ``_pending_batch``.
+
+        Must be called while holding ``_batch_lock``.
+        """
+        batch = list(self._pending_batch)
+        self._pending_batch.clear()
+        return batch
+
+    async def _await_shielded_executor(
+        self,
+        batch: list[_BatchedRequest],
+        fut: asyncio.Future[Any],
+    ) -> Any:
+        """Await *fut* under shield; on cancel, wait for executor then re-raise."""
+        try:
+            return await asyncio.shield(fut)
+        except asyncio.CancelledError:
+            try:
+                await fut
+            except Exception as gen_exc:  # noqa: BLE001
+                self._signal_batch_failure(batch, gen_exc)
+            else:
+                self._signal_batch_failure(batch, asyncio.CancelledError())
+            raise
+
+    async def _run_generate(self, batch: list[_BatchedRequest]) -> None:
+        """Run ``LLM.generate()`` for *batch* and distribute results.
+
+        Serialized by ``_generate_lock`` so only one generate() call
+        runs at a time (vLLM's sync LLM is not safe for overlapping
+        generates).  Does **not** hold ``_batch_lock`` so new requests
+        can enqueue while generation is in progress.
+        """
+        if not batch:
+            return
+
+        # Build per-request generate inputs
+        prompts: list[str | dict[str, Any]] = []
+        sampling_params_list: list[Any] = []
+        for batched_req in batch:
+            if batched_req.multi_modal_data:
+                prompts.append(
+                    {
+                        "prompt": batched_req.resolved_prompt,
+                        "multi_modal_data": (batched_req.multi_modal_data),
+                    }
+                )
+            else:
+                prompts.append(batched_req.resolved_prompt)
+
+            sampling_params_list.append(
+                self._create_sampling_params(
+                    batched_req.max_tokens,
+                )
+            )
+
+        loop = asyncio.get_running_loop()
+
+        if self._generate_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
+        async with self._generate_lock:
+            try:
+                fut = loop.run_in_executor(
+                    None,
+                    lambda: self._llm.generate(  # type: ignore[union-attr]
+                        prompts,
+                        sampling_params=sampling_params_list,
+                        use_tqdm=False,
+                    ),
+                )
+                outputs = await self._await_shielded_executor(batch, fut)
+            except Exception as exc:  # noqa: BLE001
+                self._signal_batch_failure(batch, exc)
+                return
+
+        # Distribute results back to callers.
+        # Use strict=False with explicit length check: a strict zip that raises
+        # ValueError would leave the remaining waiters blocked indefinitely.
+        if len(outputs) != len(batch):
+            self._signal_batch_failure(
+                batch,
+                RuntimeError(
+                    f"vLLM returned {len(outputs)} outputs for {len(batch)} requests"
+                ),
+            )
+            return
+
+        for batched_req, output in zip(batch, outputs, strict=False):
+            batched_req.result = output
+            batched_req.ready.set()
+
+    async def _maybe_process_batch(self) -> None:
+        """Trigger batch processing if the batch is full."""
+        batch: list[_BatchedRequest] = []
+        if self._batch_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
+        async with self._batch_lock:
+            if len(self._pending_batch) >= self._args.batch_size:
+                batch = self._take_pending_batch()
+        if batch:
+            await self._run_generate(batch)
+
+    async def resolve(  # type: ignore[override, misc]
+        self,
+        request: GenerationRequest,
+        request_info: RequestInfo,
+        history: (list[tuple[GenerationRequest, GenerationResponse]] | None) = None,
+    ) -> AsyncIterator[tuple[GenerationResponse, RequestInfo]]:
+        """
+        Queue a request for batch processing and yield the response.
+
+        Resolves the request (chat template, placeholders, multimodal
+        data), adds it to the pending batch, and waits until the
+        batch has been processed.  The caller receives exactly one
+        ``(response, request_info)`` pair.
+
+        :param request: Generation request with content and params
+        :param request_info: Request tracking info updated with
+            timing metadata
+        :param history: Conversation history (not supported)
+        :raises NotImplementedError: If history is provided
+        :raises RuntimeError: If backend is not initialised or
+            generation fails
+        :yields: Single tuple of (response, updated_request_info)
+        """
+        self._validate_process_started()
+        await self._ensure_engine()
+        self._validate_history(history)
+
+        resolved = self._resolve_request(request)
+
+        max_tokens = (
+            request.output_metrics.text_tokens
+            if request.output_metrics.text_tokens
+            else None
+        )
+
+        batched_req = _BatchedRequest(
+            resolved_prompt=resolved.prompt,
+            multi_modal_data=resolved.multi_modal_data,
+            max_tokens=max_tokens,
+        )
+
+        request_info.timings.request_start = time.time()
+
+        # Enqueue atomically with shutdown check
+        if self._batch_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
+        async with self._batch_lock:
+            if self._shutting_down:
+                raise RuntimeError("Backend is shutting down.")
+            self._pending_batch.append(batched_req)
+
+        # If the batch is full, process immediately
+        await self._maybe_process_batch()
+
+        # If not full yet, schedule a deferred flush so the last
+        # partial batch does not sit forever.
+        if not batched_req.ready.is_set():
+            await self._schedule_deferred_flush()
+
+        # Wait for this request's result
+        await batched_req.ready.wait()
+
+        result = batched_req.result
+
+        # Propagate generation errors
+        if isinstance(result, BaseException):
+            self._raise_generation_error(result)
+
+        request_output = cast("vllm.RequestOutput", result)
+
+        # Wire vLLM request metrics into timing info
+        self._wire_vllm_metrics(request_info, request_output)
+
+        request_info.timings.request_end = time.time()
+
+        text = self._text_from_output(request_output)
+        usage = self._usage_from_output(request_output)
+        response_id = request_output.request_id if request_output.request_id else None
+
+        response = VLLMResponseHandler.build_response(
+            request, text, usage, response_id=response_id
+        )
+        yield response, request_info
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    async def _schedule_deferred_flush(self) -> None:
+        """Schedule a task that flushes the pending batch after
+        ``batch_timeout`` seconds, giving concurrent requests a
+        window to accumulate before dispatch.
+        """
+
+        async def _deferred_flush() -> None:
+            while True:
+                await asyncio.sleep(self._args.batch_timeout)
+                if self._batch_lock is None:
+                    raise RuntimeError(
+                        "Locks not initialized; call process_startup() first."
+                    )
+                async with self._batch_lock:
+                    if not self._pending_batch:
+                        return
+                    batch = self._take_pending_batch()
+                await self._run_generate(batch)
+
+        # Only schedule one deferred flush at a time.  Guard the check+assign
+        # under _batch_lock so concurrent resolve() callers cannot each create
+        # their own deferred-flush task.
+        if self._batch_lock is None:
+            raise RuntimeError("Locks not initialized; call process_startup() first.")
+        async with self._batch_lock:
+            if self._processing_task is None or self._processing_task.done():
+                self._processing_task = asyncio.create_task(_deferred_flush())
+
+    @staticmethod
+    def _wire_vllm_metrics(
+        request_info: RequestInfo,
+        request_output: vllm.RequestOutput,
+    ) -> None:
+        """Populate iteration counts and timing from vLLM metrics.
+
+        Extracts token counts and, when available, maps vLLM's
+        monotonic-clock ``RequestStateStats`` timestamps to wall-clock
+        values anchored on the wall-clock ``arrival_time`` that vLLM
+        also provides.
+
+        **Clock reconciliation:** ``arrival_time`` is a Unix wall-clock
+        timestamp representing when the request entered vLLM's queue
+        (i.e. it is the wall-clock equivalent of ``queued_ts``).
+        ``queued_ts``, ``scheduled_ts``, ``first_token_ts``, and
+        ``last_token_ts`` are monotonic-clock values.  We use
+        ``mono_base = queued_ts or scheduled_ts`` — preferring
+        ``queued_ts`` because ``arrival_time`` is vLLM's queue-arrival
+        wall-clock time, so ``queued_ts`` is the correct monotonic
+        anchor.  When ``queued_ts`` is absent we fall back to
+        ``scheduled_ts`` (a slight over-estimate of actual queue wait).
+
+        **Fields not populated:**
+
+        * ``RequestTimings.queued`` — in this approximation queued_ts
+          corresponds to ``arrival_time``, so ``queued`` would equal
+          ``first_request_iteration`` and is omitted to avoid noise.
+        * ``RequestTimings.dequeued`` — vLLM's ``RequestStateStats``
+          does not expose a ``dequeued_ts`` field for the versions
+          GuideLLM targets; skipped.
+        """
+        metrics = request_output.metrics
+        num_gen = metrics.num_generation_tokens if metrics is not None else 0
+
+        if (
+            num_gen == 0
+            and request_output.outputs
+            and request_output.outputs[0].token_ids is not None
+        ):
+            num_gen = len(request_output.outputs[0].token_ids)
+
+        if num_gen > 0:
+            request_info.timings.token_iterations = num_gen
+            request_info.timings.request_iterations = 1
+
+        if metrics is None:
+            return
+
+        arrival = metrics.arrival_time
+        queued_ts = metrics.queued_ts
+        scheduled_ts = metrics.scheduled_ts
+        mono_base = queued_ts or scheduled_ts
+        first_tok = metrics.first_token_ts
+        last_tok = metrics.last_token_ts
+
+        if not (arrival and mono_base and first_tok):
+            return
+
+        request_info.timings.first_request_iteration = arrival
+        request_info.timings.first_token_iteration = arrival + (first_tok - mono_base)
+        if last_tok:
+            request_info.timings.last_token_iteration = arrival + (last_tok - mono_base)
+            request_info.timings.last_request_iteration = arrival + (
+                last_tok - mono_base
+            )
+
+        # scheduled_at: wall-clock time when vLLM scheduled the request.
+        # Use queued_ts as the per-field monotonic anchor so the offset
+        # (scheduled_ts - queued_ts) is always >= 0 (scheduled after queuing).
+        if scheduled_ts and queued_ts:
+            request_info.timings.scheduled_at = arrival + (scheduled_ts - queued_ts)
