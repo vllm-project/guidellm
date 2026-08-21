@@ -19,6 +19,11 @@ from guidellm.data.deserializers.trace_common import (
     generate_token_ids,
 )
 from guidellm.data.deserializers.trace_minimal import MinimalTraceFormatArgs
+from guidellm.data.schemas.conversation_graph_data import (
+    ConversationGraphData,
+    ConversationTurnData,
+)
+from guidellm.utils.hf_datasets import load_dataset_from_file
 
 
 def mock_processor() -> Mock:
@@ -64,9 +69,14 @@ def test_generate_token_ids(token_count, expected):
 
 class TestTraceFormatRegistry:
     def test_unknown_kind_raises(self, tmp_path: Path):
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 1, "input_length": 10, "output_length": 1}\n',
+        )
         config = TraceDataArgs(kind="unknown_kind", path=tmp_path)
+        dataset = load_dataset_from_file(trace)
         with pytest.raises(DataNotSupportedError, match="not registered"):
-            TraceFormatRegistry.dispatch(config)
+            TraceFormatRegistry.dispatch(config, dataset)
 
 
 @dataclasses.dataclass
@@ -92,6 +102,14 @@ def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
         + "}"
         for idx in range(num_rows)
     )
+
+
+def load_graph(row: dict) -> ConversationGraphData:
+    return ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+
+
+def load_graph_turns(row: dict) -> list[ConversationTurnData]:
+    return load_graph(row).turns
 
 
 def get_from_kwargs(keys, kwargs) -> dict:
@@ -132,10 +150,11 @@ class TestTraceDatasetDeserializer:
             suffix=suffix,
         )
         ds = self.deserialize(deserializer, trace)
-        for i, row in enumerate(ds):
-            assert row["relative_timestamp"] == i
-            assert row["prompt_tokens_count"] == (i + 1) * 10
-            assert row["output_tokens_count"] == i + 1
+        conv = load_graph_turns(next(iter(ds)))
+        for i, turn in enumerate(conv):
+            assert turn.columns["relative_timestamp_column"][0] == i
+            assert turn.columns["prompt_tokens_count_column"][0] == (i + 1) * 10
+            assert turn.columns["output_tokens_count_column"][0] == i + 1
 
     @pytest.mark.sanity
     def test_loads_csv(self, tmp_path: Path, deserializer):
@@ -145,89 +164,44 @@ class TestTraceDatasetDeserializer:
             suffix=".csv",
         )
         ds = self.deserialize(deserializer, trace)
-        for i, row in enumerate(ds):
-            assert row["relative_timestamp"] == i
-            assert row["prompt_tokens_count"] == (i + 1) * 10
-            assert row["output_tokens_count"] == i + 1
+        conv = load_graph_turns(next(iter(ds)))
+        for i, turn in enumerate(conv):
+            assert turn.columns["relative_timestamp_column"][0] == i
+            assert turn.columns["prompt_tokens_count_column"][0] == (i + 1) * 10
+            assert turn.columns["output_tokens_count_column"][0] == i + 1
 
-    @pytest.fixture
-    def example_trace(self):
-        def generator(tmp_path: Path, n_rows: int) -> str:
-            trace_rows = generate_trace(
-                n_rows,
-                [
-                    TraceColumnGenerator("timestamp", lambda i: n_rows - i),
-                    TraceColumnGenerator("input_length", lambda i: n_rows - i),
-                    TraceColumnGenerator("output_length", lambda i: (n_rows - i) * 10),
-                ],
-            )
-            return write_trace(tmp_path, trace_rows)
-
-        return generator
-
-    @pytest.fixture
-    def example_list_json_trace(self):
-        def generator(tmp_path: Path, n_rows: int) -> str:
-            trace_rows = generate_trace(
-                n_rows,
-                [
-                    TraceColumnGenerator("timestamp", lambda i: n_rows - i),
-                    TraceColumnGenerator("input_length", lambda i: n_rows - i),
-                    TraceColumnGenerator("output_length", lambda i: (n_rows - i) * 10),
-                ],
-            )
-            json_data = [json.loads(s) for s in trace_rows.split("\n")]
-            return write_trace(
-                tmp_path,
-                generate_trace(
-                    1, [TraceColumnGenerator("requests", lambda _: json_data)]
-                ),
-            )
-
-        return generator
-
-    @pytest.mark.parametrize(
-        "example",
-        ["example_trace", "example_list_json_trace"],
-    )
     @pytest.mark.smoke
     def test_loads_sorted_rows_and_keeps_token_columns_aligned(
-        self, tmp_path: Path, deserializer, example, request
-    ):
-        trace_factory = request.getfixturevalue(example)
-        trace = trace_factory(tmp_path, 10)
-        ds = self.deserialize(deserializer, trace)
-        assert isinstance(ds, IterableDataset)
-        proc = mock_processor()
-        for i, row in enumerate(ds):
-            assert row["prompt_tokens_count"] == i + 1
-            assert row["output_tokens_count"] == (i + 1) * 10
-            assert len(proc.encode(row["prompt"])) == row["prompt_tokens_count"]
-
-    @pytest.mark.sanity
-    def test_loads_requests_column_stored_as_json_string(
         self, tmp_path: Path, deserializer
     ):
-        """Unwrap when the wrapper column is a JSON string of a list, not a native list.
-
-        ## WRITTEN BY AI ##
-        """
+        n_rows = 10
         trace = write_trace(
             tmp_path,
-            '{"requests": "[{\\"timestamp\\": 0, \\"input_length\\": 10,'
-            ' \\"output_length\\": 5}, {\\"timestamp\\": 1, \\"input_length\\": 20,'
-            ' \\"output_length\\": 10}]"}\n',
+            generate_trace(
+                n_rows,
+                [
+                    TraceColumnGenerator("timestamp", lambda i: n_rows - i),
+                    TraceColumnGenerator("input_length", lambda i: n_rows - i),
+                    TraceColumnGenerator("output_length", lambda i: (n_rows - i) * 10),
+                ],
+            ),
         )
         ds = self.deserialize(deserializer, trace)
-        rows = list(ds)
-        assert len(rows) == 2
-        assert rows[0]["prompt_tokens_count"] == 10
-        assert rows[0]["output_tokens_count"] == 5
-        assert rows[1]["prompt_tokens_count"] == 20
-        assert rows[1]["output_tokens_count"] == 10
+        assert isinstance(ds, IterableDataset)
+        conv = load_graph(next(iter(ds)))
+        proc = mock_processor()
+        assert len(conv.turns) == n_rows
+        for i, turn in enumerate(conv.turns):
+            assert turn.node_id == f"main_{i}"
+            if i > 0:
+                assert turn.parents[0].parent_node_id == f"main_{i - 1}"
+            n_in = turn.columns["prompt_tokens_count_column"][0]
+            assert n_in == i + 1
+            assert turn.columns["output_tokens_count_column"][0] == (i + 1) * 10
+            assert len(proc.encode(turn.columns["text_column"][0])) == n_in
 
     @pytest.mark.smoke
-    def test_emits_relative_timestamp_column_sorted_from_trace(
+    def test_emits_relative_timestamp_column_column_sorted_from_trace(
         self, tmp_path: Path, deserializer
     ):
         n_rows = 5
@@ -243,8 +217,9 @@ class TestTraceDatasetDeserializer:
             ),
         )
         ds = self.deserialize(deserializer, trace)
-        for i, row in enumerate(ds):
-            assert row["relative_timestamp"] == i
+        conv = load_graph_turns(next(iter(ds)))
+        for i, turn in enumerate(conv):
+            assert turn.columns["relative_timestamp_column"][0] == i
 
     @pytest.mark.smoke
     def test_rejects_invalid_path(self, deserializer):
@@ -311,16 +286,6 @@ class TestTraceDatasetDeserializer:
         trace = write_trace(tmp_path, content)
         with pytest.raises(DataNotSupportedError, match=match):
             self.deserialize(deserializer, trace, **kwargs)
-
-    @pytest.mark.sanity
-    def test_malformed_json_columns_raises(
-        self, tmp_path: Path, deserializer, example_list_json_trace
-    ):
-        trace = example_list_json_trace(tmp_path, 2)
-        data = trace.read_text().replace("timestamp", "ts")
-        trace.write_text(data)
-        with pytest.raises(DataNotSupportedError, match="lists of JSON objects"):
-            self.deserialize(deserializer, trace)
 
     @pytest.mark.sanity
     def test_unsupported_file_suffix_raises(self, tmp_path: Path, deserializer):

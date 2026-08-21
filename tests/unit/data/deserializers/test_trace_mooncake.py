@@ -1,5 +1,6 @@
 import copy
 import dataclasses
+import json
 import math
 import random
 from collections.abc import Callable
@@ -13,6 +14,10 @@ from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
 from guidellm.data.deserializers.trace_mooncake import MooncakeTraceFormatArgs
 from guidellm.data.schemas import DataNotSupportedError
+from guidellm.data.schemas.conversation_graph_data import (
+    ConversationGraphData,
+    ConversationTurnData,
+)
 
 
 def ascending_processor() -> Mock:
@@ -53,7 +58,7 @@ def write_trace(tmp_path: Path, content: str, suffix: str = ".jsonl") -> Path:
 def make_valid_hash_ids(prompt_lengths: list[int], block_size: int) -> list[list[int]]:
     """The final token block of every row may be less than the hash id block
     size due to the prompt length not being divisible by it. Use this
-    when testing large trace prompts to avoid including token blocks with
+    when testing large trace prompt to avoid including token blocks with
     less than the block size in the middle of later rows."""
     tail_hash_ids = []
     n_rows = len(prompt_lengths)
@@ -95,6 +100,11 @@ def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
         + "}"
         for idx in range(num_rows)
     )
+
+
+def load_graph_turns(row: dict) -> list[ConversationTurnData]:
+    graph = ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+    return graph.turns
 
 
 def get_from_kwargs(keys, kwargs) -> dict:
@@ -210,14 +220,15 @@ class TestMooncakeTraceFormat:
         )
         processor = ascending_processor()
         ds = self.deserialize(deserializer, trace)
-        for i, row in enumerate(ds):
-            in_cnt = row["prompt_tokens_count"]
-            assert in_cnt == prompt_lengths[i]
-            assert row["output_tokens_count"] == output_lengths[i]
+        conv = load_graph_turns(next(iter(ds)))
+        for i, turn in enumerate(conv):
+            n_in = turn.columns["prompt_tokens_count_column"][0]
+            assert n_in == prompt_lengths[i]
+            assert turn.columns["output_tokens_count_column"][0] == output_lengths[i]
 
-            actual_prompt_length = len(processor.encode(row["prompt"]))
-            if actual_prompt_length != in_cnt:
-                pytest.fail(f"{actual_prompt_length} != {in_cnt}")
+            actual_length = len(processor.encode(turn.columns["text_column"][0]))
+            if actual_length != n_in:
+                pytest.fail(f"{actual_length} != {n_in}")
 
     @pytest.mark.smoke
     def test_prompt_matching_or_bordering_block_size(
@@ -244,35 +255,35 @@ class TestMooncakeTraceFormat:
             processor_factory=lambda: processor,
             random_seed=42,
         )
-        for row in ds:
-            actual_prompt_length = len(processor.encode(row["prompt"]))
-            if actual_prompt_length != row["prompt_tokens_count"]:
-                pytest.fail(f"{actual_prompt_length} != {row['prompt_tokens_count']}")
+        conv = load_graph_turns(next(iter(ds)))
+        for turn in conv:
+            in_cnt = turn.columns["prompt_tokens_count_column"][0]
+            actual_length = len(processor.encode(turn.columns["text_column"][0]))
+            if actual_length != in_cnt:
+                pytest.fail(f"{actual_length} != {in_cnt}")
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
-        ("content", "kwargs", "match"),
+        ("content", "match"),
         [
             (
                 '{"timestamp": 0, "input_length": 10, "output_length": 5, '
                 '"hash_ids": [-1]}\n',
-                {},
                 "non-negative",
             ),
             (
                 '{"timestamp": 0, "input_length": 1024, "output_length": 5, '
                 '"hash_ids": [0]}\n',
-                {},
                 "given 1 blocks",
             ),
         ],
     )
     def test_trace_validation_raises(
-        self, tmp_path: Path, deserializer, content, kwargs, match
+        self, tmp_path: Path, deserializer, content, match
     ):
         trace = write_trace(tmp_path, content)
         with pytest.raises(DataNotSupportedError, match=match):
-            self.deserialize(deserializer, trace, **kwargs)
+            self.deserialize(deserializer, trace)
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(
@@ -299,8 +310,7 @@ class TestMooncakeTraceFormat:
             random_seed=42,
         )
         with pytest.raises(ValueError, match="generate distinct"):
-            for _ in ds:
-                ...
+            load_graph_turns(next(iter(ds)))
 
     @pytest.mark.smoke
     def test_token_block_distinctness(self, tmp_path: Path, deserializer):
@@ -323,8 +333,15 @@ class TestMooncakeTraceFormat:
             processor_factory=compatible_processor,
             random_seed=42,
         )
+        conv = load_graph_turns(next(iter(ds)))
         root_blocks, sibling_blocks = zip(
-            *[(row["prompt"][: n_in // 2], row["prompt"][n_in // 2 :]) for row in ds],
+            *[
+                (
+                    turn.columns["text_column"][0][: n_in // 2],
+                    turn.columns["text_column"][0][n_in // 2 :],
+                )
+                for turn in conv
+            ],
             strict=False,
         )
         assert all_equal(root_blocks)
