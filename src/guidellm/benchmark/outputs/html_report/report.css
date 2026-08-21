@@ -322,37 +322,6 @@ h1 {
 .panel { display: none; }
 .panel.active { display: block; }
 
-.toolbar {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.toggle {
-  border: 1px solid var(--line);
-  background: var(--surface);
-  border-radius: var(--radius);
-  overflow: hidden;
-  display: inline-flex;
-}
-
-.toggle button {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  padding: 6px 12px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.toggle button.active {
-  background: var(--accent-2);
-  color: white;
-}
-
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

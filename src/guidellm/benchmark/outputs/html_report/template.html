@@ -123,8 +123,8 @@ __GUIDELLM_REPORT_CSS__
       <div class="grid">
         <article class="card" id="card-load-latency">
           <h2>
-            <span class="card-heading">Request latency by concurrency</span>
-            <button type="button" class="help-q" data-help="lat_by_conc" aria-label="About Request latency by concurrency">?</button>
+          <span class="card-heading">Request latency by benchmark</span>
+          <button type="button" class="help-q" data-help="lat_by_conc" aria-label="About Request latency by benchmark">?</button>
           </h2>
           <p class="hint">End-to-end P95/P99 as load increases — lower is better.</p>
           <div class="chart chart-hbar" id="chart-load-latency"></div>
@@ -150,26 +150,19 @@ __GUIDELLM_REPORT_CSS__
     </section>
 
     <section id="panel-performance" class="panel">
-      <div class="toolbar" id="toolbar-performance">
-        <div class="toggle" aria-label="Axis scale">
-          <button type="button" data-scale="linear" class="active">Linear</button>
-          <button type="button" data-scale="log">Log</button>
-        </div>
-        <button type="button" class="help-q" data-help="scale_toggle" aria-label="About Axis scale">?</button>
-      </div>
       <div class="grid grid-2">
         <article class="card">
-          <h2 id="title-lat-e2e">End-to-end &amp; TTFT vs request rate</h2>
+          <h2 id="title-lat-e2e">First-token latency by benchmark</h2>
           <p class="hint" id="hint-lat-e2e">P95 and P99 — lower is better.</p>
           <div class="chart chart-hbar" id="chart-lat-e2e"></div>
         </article>
         <article class="card">
-          <h2 id="title-lat-gen">Generation latency vs request rate</h2>
+          <h2 id="title-lat-gen">Generation latency by benchmark</h2>
           <p class="hint" id="hint-lat-gen">ITL and TPOT — lower is better.</p>
           <div class="chart chart-hbar" id="chart-lat-gen"></div>
         </article>
         <article class="card">
-          <h2 id="title-tps">Token throughput vs concurrency</h2>
+          <h2 id="title-tps">Token throughput by benchmark</h2>
           <p class="hint" id="hint-tps">Total, input, and output tokens per second.</p>
           <div class="chart chart-hbar" id="chart-tps-conc"></div>
         </article>

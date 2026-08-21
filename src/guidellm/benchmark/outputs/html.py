@@ -35,6 +35,7 @@ from guidellm.benchmark.schemas.metrics import (
     GenerativeToolCallMetricsSummary,
     GenerativeVideoMetricsSummary,
 )
+from guidellm.scheduler import AsyncConstantStrategy, AsyncPoissonStrategy
 from guidellm.schemas import (
     DistributionSummary,
     GenerativeRequestStats,
@@ -290,6 +291,12 @@ def _build_run_row(benchmark: GenerativeBenchmark, index: int) -> dict[str, Any]
     concurrency = _mean(metrics.request_concurrency, status="total")
     # Intended parallel-request cap from the strategy (e.g. streams); None = unlimited.
     configured_concurrency = strategy.requests_limit
+    # Rate-based strategies expose target RPS as `.rate`; others have no intended rate.
+    configured_request_rate = (
+        strategy.rate
+        if isinstance(strategy, (AsyncConstantStrategy, AsyncPoissonStrategy))
+        else None
+    )
 
     return {
         "index": index,
@@ -298,6 +305,7 @@ def _build_run_row(benchmark: GenerativeBenchmark, index: int) -> dict[str, Any]
         "request_rate": _mean(metrics.requests_per_second, status="total"),
         "concurrency": concurrency,
         "configured_concurrency": configured_concurrency,
+        "configured_request_rate": configured_request_rate,
         "total_tps": _mean(metrics.tokens_per_second, status="total"),
         "input_tps": _mean(metrics.prompt_tokens_per_second, status="total"),
         "output_tps": _mean(metrics.output_tokens_per_second, status="total"),

@@ -2,7 +2,6 @@
   "use strict";
 
   var data = window.GUIDELLM_REPORT || {};
-  var scaleMode = "linear";
   var kpiRunIndex = null;
   var COLORS = {
     // Red Hat information + secondary palette (brand red reserved for UI chrome).
@@ -23,6 +22,9 @@
     tpotAlt: "#9e4a06", // orange-60
     ttfot: "#4394e5", // interaction-blue-40
     ttfotAlt: "#004d99", // interaction-blue-60
+    // Efficiency series: keep concurrency vs request-rate visually distinct.
+    effByConcurrency: "#37a3a3", // teal-50
+    effByRequest: "#5e40be", // purple-50
   };
 
   // Canonical metric clauses. Glossary entries expand the acronym; chart tips
@@ -204,10 +206,10 @@
       ],
     },
     lat_by_conc: {
-      title: "Request latency by concurrency",
+      title: "Request latency by benchmark",
       lines: [
         defLine("E2E", "e2e"),
-        "Rising curves as concurrency increases usually mean the server is saturating.",
+        "Rising curves as load increases usually mean the server is saturating.",
       ],
       also: ["p95", "p99"],
     },
@@ -235,18 +237,19 @@
     efficiency: {
       title: "Throughput efficiency",
       lines: [
-        "Total tokens/sec divided by configured concurrency—throughput per intended parallel request.",
-        "When no concurrency limit is configured, measured concurrency is used as the divisor.",
-        "Falling efficiency as concurrency rises often means contention or saturation.",
-        "Hover a bar to see achieved concurrency (measured ÷ configured).",
+        "By concurrency: total tokens/sec ÷ configured concurrency (tok/s per intended parallel request).",
+        "Used for concurrent strategies and others with a concurrency cap (e.g. throughput with max_concurrency).",
+        "By request rate: total tokens/sec ÷ configured request rate (tok/s per intended request).",
+        "Falling efficiency as load rises often means contention or saturation.",
+        "On concurrency bars, hover for measured and achieved concurrency.",
       ],
     },
-    scale_toggle: {
-      title: "Axis scale",
+    tokens_per_request: {
+      title: "Tokens per intended request",
       lines: [
-        "Linear: equal steps on the axis.",
-        "Log: compresses wide ranges so small and large values fit on one chart.",
-        "Bar charts still start at zero.",
+        "Total tokens/sec divided by the strategy’s configured request rate.",
+        "Falls when the server cannot keep up with the intended rate (achieved req/s lags target).",
+        "If no configured rate exists, falls back to measured req/s.",
       ],
     },
     by_turn: {
@@ -558,7 +561,7 @@
       return {
         title: "Token throughput",
         lines: rates.concat([
-          "Each bar stacks input and output at that concurrency.",
+          "Each bar stacks input and output for that benchmark.",
         ]),
       };
     }
@@ -689,18 +692,6 @@
     activateTab("summary");
   }
 
-  function setupScaleToggle() {
-    document.querySelectorAll("[data-scale]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        scaleMode = btn.getAttribute("data-scale");
-        document.querySelectorAll("[data-scale]").forEach(function (b) {
-          b.classList.toggle("active", b.getAttribute("data-scale") === scaleMode);
-        });
-        renderCharts();
-      });
-    });
-  }
-
   function renderHeader() {
     var h = data.header || {};
     setText("meta-model", h.model || "N/A");
@@ -788,31 +779,29 @@
     return nice * Math.pow(10, exp);
   }
 
-  function scale(value, min, max, a, b, log) {
-    if (log) {
-      var minL = Math.log10(Math.max(min, 1e-9));
-      // Must match axis tick math: use the passed max, not min*10.
-      // Forcing a full decade here shrunk bars while ticks still used xExt.max.
-      var maxL = Math.log10(Math.max(max, 1e-8));
-      if (maxL <= minL) maxL = minL + 1;
-      var vL = Math.log10(Math.max(value, 1e-9));
-      return a + ((vL - minL) / (maxL - minL || 1)) * (b - a);
-    }
+  function scale(value, min, max, a, b) {
     return a + ((value - min) / (max - min || 1)) * (b - a);
   }
 
-  function extent(values, log) {
+  function extent(values) {
     var nums = values.filter(function (v) {
-      return v != null && !Number.isNaN(Number(v)) && (!log || Number(v) > 0);
+      return v != null && !Number.isNaN(Number(v));
     }).map(Number);
     if (!nums.length) return { min: 0, max: 1 };
     var min = Math.min.apply(null, nums);
     var max = Math.max.apply(null, nums);
     if (min === max) {
-      if (log) return { min: min / 2 || 0.1, max: max * 2 || 1 };
       return { min: min * 0.9, max: max * 1.1 || 1 };
     }
     return { min: min, max: max };
+  }
+
+  // Leave headroom so the longest bar does not sit flush against the plot edge.
+  function padExtentMax(ext) {
+    if (!ext || ext.max == null) return ext;
+    var span = ext.max - ext.min;
+    ext.max = ext.max + (span > 0 ? span * 0.08 : Math.abs(ext.max) * 0.08 || 1);
+    return ext;
   }
 
   function clear(node) {
@@ -883,7 +872,7 @@
     });
   }
 
-  function drawAxes(svg, plot, xExt, yExt, xLabel, yLabel, logX, logY, skipXTicks, y2Ext, y2Label, logY2, xInteger) {
+  function drawAxes(svg, plot, xExt, yExt, xLabel, yLabel, skipXTicks, y2Ext, y2Label, xInteger) {
     svg.appendChild(
       svgEl("rect", {
         x: plot.left,
@@ -907,9 +896,7 @@
           "stroke-dasharray": "3 4",
         })
       );
-      var yVal = logY
-        ? Math.pow(10, Math.log10(Math.max(yExt.min, 1e-9)) + yRatio * (Math.log10(Math.max(yExt.max, 1e-8)) - Math.log10(Math.max(yExt.min, 1e-9))))
-        : yExt.min + yRatio * (yExt.max - yExt.min);
+      var yVal = yExt.min + yRatio * (yExt.max - yExt.min);
       var label = svgEl("text", {
         x: plot.left - 8,
         y: y + 4,
@@ -920,15 +907,7 @@
       label.textContent = fmt(yVal);
       svg.appendChild(label);
       if (y2Ext) {
-        var y2Val = logY2
-          ? Math.pow(
-              10,
-              Math.log10(Math.max(y2Ext.min, 1e-9)) +
-                yRatio *
-                  (Math.log10(Math.max(y2Ext.max, 1e-8)) -
-                    Math.log10(Math.max(y2Ext.min, 1e-9)))
-            )
-          : y2Ext.min + yRatio * (y2Ext.max - y2Ext.min);
+        var y2Val = y2Ext.min + yRatio * (y2Ext.max - y2Ext.min);
         var y2lab = svgEl("text", {
           x: plot.left + plot.width + 8,
           y: y + 4,
@@ -941,10 +920,10 @@
       }
     }
     if (!skipXTicks) {
-      if (xInteger && !logX) {
+      if (xInteger) {
         var ticks = integerTicks(xExt.min, xExt.max, 8);
         ticks.forEach(function (xVal) {
-          var x = scale(xVal, xExt.min, xExt.max, plot.left, plot.left + plot.width, false);
+          var x = scale(xVal, xExt.min, xExt.max, plot.left, plot.left + plot.width);
           var xlab = svgEl("text", {
             x: x,
             y: plot.top + plot.height + 18,
@@ -959,9 +938,7 @@
         for (var j = 0; j <= 4; j++) {
           var xRatio = j / 4;
           var x = plot.left + xRatio * plot.width;
-          var xVal = logX
-            ? Math.pow(10, Math.log10(Math.max(xExt.min, 1e-9)) + xRatio * (Math.log10(Math.max(xExt.max, 1e-8)) - Math.log10(Math.max(xExt.min, 1e-9))))
-            : xExt.min + xRatio * (xExt.max - xExt.min);
+          var xVal = xExt.min + xRatio * (xExt.max - xExt.min);
           var xlab = svgEl("text", {
             x: x,
             y: plot.top + plot.height + 18,
@@ -1171,11 +1148,6 @@
       width: Math.max(120, width - (hasRight ? 108 : 72)),
       height: height - 64,
     };
-    var log = scaleMode === "log";
-    var logX = !!(options && options.logX && log);
-    var logY = !!(options && options.logY && log);
-    // Right-axis series (e.g. prompt tokens) stay linear for readable counts.
-    var logY2 = !!(options && options.logY2 && log);
     var xInteger = !!(options && options.xInteger);
     var xs = [];
     var ys = [];
@@ -1192,9 +1164,9 @@
         if (p[1] != null) y2s.push(p[1]);
       });
     });
-    var xExt = extent(xs, logX);
+    var xExt = extent(xs);
     // Discrete axes (e.g. turn index): snap domain so ticks land on whole numbers.
-    if (xInteger && !logX && xs.length) {
+    if (xInteger && xs.length) {
       xExt.min = Math.min.apply(
         null,
         xs.map(Number).filter(function (n) {
@@ -1212,9 +1184,9 @@
         xExt.max += 0.5;
       }
     }
-    var yExt = extent(ys, logY);
-    var y2Ext = hasRight ? extent(y2s, logY2) : null;
-    if (y2Ext && !logY2) y2Ext.min = Math.min(0, y2Ext.min);
+    var yExt = extent(ys);
+    var y2Ext = hasRight ? extent(y2s) : null;
+    if (y2Ext) y2Ext.min = Math.min(0, y2Ext.min);
     var svg = svgEl("svg", {
       viewBox: "0 0 " + width + " " + height,
       width: String(width),
@@ -1229,30 +1201,21 @@
       yExt,
       options && options.xLabel,
       options && options.yLabel,
-      logX,
-      logY,
       false,
       y2Ext,
       options && options.y2Label,
-      logY2,
       xInteger
     );
     series.forEach(function (s) {
       var useRight = s.axis === "right";
       var yE = useRight ? y2Ext : yExt;
-      var useLogY = useRight ? logY2 : logY;
       var rawPts = s.points.filter(function (p) {
-        return (
-          p[0] != null &&
-          p[1] != null &&
-          (!logX || p[0] > 0) &&
-          (!useLogY || p[1] > 0)
-        );
+        return p[0] != null && p[1] != null;
       });
       var pts = rawPts.map(function (p) {
         return [
-          scale(p[0], xExt.min, xExt.max, plot.left, plot.left + plot.width, logX),
-          scale(p[1], yE.min, yE.max, plot.top + plot.height, plot.top, useLogY),
+          scale(p[0], xExt.min, xExt.max, plot.left, plot.left + plot.width),
+          scale(p[1], yE.min, yE.max, plot.top + plot.height, plot.top),
         ];
       });
       if (!pts.length) return;
@@ -1327,8 +1290,9 @@
         return sum + (Number(s.values[i]) || 0);
       }, 0);
     });
-    var yExt = extent(totals.concat([0]), false);
+    var yExt = extent(totals.concat([0]));
     yExt.min = 0;
+    padExtentMax(yExt);
     var svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height });
     drawAxes(
       svg,
@@ -1337,8 +1301,6 @@
       yExt,
       options && options.xLabel,
       options && options.yLabel,
-      false,
-      false,
       true
     );
     var slot = plot.width / Math.max(categories.length, 1);
@@ -1408,17 +1370,15 @@
     var width = host.clientWidth || 480;
     var height = host.clientHeight || 280;
     var plot = { left: 52, top: 28, width: width - 72, height: height - 78 };
-    // Bars always baseline at 0. True log cannot include 0, so the log toggle
-    // only applies to line charts — otherwise bar length stops encoding magnitude.
-    var logY = false;
     var all = [];
     groups.forEach(function (g) {
       g.values.forEach(function (v) {
         if (v != null) all.push(v);
       });
     });
-    var yExt = extent(all, false);
+    var yExt = extent(all);
     yExt.min = Math.min(0, yExt.min);
+    padExtentMax(yExt);
     var svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height });
     drawAxes(
       svg,
@@ -1427,8 +1387,6 @@
       yExt,
       options && options.xLabel,
       options && options.yLabel,
-      false,
-      logY,
       true
     );
 
@@ -1448,9 +1406,9 @@
       var clusterLeft = plot.left + i * slot + (slot - clusterW) / 2;
       groups.forEach(function (g, gi) {
         var val = g.values[i];
-        if (val == null || (logY && val <= 0)) return;
+        if (val == null) return;
         var x = clusterLeft + gi * (barW + innerGap);
-        var y = scale(val, yExt.min, yExt.max, plot.top + plot.height, plot.top, logY);
+        var y = scale(val, yExt.min, yExt.max, plot.top + plot.height, plot.top);
         var bar = svgEl("rect", {
           x: x,
           y: y,
@@ -1476,11 +1434,12 @@
 
     // Color legend for P95 / P99 (or other group labels)
     var legendY = 14;
-    groups.forEach(function (g, idx) {
-      var lx = plot.left + idx * 70;
+    var legendX = plot.left;
+    groups.forEach(function (g) {
+      var label = g.label || "Series";
       svg.appendChild(
         svgEl("rect", {
-          x: lx,
+          x: legendX,
           y: legendY - 8,
           width: 10,
           height: 10,
@@ -1489,13 +1448,14 @@
         })
       );
       var lt = svgEl("text", {
-        x: lx + 14,
+        x: legendX + 14,
         y: legendY,
         fill: COLORS.muted,
         "font-size": "11",
       });
-      lt.textContent = g.label || ("Series " + (idx + 1));
+      lt.textContent = label;
       svg.appendChild(lt);
+      legendX += 14 + Math.ceil(String(label).length * 6.2) + 16;
     });
     host.appendChild(svg);
   }
@@ -1510,11 +1470,12 @@
 
   function drawHBarLegend(svg, plot, items) {
     var legendY = 14;
-    items.forEach(function (item, idx) {
-      var lx = plot.left + idx * 88;
+    var x = plot.left;
+    items.forEach(function (item) {
+      var label = item.label || "Series";
       svg.appendChild(
         svgEl("rect", {
-          x: lx,
+          x: x,
           y: legendY - 8,
           width: 10,
           height: 10,
@@ -1523,13 +1484,15 @@
         })
       );
       var lt = svgEl("text", {
-        x: lx + 14,
+        x: x + 14,
         y: legendY,
         fill: COLORS.muted,
         "font-size": "11",
       });
-      lt.textContent = item.label || ("Series " + (idx + 1));
+      lt.textContent = label;
       svg.appendChild(lt);
+      // Advance by swatch + text estimate + gap so long labels do not collide.
+      x += 14 + Math.ceil(String(label).length * 6.2) + 16;
     });
   }
 
@@ -1550,17 +1513,15 @@
       width: Math.max(120, width - labelW - 28),
       height: height - 64,
     };
-    // Honor Linear/Log toolbar when caller requests logX (latency/throughput bars).
-    var logX = !!(options && options.logX && scaleMode === "log");
     var all = [];
     groups.forEach(function (g) {
       g.values.forEach(function (v) {
         if (v != null) all.push(v);
       });
     });
-    var xExt = extent(all, logX);
-    // Linear bars baseline at 0; log domain comes from positive extents only.
-    if (!logX) xExt.min = Math.min(0, xExt.min);
+    var xExt = extent(all);
+    xExt.min = Math.min(0, xExt.min);
+    padExtentMax(xExt);
     var svg = svgEl("svg", {
       viewBox: "0 0 " + width + " " + height,
       width: String(width),
@@ -1581,15 +1542,7 @@
     for (var i = 0; i <= 4; i++) {
       var xRatio = i / 4;
       var x = plot.left + xRatio * plot.width;
-      var xVal = logX
-        ? Math.pow(
-            10,
-            Math.log10(Math.max(xExt.min, 1e-9)) +
-              xRatio *
-                (Math.log10(Math.max(xExt.max, 1e-8)) -
-                  Math.log10(Math.max(xExt.min, 1e-9)))
-          )
-        : xExt.min + xRatio * (xExt.max - xExt.min);
+      var xVal = xExt.min + xRatio * (xExt.max - xExt.min);
       svg.appendChild(
         svgEl("line", {
           x1: x,
@@ -1646,10 +1599,10 @@
 
       groups.forEach(function (g, gi) {
         var val = g.values[ci];
-        if (val == null || (logX && val <= 0)) return;
+        if (val == null) return;
         var y = clusterTop + gi * (barH + innerGap);
         var x1 = plot.left;
-        var x2 = scale(val, xExt.min, xExt.max, plot.left, plot.left + plot.width, logX);
+        var x2 = scale(val, xExt.min, xExt.max, plot.left, plot.left + plot.width);
         var bar = svgEl("rect", {
           x: x1,
           y: y,
@@ -1699,8 +1652,9 @@
         return sum + (Number(s.values[i]) || 0);
       }, 0);
     });
-    var xExt = extent(totals.concat([0]), false);
+    var xExt = extent(totals.concat([0]));
     xExt.min = 0;
+    padExtentMax(xExt);
     var svg = svgEl("svg", {
       viewBox: "0 0 " + width + " " + height,
       width: String(width),
@@ -1783,9 +1737,10 @@
         });
         svg.appendChild(bar);
         var pctShare = rowTotal ? (val / rowTotal) * 100 : 0;
+        var seriesName = stack.label || "Series";
         bindChartTip(bar, label, [
-          (stack.label || "Series") + ": " + fmt(val),
-          pctShare.toFixed(1) + "% of row",
+          seriesName + ": " + fmt(val),
+          seriesName + " is " + pctShare.toFixed(1) + "% of total",
         ]);
         xCursor += w;
       });
@@ -2034,6 +1989,64 @@
     return null;
   }
 
+  /**
+   * Concurrency-normalized efficiency when the load target is parallel streams
+   * (concurrent, or throughput/sync/etc. with a configured concurrency cap).
+   * Rate-targeted strategies keep request-rate efficiency even if they also set a cap.
+   */
+  function usesConcurrencyEfficiency(r) {
+    if (!r) return false;
+    if (r.configured_request_rate != null && Number(r.configured_request_rate) > 0) {
+      return false;
+    }
+    return r.configured_concurrency != null && Number(r.configured_concurrency) > 0;
+  }
+
+  function anyConcurrencyEfficiency(rows) {
+    return rows.some(usesConcurrencyEfficiency);
+  }
+
+  function anyRequestRateEfficiency(rows) {
+    return rows.some(function (r) {
+      return !usesConcurrencyEfficiency(r);
+    });
+  }
+
+  /** Prefer configured request rate so lag vs target shows up; fall back to measured. */
+  function requestRateDivisor(r) {
+    var configured = r.configured_request_rate;
+    if (configured != null && Number(configured) > 0) return Number(configured);
+    var measured = r.request_rate;
+    if (measured != null && Number(measured) > 0) return Number(measured);
+    return null;
+  }
+
+  /** Tokens/sec per intended request: total tok/s ÷ configured (or measured) req/s. */
+  function tokensPerRequest(r) {
+    var rate = requestRateDivisor(r);
+    if (rate == null) return null;
+    return (r.total_tps || 0) / rate;
+  }
+
+  function concurrencyEfficiencyValue(r) {
+    var divisor = efficiencyDivisor(r);
+    return divisor ? (r.total_tps || 0) / divisor : null;
+  }
+
+  function concurrencyEfficiencyTips(r) {
+    var lines = [];
+    if (r.concurrency != null && !Number.isNaN(Number(r.concurrency))) {
+      lines.push("Measured concurrency: " + fmt(r.concurrency));
+    }
+    var ratio = concurrencyAchievementRatio(r);
+    if (ratio != null) {
+      lines.push(
+        "Achieved concurrency: " + pct(ratio) + " (measured ÷ configured)"
+      );
+    }
+    return lines.length ? lines : null;
+  }
+
   /** Measured ÷ configured when both are available; otherwise null. */
   function concurrencyAchievementRatio(r) {
     var configured = r.configured_concurrency;
@@ -2041,6 +2054,88 @@
     if (configured == null || Number(configured) <= 0) return null;
     if (measured == null || Number.isNaN(Number(measured))) return null;
     return Number(measured) / Number(configured);
+  }
+
+  function efficiencyChartGroups(rows) {
+    var groups = [];
+    if (anyConcurrencyEfficiency(rows)) {
+      groups.push({
+        label: "By concurrency",
+        color: COLORS.effByConcurrency,
+        values: rows.map(function (r) {
+          return usesConcurrencyEfficiency(r) ? concurrencyEfficiencyValue(r) : null;
+        }),
+        tipExtras: rows.map(function (r) {
+          return usesConcurrencyEfficiency(r) ? concurrencyEfficiencyTips(r) : null;
+        }),
+      });
+    }
+    if (anyRequestRateEfficiency(rows)) {
+      groups.push({
+        label: "By request rate",
+        color: COLORS.effByRequest,
+        values: rows.map(function (r) {
+          return usesConcurrencyEfficiency(r) ? null : tokensPerRequest(r);
+        }),
+      });
+    }
+    return groups;
+  }
+
+  function efficiencyXLabel(rows) {
+    var byConc = anyConcurrencyEfficiency(rows);
+    var byRate = anyRequestRateEfficiency(rows);
+    if (byConc && byRate) return "Tokens/sec per intended load unit";
+    if (byConc) return "Tokens/sec per concurrent request";
+    return "Tokens/sec per intended request rate";
+  }
+
+  function setEfficiencyTitles(multi, rows, selected) {
+    if (multi) {
+      var byConc = anyConcurrencyEfficiency(rows);
+      var byRate = anyRequestRateEfficiency(rows);
+      if (byConc && byRate) {
+        setTitleWithHelp("title-efficiency", "Throughput efficiency", "efficiency");
+        setCopy(
+          "hint-efficiency",
+          "Tok/s normalized by configured concurrency or request rate, depending on the benchmark."
+        );
+      } else if (byConc) {
+        setTitleWithHelp("title-efficiency", "Throughput efficiency", "efficiency");
+        setCopy(
+          "hint-efficiency",
+          "Tok/s per configured concurrent request. Hover for achieved concurrency."
+        );
+      } else {
+        setTitleWithHelp(
+          "title-efficiency",
+          "Tokens per intended request",
+          "tokens_per_request"
+        );
+        setCopy(
+          "hint-efficiency",
+          "Total tok/s ÷ configured request rate — drops when achieved req/s falls behind."
+        );
+      }
+      return;
+    }
+    if (usesConcurrencyEfficiency(selected)) {
+      setTitleWithHelp("title-efficiency", "Per-request efficiency", "efficiency");
+      setCopy(
+        "hint-efficiency",
+        "Tok/s per configured concurrent request, with measured and achieved concurrency."
+      );
+    } else {
+      setTitleWithHelp(
+        "title-efficiency",
+        "Per-request efficiency",
+        "tokens_per_request"
+      );
+      setCopy(
+        "hint-efficiency",
+        "Tok/s ÷ configured request rate, plus TTFT and ITL."
+      );
+    }
   }
 
   function renderSingleRunLatency(run, details) {
@@ -2060,7 +2155,7 @@
         { label: "P95", color: COLORS.p95, values: firstP95 },
         { label: "P99", color: COLORS.p99, values: firstP99 },
       ],
-      { xLabel: "Latency (ms)", logX: true }
+      { xLabel: "Latency (ms)" }
     );
 
     var genLabels = ["ITL", "TPOT"];
@@ -2073,7 +2168,7 @@
         { label: "P95", color: COLORS.p95, values: genP95 },
         { label: "P99", color: COLORS.p99, values: genP99 },
       ],
-      { xLabel: "ms / token", logX: true }
+      { xLabel: "ms / token" }
     );
   }
 
@@ -2115,7 +2210,6 @@
     }
     drawHorizontalGroupedBars("chart-lat-e2e", cats, firstGroups, {
       xLabel: "Latency (ms)",
-      logX: true,
     });
 
     drawHorizontalGroupedBars(
@@ -2151,7 +2245,7 @@
           }),
         },
       ],
-      { xLabel: "ms / token", logX: true }
+      { xLabel: "ms / token" }
     );
   }
 
@@ -2159,10 +2253,7 @@
     var host = el("efficiency-stats");
     var chart = el("chart-efficiency");
     if (!host) return;
-    var divisor = efficiencyDivisor(run);
-    var totalEff = divisor ? (run.total_tps || 0) / divisor : null;
-    var outEff = divisor ? (run.output_tps || 0) / divisor : null;
-    var inEff = divisor ? (run.input_tps || 0) / divisor : null;
+    var byConcurrency = usesConcurrencyEfficiency(run);
     if (chart) {
       clear(chart);
       chart.style.display = "none";
@@ -2188,26 +2279,47 @@
       host.appendChild(stat);
     }
 
-    addStat("Total tok/s per concurrent", "efficiency", fmt(totalEff), "Overall efficiency");
-    addStat("Output tok/s per concurrent", "out_tps", fmt(outEff), "Generated tokens");
-    addStat("Input tok/s per concurrent", "in_tps", fmt(inEff), "Prompt tokens");
-    var achieved = concurrencyAchievementRatio(run);
-    if (achieved != null) {
+    if (byConcurrency) {
+      var divisor = efficiencyDivisor(run);
+      var totalEff = divisor ? (run.total_tps || 0) / divisor : null;
+      var outEff = divisor ? (run.output_tps || 0) / divisor : null;
+      var inEff = divisor ? (run.input_tps || 0) / divisor : null;
+      addStat("Total tok/s per concurrent", "efficiency", fmt(totalEff), "Overall efficiency");
+      addStat("Output tok/s per concurrent", "out_tps", fmt(outEff), "Generated tokens");
+      addStat("Input tok/s per concurrent", "in_tps", fmt(inEff), "Prompt tokens");
+      var achieved = concurrencyAchievementRatio(run);
+      if (achieved != null) {
+        addStat(
+          "Achieved concurrency",
+          "concurrency_ratio",
+          pct(achieved),
+          "Measured ÷ configured"
+        );
+      }
       addStat(
-        "Achieved concurrency",
-        "concurrency_ratio",
-        pct(achieved),
-        "Measured ÷ configured"
+        "Measured concurrency",
+        "concurrency",
+        fmt(run.concurrency),
+        "Observed parallel requests"
       );
+    } else {
+      var rateDivisor = requestRateDivisor(run);
+      var tokPerReq = tokensPerRequest(run);
+      var outPerReq =
+        rateDivisor != null ? (run.output_tps || 0) / rateDivisor : null;
+      var inPerReq =
+        rateDivisor != null ? (run.input_tps || 0) / rateDivisor : null;
+      addStat(
+        "Tokens per intended request",
+        "tokens_per_request",
+        fmt(tokPerReq),
+        "Total tok/s ÷ configured req/s"
+      );
+      addStat("Output tokens per intended request", "out_tps", fmt(outPerReq), "Generated tokens");
+      addStat("Input tokens per intended request", "in_tps", fmt(inPerReq), "Prompt tokens");
     }
-    addStat(
-      "Measured concurrency",
-      "concurrency",
-      fmt(run.concurrency),
-      "Observed parallel requests"
-    );
+    addStat("TTFT P95", "ttft", fmt(run.ttft_p95_ms) + " ms", "Time to first token");
     addStat("ITL P95", "itl", fmt(run.itl_p95_ms) + " ms", "Inter-token latency");
-    addStat("TPOT P95", "tpot", fmt(run.tpot_p95_ms) + " ms", "Time per output token");
   }
 
   function renderSingleRunThroughput(run) {
@@ -2229,7 +2341,7 @@
           ],
         },
       ],
-      { xLabel: "Rate", logX: true }
+      { xLabel: "Rate" }
     );
 
     renderEfficiencyStats(run);
@@ -2270,30 +2382,8 @@
     drawHorizontalGroupedBars(
       "chart-efficiency",
       cats,
-      [
-        {
-          label: "Tok/s / concurrent",
-          color: COLORS.p95,
-          values: rows.map(function (r) {
-            var divisor = efficiencyDivisor(r);
-            return divisor ? (r.total_tps || 0) / divisor : 0;
-          }),
-          tipExtras: rows.map(function (r) {
-            var lines = [];
-            if (r.concurrency != null && !Number.isNaN(Number(r.concurrency))) {
-              lines.push("Measured concurrency: " + fmt(r.concurrency));
-            }
-            var ratio = concurrencyAchievementRatio(r);
-            if (ratio != null) {
-              lines.push(
-                "Achieved concurrency: " + pct(ratio) + " (measured ÷ configured)"
-              );
-            }
-            return lines.length ? lines : null;
-          }),
-        },
-      ],
-      { xLabel: "Tokens/sec per concurrent request" }
+      efficiencyChartGroups(rows),
+      { xLabel: efficiencyXLabel(rows) }
     );
   }
 
@@ -2333,7 +2423,7 @@
         { label: "P95", color: COLORS.p95, values: p95vals },
         { label: "P99", color: COLORS.p99, values: p99vals },
       ],
-      { xLabel: "Latency (ms)", logX: true }
+      { xLabel: "Latency (ms)" }
     );
   }
 
@@ -2343,7 +2433,6 @@
     var multi = isMultiRun();
     var selected = selectedRun();
 
-    setCardVisible("toolbar-performance", multi);
     setCardVisible("card-load-latency", multi);
     setCopy("title-compare", multi ? "Run comparison" : "Run summary");
     setCopy(
@@ -2356,30 +2445,26 @@
     if (multi) {
       setTitleWithHelp(
         "title-lat-e2e",
-        details.show_ttfot ? "TTFT & TTFOT by concurrency" : "TTFT by concurrency",
+        details.show_ttfot ? "TTFT & TTFOT by benchmark" : "TTFT by benchmark",
         helpFirstToken(!!details.show_ttfot)
       );
       setCopy("hint-lat-e2e", "P95 and P99 — lower is better. Request latency (E2E) is in the KPIs and comparison table.");
       setTitleWithHelp(
         "title-lat-gen",
-        "Generation latency by concurrency",
+        "Generation latency by benchmark",
         helpGenLatency()
       );
       setCopy("hint-lat-gen", "ITL and TPOT — lower is better.");
       setTitleWithHelp(
         "title-tps",
-        "Token throughput by concurrency",
+        "Token throughput by benchmark",
         helpTokenThroughput(true)
       );
       setCopy(
         "hint-tps",
         "Stacked input and output tokens per second at each load point."
       );
-      setTitleWithHelp("title-efficiency", "Throughput efficiency", "efficiency");
-      setCopy(
-        "hint-efficiency",
-        "Tok/s per configured concurrent request. Hover for achieved concurrency."
-      );
+      setEfficiencyTitles(true, rows, selected);
     } else {
       setTitleWithHelp(
         "title-lat-e2e",
@@ -2400,11 +2485,7 @@
         helpTokenThroughput(false)
       );
       setCopy("hint-tps", "Mean request and token rates for this run.");
-      setTitleWithHelp("title-efficiency", "Per-request efficiency", "efficiency");
-      setCopy(
-        "hint-efficiency",
-        "Tok/s per configured concurrent request, with measured and achieved concurrency."
-      );
+      setEfficiencyTitles(false, rows, selected);
     }
 
     if (multi) {
@@ -2428,7 +2509,7 @@
             }),
           },
         ],
-        { xLabel: "Request latency (ms)", logX: true }
+        { xLabel: "Request latency (ms)" }
       );
 
       // Per-run stacked bars make success/error mix comparable across load points.
@@ -2547,7 +2628,6 @@
           xLabel: "Turn index",
           yLabel: "Latency (ms)",
           y2Label: "Prompt tokens",
-          logY: true,
           xInteger: true,
         }
       );
@@ -2832,7 +2912,6 @@
     hydrateHelp(document);
     renderHeader();
     setupTabs();
-    setupScaleToggle();
     renderTables();
     renderCharts();
     window.addEventListener("resize", function () {

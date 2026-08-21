@@ -31,7 +31,12 @@ from guidellm.benchmark.schemas import (
     SchedulerMetrics,
 )
 from guidellm.benchmark.schemas.metrics import GenerativeToolCallMetricsSummary
-from guidellm.scheduler import AsyncConstantStrategy, ConcurrentStrategy, SchedulerState
+from guidellm.scheduler import (
+    AsyncConstantStrategy,
+    ConcurrentStrategy,
+    SchedulerState,
+    ThroughputStrategy,
+)
 from guidellm.schemas import (
     DistributionSummary,
     GenerativeRequestStats,
@@ -280,7 +285,7 @@ def _report(
 
 def _make_benchmark(
     *,
-    strategy: AsyncConstantStrategy | ConcurrentStrategy,
+    strategy: AsyncConstantStrategy | ConcurrentStrategy | ThroughputStrategy,
     rps: float,
     tps: float,
     backend_model: str | None = None,
@@ -431,6 +436,7 @@ def test_build_report_view_single_and_multi_run():
     assert single_view["runs"][0]["ttft_p95_ms"] == 150.0
     assert single_view["runs"][0]["ttft_p99_ms"] == 180.0
     assert single_view["runs"][0]["label"] == "constant@2.00"
+    assert single_view["runs"][0]["configured_request_rate"] == 2.0
     assert single_view["kpis"]["tokens_per_second"] == 40.0
 
     multi_report = _report(
@@ -456,6 +462,31 @@ def test_build_report_view_single_and_multi_run():
     assert multi_view["runs"][1]["concurrency"] == 4.0
     assert multi_view["runs"][1]["configured_concurrency"] == 4
     assert multi_view["runs"][0]["configured_concurrency"] == 2
+    assert multi_view["runs"][0]["configured_request_rate"] is None
+    assert multi_view["runs"][1]["configured_request_rate"] is None
+
+    throughput_report = _report(
+        _make_benchmark(
+            strategy=ThroughputStrategy(max_concurrency=8),
+            rps=3.0,
+            tps=60.0,
+        )
+    )
+    throughput_view = build_report_view(throughput_report)
+    assert throughput_view["runs"][0]["strategy"] == "throughput"
+    assert throughput_view["runs"][0]["configured_concurrency"] == 8
+    assert throughput_view["runs"][0]["configured_request_rate"] is None
+
+    unlimited_throughput = _report(
+        _make_benchmark(
+            strategy=ThroughputStrategy(),
+            rps=4.0,
+            tps=80.0,
+        )
+    )
+    unlimited_view = build_report_view(unlimited_throughput)
+    assert unlimited_view["runs"][0]["configured_concurrency"] is None
+    assert unlimited_view["runs"][0]["configured_request_rate"] is None
 
 
 @pytest.mark.sanity
