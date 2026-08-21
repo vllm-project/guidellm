@@ -9,9 +9,10 @@ line with a synthetic prompt matching the requested input_length for replay benc
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Literal
 
-from datasets import Features
+from datasets import Dataset, Features
 from faker import Faker
 from pydantic import Field
 from transformers import PreTrainedTokenizerBase
@@ -22,6 +23,7 @@ from guidellm.data.deserializers.trace_common import (
     TraceFormatRegistry,
     decode_prompt,
     generate_token_ids,
+    get_missing_columns,
 )
 from guidellm.data.schemas import DataArgs
 
@@ -38,30 +40,29 @@ class MinimalTraceFormatArgs(TraceDataArgs):
 
 @TraceFormatRegistry.register("trace_synthetic")
 class MinimalTraceFormat(TraceFormatBase):
-    def __init__(self) -> None:
-        pass
+    def __init__(self, config: MinimalTraceFormatArgs, dataset: Dataset) -> None:
+        self.config = config
+        self.dataset = dataset
 
-    def required_columns(
-        self,
-        config: MinimalTraceFormatArgs,  # noqa: ARG002
-    ) -> Features:
-        return []
+    def __iter__(self) -> Iterable[Dataset]:
+        yield self.dataset.sort(self.config.timestamp_column)
+
+    def required_columns(self) -> Features:
+        return {}
+
+    def find_required_columns(self, columns: list[str]) -> list[str]:
+        return get_missing_columns(columns, self.dataset.column_names)
 
     def validate_row(
         self,
-        config: MinimalTraceFormatArgs,  # noqa: ARG002
         row: dict,  # noqa: ARG002
     ) -> None:
         return
 
     def create_prompt(
-        self,
-        config: MinimalTraceFormatArgs,
-        row: dict,
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
+        self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
     ) -> str:
         token_ids = generate_token_ids(
-            row[config.prompt_tokens_column], processor, faker
+            row[self.config.prompt_tokens_column], processor, faker
         )
         return decode_prompt(processor, list(token_ids))
