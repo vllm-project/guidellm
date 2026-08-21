@@ -70,7 +70,7 @@ jobs:
           key: buildah-mount-cache-${{ runner.os }}-${{ matrix.arch_suffix }}
       - name: Buildah build
         id: build-image
-        uses: redhat-actions/buildah-build@7a95fa7ee0f02d552a32753e7414641a04307056 # v2.13
+        uses: redhat-actions/buildah-build@3a51aade9afa17e5c78256bcbe2e1ee08c7b995b # v3.0.2
         with:
           image: ${{ github.event.repository.name }}
           platforms: ${{ matrix.platform }}
