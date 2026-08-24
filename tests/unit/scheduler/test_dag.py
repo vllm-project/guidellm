@@ -328,6 +328,51 @@ class TestDAGExecutionStateWalkBack:
         ]
         assert hist == expected
 
+    @pytest.mark.regression
+    def test_mid_chain_last_edge_preserves_chronological_position(self):
+        """
+        A ``last`` edge merging into a mid-chain node (not the queried
+        node's immediate full parent) must appear right after that node's
+        own predecessor and before the main-chain turns that followed it,
+        not lumped after the entire main chain.
+
+        Graph: M1 -full-> M2 -full-> M3 -full-> M4, with a sub-agent
+        branch X1 merging into M2 via a ``last`` edge. M4's history must
+        read M1, X1, M2, M3 in the order the merge actually happened.
+
+        ## WRITTEN BY AI ##
+        """
+        nodes = {nid: _make_node(nid) for nid in ["M1", "M2", "M3", "M4", "X1"]}
+        edges = [
+            ConversationEdge(
+                source_node_id="M1", target_node_id="M2", history_context="full"
+            ),
+            ConversationEdge(
+                source_node_id="X1", target_node_id="M2", history_context="last"
+            ),
+            ConversationEdge(
+                source_node_id="M2", target_node_id="M3", history_context="full"
+            ),
+            ConversationEdge(
+                source_node_id="M3", target_node_id="M4", history_context="full"
+            ),
+        ]
+        g = ConversationGraph(graph_id="mid_chain_merge", nodes=nodes, edges=edges)
+        state = DAGExecutionState(g)
+        state.mark_completed("M1", "r_M1", "resp_M1")
+        state.mark_completed("X1", "r_X1", "resp_X1")
+        state.mark_completed("M2", "r_M2", "resp_M2")
+        state.mark_completed("M3", "r_M3", "resp_M3")
+
+        hist = state.assemble_history("M4")
+        expected = [
+            ("r_M1", "resp_M1"),
+            ("r_X1", "resp_X1"),
+            ("r_M2", "resp_M2"),
+            ("r_M3", "resp_M3"),
+        ]
+        assert hist == expected
+
     @pytest.mark.sanity
     def test_compaction_boundary(self):
         """
