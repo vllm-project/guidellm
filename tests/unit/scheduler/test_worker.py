@@ -1012,3 +1012,57 @@ class TestWorkerProcessMultiturn:
             pass
         assert info_m2.history_len == 3
         assert info_m2.turn_index == 2
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_worker_index_zero_reported_as_scheduler_node_id(self):
+        """Worker 0 must report scheduler_node_id 0, not the unknown sentinel -1.
+
+        ## WRITTEN BY AI ##
+        """
+        worker = WorkerProcess(
+            worker_index=0,
+            messaging=MockMessaging(worker_index=0),
+            backend=MockBackend(),
+            strategy=SynchronousStrategy(),
+            async_limit=5,
+            fut_scheduling_time_limit=10.0,
+            startup_barrier=Barrier(2),
+            requests_generated_event=Event(),
+            constraint_reached_event=Event(),
+            shutdown_event=Event(),
+            error_event=Event(),
+        )
+        graph = ConversationGraph(
+            graph_id="worker_zero",
+            nodes={
+                "n0": ConversationNode(node_id="n0", agent_id="a", request="r0"),
+                "n1": ConversationNode(node_id="n1", agent_id="a", request="r1"),
+            },
+            edges=[],
+            request_infos={
+                "n0": RequestInfo(request_id="id0", node_id="n0"),
+                "n1": RequestInfo(request_id="id1", node_id="n1"),
+            },
+        )
+        state = DAGExecutionState(graph)
+
+        # Dequeue path
+        _, request_info = worker._prepare_node(state, "n0", target_start=time.time())
+        assert request_info.scheduler_node_id == 0
+
+        # Cancel path for graphs still queued on the worker
+        worker.turns_queue.append(state)
+        cancel_task = asyncio.create_task(worker._cancel_requests_loop())
+        await asyncio.sleep(0.05)
+        cancel_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await cancel_task
+
+        cancelled = [
+            info
+            for _, _, info in worker.messaging._sent_items
+            if info.status == "cancelled"
+        ]
+        assert cancelled
+        assert all(info.scheduler_node_id == 0 for info in cancelled)
