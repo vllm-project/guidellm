@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing
+import queue
 import threading
 from typing import Any, TypeVar
 
@@ -285,6 +286,53 @@ class TestInterProcessMessagingQueue:
         assert instance.buffer_receive_queue is None
         assert instance.send_task is None
         assert instance.receive_task is None
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_worker_receive_pulls_only_on_demand(self, valid_instances):
+        """
+        A worker must not take messages off the shared pending queue unless one
+        of its consumers is waiting for a message. Otherwise messages sit in a
+        busy worker's receive buffer while other workers with free capacity idle
+        (https://github.com/vllm-project/guidellm/issues/1041).
+
+        ## WRITTEN BY AI ##
+        """
+        instance, constructor_args, manager, context = valid_instances
+        worker = instance.create_worker_copy(0, max_buffer_receive_size=1)
+        num_messages = 5
+
+        await instance.start(pydantic_models=[MockMessage])
+        await worker.start(pydantic_models=[MockMessage])
+
+        try:
+            for num in range(num_messages):
+                await instance.put(MockMessage(content="test", num=num), timeout=2.0)
+            await asyncio.sleep(0.2)
+
+            # No consumer is waiting: nothing should have been buffered locally
+            assert worker.buffer_receive_queue is not None
+            assert worker.buffer_receive_queue.qsize() == 0
+
+            # One consumer receives exactly one message, nothing is prefetched
+            received = await worker.get(timeout=2.0)
+            assert received.num == 0
+            await asyncio.sleep(0.2)
+            assert worker.buffer_receive_queue.qsize() == 0
+
+            # All remaining messages are still on the shared pending queue
+            remaining = 0
+            while True:
+                try:
+                    instance.pending_queue.get(timeout=0.2)
+                    remaining += 1
+                except queue.Empty:
+                    break
+            assert remaining == num_messages - 1
+        finally:
+            await worker.stop()
+            await instance.stop()
 
     @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
