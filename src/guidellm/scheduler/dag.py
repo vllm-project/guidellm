@@ -358,10 +358,12 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         :raises ValueError: If a required ancestor or mid-chain ``last``
             parent has not completed.
         """
-        # Segment = a node's mid-chain last-parent pairs (if any) plus its
-        # own pair. Reversing the segment list, not the flattened pairs,
-        # keeps each merge adjacent to the node it merged into.
-        segments: list[list[tuple[_RequestT, _ResponseT | None]]] = []
+        # Each node contributes a segment: its mid-chain last-parent pairs
+        # (if any) plus its own pair, in that order. The walk visits nodes
+        # newest-first, so each segment is prepended rather than appended,
+        # which keeps a merge adjacent to the node it merged into without a
+        # separate segment-level reverse pass.
+        segments: list[tuple[_RequestT, _ResponseT | None]] = []
         current_id: str | None = start_node_id
 
         while current_id is not None:
@@ -381,12 +383,11 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
             if full_edge is not None:
                 segment.extend(self._collect_last_pairs(current_incoming))
             segment.append((completed.request, completed.response))
-            segments.append(segment)
+            segments = segment + segments
 
             current_id = full_edge.source_node_id if full_edge is not None else None
 
-        segments.reverse()
-        return [pair for segment in segments for pair in segment]
+        return segments
 
     def get_remaining_node_ids(self) -> list[str]:
         """
