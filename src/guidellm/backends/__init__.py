@@ -10,6 +10,7 @@ handlers for processing streaming and non-streaming API responses.
 """
 
 from .backend import Backend, BackendArgs
+from .litellm import LiteLLMBackend, LiteLLMBackendArgs
 from .openai import (
     AudioRequestHandler,
     ChatCompletionsRequestHandler,
@@ -31,6 +32,8 @@ __all__ = [
     "Backend",
     "BackendArgs",
     "ChatCompletionsRequestHandler",
+    "LiteLLMBackend",
+    "LiteLLMBackendArgs",
     "OpenAIHTTPBackend",
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
