@@ -21,7 +21,7 @@ from guidellm.scheduler.schemas import (
     ConversationNode,
     HistoryContext,
 )
-from guidellm.schemas.request import GenerationRequest
+from guidellm.schemas.base.request import GenerationRequest
 
 __all__ = [
     "GenerativeConversationGraph",

@@ -7,10 +7,10 @@ import pytest
 
 from guidellm.benchmark.entrypoints import resolve_profile
 from guidellm.benchmark.profiles import ProfileFactory, ReplayProfile
-from guidellm.benchmark.profiles.replay import ReplayProfileArgs
 from guidellm.scheduler import (
     TraceReplayStrategy,
 )
+from guidellm.schemas.benchmark import ReplayProfileArgs
 
 
 def _replay_args(**kwargs) -> ReplayProfileArgs:

@@ -12,17 +12,16 @@ from pydantic import ValidationError
 
 from guidellm.data.deserializers import DataNotSupportedError
 from guidellm.data.deserializers.trace_common import (
-    TraceDataArgs,
     TraceDatasetDeserializer,
     TraceFormatRegistry,
     decode_prompt,
     generate_token_ids,
 )
-from guidellm.data.deserializers.trace_minimal import MinimalTraceFormatArgs
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
 )
+from guidellm.schemas.data import MinimalTraceFormatArgs, TraceDataArgs
 from guidellm.utils.hf_datasets import load_dataset_from_file
 
 

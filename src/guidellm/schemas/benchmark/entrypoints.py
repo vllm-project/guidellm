@@ -25,25 +25,25 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from guidellm.backends import BackendArgs
-from guidellm.benchmark.scenarios import get_builtin_scenarios
-from guidellm.benchmark.schemas.output import BenchmarkOutputArgs
-from guidellm.benchmark.schemas.profiles import ProfileArgs
-from guidellm.benchmark.schemas.random import RandomArgs
-from guidellm.data import (
-    DataArgs,
-    DataFinalizerArgs,
-    DataLoaderArgs,
-    DataPreprocessorArgs,
-    DataTokenizerArgs,
-)
-from guidellm.scheduler.constraints import ConstraintArgs
 from guidellm.schemas import (
     PydanticClassRegistryMixin,
     ReloadableBaseModel,
     StandardBaseModel,
     standard_model_config,
 )
+from guidellm.schemas.backends import BackendArgs
+from guidellm.schemas.benchmark.outputs import BenchmarkOutputArgs
+from guidellm.schemas.benchmark.profiles import ProfileArgs
+from guidellm.schemas.benchmark.random import RandomArgs
+from guidellm.schemas.benchmark.scenarios import get_builtin_scenarios
+from guidellm.schemas.data import (
+    DataArgs,
+    DataFinalizerArgs,
+    DataLoaderArgs,
+    DataPreprocessorArgs,
+    DataTokenizerArgs,
+)
+from guidellm.schemas.scheduler import ConstraintArgs
 from guidellm.utils.arg_string import ArgStringParser
 from guidellm.utils.dict import deep_update
 

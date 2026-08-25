@@ -17,15 +17,18 @@ from pydantic import ValidationError
 
 from guidellm.data.deserializers import (
     DatasetDeserializerFactory,
-    SyntheticImageDataArgs,
     SyntheticImageDataset,
     SyntheticImageDatasetDeserializer,
-    SyntheticVideoDataArgs,
     SyntheticVideoDataset,
     SyntheticVideoDatasetDeserializer,
 )
-from guidellm.data.preprocessors.encoders import MediaEncoder, MediaEncoderArgs
-from guidellm.data.schemas import DataArgs
+from guidellm.data.preprocessors.encoders import MediaEncoder
+from guidellm.schemas.data import (
+    DataArgs,
+    MediaEncoderArgs,
+    SyntheticImageDataArgs,
+    SyntheticVideoDataArgs,
+)
 from guidellm.utils.vision import synthesize_image, synthesize_video
 
 

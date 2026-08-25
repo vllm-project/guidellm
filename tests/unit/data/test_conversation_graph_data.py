@@ -14,11 +14,11 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationParentRef,
     ConversationTurnData,
 )
-from guidellm.schemas import GenerationRequest, RequestSettings
-from guidellm.schemas.conversation_graph import (
+from guidellm.scheduler.schemas.conversation_graph import (
     GenerativeConversationGraph,
     GenerativeConversationNode,
 )
+from guidellm.schemas import GenerationRequest, RequestSettings
 
 
 class TestConversationGraphData:

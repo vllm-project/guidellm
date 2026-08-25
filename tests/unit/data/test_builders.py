@@ -21,7 +21,7 @@ from guidellm.data.builders import (
 from guidellm.data.entrypoints import (
     process_dataset,
 )
-from guidellm.data.schemas import (
+from guidellm.schemas.data import (
     ConcatenatePreprocessStrategyArgs,
     ErrorPreprocessStrategyArgs,
     IgnorePreprocessStrategyArgs,

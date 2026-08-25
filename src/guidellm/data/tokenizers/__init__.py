@@ -1,9 +1,8 @@
-from .huggingface import HuggingFaceTokenizer, HuggingFaceTokenizerArgs
+from .huggingface import HuggingFaceTokenizer
 from .tokenizer import DataTokenizer, TokenizerRegistry
 
 __all__ = [
     "DataTokenizer",
     "HuggingFaceTokenizer",
-    "HuggingFaceTokenizerArgs",
     "TokenizerRegistry",
 ]

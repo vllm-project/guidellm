@@ -7,12 +7,14 @@ import yaml
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.outputs.serialized import (
     GenerativeBenchmarkerSerialized,
-    JSONBenchmarkOutputArgs,
-    YAMLBenchmarkOutputArgs,
 )
 from guidellm.benchmark.schemas import (
-    BenchmarkScenario,
     GenerativeBenchmarksReport,
+)
+from guidellm.schemas.benchmark import (
+    BenchmarkScenario,
+    JSONBenchmarkOutputArgs,
+    YAMLBenchmarkOutputArgs,
 )
 
 

@@ -8,10 +8,12 @@ from pydantic import ValidationError
 
 import guidellm.utils.cli as cli_tools
 from guidellm.benchmark import (
-    BenchmarkArgs,
-    BenchmarkScenario,
     GenerativeConsoleBenchmarkerProgress,
     benchmark_generative_text,
+)
+from guidellm.schemas.benchmark import (
+    BenchmarkArgs,
+    BenchmarkScenario,
     get_builtin_scenarios,
 )
 from guidellm.settings import Settings

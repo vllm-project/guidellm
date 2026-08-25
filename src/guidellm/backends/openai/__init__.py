@@ -11,7 +11,7 @@ from .request_handlers import (
     WSEventResult,
     WSStreamingEventResult,
 )
-from .websocket import OpenAIWebSocketBackend, OpenAIWebSocketBackendArgs
+from .websocket import OpenAIWebSocketBackend
 
 __all__ = [
     "AudioRequestHandler",
@@ -22,7 +22,6 @@ __all__ = [
     "OpenAIWSRequestHandler",
     "OpenAIWSRequestHandlerFactory",
     "OpenAIWebSocketBackend",
-    "OpenAIWebSocketBackendArgs",
     "ResponsesRequestHandler",
     "TextCompletionsRequestHandler",
     "WSEventResult",

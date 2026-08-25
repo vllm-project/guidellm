@@ -14,19 +14,20 @@ import guidellm.data.deserializers  # noqa: F401
 import guidellm.data.finalizers  # noqa: F401
 import guidellm.data.loaders  # noqa: F401
 import guidellm.data.preprocessors  # noqa: F401
-from guidellm.data.deserializers.huggingface import HuggingFaceDataArgs
-from guidellm.data.finalizers.generative import GenerativeRequestFinalizerArgs
 from guidellm.data.loaders.loader import DataLoaderRegistry
-from guidellm.data.loaders.torch import TorchDataLoaderArgs
-from guidellm.data.preprocessors.mappers import GenerativeColumnMapperArgs
-from guidellm.data.schemas.entrypoints import (
+from guidellm.data.tokenizers import TokenizerRegistry
+from guidellm.schemas.data import (
     DataArgs,
     DataFinalizerArgs,
     DataLoaderArgs,
     DataPreprocessorArgs,
     DataTokenizerArgs,
+    GenerativeColumnMapperArgs,
+    GenerativeRequestFinalizerArgs,
+    HuggingFaceDataArgs,
+    HuggingFaceTokenizerArgs,
+    TorchDataLoaderArgs,
 )
-from guidellm.data.tokenizers import HuggingFaceTokenizerArgs, TokenizerRegistry
 
 
 class TestDataLoaderArgsRegistry:

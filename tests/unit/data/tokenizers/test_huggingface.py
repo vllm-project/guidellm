@@ -8,10 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from guidellm.data.tokenizers.huggingface import (
-    HuggingFaceTokenizer,
-    HuggingFaceTokenizerArgs,
-)
+from guidellm.data.tokenizers.huggingface import HuggingFaceTokenizer
+from guidellm.schemas.data import HuggingFaceTokenizerArgs
 from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 

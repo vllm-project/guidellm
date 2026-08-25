@@ -22,13 +22,13 @@ from guidellm.data.deserializers.file import (
     ArrowFileDatasetDeserializer,
     CSVFileDatasetDeserializer,
     DBFileDatasetDeserializer,
-    FileDataArgs,
     HDF5FileDatasetDeserializer,
     JSONFileDatasetDeserializer,
     ParquetFileDatasetDeserializer,
     TarFileDatasetDeserializer,
     TextFileDatasetDeserializer,
 )
+from guidellm.schemas.data import FileDataArgs
 
 
 def processor_factory():

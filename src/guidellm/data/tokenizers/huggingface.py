@@ -1,32 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Literal
-
-from pydantic import Field
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
-from guidellm.data.schemas import DataTokenizerArgs
 from guidellm.data.tokenizers.tokenizer import DataTokenizer, TokenizerRegistry
+from guidellm.schemas.data.tokenizers import HuggingFaceTokenizerArgs
 
-__all__ = ["HuggingFaceTokenizer", "HuggingFaceTokenizerArgs"]
-
-
-@DataTokenizerArgs.register(["huggingface_auto", "hf_auto"])
-class HuggingFaceTokenizerArgs(DataTokenizerArgs):
-    """Model for Hugging Face tokenizer arguments."""
-
-    kind: Literal["huggingface_auto", "hf_auto"] = Field(
-        default="huggingface_auto",
-        description="Type identifier for the HuggingFace tokenizer.",
-    )
-    load_kwargs: dict[str, Any] = Field(
-        default_factory=dict,
-        examples=[{"use_fast": True, "revision": "main"}],
-        description=(
-            "Optional additional arguments to pass to the HuggingFace tokenizer's "
-            "from_pretrained method, such as 'use_fast' or 'revision'."
-        ),
-    )
+__all__ = ["HuggingFaceTokenizer"]
 
 
 @TokenizerRegistry.register(["huggingface_auto", "hf_auto"])

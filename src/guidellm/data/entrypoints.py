@@ -11,16 +11,16 @@ from guidellm.data.preprocessors import (
     DatasetPreprocessor,
     PreprocessorRegistry,
 )
-from guidellm.data.schemas import (
+from guidellm.data.schemas import DatasetType
+from guidellm.data.tokenizers import TokenizerRegistry
+from guidellm.schemas.data import (
     DataArgs,
     DataFinalizerArgs,
     DataLoaderArgs,
     DataPreprocessorArgs,
-    DatasetType,
     DataTokenizerArgs,
     PreprocessStrategyArgs,
 )
-from guidellm.data.tokenizers import TokenizerRegistry
 from guidellm.utils.console import Console
 from guidellm.utils.mixins import InfoMixin
 

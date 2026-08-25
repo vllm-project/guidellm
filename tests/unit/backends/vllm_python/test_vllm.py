@@ -18,7 +18,6 @@ import pytest
 
 from guidellm.backends.vllm_python.vllm import (
     VLLMPythonAsyncBackend,
-    VLLMPythonAsyncBackendArgs,
     _has_jinja2_markers,
     _ResolvedRequest,
 )
@@ -28,6 +27,7 @@ from guidellm.schemas import (
     RequestInfo,
     UsageMetrics,
 )
+from guidellm.schemas.backends import VLLMPythonAsyncBackendArgs
 
 
 def _make_vllm_backend(**kwargs) -> VLLMPythonAsyncBackend:

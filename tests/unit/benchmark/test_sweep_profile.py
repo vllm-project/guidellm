@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from guidellm.benchmark.entrypoints import resolve_profile
 from guidellm.benchmark.profiles import ProfileFactory, SweepProfile
-from guidellm.benchmark.profiles.sweep import SweepProfileArgs
+from guidellm.schemas.benchmark import SweepProfileArgs
 
 
 class TestSweepProfileArgs:

@@ -7,8 +7,12 @@ import numpy as np
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from guidellm.schemas import DistributionSummary, Percentiles, StatusDistributionSummary
-from guidellm.schemas.statistics import FunctionObjT
+from guidellm.schemas import (
+    DistributionSummary,
+    FunctionObjT,
+    Percentiles,
+    StatusDistributionSummary,
+)
 
 
 def test_function_obj_type():
