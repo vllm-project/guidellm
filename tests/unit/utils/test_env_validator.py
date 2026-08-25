@@ -7,7 +7,7 @@ Unit tests for environment variable validation utilities.
 import pytest
 from pydantic import BaseModel
 
-from guidellm.benchmark.schemas.entrypoints import BenchmarkScenario
+from guidellm.schemas.benchmark import BenchmarkScenario
 from guidellm.settings import Settings
 from guidellm.utils.env_validator import (
     _resolve_model_type,

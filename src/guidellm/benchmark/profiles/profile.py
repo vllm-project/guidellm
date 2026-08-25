@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Generator, MutableMapping
 from typing import Any
 
-from guidellm.benchmark.schemas import Benchmark, ProfileArgs
+from guidellm.benchmark.schemas import Benchmark
 from guidellm.logger import logger
 from guidellm.scheduler import (
     Constraint,
@@ -16,6 +16,7 @@ from guidellm.scheduler import (
     ConstraintsInitializerFactory,
     SchedulingStrategy,
 )
+from guidellm.schemas.benchmark import ProfileArgs
 from guidellm.utils.registry import RegistryMixin
 
 

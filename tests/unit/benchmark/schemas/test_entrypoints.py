@@ -14,10 +14,12 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from guidellm.backends.backend import BackendArgs
-from guidellm.backends.openai.http import OpenAIHTTPBackendArgs
-from guidellm.backends.openai.websocket import OpenAIWebSocketBackendArgs
-from guidellm.benchmark.schemas.entrypoints import (
+from guidellm.schemas.backends import (
+    BackendArgs,
+    OpenAIHTTPBackendArgs,
+    OpenAIWebSocketBackendArgs,
+)
+from guidellm.schemas.benchmark import (
     BenchmarkArgs,
     BenchmarkScenario,
     GenerativeMetricsArgs,
@@ -27,7 +29,7 @@ from guidellm.utils.typing import BLANK
 
 # Conditionally import VLLM backend args if available
 try:
-    from guidellm.backends.vllm_python.vllm import VLLMPythonAsyncBackendArgs
+    from guidellm.schemas.backends import VLLMPythonAsyncBackendArgs
 
     HAS_VLLM = True
 except ImportError:

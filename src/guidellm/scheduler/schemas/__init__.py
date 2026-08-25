@@ -19,6 +19,10 @@ from .conversation import (
     DatasetIterT,
     HistoryContext,
 )
+from .conversation_graph import (
+    GenerativeConversationGraph,
+    GenerativeConversationNode,
+)
 from .state import SchedulerProgress, SchedulerState, SchedulerUpdateAction
 from .types import (
     HistoryT,
@@ -36,6 +40,8 @@ __all__ = [
     "ConversationNode",
     "ConversationT",
     "DatasetIterT",
+    "GenerativeConversationGraph",
+    "GenerativeConversationNode",
     "HistoryContext",
     "HistoryT",
     "RequestDataT",

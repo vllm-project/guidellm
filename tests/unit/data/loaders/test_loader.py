@@ -15,7 +15,8 @@ import guidellm.data.loaders  # noqa: F401 — ensures TorchDataLoader is regist
 
 # Import to ensure deserializer registry is populated
 from guidellm.data.loaders.loader import DataLoaderRegistry
-from guidellm.data.loaders.torch import TorchDataLoader, TorchDataLoaderArgs
+from guidellm.data.loaders.torch import TorchDataLoader
+from guidellm.schemas.data import TorchDataLoaderArgs
 
 
 class TestDataLoaderRegistry:

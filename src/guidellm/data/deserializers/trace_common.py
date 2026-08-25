@@ -22,7 +22,6 @@ from datasets import (
 )
 from datasets.iterable_dataset import _BaseExamplesIterable
 from faker import Faker
-from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -30,19 +29,18 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.data.schemas import DataArgs
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationParentRef,
     ConversationTurnData,
 )
+from guidellm.schemas.data.deserializers import TraceDataArgs
 from guidellm.utils.hf_datasets import load_dataset_from_file
 from guidellm.utils.json_unwrap import try_json_load
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
     "MissingColumnsLocation",
-    "TraceDataArgs",
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
@@ -161,35 +159,6 @@ class TraceFormatRegistry(RegistryMixin[type[TraceFormatBase]]):
                 f"Format type '{config.kind}' is not registered."
             )
         return format_from_type(config, dataset)
-
-
-class TraceDataArgs(DataArgs):
-    """Abstract class meant to be inherited by a trace format.
-    For testing, use `trace_minimal.MinimalTraceFormatArgs` instead."""
-
-    kind: str = Field(
-        description="Type identifier for the trace dataset deserializer.",
-    )
-    path: Path = Field(description="Path to the trace file.")
-    timestamp_column: str = Field(
-        default="timestamp",
-        description="Column name for timestamps in the trace file.",
-    )
-    prompt_tokens_column: str = Field(
-        default="input_length",
-        description="Column name for prompt token counts in the trace file.",
-    )
-    output_tokens_column: str = Field(
-        default="output_length",
-        description="Column name for output token counts in the trace file.",
-    )
-    conversation_id_column: str | None = Field(
-        default=None,
-        description=(
-            "Column name for conversation IDs. Required for formats "
-            "with conversation-scoped trace data such as hash IDs."
-        ),
-    )
 
 
 class TraceExamplesIterable(_BaseExamplesIterable):

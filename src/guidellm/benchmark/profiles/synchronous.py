@@ -3,31 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import MutableMapping
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
-from pydantic import Field
-
-from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.scheduler import (
     ConstraintInitializer,
     SchedulingStrategy,
     SynchronousStrategy,
 )
+from guidellm.schemas.benchmark.profiles import SynchronousProfileArgs
 
 from .profile import Profile, ProfileFactory
 
+__all__ = ["SynchronousProfile"]
+
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
-
-
-@ProfileArgs.register("synchronous")
-class SynchronousProfileArgs(ProfileArgs):
-    """Pydantic model for synchronous profile creation arguments."""
-
-    kind: Literal["synchronous"] = Field(
-        default="synchronous",
-        description="Profile type discriminator for synchronous scheduling",
-    )
 
 
 @ProfileFactory.register("synchronous")

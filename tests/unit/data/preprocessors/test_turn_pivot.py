@@ -10,7 +10,7 @@ import pytest
 
 from guidellm.data.preprocessors import TurnPivot
 from guidellm.data.preprocessors.preprocessor import PreprocessorRegistry
-from guidellm.data.preprocessors.turn_pivot import TurnPivotArgs
+from guidellm.schemas.data import TurnPivotArgs
 
 
 class TestTurnPivot:

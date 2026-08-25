@@ -9,7 +9,7 @@ import guidellm.data.loaders  # noqa: F401
 import guidellm.data.preprocessors  # noqa: F401
 import guidellm.data.tokenizers  # noqa: F401
 from guidellm.cli.preprocess.args import PreprocessDatasetArgs
-from guidellm.data.schemas import PreprocessStrategyArgs
+from guidellm.schemas.data import PreprocessStrategyArgs
 
 from .dataset import dataset
 

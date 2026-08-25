@@ -1,10 +1,8 @@
 import pytest
 from datasets import Dataset
 
-from guidellm.data.deserializers.huggingface import (
-    HuggingFaceDataArgs,
-    HuggingFaceDatasetDeserializer,
-)
+from guidellm.data.deserializers.huggingface import HuggingFaceDatasetDeserializer
+from guidellm.schemas.data import HuggingFaceDataArgs
 
 
 @pytest.fixture

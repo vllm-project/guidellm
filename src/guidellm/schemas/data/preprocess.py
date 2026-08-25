@@ -5,11 +5,13 @@ from __future__ import annotations
 import codecs
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 from loguru import logger
 from pydantic import Field, field_validator
-from transformers import PreTrainedTokenizerBase
+
+if TYPE_CHECKING:
+    from transformers import PreTrainedTokenizerBase
 
 from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
 

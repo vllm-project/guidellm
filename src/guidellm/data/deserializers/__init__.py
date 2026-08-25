@@ -7,40 +7,32 @@ from .file import (
     ArrowFileDatasetDeserializer,
     CSVFileDatasetDeserializer,
     DBFileDatasetDeserializer,
-    FileDataArgs,
     HDF5FileDatasetDeserializer,
     JSONFileDatasetDeserializer,
     ParquetFileDatasetDeserializer,
     TarFileDatasetDeserializer,
     TextFileDatasetDeserializer,
 )
-from .huggingface import HuggingFaceDataArgs, HuggingFaceDatasetDeserializer
+from .huggingface import HuggingFaceDatasetDeserializer
 from .memory import (
-    InMemoryDictDataArgs,
     InMemoryDictDatasetDeserializer,
-    InMemoryDictListDataArgs,
     InMemoryDictListDatasetDeserializer,
-    InMemoryItemListDataArgs,
     InMemoryItemListDatasetDeserializer,
 )
 from .synthetic import (
-    SyntheticTextDataArgs,
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
 )
 from .synthetic_image import (
-    SyntheticImageDataArgs,
     SyntheticImageDataset,
     SyntheticImageDatasetDeserializer,
 )
 from .synthetic_video import (
-    SyntheticVideoDataArgs,
     SyntheticVideoDataset,
     SyntheticVideoDatasetDeserializer,
 )
 from .trace_common import (
     MissingColumnsLocation,
-    TraceDataArgs,
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
@@ -50,9 +42,9 @@ from .trace_common import (
     generate_token_ids,
     get_missing_columns,
 )
-from .trace_minimal import MinimalTraceFormatArgs
-from .trace_mooncake import MooncakeTraceFormatArgs
-from .trace_weka import WEKATraceFormatArgs
+from .trace_minimal import MinimalTraceFormat
+from .trace_mooncake import MooncakeTraceFormat
+from .trace_weka import WEKATraceFormat
 
 __all__ = [
     "ArrowFileDatasetDeserializer",
@@ -61,37 +53,28 @@ __all__ = [
     "DataNotSupportedError",
     "DatasetDeserializer",
     "DatasetDeserializerFactory",
-    "FileDataArgs",
     "HDF5FileDatasetDeserializer",
-    "HuggingFaceDataArgs",
     "HuggingFaceDatasetDeserializer",
-    "InMemoryDictDataArgs",
     "InMemoryDictDatasetDeserializer",
-    "InMemoryDictListDataArgs",
     "InMemoryDictListDatasetDeserializer",
-    "InMemoryItemListDataArgs",
     "InMemoryItemListDatasetDeserializer",
     "JSONFileDatasetDeserializer",
-    "MinimalTraceFormatArgs",
+    "MinimalTraceFormat",
     "MissingColumnsLocation",
-    "MooncakeTraceFormatArgs",
+    "MooncakeTraceFormat",
     "ParquetFileDatasetDeserializer",
-    "SyntheticImageDataArgs",
     "SyntheticImageDataset",
     "SyntheticImageDatasetDeserializer",
-    "SyntheticTextDataArgs",
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
-    "SyntheticVideoDataArgs",
     "SyntheticVideoDataset",
     "SyntheticVideoDatasetDeserializer",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
-    "TraceDataArgs",
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
-    "WEKATraceFormatArgs",
+    "WEKATraceFormat",
     "create_distinct_token_block",
     "create_prompt_from_hash_ids",
     "decode_prompt",

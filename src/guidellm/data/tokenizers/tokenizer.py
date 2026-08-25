@@ -4,7 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.data.schemas import DataTokenizerArgs
+from guidellm.schemas.data import DataTokenizerArgs
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["DataTokenizer", "TokenizerRegistry"]

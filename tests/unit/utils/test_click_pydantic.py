@@ -9,7 +9,7 @@ import pytest
 from click.testing import CliRunner
 from pydantic import BaseModel, Field, ValidationError
 
-from guidellm.scheduler.constraints import ConstraintArgs
+from guidellm.schemas.scheduler import ConstraintArgs
 from guidellm.utils.click_pydantic import (
     RegistryAwareCommand,
     _error_to_message,

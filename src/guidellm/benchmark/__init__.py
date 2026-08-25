@@ -10,6 +10,12 @@ evaluating model performance under various load conditions.
 
 from __future__ import annotations
 
+from guidellm.schemas.benchmark import (
+    BenchmarkArgs,
+    BenchmarkScenario,
+    get_builtin_scenarios,
+)
+
 from .benchmarker import Benchmarker
 from .entrypoints import benchmark_generative_text, reimport_benchmarks_report
 from .outputs import (
@@ -27,14 +33,11 @@ from .profiles import (
     ThroughputProfile,
 )
 from .progress import BenchmarkerProgress, GenerativeConsoleBenchmarkerProgress
-from .scenarios import get_builtin_scenarios
 from .schemas import (
     Benchmark,
     BenchmarkAccumulator,
     BenchmarkAccumulatorT,
-    BenchmarkArgs,
     BenchmarkConfig,
-    BenchmarkScenario,
     BenchmarkT,
     GenerativeAudioMetricsSummary,
     GenerativeBenchmark,
@@ -64,9 +67,7 @@ __all__ = [
     "Benchmark",
     "BenchmarkAccumulator",
     "BenchmarkAccumulatorT",
-    "BenchmarkArgs",
     "BenchmarkConfig",
-    "BenchmarkScenario",
     "BenchmarkT",
     "Benchmarker",
     "BenchmarkerProgress",

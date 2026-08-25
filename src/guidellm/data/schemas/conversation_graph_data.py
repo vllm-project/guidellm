@@ -14,8 +14,7 @@ from typing import Any
 from pydantic import Field, model_validator
 
 from guidellm.scheduler.schemas import HistoryContext
-from guidellm.schemas.base import StandardBaseModel
-from guidellm.schemas.info import RequestSettings
+from guidellm.schemas import RequestSettings, StandardBaseModel
 
 __all__ = [
     "ConversationGraphData",

@@ -14,7 +14,7 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationParentRef,
     ConversationTurnData,
 )
-from guidellm.schemas.info import RequestSettings
+from guidellm.schemas import RequestSettings
 
 __all__ = [
     "expand_client_tool_turns",

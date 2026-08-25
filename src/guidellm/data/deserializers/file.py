@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import pandas as pd
 from datasets import Dataset, IterableDataset, load_dataset
-from pydantic import Field
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -14,14 +13,13 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.data.schemas import DataArgs
 from guidellm.data.utils import resolve_dataset_split
+from guidellm.schemas.data.deserializers import FileDataArgs
 
 __all__ = [
     "ArrowFileDatasetDeserializer",
     "CSVFileDatasetDeserializer",
     "DBFileDatasetDeserializer",
-    "FileDataArgs",
     "HDF5FileDatasetDeserializer",
     "JSONFileDatasetDeserializer",
     "ParquetFileDatasetDeserializer",
@@ -47,38 +45,6 @@ def _load_file_dataset(
     """
     dataset = load_dataset(loader, data_files=str(path), **load_kwargs)
     return resolve_dataset_split(dataset)
-
-
-@DataArgs.register(
-    [
-        "text_file",
-        "csv_file",
-        "json_file",
-        "parquet_file",
-        "arrow_file",
-        "hdf5_file",
-        "db_file",
-        "tar_file",
-    ]
-)
-class FileDataArgs(DataArgs):
-    kind: Literal[  # type: ignore[assignment]
-        "text_file",
-        "csv_file",
-        "json_file",
-        "parquet_file",
-        "arrow_file",
-        "hdf5_file",
-        "db_file",
-        "tar_file",
-    ] = Field(
-        default="text_file",
-        description="Type identifier for the data arguments configuration.",
-    )
-    path: Path = Field(
-        description="Path to the data file.",
-        examples=["data.txt"],
-    )
 
 
 @DatasetDeserializerFactory.register("text_file")

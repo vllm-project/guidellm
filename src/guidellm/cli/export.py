@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 
 from guidellm.benchmark import reimport_benchmarks_report
-from guidellm.benchmark.schemas import BenchmarkOutputArgs
+from guidellm.schemas.benchmark import BenchmarkOutputArgs
 from guidellm.utils.click_pydantic import RegistryAwareCommand, registry_option
 
 __all__ = ["export"]

@@ -5,7 +5,8 @@ from typing import Protocol, runtime_checkable
 
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.data.schemas import DataArgs, DataNotSupportedError, DatasetType
+from guidellm.data.schemas import DataNotSupportedError, DatasetType
+from guidellm.schemas.data import DataArgs
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [

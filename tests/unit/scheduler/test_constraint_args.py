@@ -6,17 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from guidellm.benchmark.entrypoints import resolve_constraints
-from guidellm.benchmark.schemas import BenchmarkArgs
-from guidellm.scheduler.constraints import (
-    ConstraintArgs,
-    ConstraintsInitializerFactory,
-    MaxDurationConstraintArgs,
-    MaxErrorRateConstraintArgs,
-    MaxErrorsConstraintArgs,
-    MaxGlobalErrorRateConstraintArgs,
-    MaxRequestsConstraintArgs,
-    OverSaturationConstraintArgs,
-)
+from guidellm.scheduler.constraints import ConstraintsInitializerFactory
 from guidellm.scheduler.constraints.error import (
     MaxErrorRateConstraint,
     MaxErrorsConstraint,
@@ -28,6 +18,16 @@ from guidellm.scheduler.constraints.request import (
 )
 from guidellm.scheduler.constraints.saturation import (
     OverSaturationConstraintInitializer,
+)
+from guidellm.schemas.benchmark import BenchmarkArgs
+from guidellm.schemas.scheduler import (
+    ConstraintArgs,
+    MaxDurationConstraintArgs,
+    MaxErrorRateConstraintArgs,
+    MaxErrorsConstraintArgs,
+    MaxGlobalErrorRateConstraintArgs,
+    MaxRequestsConstraintArgs,
+    OverSaturationConstraintArgs,
 )
 
 

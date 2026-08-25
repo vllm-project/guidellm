@@ -18,8 +18,8 @@ from pydantic import (
     field_validator,
 )
 
-from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
+from guidellm.schemas.benchmark.transient import TransientPhaseConfig
 from guidellm.utils.imports import json
 
 __all__ = ["ProfileArgs"]

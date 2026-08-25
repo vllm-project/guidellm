@@ -20,8 +20,8 @@ import yaml
 from pydantic import Field
 
 from guidellm.benchmark.schemas.benchmark import GenerativeBenchmark
-from guidellm.benchmark.schemas.entrypoints import BenchmarkScenario
 from guidellm.schemas import StandardBaseModel
+from guidellm.schemas.benchmark import BenchmarkScenario
 
 __all__ = ["GenerativeBenchmarkMetadata", "GenerativeBenchmarksReport"]
 

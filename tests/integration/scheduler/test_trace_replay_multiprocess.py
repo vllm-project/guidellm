@@ -16,28 +16,24 @@ from unittest.mock import Mock
 
 import pytest
 
-from guidellm.data.deserializers import (
-    MinimalTraceFormatArgs,
-    TraceDatasetDeserializer,
-)
-from guidellm.data.finalizers.generative import (
-    GenerativeRequestFinalizer,
-    GenerativeRequestFinalizerArgs,
-)
-from guidellm.data.preprocessors.mappers import (
-    GenerativeColumnMapper,
-    GenerativeColumnMapperArgs,
-)
+from guidellm.data.deserializers import TraceDatasetDeserializer
+from guidellm.data.finalizers.generative import GenerativeRequestFinalizer
+from guidellm.data.preprocessors.mappers import GenerativeColumnMapper
 from guidellm.scheduler import (
     BackendInterface,
     MaxNumberConstraint,
-    MaxRequestsConstraintArgs,
     TraceReplayStrategy,
     WorkerProcessGroup,
 )
 from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
+from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas import GenerationRequest, RequestSettings
-from guidellm.schemas.conversation_graph import GenerativeConversationGraph
+from guidellm.schemas.data import (
+    GenerativeColumnMapperArgs,
+    GenerativeRequestFinalizerArgs,
+    MinimalTraceFormatArgs,
+)
+from guidellm.schemas.scheduler import MaxRequestsConstraintArgs
 from tests.unit.testing_utils import async_timeout
 
 TIME_SCALE = 2.0

@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import MutableMapping
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from pydantic import Field, PositiveInt
 
-from guidellm.benchmark.schemas import ProfileArgs
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
@@ -17,34 +15,14 @@ from guidellm.scheduler import (
     SynchronousStrategy,
     ThroughputStrategy,
 )
+from guidellm.schemas.benchmark.profiles import SweepProfileArgs
 
 from .profile import Profile, ProfileFactory
 
+__all__ = ["SweepProfile"]
+
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
-
-
-@ProfileArgs.register("sweep")
-class SweepProfileArgs(ProfileArgs):
-    """Pydantic model for sweep profile creation arguments."""
-
-    kind: Literal["sweep"] = Field(
-        default="sweep",
-        description="Profile type discriminator for sweep scheduling",
-    )
-    sweep_size: int = Field(
-        default=10,
-        description="Number of strategies to generate for the sweep",
-        ge=2,
-    )
-    strategy_type: Literal["constant", "poisson"] = Field(
-        default="constant",
-        description="Type of strategy to use for the asynchronous sweep",
-    )
-    max_concurrency: PositiveInt | None = Field(
-        default=512,
-        description="Maximum concurrent requests to schedule",
-    )
 
 
 @ProfileFactory.register("sweep")

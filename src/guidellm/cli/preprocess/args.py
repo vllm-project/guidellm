@@ -11,14 +11,14 @@ from pydantic import (
     Field,
 )
 
-from guidellm.benchmark.schemas import RandomArgs
-from guidellm.data.schemas import (
+from guidellm.schemas import ReloadableBaseModel, standard_model_config
+from guidellm.schemas.benchmark import RandomArgs
+from guidellm.schemas.data import (
     DataLoaderArgs,
     DataPreprocessorArgs,
     DataTokenizerArgs,
     PreprocessStrategyArgs,
 )
-from guidellm.schemas import ReloadableBaseModel, standard_model_config
 
 __all__ = [
     "PreprocessDatasetArgs",
