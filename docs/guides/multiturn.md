@@ -245,7 +245,7 @@ Enable server-side history in the backend configuration:
 
 ```bash
 guidellm run \
-  --backend kind=openai_http'target=http://localhost:8000,request_format=/v1/responses,server_history=true' \
+  --backend kind=openai_http,target=http://localhost:8000,request_format=/v1/responses,server_history=true \
   --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3
 ```
 
