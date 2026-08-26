@@ -309,6 +309,7 @@ known-first-party = ["guidellm", "tests"]
 [tool.importlinter]
 root_package = "guidellm"
 exclude_type_checking_imports = true
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "Enforce import layers"
@@ -337,6 +338,21 @@ ancestors = [
     "guidellm.schemas",
     "guidellm.extras",
 ]
+
+[[tool.importlinter.contracts]]
+name = "Avoid slow importing libraries in the worker hot-path"
+type = "forbidden"
+source_modules = [
+  "guidellm.scheduler",
+  "guidellm.backends",
+  "guidellm.schemas",
+  "guidellm.schemas.**",
+]
+forbidden_modules = [
+  "datasets",
+  "transformers",
+]
+
 
 [tool.pytest.ini_options]
 addopts = '-s -vvv --cache-clear'
