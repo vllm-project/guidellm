@@ -117,6 +117,7 @@ quality = [
     # code quality
     "mypy~=2.1.0",
     "ruff~=0.15.20",
+    "import-linter~=2.13.0",
 
     # docs quality
     "mdformat~=1.0.0",
@@ -307,6 +308,54 @@ select = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["guidellm", "tests"]
+
+
+[tool.importlinter]
+root_package = "guidellm"
+exclude_type_checking_imports = true
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Enforce import layers"
+type = "layers"
+containers = ["guidellm"]
+layers = [
+  "__main__",
+  "cli",
+  "benchmark | mock_server",
+  "data | backends",
+  "scheduler",
+  # utils/extras/schemas can interdepend so treat
+  # them as one layer and check with a separate rule
+  "utils : extras : schemas",
+  "logger",
+  "settings",
+]
+exhaustive = true
+exhaustive_ignores = ["version"]
+
+[[tool.importlinter.contracts]]
+name = "Check acyclic siblings on utility modules"
+type = "acyclic_siblings"
+ancestors = [
+    "guidellm.utils",
+    "guidellm.schemas",
+    "guidellm.extras",
+]
+
+[[tool.importlinter.contracts]]
+name = "Avoid slow importing libraries in the worker hot-path"
+type = "forbidden"
+source_modules = [
+  "guidellm.scheduler",
+  "guidellm.backends",
+  "guidellm.schemas",
+  "guidellm.schemas.**",
+]
+forbidden_modules = [
+  "datasets",
+  "transformers",
+]
 
 
 [tool.pytest.ini_options]
