@@ -49,6 +49,7 @@ __all__ = [
     "GenerativeBenchmarkerHTML",
     "HTMLBenchmarkOutputArgs",
     "build_report_view",
+    "render_html_report",
 ]
 
 _StatusName = Literal["successful", "incomplete", "errored", "total"]
@@ -149,11 +150,18 @@ def render_html_report(view: dict[str, Any]) -> str:
     payload = json.dumps(view, ensure_ascii=False, allow_nan=False).replace(
         "<", "\\u003c"
     )
-    return (
+    html = (
         template.replace("__GUIDELLM_REPORT_CSS__", css)
         .replace("__GUIDELLM_REPORT_JS__", js)
         .replace("__GUIDELLM_REPORT_JSON__", payload)
+        .replace(
+            "__GUIDELLM_STATIC_TABLE__",
+            _build_static_summary_table(view.get("runs") or []),
+        )
     )
+    for token, value in _static_text_defaults(view).items():
+        html = html.replace(token, value)
+    return html
 
 
 def build_report_view(report: GenerativeBenchmarksReport) -> dict[str, Any]:
@@ -174,20 +182,32 @@ def build_report_view(report: GenerativeBenchmarksReport) -> dict[str, Any]:
     turn_note: str | None = None
     if benchmarks:
         source = benchmarks[peak_index]
-        by_turn = _build_metrics_by_turn(source)
-        if by_turn and len(benchmarks) > 1:
-            turn_note = (
-                "Turn curves use the peak-throughput run "
-                f"(#{peak_index + 1}: {peak_run['strategy'] if peak_run else 'n/a'})."
-            )
+        turn_bundle = _build_metrics_by_turn(source)
+        if turn_bundle is not None:
+            by_turn = turn_bundle["rows"]
+            note_parts: list[str] = []
+            # Only mention the agent when more than one was present (filtering applied).
+            if turn_bundle["agent_count"] > 1:
+                agent_label = turn_bundle["agent_id"]
+                agent_display = "default" if agent_label is None else str(agent_label)
+                note_parts.append(
+                    f'Turn curves use agent "{agent_display}" '
+                    f"({turn_bundle['agent_request_count']}/"
+                    f"{turn_bundle['total_successful']} requests)."
+                )
+            if len(benchmarks) > 1:
+                note_parts.append(
+                    "Peak-throughput run "
+                    f"(#{peak_index + 1}: "
+                    f"{peak_run['label'] if peak_run else 'n/a'})."
+                )
+            turn_note = " ".join(note_parts) if note_parts else None
 
     header = _build_header(report, runs, peak_index, has_multi_turn=bool(by_turn))
-    kpis = _build_kpis(peak_run) if peak_run else {}
     details = _build_details(benchmarks, runs)
 
     return {
         "header": header,
-        "kpis": kpis,
         "runs": runs,
         "by_turn": by_turn,
         "turn_note": turn_note,
@@ -254,20 +274,119 @@ def _build_header(
     }
 
 
-def _build_kpis(run: dict[str, Any]) -> dict[str, Any]:
+def _html_escape(value: Any) -> str:
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _fmt_num(value: Any) -> str:
+    """Format a number like the report JS ``fmt`` helper."""
+    if value is None:
+        return "—"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if math.isnan(number):
+        return "—"
+    abs_n = abs(number)
+    if abs_n >= 100:  # noqa: PLR2004 — match report.js fmt thresholds
+        return f"{number:.0f}"
+    if abs_n >= 10:  # noqa: PLR2004 — match report.js fmt thresholds
+        return f"{number:.1f}"
+    return f"{number:.2f}"
+
+
+def _fmt_pct(value: Any) -> str:
+    """Format a ratio like the report JS ``pct`` helper."""
+    if value is None:
+        return "—"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if math.isnan(number):
+        return "—"
+    return f"{number * 100:.2f}%"
+
+
+def _static_text_defaults(view: dict[str, Any]) -> dict[str, str]:
+    """
+    Peak-run / header defaults embedded in the HTML for no-JS viewers.
+
+    JavaScript overwrites these on init when available.
+    """
+    header = view.get("header") or {}
+    runs = view.get("runs") or []
+    peak_index = int(header.get("peak_index") or 0)
+    run = (
+        runs[peak_index]
+        if runs and 0 <= peak_index < len(runs)
+        else (runs[0] if runs else {})
+    )
+
     return {
-        "requests_per_second": run.get("request_rate"),
-        "output_tokens_per_second": run.get("output_tps"),
-        "tokens_per_second": run.get("total_tps"),
-        "request_latency_p95_ms": run.get("request_latency_p95_ms"),
-        "request_latency_p99_ms": run.get("request_latency_p99_ms"),
-        "ttft_p95_ms": run.get("ttft_p95_ms"),
-        "ttft_p99_ms": run.get("ttft_p99_ms"),
-        "itl_p95_ms": run.get("itl_p95_ms"),
-        "itl_p99_ms": run.get("itl_p99_ms"),
-        "error_rate": run.get("error_rate"),
-        "strategy": run.get("label") or run.get("strategy"),
+        "__GUIDELLM_META_MODEL__": _html_escape(header.get("model") or "N/A"),
+        "__GUIDELLM_META_TARGET__": _html_escape(header.get("target") or "N/A"),
+        "__GUIDELLM_META_PROFILE__": _html_escape(header.get("profile") or "N/A"),
+        "__GUIDELLM_META_TIME__": _html_escape(header.get("timestamp") or "N/A"),
+        "__GUIDELLM_META_VERSION__": _html_escape(
+            header.get("guidellm_version") or "N/A"
+        ),
+        "__GUIDELLM_KPI_RPS__": _html_escape(_fmt_num(run.get("request_rate"))),
+        "__GUIDELLM_KPI_OUT_TPS__": _html_escape(_fmt_num(run.get("output_tps"))),
+        "__GUIDELLM_KPI_TOTAL_TPS__": _html_escape(_fmt_num(run.get("total_tps"))),
+        "__GUIDELLM_KPI_LAT_P95__": _html_escape(
+            _fmt_num(run.get("request_latency_p95_ms"))
+        ),
+        "__GUIDELLM_KPI_LAT_P99__": _html_escape(
+            _fmt_num(run.get("request_latency_p99_ms"))
+        ),
+        "__GUIDELLM_KPI_TTFT_P95__": _html_escape(_fmt_num(run.get("ttft_p95_ms"))),
+        "__GUIDELLM_KPI_TTFT_P99__": _html_escape(_fmt_num(run.get("ttft_p99_ms"))),
+        "__GUIDELLM_KPI_ITL_P95__": _html_escape(_fmt_num(run.get("itl_p95_ms"))),
+        "__GUIDELLM_KPI_ITL_P99__": _html_escape(_fmt_num(run.get("itl_p99_ms"))),
+        "__GUIDELLM_KPI_ERROR__": _html_escape(_fmt_pct(run.get("error_rate"))),
     }
+
+
+def _build_static_summary_table(runs: Sequence[dict[str, Any]]) -> str:
+    """
+    Build a static HTML comparison table for viewers without JavaScript.
+
+    :param runs: Compact per-benchmark rows from the report view
+    :return: Escaped HTML table markup (or an empty-state paragraph)
+    """
+    if not runs:
+        return "<p>No benchmark runs in this report.</p>"
+
+    def cell(value: Any) -> str:
+        return f"<td>{_html_escape(value)}</td>"
+
+    rows_html: list[str] = []
+    for run in runs:
+        label = run.get("label") or run.get("strategy") or "—"
+        rows_html.append(
+            "<tr>"
+            + cell(label)
+            + cell(_fmt_num(run.get("request_rate")))
+            + cell(_fmt_num(run.get("total_tps")))
+            + cell(_fmt_pct(run.get("error_rate")))
+            + "</tr>"
+        )
+    return (
+        "<table>"
+        "<thead><tr>"
+        "<th>Strategy</th><th>Req/s</th><th>Total tok/s</th><th>Error rate</th>"
+        "</tr></thead>"
+        f"<tbody>{''.join(rows_html)}</tbody>"
+        "</table>"
+    )
 
 
 def _build_run_row(benchmark: GenerativeBenchmark, index: int) -> dict[str, Any]:
@@ -332,7 +451,6 @@ def _build_run_row(benchmark: GenerativeBenchmark, index: int) -> dict[str, Any]
         "errored": errored,
         "total": total,
         "error_rate": error_rate,
-        "modalities": _extract_modality_stats(metrics),
     }
 
 
@@ -355,8 +473,9 @@ def _build_details(
         metrics_out: list[dict[str, Any]] = []
         for attr, label in groups:
             metric_rows: list[dict[str, Any]] = []
-            for run in runs:
-                mod = (run.get("modalities") or {}).get(modality) or {}
+            for index, benchmark in enumerate(benchmarks):
+                run = runs[index] if index < len(runs) else {}
+                mod = _extract_modality_stats(benchmark.metrics).get(modality) or {}
                 stats = mod.get(attr) or {}
                 input_stats = stats.get("input") or {}
                 output_stats = stats.get("output") or {}
@@ -434,12 +553,15 @@ def _build_details(
 
 def _build_metrics_by_turn(
     benchmark: GenerativeBenchmark,
-) -> list[dict[str, Any]] | None:
+) -> dict[str, Any] | None:
     """
     Aggregate successful request metrics by ``info.turn_index``.
 
+    Filters to the dominant ``agent_id`` so branched/tool graphs do not mix series.
+
     :param benchmark: Benchmark whose requests may include multi-turn metadata
-    :return: Per-turn rows, or ``None`` when there is only a single turn (or no data)
+    :return: Bundle with per-turn ``rows`` and agent filter metadata, or ``None``
+        when there is only a single turn (or no data)
     """
     successful = benchmark.requests.successful or []
     if not successful:
@@ -449,15 +571,18 @@ def _build_metrics_by_turn(
     by_agent: dict[str | None, list[GenerativeRequestStats]] = defaultdict(list)
     for req in successful:
         by_agent[req.info.agent_id].append(req)
-    preferred_agent = max(by_agent.keys(), key=lambda key: len(by_agent[key]))
+
+    def _agent_sort_key(key: str | None) -> tuple[int, int, str]:
+        # Higher count first; prefer non-None ids; then lexicographic id.
+        return (-len(by_agent[key]), 0 if key is not None else 1, str(key or ""))
+
+    preferred_agent = min(by_agent.keys(), key=_agent_sort_key)
     selected = by_agent[preferred_agent]
 
     buckets: dict[int, list[GenerativeRequestStats]] = defaultdict(list)
-    history_lens: set[int] = set()
     for req in selected:
         turn_index = int(req.info.turn_index)
         buckets[turn_index].append(req)
-        history_lens.add(int(req.info.history_len))
 
     if len(buckets) <= 1:
         return None
@@ -491,11 +616,13 @@ def _build_metrics_by_turn(
             }
         )
 
-    # Attach a flag when history_len is a useful alternate x-axis.
-    if history_lens and history_lens != {row["turn_index"] for row in rows}:
-        for row in rows:
-            row["use_history_axis"] = True
-    return rows
+    return {
+        "rows": rows,
+        "agent_id": preferred_agent,
+        "agent_count": len(by_agent),
+        "agent_request_count": len(selected),
+        "total_successful": len(successful),
+    }
 
 
 def _side_stats(metric_obj: Any, side: str) -> dict[str, Any] | None:
@@ -801,13 +928,17 @@ def _safe_median(values: Sequence[float]) -> float | None:
 
 
 def _safe_percentile(values: Sequence[float], quantile: float) -> float | None:
-    clean = sorted(
-        float(v) for v in values if v is not None and not math.isnan(float(v))
-    )
+    clean = [float(v) for v in values if v is not None and not math.isnan(float(v))]
     if not clean:
         return None
-    if len(clean) == 1:
-        return clean[0]
-    # Nearest-rank style percentile for small request samples.
-    rank = min(len(clean) - 1, max(0, math.ceil(quantile * len(clean)) - 1))
-    return clean[rank]
+    # Match run-level DistributionSummary percentiles (empirical CDF, no interpolation).
+    name: Literal["p50", "p90", "p95", "p99"]
+    if quantile == 0.99:  # noqa: PLR2004
+        name = "p99"
+    elif quantile == 0.95:  # noqa: PLR2004
+        name = "p95"
+    elif quantile == 0.90:  # noqa: PLR2004
+        name = "p90"
+    else:
+        name = "p50"
+    return _percentile_from_dist(DistributionSummary.from_values(clean), name)

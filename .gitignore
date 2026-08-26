@@ -186,6 +186,10 @@ cython_debug/
 !src/guidellm/benchmark/scenarios/*.json
 !src/guidellm/benchmark/scenarios/*.yaml
 
+# HTML report Node smoke-test manifests (needed by tox -e test-html-js)
+!tests/js/package.json
+!tests/js/package-lock.json
+
 # Vendored offline tokenizer fixtures for tests (no Hub downloads)
 !tests/fixtures/tokenizers/**/*.json
 !tests/fixtures/tokenizers/**/*.yaml
@@ -210,6 +214,7 @@ cython_debug/
 
 # Optional local Node tooling leftovers
 /node_modules/
+tests/js/node_modules/
 /.pnp
 .pnp.*
 .yarn/*

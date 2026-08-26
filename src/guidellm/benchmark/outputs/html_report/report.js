@@ -11,7 +11,7 @@
     input: "#0066cc", // interaction-blue-50
     output: "#f5921b", // orange-40
     success: "#63993d", // success-green-50
-    incomplete: "#f5921b", // orange-40
+    incomplete: "#f0ab00", // warning gold — distinct from output orange
     errored: "#f0561d", // danger-orange-50
     line: "#e0e0e0", // gray-20
     ink: "#151515",
@@ -20,6 +20,7 @@
     ttftAlt: "#004d4d", // teal-70
     tpot: "#ca6c0f", // orange-50
     tpotAlt: "#9e4a06", // orange-60
+    itl: "#009596", // teal-40 — distinct from P99 purple and TPOT orange
     ttfot: "#4394e5", // interaction-blue-40
     ttfotAlt: "#004d99", // interaction-blue-60
     // Efficiency series: keep concurrency vs request-rate visually distinct.
@@ -202,7 +203,7 @@
       title: "Peak tok/s",
       lines: [
         "Runs marked “peak tok/s” have the highest total tokens per second.",
-        "KPIs default to that run until you pick another.",
+        "KPIs and the latency-components chart default to that run until you pick another.",
       ],
     },
     lat_by_conc: {
@@ -215,7 +216,10 @@
     },
     outcomes: {
       title: "Request outcomes",
-      lines: ["How each request finished."],
+      lines: [
+        "How each request finished.",
+        "Multi-run charts show share as % of requests so runs with different volumes stay comparable.",
+      ],
       also: ["successful", "incomplete", "errored"],
     },
     successful: {
@@ -268,13 +272,6 @@
         "Prompt median: typical prompt size in tokens — right axis, dashed.",
       ],
       also: ["p95", "p99", "median"],
-    },
-    prompt_vs_turn: {
-      title: "Prompt tokens vs turn",
-      lines: [
-        "Prompt size (tokens) at each turn, usually rising as conversation history is appended.",
-      ],
-      also: ["median", "p95"],
     },
     history_median: {
       title: "History median",
@@ -425,15 +422,22 @@
     var tip = ensureHelpTip();
     tip.innerHTML = helpTipHtml(entry);
     positionHelpTip(btn, evt);
+    btn.setAttribute("aria-expanded", "true");
   }
 
   function hideHelpTip() {
     if (pinnedHelpBtn) return;
     if (helpTipEl) helpTipEl.hidden = true;
+    document.querySelectorAll(".help-q[aria-expanded='true']").forEach(function (btn) {
+      if (btn !== pinnedHelpBtn) btn.setAttribute("aria-expanded", "false");
+    });
   }
 
   function unpinHelp() {
-    if (pinnedHelpBtn) pinnedHelpBtn.classList.remove("is-pinned");
+    if (pinnedHelpBtn) {
+      pinnedHelpBtn.classList.remove("is-pinned");
+      pinnedHelpBtn.setAttribute("aria-expanded", "false");
+    }
     pinnedHelpBtn = null;
     if (helpTipEl) helpTipEl.hidden = true;
   }
@@ -599,6 +603,9 @@
       if (entry && !btn.getAttribute("aria-label")) {
         btn.setAttribute("aria-label", "About " + entry.title);
       }
+      if (!btn.getAttribute("aria-expanded")) {
+        btn.setAttribute("aria-expanded", "false");
+      }
       if (!btn.textContent) btn.textContent = "?";
       bindHelpControl(btn);
     });
@@ -661,11 +668,17 @@
   }
 
   function activateTab(name) {
-    document.querySelectorAll(".tab-btn").forEach(function (btn) {
-      btn.classList.toggle("active", btn.getAttribute("data-tab") === name);
+    var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab-btn"));
+    tabs.forEach(function (btn) {
+      var selected = btn.getAttribute("data-tab") === name;
+      btn.classList.toggle("active", selected);
+      btn.setAttribute("aria-selected", selected ? "true" : "false");
+      btn.tabIndex = selected ? 0 : -1;
     });
     document.querySelectorAll(".panel").forEach(function (panel) {
-      panel.classList.toggle("active", panel.id === "panel-" + name);
+      var active = panel.id === "panel-" + name;
+      panel.classList.toggle("active", active);
+      panel.hidden = !active;
     });
     // Hidden panels report clientWidth 0, so charts baked a narrow viewBox and
     // letterboxed. Redraw once the panel is visible to fill the card width.
@@ -681,12 +694,33 @@
     if (!header.has_multi_turn) {
       var turnBtn = document.querySelector('.tab-btn[data-tab="turn"]');
       var turnPanel = el("panel-turn");
-      if (turnBtn) turnBtn.style.display = "none";
-      if (turnPanel) turnPanel.style.display = "none";
+      if (turnBtn) turnBtn.hidden = true;
+      if (turnPanel) turnPanel.hidden = true;
     }
-    document.querySelectorAll(".tab-btn").forEach(function (btn) {
+    var tabs = Array.prototype.slice.call(
+      document.querySelectorAll(".tab-btn:not([hidden])")
+    );
+    tabs.forEach(function (btn, index) {
       btn.addEventListener("click", function () {
         activateTab(btn.getAttribute("data-tab"));
+      });
+      btn.addEventListener("keydown", function (evt) {
+        var key = evt.key;
+        var next = -1;
+        if (key === "ArrowRight" || key === "ArrowDown") {
+          next = (index + 1) % tabs.length;
+        } else if (key === "ArrowLeft" || key === "ArrowUp") {
+          next = (index - 1 + tabs.length) % tabs.length;
+        } else if (key === "Home") {
+          next = 0;
+        } else if (key === "End") {
+          next = tabs.length - 1;
+        } else {
+          return;
+        }
+        evt.preventDefault();
+        tabs[next].focus();
+        activateTab(tabs[next].getAttribute("data-tab"));
       });
     });
     activateTab("summary");
@@ -759,24 +793,6 @@
       applyKpisFromSelectedRun();
       renderSelectedRunCharts();
     };
-  }
-
-  function niceNum(range, round) {
-    var exp = Math.floor(Math.log10(range || 1));
-    var frac = range / Math.pow(10, exp);
-    var nice;
-    if (round) {
-      if (frac < 1.5) nice = 1;
-      else if (frac < 3) nice = 2;
-      else if (frac < 7) nice = 5;
-      else nice = 10;
-    } else {
-      if (frac <= 1) nice = 1;
-      else if (frac <= 2) nice = 2;
-      else if (frac <= 5) nice = 5;
-      else nice = 10;
-    }
-    return nice * Math.pow(10, exp);
   }
 
   function scale(value, min, max, a, b) {
@@ -1193,6 +1209,7 @@
       height: String(height),
       preserveAspectRatio: "xMidYMid meet",
       role: "img",
+      "aria-label": (options && (options.ariaLabel || options.yLabel || options.xLabel)) || "Line chart",
     });
     drawAxes(
       svg,
@@ -1278,188 +1295,6 @@
     host.appendChild(svg);
   }
 
-  function drawStackedBars(containerId, categories, stacks, options) {
-    var host = el(containerId);
-    if (!host) return;
-    clear(host);
-    var width = host.clientWidth || 480;
-    var height = host.clientHeight || 280;
-    var plot = { left: 52, top: 28, width: width - 72, height: height - 78 };
-    var totals = categories.map(function (_, i) {
-      return stacks.reduce(function (sum, s) {
-        return sum + (Number(s.values[i]) || 0);
-      }, 0);
-    });
-    var yExt = extent(totals.concat([0]));
-    yExt.min = 0;
-    padExtentMax(yExt);
-    var svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height });
-    drawAxes(
-      svg,
-      plot,
-      { min: 0, max: 1 },
-      yExt,
-      options && options.xLabel,
-      options && options.yLabel,
-      true
-    );
-    var slot = plot.width / Math.max(categories.length, 1);
-    var barW = Math.max(18, Math.min(64, slot * 0.45));
-    categories.forEach(function (label, i) {
-      var x = plot.left + i * slot + (slot - barW) / 2;
-      var yBase = plot.top + plot.height;
-      stacks.forEach(function (stack) {
-        var val = Number(stack.values[i]) || 0;
-        var h = ((val - yExt.min) / (yExt.max - yExt.min || 1)) * plot.height;
-        yBase -= h;
-        var bar = svgEl("rect", {
-          x: x,
-          y: yBase,
-          width: barW,
-          height: Math.max(h, 0),
-          fill: stack.color,
-        });
-        svg.appendChild(bar);
-        bindChartTip(bar, label, [(stack.label || "Series") + ": " + fmt(val)]);
-      });
-      var t = svgEl("text", {
-        x: x + barW / 2,
-        y: plot.top + plot.height + 18,
-        "text-anchor": "middle",
-        fill: COLORS.muted,
-        "font-size": "11",
-      });
-      t.textContent = label;
-      svg.appendChild(t);
-    });
-    // Legend for stack colors (only when labels are provided)
-    var labeled = stacks.filter(function (stack) {
-      return !!stack.label;
-    });
-    if (labeled.length) {
-      var legendY = 14;
-      labeled.forEach(function (stack, idx) {
-        var lx = plot.left + idx * 100;
-        svg.appendChild(
-          svgEl("rect", {
-            x: lx,
-            y: legendY - 8,
-            width: 10,
-            height: 10,
-            fill: stack.color,
-            rx: 2,
-          })
-        );
-        var lt = svgEl("text", {
-          x: lx + 14,
-          y: legendY,
-          fill: COLORS.muted,
-          "font-size": "11",
-        });
-        lt.textContent = stack.label;
-        svg.appendChild(lt);
-      });
-    }
-    host.appendChild(svg);
-  }
-
-  function drawGroupedBars(containerId, categories, groups, options) {
-    var host = el(containerId);
-    if (!host) return;
-    clear(host);
-    var width = host.clientWidth || 480;
-    var height = host.clientHeight || 280;
-    var plot = { left: 52, top: 28, width: width - 72, height: height - 78 };
-    var all = [];
-    groups.forEach(function (g) {
-      g.values.forEach(function (v) {
-        if (v != null) all.push(v);
-      });
-    });
-    var yExt = extent(all);
-    yExt.min = Math.min(0, yExt.min);
-    padExtentMax(yExt);
-    var svg = svgEl("svg", { viewBox: "0 0 " + width + " " + height });
-    drawAxes(
-      svg,
-      plot,
-      { min: 0, max: 1 },
-      yExt,
-      options && options.xLabel,
-      options && options.yLabel,
-      true
-    );
-
-    var nGroups = Math.max(groups.length, 1);
-    var nCats = Math.max(categories.length, 1);
-    var slot = plot.width / nCats;
-    var innerGap = 6;
-    var sidePad = Math.max(10, slot * 0.18);
-    var usable = Math.max(24, slot - sidePad * 2);
-    var barW = Math.max(
-      10,
-      Math.min(36, (usable - innerGap * (nGroups - 1)) / nGroups)
-    );
-    var clusterW = nGroups * barW + (nGroups - 1) * innerGap;
-
-    categories.forEach(function (label, i) {
-      var clusterLeft = plot.left + i * slot + (slot - clusterW) / 2;
-      groups.forEach(function (g, gi) {
-        var val = g.values[i];
-        if (val == null) return;
-        var x = clusterLeft + gi * (barW + innerGap);
-        var y = scale(val, yExt.min, yExt.max, plot.top + plot.height, plot.top);
-        var bar = svgEl("rect", {
-          x: x,
-          y: y,
-          width: barW,
-          height: Math.max(0, plot.top + plot.height - y),
-          fill: g.color,
-          rx: 2,
-        });
-        svg.appendChild(bar);
-        bindChartTip(bar, label, [(g.label || "Value") + ": " + fmt(val)]);
-      });
-      var t = svgEl("text", {
-        x: plot.left + i * slot + slot / 2,
-        y: plot.top + plot.height + 18,
-        "text-anchor": "middle",
-        fill: COLORS.ink,
-        "font-size": "12",
-        "font-weight": "600",
-      });
-      t.textContent = label;
-      svg.appendChild(t);
-    });
-
-    // Color legend for P95 / P99 (or other group labels)
-    var legendY = 14;
-    var legendX = plot.left;
-    groups.forEach(function (g) {
-      var label = g.label || "Series";
-      svg.appendChild(
-        svgEl("rect", {
-          x: legendX,
-          y: legendY - 8,
-          width: 10,
-          height: 10,
-          fill: g.color,
-          rx: 2,
-        })
-      );
-      var lt = svgEl("text", {
-        x: legendX + 14,
-        y: legendY,
-        fill: COLORS.muted,
-        "font-size": "11",
-      });
-      lt.textContent = label;
-      svg.appendChild(lt);
-      legendX += 14 + Math.ceil(String(label).length * 6.2) + 16;
-    });
-    host.appendChild(svg);
-  }
-
   function longestLabelWidth(labels, charPx) {
     var maxLen = 0;
     labels.forEach(function (label) {
@@ -1526,6 +1361,8 @@
       viewBox: "0 0 " + width + " " + height,
       width: String(width),
       height: String(height),
+      role: "img",
+      "aria-label": (options && (options.ariaLabel || options.xLabel)) || "Bar chart",
     });
 
     // Plot frame + vertical value grid
@@ -1654,11 +1491,15 @@
     });
     var xExt = extent(totals.concat([0]));
     xExt.min = 0;
+    // Keep headroom so a 100% mix bar does not fill the plot edge-to-edge.
     padExtentMax(xExt);
+    var asPercent = !!(options && options.percent);
     var svg = svgEl("svg", {
       viewBox: "0 0 " + width + " " + height,
       width: String(width),
       height: String(height),
+      role: "img",
+      "aria-label": (options && (options.ariaLabel || options.xLabel)) || "Stacked bar chart",
     });
 
     svg.appendChild(
@@ -1671,10 +1512,14 @@
         stroke: COLORS.line,
       })
     );
-    for (var i = 0; i <= 4; i++) {
-      var xRatio = i / 4;
-      var x = plot.left + xRatio * plot.width;
-      var xVal = xExt.min + xRatio * (xExt.max - xExt.min);
+    // Percent charts: label only 0/25/50/75/100 on the padded scale (never >100).
+    var tickVals = asPercent
+      ? [0, 25, 50, 75, 100]
+      : [0, 1, 2, 3, 4].map(function (i) {
+          return xExt.min + (i / 4) * (xExt.max - xExt.min);
+        });
+    tickVals.forEach(function (xVal) {
+      var x = scale(xVal, xExt.min, xExt.max, plot.left, plot.left + plot.width);
       svg.appendChild(
         svgEl("line", {
           x1: x,
@@ -1692,9 +1537,9 @@
         fill: COLORS.muted,
         "font-size": "11",
       });
-      xt.textContent = fmt(xVal);
+      xt.textContent = asPercent ? String(xVal) : fmt(xVal);
       svg.appendChild(xt);
-    }
+    });
     if (options && options.xLabel) {
       var xl = svgEl("text", {
         x: plot.left + plot.width / 2,
@@ -1736,12 +1581,21 @@
           fill: stack.color,
         });
         svg.appendChild(bar);
-        var pctShare = rowTotal ? (val / rowTotal) * 100 : 0;
         var seriesName = stack.label || "Series";
-        bindChartTip(bar, label, [
-          seriesName + ": " + fmt(val),
-          seriesName + " is " + pctShare.toFixed(1) + "% of total",
-        ]);
+        var tipLines;
+        if (asPercent) {
+          tipLines = [seriesName + ": " + fmt(val) + "% of requests"];
+          if (stack.counts && stack.counts[ci] != null) {
+            tipLines.push("Count: " + fmt(stack.counts[ci]));
+          }
+        } else {
+          var pctShare = rowTotal ? (val / rowTotal) * 100 : 0;
+          tipLines = [
+            seriesName + ": " + fmt(val),
+            seriesName + " is " + pctShare.toFixed(1) + "% of total",
+          ];
+        }
+        bindChartTip(bar, label, tipLines);
         xCursor += w;
       });
     });
@@ -1766,6 +1620,8 @@
       width: String(width),
       height: String(height),
       preserveAspectRatio: "xMinYMid meet",
+      role: "img",
+      "aria-label": (options && options.ariaLabel) || "Request outcomes",
     });
     var total = slices.reduce(function (sum, s) {
       return sum + Math.max(0, Number(s.value) || 0);
@@ -1972,12 +1828,12 @@
     return r.label || r.strategy || "run";
   }
 
-  // Compact axis labels for charts — full strategy label stays in tables/dropdown.
+  // Compact axis labels for charts — keep strategy kind (e.g. constant@2.00).
   function runChartLabel(r) {
-    var full = runCategoryLabel(r);
-    var at = full.indexOf("@");
-    if (at >= 0) return full.slice(at);
-    return full.length > 10 ? full.slice(0, 9) + "…" : full;
+    var full = String(runCategoryLabel(r));
+    // Match longestLabelWidth ~88px budget (~12 chars at 6.5px).
+    if (full.length > 14) return full.slice(0, 13) + "…";
+    return full;
   }
 
   /** Prefer configured concurrency for efficiency; fall back to measured. */
@@ -2438,7 +2294,7 @@
     setCopy(
       "hint-status",
       multi
-        ? "Successful, incomplete, and errored requests for each run."
+        ? "Share of successful, incomplete, and errored requests for each benchmark."
         : "Share of successful, incomplete, and errored requests for this run."
     );
 
@@ -2512,7 +2368,7 @@
         { xLabel: "Request latency (ms)" }
       );
 
-      // Per-run stacked bars make success/error mix comparable across load points.
+      // Per-run stacked bars as mix (%) so duration-bounded runs stay comparable.
       drawHorizontalStackedBars(
         "chart-status",
         rows.map(runChartLabel),
@@ -2521,6 +2377,10 @@
             label: "Successful",
             color: COLORS.success,
             values: rows.map(function (r) {
+              var total = Number(r.total) || 0;
+              return total ? (100 * (Number(r.successful) || 0)) / total : 0;
+            }),
+            counts: rows.map(function (r) {
               return r.successful;
             }),
           },
@@ -2528,6 +2388,10 @@
             label: "Incomplete",
             color: COLORS.incomplete,
             values: rows.map(function (r) {
+              var total = Number(r.total) || 0;
+              return total ? (100 * (Number(r.incomplete) || 0)) / total : 0;
+            }),
+            counts: rows.map(function (r) {
               return r.incomplete;
             }),
           },
@@ -2535,11 +2399,19 @@
             label: "Errored",
             color: COLORS.errored,
             values: rows.map(function (r) {
+              var total = Number(r.total) || 0;
+              return total ? (100 * (Number(r.errored) || 0)) / total : 0;
+            }),
+            counts: rows.map(function (r) {
               return r.errored;
             }),
           },
         ],
-        { xLabel: "Requests" }
+        {
+          xLabel: "% of requests",
+          percent: true,
+          ariaLabel: "Request outcome mix by benchmark",
+        }
       );
     } else {
       drawPieChart(
@@ -2607,7 +2479,7 @@
           },
           {
             label: "ITL P95",
-            color: COLORS.tpot,
+            color: COLORS.itl,
             shape: "diamond",
             points: turns.map(function (t) {
               return [t.turn_index, t.itl_p95_ms];
@@ -2628,6 +2500,7 @@
           xLabel: "Turn index",
           yLabel: "Latency (ms)",
           y2Label: "Prompt tokens",
+          ariaLabel: "Latency and prompt size by turn",
           xInteger: true,
         }
       );
@@ -2773,7 +2646,7 @@
         if (modalityHelp) title.appendChild(modalityHelp);
         card.appendChild(title);
 
-        (section.metrics || []).forEach(function (metric, metricIdx) {
+        (section.metrics || []).forEach(function (metric) {
           var block = document.createElement("div");
           block.className = "modality-metric";
           var heading = document.createElement("h4");
@@ -2909,6 +2782,8 @@
   }
 
   function init() {
+    var staticSummary = el("static-summary");
+    if (staticSummary) staticSummary.hidden = true;
     hydrateHelp(document);
     renderHeader();
     setupTabs();

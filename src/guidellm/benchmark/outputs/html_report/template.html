@@ -14,19 +14,19 @@ __GUIDELLM_REPORT_CSS__
       <div class="brand">GuideLLM</div>
       <h1>Benchmark performance report</h1>
       <div class="meta">
-        <span><strong>Model:</strong> <span id="meta-model">—</span></span>
+        <span><strong>Model:</strong> <span id="meta-model">__GUIDELLM_META_MODEL__</span></span>
         <span>
           <strong>Target:</strong>
           <button type="button" class="help-q" data-help="target" aria-label="About Target">?</button>
-          <span id="meta-target">—</span>
+          <span id="meta-target">__GUIDELLM_META_TARGET__</span>
         </span>
         <span>
           <strong>Profile:</strong>
           <button type="button" class="help-q" data-help="profile" aria-label="About Profile">?</button>
-          <span id="meta-profile">—</span>
+          <span id="meta-profile">__GUIDELLM_META_PROFILE__</span>
         </span>
-        <span><strong>Time:</strong> <span id="meta-time">—</span></span>
-        <span><strong>GuideLLM:</strong> <span id="meta-version">—</span></span>
+        <span><strong>Time:</strong> <span id="meta-time">__GUIDELLM_META_TIME__</span></span>
+        <span><strong>GuideLLM:</strong> <span id="meta-version">__GUIDELLM_META_VERSION__</span></span>
       </div>
     </header>
 
@@ -37,7 +37,7 @@ __GUIDELLM_REPORT_CSS__
       </label>
       <select id="kpi-run-select" aria-label="Select run for top metrics"></select>
       <span class="kpi-run-note">
-        Per-run KPIs only — multi-run comparison charts stay unchanged.
+        Updates KPIs and the latency-components chart; multi-run comparison charts stay unchanged.
         <button type="button" class="help-q" data-help="peak_tok_s" aria-label="About Peak tok/s">?</button>
       </span>
     </div>
@@ -45,17 +45,17 @@ __GUIDELLM_REPORT_CSS__
       <div class="kpi">
         <button type="button" class="help-q" data-help="rps" aria-label="About Requests / sec">?</button>
         <div class="label">Requests / sec</div>
-        <div class="value" id="kpi-rps">—</div>
+        <div class="value" id="kpi-rps">__GUIDELLM_KPI_RPS__</div>
       </div>
       <div class="kpi">
         <button type="button" class="help-q" data-help="out_tps" aria-label="About Output tokens / sec">?</button>
         <div class="label">Output tokens / sec</div>
-        <div class="value" id="kpi-out-tps">—</div>
+        <div class="value" id="kpi-out-tps">__GUIDELLM_KPI_OUT_TPS__</div>
       </div>
       <div class="kpi">
         <button type="button" class="help-q" data-help="total_tps" aria-label="About Total tokens / sec">?</button>
         <div class="label">Total tokens / sec</div>
-        <div class="value" id="kpi-total-tps">—</div>
+        <div class="value" id="kpi-total-tps">__GUIDELLM_KPI_TOTAL_TPS__</div>
       </div>
       <div class="kpi kpi-latency">
         <button type="button" class="help-q" data-help="request_latency" aria-label="About Request latency">?</button>
@@ -63,12 +63,12 @@ __GUIDELLM_REPORT_CSS__
         <div class="kpi-pair">
           <div class="kpi-stat">
             <span class="kpi-stat-label">P95</span>
-            <span class="kpi-stat-value" id="kpi-lat-p95">—</span>
+            <span class="kpi-stat-value" id="kpi-lat-p95">__GUIDELLM_KPI_LAT_P95__</span>
             <span class="kpi-stat-unit">ms</span>
           </div>
           <div class="kpi-stat">
             <span class="kpi-stat-label">P99</span>
-            <span class="kpi-stat-value" id="kpi-lat-p99">—</span>
+            <span class="kpi-stat-value" id="kpi-lat-p99">__GUIDELLM_KPI_LAT_P99__</span>
             <span class="kpi-stat-unit">ms</span>
           </div>
         </div>
@@ -79,12 +79,12 @@ __GUIDELLM_REPORT_CSS__
         <div class="kpi-pair">
           <div class="kpi-stat">
             <span class="kpi-stat-label">P95</span>
-            <span class="kpi-stat-value" id="kpi-ttft-p95">—</span>
+            <span class="kpi-stat-value" id="kpi-ttft-p95">__GUIDELLM_KPI_TTFT_P95__</span>
             <span class="kpi-stat-unit">ms</span>
           </div>
           <div class="kpi-stat">
             <span class="kpi-stat-label">P99</span>
-            <span class="kpi-stat-value" id="kpi-ttft-p99">—</span>
+            <span class="kpi-stat-value" id="kpi-ttft-p99">__GUIDELLM_KPI_TTFT_P99__</span>
             <span class="kpi-stat-unit">ms</span>
           </div>
         </div>
@@ -95,12 +95,12 @@ __GUIDELLM_REPORT_CSS__
         <div class="kpi-pair">
           <div class="kpi-stat">
             <span class="kpi-stat-label">P95</span>
-            <span class="kpi-stat-value" id="kpi-itl-p95">—</span>
+            <span class="kpi-stat-value" id="kpi-itl-p95">__GUIDELLM_KPI_ITL_P95__</span>
             <span class="kpi-stat-unit">ms</span>
           </div>
           <div class="kpi-stat">
             <span class="kpi-stat-label">P99</span>
-            <span class="kpi-stat-value" id="kpi-itl-p99">—</span>
+            <span class="kpi-stat-value" id="kpi-itl-p99">__GUIDELLM_KPI_ITL_P99__</span>
             <span class="kpi-stat-unit">ms</span>
           </div>
         </div>
@@ -108,23 +108,31 @@ __GUIDELLM_REPORT_CSS__
       <div class="kpi">
         <button type="button" class="help-q" data-help="error_rate" aria-label="About Error rate">?</button>
         <div class="label">Error rate</div>
-        <div class="value" id="kpi-error">—</div>
+        <div class="value" id="kpi-error">__GUIDELLM_KPI_ERROR__</div>
       </div>
     </section>
 
-    <nav class="tabs" aria-label="Report sections">
-      <button type="button" class="tab-btn active" data-tab="summary">Summary</button>
-      <button type="button" class="tab-btn" data-tab="performance">Performance</button>
-      <button type="button" class="tab-btn" data-tab="turn">By turn</button>
-      <button type="button" class="tab-btn" data-tab="details">Details</button>
+    <section id="static-summary" class="static-summary" aria-label="Static report summary">
+      <h2>Run comparison</h2>
+      __GUIDELLM_STATIC_TABLE__
+      <p class="static-summary-note">
+        Charts, tabs, and the interactive details below require JavaScript.
+      </p>
+    </section>
+
+    <nav class="tabs" role="tablist" aria-label="Report sections">
+      <button type="button" class="tab-btn active" role="tab" id="tab-summary" data-tab="summary" aria-controls="panel-summary" aria-selected="true">Summary</button>
+      <button type="button" class="tab-btn" role="tab" id="tab-performance" data-tab="performance" aria-controls="panel-performance" aria-selected="false" tabindex="-1">Performance</button>
+      <button type="button" class="tab-btn" role="tab" id="tab-turn" data-tab="turn" aria-controls="panel-turn" aria-selected="false" tabindex="-1">By turn</button>
+      <button type="button" class="tab-btn" role="tab" id="tab-details" data-tab="details" aria-controls="panel-details" aria-selected="false" tabindex="-1">Details</button>
     </nav>
 
-    <section id="panel-summary" class="panel active">
+    <section id="panel-summary" class="panel active" role="tabpanel" aria-labelledby="tab-summary">
       <div class="grid">
         <article class="card" id="card-load-latency">
           <h2>
-          <span class="card-heading">Request latency by benchmark</span>
-          <button type="button" class="help-q" data-help="lat_by_conc" aria-label="About Request latency by benchmark">?</button>
+            <span class="card-heading">Request latency by benchmark</span>
+            <button type="button" class="help-q" data-help="lat_by_conc" aria-label="About Request latency by benchmark">?</button>
           </h2>
           <p class="hint">End-to-end P95/P99 as load increases — lower is better.</p>
           <div class="chart chart-hbar" id="chart-load-latency"></div>
@@ -138,18 +146,18 @@ __GUIDELLM_REPORT_CSS__
           <div class="chart" id="chart-status"></div>
         </article>
         <article class="card">
-          <h2 id="title-breakdown">Latency at peak throughput</h2>
-          <p class="hint" id="hint-breakdown">P95 and P99 latency components for the peak total-tok/s run.</p>
+          <h2 id="title-breakdown">Latency components</h2>
+          <p class="hint" id="hint-breakdown">P95 and P99 latency components for the selected run.</p>
           <div class="chart chart-hbar" id="chart-breakdown"></div>
         </article>
       </div>
-      <article class="card" style="margin-top:16px">
+      <article class="card card-spaced">
         <h2 id="title-compare">Run comparison</h2>
         <div id="table-compare"></div>
       </article>
     </section>
 
-    <section id="panel-performance" class="panel">
+    <section id="panel-performance" class="panel" role="tabpanel" aria-labelledby="tab-performance" hidden>
       <div class="grid grid-2">
         <article class="card">
           <h2 id="title-lat-e2e">First-token latency by benchmark</h2>
@@ -175,7 +183,7 @@ __GUIDELLM_REPORT_CSS__
       </div>
     </section>
 
-    <section id="panel-turn" class="panel">
+    <section id="panel-turn" class="panel" role="tabpanel" aria-labelledby="tab-turn" hidden>
       <p class="note" id="turn-note"></p>
       <article class="card">
         <h2>
@@ -185,7 +193,7 @@ __GUIDELLM_REPORT_CSS__
         <p class="hint">Latency on the left axis; prompt median tokens on the right (dashed).</p>
         <div class="chart chart-turn" id="chart-turn-combined"></div>
       </article>
-      <article class="card" style="margin-top:16px">
+      <article class="card card-spaced">
         <h2>
           <span class="card-heading">Per-turn table</span>
           <button type="button" class="help-q" data-help="by_turn" aria-label="About By turn">?</button>
@@ -194,7 +202,7 @@ __GUIDELLM_REPORT_CSS__
       </article>
     </section>
 
-    <section id="panel-details" class="panel">
+    <section id="panel-details" class="panel" role="tabpanel" aria-labelledby="tab-details" hidden>
       <div class="grid">
         <article class="card">
           <h2 id="title-extra-latency">
@@ -217,7 +225,7 @@ __GUIDELLM_REPORT_CSS__
           <div id="table-rtt"></div>
         </article>
       </div>
-      <div id="modality-sections" style="margin-top:16px; display:grid; gap:16px;"></div>
+      <div id="modality-sections" class="modality-sections"></div>
     </section>
 
     <footer class="footer">

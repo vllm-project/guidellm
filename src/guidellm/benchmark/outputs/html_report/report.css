@@ -321,6 +321,53 @@ h1 {
 
 .panel { display: none; }
 .panel.active { display: block; }
+.panel[hidden] { display: none !important; }
+
+.card-spaced {
+  margin-top: 16px;
+}
+
+.modality-sections {
+  margin-top: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.static-summary {
+  margin: 16px 0 24px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.static-summary[hidden] {
+  display: none !important;
+}
+
+.static-summary h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.static-summary table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.static-summary th,
+.static-summary td {
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 13px;
+}
+
+.static-summary-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
 
 .grid {
   display: grid;
