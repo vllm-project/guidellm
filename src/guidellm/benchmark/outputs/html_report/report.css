@@ -645,6 +645,40 @@ th {
   margin: 8px 0 16px;
 }
 
+.turn-agent-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.turn-agent-filter[hidden] {
+  display: none !important;
+}
+
+.turn-agent-filter label {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.turn-agent-filter select {
+  appearance: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  padding: 6px 10px;
+  min-width: 160px;
+}
+
+.turn-agent-filter-tip {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .footer {
   margin-top: 28px;
   color: var(--muted);

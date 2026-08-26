@@ -3,6 +3,8 @@
 
   var data = window.GUIDELLM_REPORT || {};
   var kpiRunIndex = null;
+  // Active By-turn rows (may be re-aggregated from turn_samples via the agent filter).
+  var turnRows = Array.isArray(data.by_turn) ? data.by_turn.slice() : [];
   var COLORS = {
     // Red Hat information + secondary palette (brand red reserved for UI chrome).
     p95: "#37a3a3", // teal-50
@@ -261,6 +263,15 @@
       lines: [
         "Each turn is one more user/model exchange in a multi-turn chat.",
         "Later turns usually include more history, so prompts and latency often grow.",
+      ],
+    },
+    turn_agents: {
+      title: "Request filter",
+      lines: [
+        "Choose which requests contribute to By-turn charts and the per-turn table.",
+        "All Requests: every successful multi-turn request.",
+        "Parent agents only: main conversation chain (default / null agent id).",
+        "Subagents only: branched or worker agents other than the main chain.",
       ],
     },
     lat_vs_turn: {
@@ -2448,63 +2459,301 @@
     renderSelectedRunCharts();
 
     // By turn: latency (left) + prompt median tokens (right, dashed).
-    var turns = data.by_turn || [];
-    if (turns.length) {
-      drawLineChart(
-        "chart-turn-combined",
-        [
-          {
-            label: "E2E P95",
-            color: COLORS.p95,
-            shape: "circle",
-            points: turns.map(function (t) {
-              return [t.turn_index, t.request_latency_p95_ms];
-            }),
-          },
-          {
-            label: "E2E P99",
-            color: COLORS.p99,
-            shape: "square",
-            points: turns.map(function (t) {
-              return [t.turn_index, t.request_latency_p99_ms];
-            }),
-          },
-          {
-            label: "TTFT P95",
-            color: COLORS.ttft,
-            shape: "triangle",
-            points: turns.map(function (t) {
-              return [t.turn_index, t.ttft_p95_ms];
-            }),
-          },
-          {
-            label: "ITL P95",
-            color: COLORS.itl,
-            shape: "diamond",
-            points: turns.map(function (t) {
-              return [t.turn_index, t.itl_p95_ms];
-            }),
-          },
-          {
-            label: "Prompt median",
-            color: COLORS.input,
-            shape: "circle",
-            dash: "6 4",
-            axis: "right",
-            points: turns.map(function (t) {
-              return [t.turn_index, t.prompt_tokens_median];
-            }),
-          },
-        ],
-        {
-          xLabel: "Turn index",
-          yLabel: "Latency (ms)",
-          y2Label: "Prompt tokens",
-          ariaLabel: "Latency and prompt size by turn",
-          xInteger: true,
-        }
+    renderTurnChart();
+  }
+
+  function isSubagentId(agentId) {
+    return agentId != null && agentId !== "default";
+  }
+
+  function hasTurnSubagents() {
+    return (data.turn_agents || []).some(function (a) {
+      return a.is_subagent;
+    });
+  }
+
+  function hasTurnParents() {
+    return (data.turn_agents || []).some(function (a) {
+      return !a.is_subagent;
+    });
+  }
+
+  function finiteNumbers(values) {
+    var out = [];
+    (values || []).forEach(function (v) {
+      if (v == null) return;
+      var n = Number(v);
+      if (!Number.isFinite(n)) return;
+      out.push(n);
+    });
+    return out;
+  }
+
+  function safeMedian(values) {
+    var nums = finiteNumbers(values).sort(function (a, b) {
+      return a - b;
+    });
+    if (!nums.length) return null;
+    var mid = Math.floor(nums.length / 2);
+    if (nums.length % 2) return nums[mid];
+    return (nums[mid - 1] + nums[mid]) / 2;
+  }
+
+  // Match DistributionSummary.from_values empirical CDF (no interpolation).
+  function safePercentile(values, quantile) {
+    var nums = finiteNumbers(values).sort(function (a, b) {
+      return a - b;
+    });
+    if (!nums.length) return null;
+    var uniq = [];
+    var weights = [];
+    nums.forEach(function (n) {
+      if (!uniq.length || uniq[uniq.length - 1] !== n) {
+        uniq.push(n);
+        weights.push(1);
+      } else {
+        weights[weights.length - 1] += 1;
+      }
+    });
+    var total = 0;
+    weights.forEach(function (w) {
+      total += w;
+    });
+    var cdfProbs = [];
+    var running = 0;
+    weights.forEach(function (w) {
+      running += w / total;
+      cdfProbs.push(running);
+    });
+    // numpy searchsorted(cdf, q, side="left")
+    var idx = 0;
+    while (idx < cdfProbs.length && cdfProbs[idx] < quantile) {
+      idx += 1;
+    }
+    if (idx >= uniq.length) idx = uniq.length - 1;
+    return uniq[idx];
+  }
+
+  function aggregateTurnRows(samples) {
+    var buckets = {};
+    (samples || []).forEach(function (s) {
+      var key = String(s.turn_index);
+      if (!buckets[key]) buckets[key] = [];
+      buckets[key].push(s);
+    });
+    return Object.keys(buckets)
+      .map(Number)
+      .sort(function (a, b) {
+        return a - b;
+      })
+      .map(function (turnIndex) {
+        var group = buckets[String(turnIndex)];
+        var latencies = group.map(function (s) {
+          return s.latency_ms;
+        });
+        var ttfts = group.map(function (s) {
+          return s.ttft_ms;
+        });
+        var itls = group.map(function (s) {
+          return s.itl_ms;
+        });
+        var prompts = group.map(function (s) {
+          return s.prompt_tokens;
+        });
+        var histories = group.map(function (s) {
+          return s.history_len;
+        });
+        return {
+          turn_index: turnIndex,
+          count: group.length,
+          history_len_median: safeMedian(histories),
+          prompt_tokens_median: safeMedian(prompts),
+          prompt_tokens_p95: safePercentile(prompts, 0.95),
+          request_latency_p95_ms: safePercentile(latencies, 0.95),
+          request_latency_p99_ms: safePercentile(latencies, 0.99),
+          ttft_p95_ms: safePercentile(ttfts, 0.95),
+          ttft_p99_ms: safePercentile(ttfts, 0.99),
+          itl_p95_ms: safePercentile(itls, 0.95),
+          itl_p99_ms: safePercentile(itls, 0.99),
+        };
+      });
+  }
+
+  function filterTurnSamples() {
+    var samples = data.turn_samples || [];
+    var modeEl = el("turn-agent-mode");
+    var mode = modeEl ? modeEl.value : "all";
+    if (mode === "parents") {
+      return samples.filter(function (s) {
+        return !isSubagentId(s.agent_id);
+      });
+    }
+    if (mode === "subagents") {
+      return samples.filter(function (s) {
+        return isSubagentId(s.agent_id);
+      });
+    }
+    return samples.slice();
+  }
+
+  function buildTurnAgentNote(filteredCount) {
+    if (!hasTurnSubagents()) return null;
+    var total = (data.turn_samples || []).length;
+    var modeEl = el("turn-agent-mode");
+    var mode = modeEl ? modeEl.value : "all";
+    if (mode === "parents") {
+      return (
+        "Turn curves use parent agents only (" +
+        filteredCount +
+        "/" +
+        total +
+        " requests)."
       );
     }
+    if (mode === "subagents") {
+      return (
+        "Turn curves use subagents only (" +
+        filteredCount +
+        "/" +
+        total +
+        " requests)."
+      );
+    }
+    return (
+      "Turn curves use all requests (" +
+      filteredCount +
+      "/" +
+      total +
+      " requests)."
+    );
+  }
+
+  function updateTurnNote(filteredCount) {
+    var parts = [];
+    var agentNote = buildTurnAgentNote(filteredCount);
+    if (agentNote) parts.push(agentNote);
+    if (data.turn_peak_note) parts.push(data.turn_peak_note);
+    setText("turn-note", parts.join(" "));
+  }
+
+  function applyTurnAgentFilter() {
+    var samples = filterTurnSamples();
+    turnRows = aggregateTurnRows(samples);
+    updateTurnNote(samples.length);
+    renderTurnChart();
+    renderTurnTable();
+  }
+
+  function setupTurnAgentFilter() {
+    var samples = data.turn_samples || [];
+    var filterRoot = el("turn-agent-filter");
+    var modeEl = el("turn-agent-mode");
+    if (!filterRoot || !modeEl) return;
+    // Only useful when branched/subagent traffic exists alongside (or as) the run.
+    if (!hasTurnSubagents() || !samples.length) {
+      filterRoot.hidden = true;
+      return;
+    }
+    filterRoot.hidden = false;
+    modeEl.value = hasTurnParents() ? "parents" : "all";
+    modeEl.addEventListener("change", applyTurnAgentFilter);
+  }
+
+  function renderTurnChart() {
+    var host = el("chart-turn-combined");
+    if (!host) return;
+    var turns = turnRows || [];
+    if (!turns.length) {
+      clear(host);
+      host.innerHTML =
+        '<div class="empty">No requests match the filter.</div>';
+      return;
+    }
+    drawLineChart(
+      "chart-turn-combined",
+      [
+        {
+          label: "E2E P95",
+          color: COLORS.p95,
+          shape: "circle",
+          points: turns.map(function (t) {
+            return [t.turn_index, t.request_latency_p95_ms];
+          }),
+        },
+        {
+          label: "E2E P99",
+          color: COLORS.p99,
+          shape: "square",
+          points: turns.map(function (t) {
+            return [t.turn_index, t.request_latency_p99_ms];
+          }),
+        },
+        {
+          label: "TTFT P95",
+          color: COLORS.ttft,
+          shape: "triangle",
+          points: turns.map(function (t) {
+            return [t.turn_index, t.ttft_p95_ms];
+          }),
+        },
+        {
+          label: "ITL P95",
+          color: COLORS.itl,
+          shape: "diamond",
+          points: turns.map(function (t) {
+            return [t.turn_index, t.itl_p95_ms];
+          }),
+        },
+        {
+          label: "Prompt median",
+          color: COLORS.input,
+          shape: "circle",
+          dash: "6 4",
+          axis: "right",
+          points: turns.map(function (t) {
+            return [t.turn_index, t.prompt_tokens_median];
+          }),
+        },
+      ],
+      {
+        xLabel: "Turn index",
+        yLabel: "Latency (ms)",
+        y2Label: "Prompt tokens",
+        ariaLabel: "Latency and prompt size by turn",
+        xInteger: true,
+      }
+    );
+  }
+
+  function renderTurnTable() {
+    var turns = turnRows || [];
+    renderTable(
+      "table-turn",
+      [
+        headerCell("Turn", "turn"),
+        "Count",
+        headerCell("History median", "history_median"),
+        headerCell("Prompt median", "prompt_tokens"),
+        headerCell("Prompt P95", "prompt_tokens"),
+        headerCell("E2E P95", "e2e"),
+        headerCell("E2E P99", "e2e"),
+        headerCell("TTFT P95", "ttft"),
+        headerCell("ITL P95", "itl"),
+      ],
+      turns.map(function (t) {
+        return [
+          t.turn_index,
+          t.count,
+          fmt(t.history_len_median),
+          fmt(t.prompt_tokens_median),
+          fmt(t.prompt_tokens_p95),
+          fmt(t.request_latency_p95_ms),
+          fmt(t.request_latency_p99_ms),
+          fmt(t.ttft_p95_ms),
+          fmt(t.itl_p95_ms),
+        ];
+      })
+    );
   }
 
   function renderTableTo(host, headers, rows) {
@@ -2750,35 +2999,8 @@
       }
     }
 
-    var turns = data.by_turn || [];
     if (data.turn_note) setText("turn-note", data.turn_note);
-    renderTable(
-      "table-turn",
-      [
-        headerCell("Turn", "turn"),
-        "Count",
-        headerCell("History median", "history_median"),
-        headerCell("Prompt median", "prompt_tokens"),
-        headerCell("Prompt P95", "prompt_tokens"),
-        headerCell("E2E P95", "e2e"),
-        headerCell("E2E P99", "e2e"),
-        headerCell("TTFT P95", "ttft"),
-        headerCell("ITL P95", "itl"),
-      ],
-      turns.map(function (t) {
-        return [
-          t.turn_index,
-          t.count,
-          fmt(t.history_len_median),
-          fmt(t.prompt_tokens_median),
-          fmt(t.prompt_tokens_p95),
-          fmt(t.request_latency_p95_ms),
-          fmt(t.request_latency_p99_ms),
-          fmt(t.ttft_p95_ms),
-          fmt(t.itl_p95_ms),
-        ];
-      })
-    );
+    renderTurnTable();
   }
 
   function init() {
@@ -2787,6 +3009,7 @@
     hydrateHelp(document);
     renderHeader();
     setupTabs();
+    setupTurnAgentFilter();
     renderTables();
     renderCharts();
     window.addEventListener("resize", function () {

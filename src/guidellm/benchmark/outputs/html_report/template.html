@@ -184,6 +184,16 @@ __GUIDELLM_REPORT_CSS__
     </section>
 
     <section id="panel-turn" class="panel" role="tabpanel" aria-labelledby="tab-turn" hidden>
+      <div id="turn-agent-filter" class="turn-agent-filter" hidden>
+        <label for="turn-agent-mode">Requests</label>
+        <select id="turn-agent-mode" aria-describedby="turn-agent-filter-tip">
+          <option value="all">All Requests</option>
+          <option value="parents">Parent agents only</option>
+          <option value="subagents">Subagents only</option>
+        </select>
+        <button type="button" class="help-q" data-help="turn_agents" aria-label="About request filter for By turn">?</button>
+        <span id="turn-agent-filter-tip" class="turn-agent-filter-tip">Filter parent vs subagent requests in turn curves.</span>
+      </div>
       <p class="note" id="turn-note"></p>
       <article class="card">
         <h2>

@@ -228,8 +228,13 @@ def test_build_report_view_multi_turn():
     assert [row["turn_index"] for row in view["by_turn"]] == [0, 1, 2]
     assert view["by_turn"][2]["prompt_tokens_median"] == 220.0
     assert view["by_turn"][2]["request_latency_p95_ms"] is not None
-    # Single-agent multi-turn: no agent filter note.
+    # Single-agent multi-turn: no agent filter note; picker not needed.
     assert view["turn_note"] is None
+    assert view["turn_agents"] is not None
+    assert len(view["turn_agents"]) == 1
+    assert view["turn_agents"][0]["is_subagent"] is False
+    assert view["turn_samples"] is not None
+    assert len(view["turn_samples"]) == 5
     assert all("use_history_axis" not in row for row in view["by_turn"])
     # Turn P95 matches DistributionSummary for the single turn-2 sample.
     turn2_latency_ms = float(requests[4].request_latency) * 1000.0
@@ -238,9 +243,9 @@ def test_build_report_view_multi_turn():
 
 
 @pytest.mark.sanity
-def test_build_report_view_multi_turn_filters_to_dominant_agent():
+def test_build_report_view_multi_turn_subagents_only_defaults_to_all():
     """
-    Turn curves should keep the dominant agent and mention the filter in turn_note.
+    When every agent is a subagent, default by_turn uses all requests.
 
     ## WRITTEN BY AI ##
     """
@@ -297,9 +302,116 @@ def test_build_report_view_multi_turn_filters_to_dominant_agent():
     view = build_report_view(report)
     assert view["by_turn"] is not None
     assert [row["turn_index"] for row in view["by_turn"]] == [0, 1, 2]
+    # Turn 0 mixes primary + other when defaulting to all requests.
+    assert view["by_turn"][0]["count"] == 2
     assert view["turn_note"] is not None
-    assert 'agent "primary"' in view["turn_note"]
-    assert "3/4 requests" in view["turn_note"]
+    assert "all requests" in view["turn_note"]
+    assert "4/4 requests" in view["turn_note"]
+
+    agents = view["turn_agents"]
+    assert agents is not None
+    assert len(agents) == 2
+    assert agents[0]["id"] == "primary"
+    assert agents[0]["count"] == 3
+    assert agents[0]["is_subagent"] is True
+    assert agents[1]["id"] == "other"
+    assert agents[1]["count"] == 1
+    assert agents[1]["is_subagent"] is True
+
+    samples = view["turn_samples"]
+    assert samples is not None
+    assert len(samples) == 4
+    assert {s["agent_id"] for s in samples} == {"primary", "other"}
+    assert all(
+        set(s)
+        >= {
+            "turn_index",
+            "agent_id",
+            "latency_ms",
+            "ttft_ms",
+            "itl_ms",
+            "prompt_tokens",
+            "history_len",
+        }
+        for s in samples
+    )
+
+
+@pytest.mark.sanity
+def test_build_report_view_turn_agents_marks_default_vs_subagent():
+    """
+    Parent+subagent runs default by_turn to parent agents only.
+
+    ## WRITTEN BY AI ##
+    """
+    requests = [
+        _make_request(
+            0,
+            agent_id="default",
+            latency_s=0.2,
+            ttft_ms=80.0,
+            itl_ms=10.0,
+            prompt_tokens=50,
+            history_len=0,
+            start_time=10.0,
+        ),
+        _make_request(
+            1,
+            agent_id="default",
+            latency_s=0.3,
+            ttft_ms=90.0,
+            itl_ms=11.0,
+            prompt_tokens=60,
+            history_len=1,
+            start_time=11.0,
+        ),
+        _make_request(
+            0,
+            agent_id="worker",
+            latency_s=0.5,
+            ttft_ms=110.0,
+            itl_ms=14.0,
+            prompt_tokens=40,
+            history_len=0,
+            start_time=12.0,
+        ),
+        _make_request(
+            1,
+            agent_id="worker",
+            latency_s=0.55,
+            ttft_ms=120.0,
+            itl_ms=15.0,
+            prompt_tokens=45,
+            history_len=1,
+            start_time=13.0,
+        ),
+    ]
+    view = build_report_view(
+        _report(
+            _make_benchmark(
+                strategy=AsyncConstantStrategy(rate=1.0),
+                rps=1.0,
+                tps=20.0,
+                requests=requests,
+            )
+        )
+    )
+    agents = {a["id"]: a for a in (view["turn_agents"] or [])}
+    assert agents["default"]["label"] == "default"
+    assert agents["default"]["is_subagent"] is False
+    assert agents["worker"]["is_subagent"] is True
+    assert agents["default"]["count"] == 2
+    assert agents["worker"]["count"] == 2
+    # Tie on count: lexicographic label puts default before worker.
+    assert [a["id"] for a in view["turn_agents"]] == ["default", "worker"]
+    assert view["turn_note"] is not None
+    assert "parent agents only" in view["turn_note"]
+    assert "2/4 requests" in view["turn_note"]
+    # Default by_turn uses parent agents only.
+    assert [row["turn_index"] for row in view["by_turn"]] == [0, 1]
+    assert all(row["count"] == 1 for row in view["by_turn"])
+    assert view["by_turn"][0]["prompt_tokens_median"] == 50.0
+    assert view["by_turn"][1]["prompt_tokens_median"] == 60.0
 
 
 @pytest.mark.asyncio
@@ -384,3 +496,11 @@ def test_render_html_includes_embedded_assets():
     assert "card-spaced" in html
     assert "modality-sections" in html
     assert 'style="margin-top:16px"' not in html
+    assert 'id="turn-agent-filter"' in html
+    assert "setupTurnAgentFilter" in html
+    assert "turn-agent-mode" in html
+    assert "All Requests" in html
+    assert "Parent agents only" in html
+    assert "Subagents only" in html
+    assert "Specific agents" not in html
+    assert "turn-agent-checks" not in html

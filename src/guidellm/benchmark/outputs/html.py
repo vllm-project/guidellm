@@ -12,7 +12,7 @@ import json
 import math
 import statistics
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from importlib.resources import files
 from pathlib import Path
@@ -180,27 +180,27 @@ def build_report_view(report: GenerativeBenchmarksReport) -> dict[str, Any]:
 
     by_turn: list[dict[str, Any]] | None = None
     turn_note: str | None = None
+    turn_agents: list[dict[str, Any]] | None = None
+    turn_samples: list[dict[str, Any]] | None = None
+    turn_peak_note: str | None = None
     if benchmarks:
         source = benchmarks[peak_index]
         turn_bundle = _build_metrics_by_turn(source)
         if turn_bundle is not None:
             by_turn = turn_bundle["rows"]
+            turn_agents = turn_bundle["turn_agents"]
+            turn_samples = turn_bundle["turn_samples"]
             note_parts: list[str] = []
-            # Only mention the agent when more than one was present (filtering applied).
-            if turn_bundle["agent_count"] > 1:
-                agent_label = turn_bundle["agent_id"]
-                agent_display = "default" if agent_label is None else str(agent_label)
-                note_parts.append(
-                    f'Turn curves use agent "{agent_display}" '
-                    f"({turn_bundle['agent_request_count']}/"
-                    f"{turn_bundle['total_successful']} requests)."
-                )
+            # Note the default filter only when sub-agents exist (control is shown).
+            if turn_bundle["has_subagents"]:
+                note_parts.append(turn_bundle["default_note"])
             if len(benchmarks) > 1:
-                note_parts.append(
+                turn_peak_note = (
                     "Peak-throughput run "
                     f"(#{peak_index + 1}: "
                     f"{peak_run['label'] if peak_run else 'n/a'})."
                 )
+                note_parts.append(turn_peak_note)
             turn_note = " ".join(note_parts) if note_parts else None
 
     header = _build_header(report, runs, peak_index, has_multi_turn=bool(by_turn))
@@ -211,6 +211,9 @@ def build_report_view(report: GenerativeBenchmarksReport) -> dict[str, Any]:
         "runs": runs,
         "by_turn": by_turn,
         "turn_note": turn_note,
+        "turn_agents": turn_agents,
+        "turn_samples": turn_samples,
+        "turn_peak_note": turn_peak_note,
         "details": details,
     }
 
@@ -551,59 +554,72 @@ def _build_details(
     }
 
 
-def _build_metrics_by_turn(
-    benchmark: GenerativeBenchmark,
-) -> dict[str, Any] | None:
+# Main conversation chain uses null / "default"; anything else is a sub-agent.
+_MAIN_AGENT_IDS: frozenset[str | None] = frozenset({None, "default"})
+
+
+def _agent_display_label(agent_id: str | None) -> str:
+    """Human-readable agent label; null and ``default`` both show as default."""
+    if agent_id is None or agent_id == "default":
+        return "default"
+    return str(agent_id)
+
+
+def _is_subagent(agent_id: str | None) -> bool:
+    """Return True when ``agent_id`` is not the main default chain."""
+    return agent_id not in _MAIN_AGENT_IDS
+
+
+def _turn_sample_from_request(req: GenerativeRequestStats) -> dict[str, Any]:
+    """Compact per-request fields for client-side turn aggregation."""
+    latency = req.request_latency
+    ttft = req.time_to_first_token_ms
+    itl = req.inter_token_latency_ms
+    prompt_tokens = req.prompt_tokens
+    return {
+        "turn_index": int(req.info.turn_index),
+        "agent_id": req.info.agent_id,
+        "latency_ms": float(latency) * 1000.0 if latency is not None else None,
+        "ttft_ms": float(ttft) if ttft is not None else None,
+        "itl_ms": float(itl) if itl is not None else None,
+        "prompt_tokens": float(prompt_tokens) if prompt_tokens is not None else None,
+        "history_len": float(req.info.history_len),
+    }
+
+
+def _aggregate_turn_rows(samples: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
     """
-    Aggregate successful request metrics by ``info.turn_index``.
+    Group compact turn samples by ``turn_index`` into report rows.
 
-    Filters to the dominant ``agent_id`` so branched/tool graphs do not mix series.
+    Percentiles use the same empirical CDF path as run-level
+    ``DistributionSummary`` metrics (via :func:`_safe_percentile`).
 
-    :param benchmark: Benchmark whose requests may include multi-turn metadata
-    :return: Bundle with per-turn ``rows`` and agent filter metadata, or ``None``
-        when there is only a single turn (or no data)
+    :param samples: Filtered successful multi-turn sample dicts
+    :return: Sorted per-turn aggregate rows for charts and tables
     """
-    successful = benchmark.requests.successful or []
-    if not successful:
-        return None
-
-    # Prefer the dominant agent_id so branched/tool graphs do not mix series.
-    by_agent: dict[str | None, list[GenerativeRequestStats]] = defaultdict(list)
-    for req in successful:
-        by_agent[req.info.agent_id].append(req)
-
-    def _agent_sort_key(key: str | None) -> tuple[int, int, str]:
-        # Higher count first; prefer non-None ids; then lexicographic id.
-        return (-len(by_agent[key]), 0 if key is not None else 1, str(key or ""))
-
-    preferred_agent = min(by_agent.keys(), key=_agent_sort_key)
-    selected = by_agent[preferred_agent]
-
-    buckets: dict[int, list[GenerativeRequestStats]] = defaultdict(list)
-    for req in selected:
-        turn_index = int(req.info.turn_index)
-        buckets[turn_index].append(req)
-
-    if len(buckets) <= 1:
-        return None
+    buckets: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for sample in samples:
+        buckets[int(sample["turn_index"])].append(sample)
 
     rows: list[dict[str, Any]] = []
     for turn_index in sorted(buckets):
-        reqs = buckets[turn_index]
+        group = buckets[turn_index]
         latencies_ms = [
-            float(v) * 1000.0
-            for v in _request_values(reqs, lambda req: req.request_latency)
-            if v is not None
+            float(s["latency_ms"]) for s in group if s.get("latency_ms") is not None
         ]
-        ttfts = _request_values(reqs, lambda req: req.time_to_first_token_ms)
-        itls = _request_values(reqs, lambda req: req.inter_token_latency_ms)
-        prompt_tokens = _request_values(reqs, lambda req: req.prompt_tokens)
-        history_clean = [float(req.info.history_len) for req in reqs]
+        ttfts = [float(s["ttft_ms"]) for s in group if s.get("ttft_ms") is not None]
+        itls = [float(s["itl_ms"]) for s in group if s.get("itl_ms") is not None]
+        prompt_tokens = [
+            float(s["prompt_tokens"])
+            for s in group
+            if s.get("prompt_tokens") is not None
+        ]
+        history_clean = [float(s["history_len"]) for s in group]
 
         rows.append(
             {
                 "turn_index": turn_index,
-                "count": len(reqs),
+                "count": len(group),
                 "history_len_median": _safe_median(history_clean),
                 "prompt_tokens_median": _safe_median(prompt_tokens),
                 "prompt_tokens_p95": _safe_percentile(prompt_tokens, 0.95),
@@ -615,13 +631,84 @@ def _build_metrics_by_turn(
                 "itl_p99_ms": _safe_percentile(itls, 0.99),
             }
         )
+    return rows
+
+
+def _build_metrics_by_turn(
+    benchmark: GenerativeBenchmark,
+) -> dict[str, Any] | None:
+    """
+    Build multi-turn samples, agent catalog, and default per-turn aggregates.
+
+    When parent and sub-agent requests both exist, default ``rows`` use parent
+    agents only so branched traffic does not mix into first paint. Compact
+    ``turn_samples`` let the report JS switch among all / parents / subagents.
+
+    :param benchmark: Benchmark whose requests may include multi-turn metadata
+    :return: Bundle with ``rows``, ``turn_agents``, ``turn_samples``, and agent
+        filter metadata, or ``None`` when there is only a single turn (or no data)
+    """
+    successful = benchmark.requests.successful or []
+    if not successful:
+        return None
+
+    turn_samples = [_turn_sample_from_request(req) for req in successful]
+    if len({sample["turn_index"] for sample in turn_samples}) <= 1:
+        return None
+
+    by_agent_count: dict[str | None, int] = defaultdict(int)
+    for sample in turn_samples:
+        by_agent_count[sample["agent_id"]] += 1
+
+    def _agent_sort_key(key: str | None) -> tuple[int, str]:
+        # Higher count first; then lexicographic label for stability.
+        return (-by_agent_count[key], _agent_display_label(key))
+
+    turn_agents = [
+        {
+            "id": agent_id,
+            "label": _agent_display_label(agent_id),
+            "count": by_agent_count[agent_id],
+            "is_subagent": _is_subagent(agent_id),
+        }
+        for agent_id in sorted(by_agent_count.keys(), key=_agent_sort_key)
+    ]
+
+    has_subagents = any(agent["is_subagent"] for agent in turn_agents)
+    has_parents = any(not agent["is_subagent"] for agent in turn_agents)
+    total_successful = len(successful)
+
+    # Prefer parents on first paint when both categories exist; otherwise all.
+    if has_subagents and has_parents:
+        default_samples = [
+            sample for sample in turn_samples if not _is_subagent(sample["agent_id"])
+        ]
+        default_mode = "parents"
+        default_note = (
+            "Turn curves use parent agents only "
+            f"({len(default_samples)}/{total_successful} requests)."
+        )
+    else:
+        default_samples = turn_samples
+        default_mode = "all"
+        default_note = (
+            "Turn curves use all requests "
+            f"({total_successful}/{total_successful} requests)."
+        )
+
+    rows = _aggregate_turn_rows(default_samples)
 
     return {
         "rows": rows,
-        "agent_id": preferred_agent,
-        "agent_count": len(by_agent),
-        "agent_request_count": len(selected),
-        "total_successful": len(successful),
+        "turn_agents": turn_agents,
+        "turn_samples": turn_samples,
+        "has_subagents": has_subagents,
+        "has_parents": has_parents,
+        "default_mode": default_mode,
+        "default_note": default_note,
+        "agent_count": len(by_agent_count),
+        "agent_request_count": len(default_samples),
+        "total_successful": total_successful,
     }
 
 
@@ -905,19 +992,6 @@ def _ttfot_differs(ttft: float | None, ttfot: float | None) -> bool:
     if ttft == 0 and ttfot == 0:
         return False
     return not math.isclose(float(ttft), float(ttfot), rel_tol=0.01, abs_tol=0.5)
-
-
-def _request_values(
-    reqs: Iterable[GenerativeRequestStats],
-    extractor: Callable[[GenerativeRequestStats], float | int | None],
-) -> list[float]:
-    values: list[float] = []
-    for req in reqs:
-        value = extractor(req)
-        if value is None:
-            continue
-        values.append(float(value))
-    return values
 
 
 def _safe_median(values: Sequence[float]) -> float | None:
