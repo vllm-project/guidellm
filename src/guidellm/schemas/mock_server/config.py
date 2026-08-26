@@ -78,6 +78,33 @@ class MockServerConfig(BaseSettings):
         default=0.0,
         description="Standard deviation for output token count variation",
     )
+    image_tokens: int = Field(
+        default=576,
+        ge=0,
+        description=(
+            "Prompt tokens charged per image content part in multimodal chat "
+            "requests. Flat heuristic; the default matches a 336px ViT-L/14 "
+            "vision encoder."
+        ),
+    )
+    video_tokens: int = Field(
+        default=1024,
+        ge=0,
+        description=(
+            "Prompt tokens charged per video content part in multimodal chat "
+            "requests. Flat heuristic."
+        ),
+    )
+    audio_tokens_per_second: float = Field(
+        default=25.0,
+        ge=0,
+        description=(
+            "Prompt tokens charged per estimated second of audio input for "
+            "multimodal chat requests and audio endpoints. Duration is "
+            "estimated from payload size assuming PCM16 mono 16 kHz for WAV "
+            "and 64 kbit/s for lossy formats."
+        ),
+    )
     fail_after_requests: int | None = Field(
         default=None,
         ge=0,
