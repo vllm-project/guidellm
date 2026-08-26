@@ -16,14 +16,13 @@ from pydantic import ValidationError
 from guidellm.data import config as config_module
 from guidellm.data.deserializers.synthetic import (
     DEFAULT_SYNTHETIC_TOOLS,
-    SyntheticTextDataArgs,
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
-    SyntheticTextPrefixBucketConfig,
     _SyntheticTextExamplesIterable,
 )
 from guidellm.data.schemas import DataNotSupportedError
 from guidellm.data.schemas.conversation_graph_data import ConversationGraphData
+from guidellm.schemas.data import SyntheticTextDataArgs, SyntheticTextPrefixBucketConfig
 from guidellm.settings import settings
 
 

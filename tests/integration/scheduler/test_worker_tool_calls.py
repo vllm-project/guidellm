@@ -20,11 +20,11 @@ import pytest_asyncio
 
 from guidellm.scheduler import SynchronousStrategy, WorkerProcess
 from guidellm.scheduler.schemas import ConversationEdge
-from guidellm.schemas import GenerationRequest, RequestInfo, RequestSettings
-from guidellm.schemas.conversation_graph import (
+from guidellm.scheduler.schemas.conversation_graph import (
     GenerativeConversationGraph,
     GenerativeConversationNode,
 )
+from guidellm.schemas import GenerationRequest, RequestInfo, RequestSettings
 from guidellm.utils.messaging import InterProcessMessagingQueue
 
 

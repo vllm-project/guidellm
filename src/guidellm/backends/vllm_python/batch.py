@@ -15,11 +15,11 @@ import gc
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, Literal, cast
+from typing import Any, cast
 
-from pydantic import ConfigDict, Field, PositiveInt
+from pydantic import ConfigDict, Field
 
-from guidellm.backends.backend import Backend, BackendArgs
+from guidellm.backends.backend import Backend
 from guidellm.backends.vllm_python.common import (
     is_scheduler_worker_process,
     reset_cpu_affinity,
@@ -28,7 +28,6 @@ from guidellm.backends.vllm_python.common import (
 from guidellm.backends.vllm_python.vllm import (
     _CHAT_TEMPLATE_UNSET,
     VLLMPythonAsyncBackend,
-    VLLMPythonAsyncBackendArgs,
 )
 from guidellm.backends.vllm_python.vllm_response import VLLMResponseHandler
 from guidellm.extras import vllm
@@ -39,49 +38,11 @@ from guidellm.schemas import (
     RequestInfo,
     StandardBaseModel,
 )
+from guidellm.schemas.backends import BackendArgs, VLLMPythonBatchBackendArgs
 
-__all__ = ["VLLMPythonBatchBackend", "VLLMPythonBatchBackendArgs"]
+__all__ = ["VLLMPythonBatchBackend"]
 
 _ASYNC_LOCK_ATTRS = ("_batch_lock", "_generate_lock", "_engine_lock")
-
-
-@BackendArgs.register("vllm_python_batch")
-class VLLMPythonBatchBackendArgs(VLLMPythonAsyncBackendArgs):
-    """Pydantic model for VLLM Python batch backend creation arguments.
-
-    Extends :class:`VLLMPythonAsyncBackendArgs` with batch-specific options
-    and removes the ``stream`` field (batch generation is always
-    non-streaming).
-    """
-
-    kind: Literal["vllm_python_batch"] = Field(  # type: ignore[assignment]
-        default="vllm_python_batch",
-        description="Backend type identifier for VLLM Python batch backend.",
-    )
-    batch_size: PositiveInt = Field(
-        default=32,
-        description=(
-            "Maximum number of requests to accumulate before "
-            "dispatching a single vLLM generate() call.  Full "
-            "batches flush immediately; partial batches wait up "
-            "to ``batch_timeout`` seconds."
-        ),
-    )
-    batch_timeout: float = Field(
-        default=0.01,
-        gt=0,
-        description=(
-            "Seconds to wait for more requests before flushing a "
-            "partial batch.  Full batches bypass this delay."
-        ),
-    )
-
-    # Hide the inherited ``stream`` field -- batch generation is never streaming.
-    stream: Literal[False] = Field(  # type: ignore[assignment]
-        default=False,
-        exclude=True,
-        description="Batch backend does not support streaming.",
-    )
 
 
 class _BatchResolvedRequest(StandardBaseModel):

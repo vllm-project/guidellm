@@ -22,7 +22,6 @@ from guidellm.benchmark.schemas import (
     BenchmarkConfig,
     BenchmarkT,
 )
-from guidellm.benchmark.schemas.base import TransientPhaseConfig
 from guidellm.logger import logger
 from guidellm.scheduler import (
     BackendInterface,
@@ -34,6 +33,7 @@ from guidellm.scheduler import (
     Scheduler,
     SchedulingStrategy,
 )
+from guidellm.schemas.benchmark import TransientPhaseConfig
 from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 

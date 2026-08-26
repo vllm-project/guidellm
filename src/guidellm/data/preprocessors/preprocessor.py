@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol, runtime_checkable
 
-from guidellm.data.schemas import DataPreprocessorArgs, DatasetType
+from guidellm.data.schemas import DatasetType
+from guidellm.schemas.data import DataPreprocessorArgs
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = ["DataDependentPreprocessor", "DatasetPreprocessor", "PreprocessorRegistry"]

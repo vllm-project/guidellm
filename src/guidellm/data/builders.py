@@ -9,7 +9,8 @@ from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.preprocessors import GenerativeColumnMapper, PreprocessorRegistry
-from guidellm.data.schemas import (
+from guidellm.data.tokenizers import TokenizerRegistry
+from guidellm.schemas.data import (
     DataArgs,
     DataLoaderArgs,
     DataPreprocessorArgs,
@@ -17,7 +18,6 @@ from guidellm.data.schemas import (
     PreprocessStrategyArgs,
     PromptTooShortError,
 )
-from guidellm.data.tokenizers import TokenizerRegistry
 from guidellm.utils.hf_datasets import SUPPORTED_TYPES, save_dataset_to_file
 from guidellm.utils.random import IntegerRangeSampler
 

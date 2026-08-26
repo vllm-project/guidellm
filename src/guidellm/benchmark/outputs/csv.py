@@ -19,32 +19,17 @@ from pydantic import Field
 
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import (
-    BenchmarkOutputArgs,
     GenerativeBenchmark,
     GenerativeBenchmarksReport,
 )
 from guidellm.schemas import DistributionSummary, StatusDistributionSummary
-from guidellm.settings import settings
+from guidellm.schemas.benchmark import BenchmarkOutputArgs
+from guidellm.schemas.benchmark.outputs import CSVBenchmarkOutputArgs
 from guidellm.utils.functions import safe_format_timestamp
 
 __all__ = [
-    "CSVBenchmarkOutputArgs",
     "GenerativeBenchmarkerCSV",
 ]
-
-
-@BenchmarkOutputArgs.register("csv")
-class CSVBenchmarkOutputArgs(BenchmarkOutputArgs):
-    """Model for CSV benchmark output arguments."""
-
-    kind: Literal["csv"] = Field(
-        default="csv",
-        description="The kind of output.",
-    )
-    path: Path = Field(
-        default_factory=lambda: settings.default_results_dir / "benchmarks.csv",
-        description="The file to save the output to.",
-    )
 
 
 TIMESTAMP_FORMAT: Annotated[str, "Format string for timestamp output in CSV files"] = (

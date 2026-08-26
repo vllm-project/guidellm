@@ -9,7 +9,8 @@ from __future__ import annotations
 import pytest
 
 from guidellm.data.loaders.loader import DataLoaderRegistry
-from guidellm.data.loaders.torch import TorchDataLoader, TorchDataLoaderArgs
+from guidellm.data.loaders.torch import TorchDataLoader
+from guidellm.schemas.data import TorchDataLoaderArgs
 
 
 class TestTorchDataLoaderArgs:

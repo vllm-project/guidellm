@@ -12,11 +12,11 @@ from guidellm.scheduler.schemas import (
     ConversationGraph,
     ConversationNode,
 )
-from guidellm.schemas import GenerationRequest, RequestInfo, RequestSettings
-from guidellm.schemas.conversation_graph import (
+from guidellm.scheduler.schemas.conversation_graph import (
     GenerativeConversationGraph,
     GenerativeConversationNode,
 )
+from guidellm.schemas import GenerationRequest, RequestInfo, RequestSettings
 
 
 class TestConversationGraphValidation:

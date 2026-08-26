@@ -8,11 +8,12 @@ from pydantic import ValidationError
 from guidellm.benchmark.entrypoints import reimport_benchmarks_report
 from guidellm.benchmark.outputs.plot import (
     GenerativeBenchmarkerPlot,
-    PlotBenchmarkOutputArgs,
 )
-from guidellm.benchmark.schemas import BenchmarkScenario, GenerativeBenchmarksReport
-from guidellm.benchmark.schemas.output import (
+from guidellm.benchmark.schemas import GenerativeBenchmarksReport
+from guidellm.schemas.benchmark import (
     BenchmarkOutputArgs,
+    BenchmarkScenario,
+    PlotBenchmarkOutputArgs,
 )
 
 

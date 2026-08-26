@@ -15,10 +15,10 @@ from typing import Literal
 import numpy as np
 from pydantic import Field, computed_field
 
-from guidellm.schemas.base import StandardBaseDict
-from guidellm.schemas.info import RequestInfo
-from guidellm.schemas.request import UsageMetrics
-from guidellm.schemas.tool_call import ToolCall
+from guidellm.schemas.base.base import StandardBaseDict
+from guidellm.schemas.base.info import RequestInfo
+from guidellm.schemas.base.request import UsageMetrics
+from guidellm.schemas.base.tool_call import ToolCall
 
 __all__ = ["GenerativeRequestStats"]
 

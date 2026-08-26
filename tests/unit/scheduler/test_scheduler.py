@@ -18,12 +18,12 @@ from guidellm.scheduler import (
     SchedulerState,
     SynchronousStrategy,
 )
-from guidellm.scheduler.constraints import (
+from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
+from guidellm.schemas import RequestInfo, RequestSettings
+from guidellm.schemas.scheduler import (
     MaxDurationConstraintArgs,
     MaxRequestsConstraintArgs,
 )
-from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
-from guidellm.schemas import RequestInfo, RequestSettings
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 from tests.unit.testing_utils import async_timeout
 

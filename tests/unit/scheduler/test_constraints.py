@@ -23,15 +23,15 @@ from guidellm.scheduler import (
     SerializableConstraintInitializer,
     UnserializableConstraintInitializer,
 )
-from guidellm.scheduler.constraints import (
+from guidellm.schemas import RequestInfo, StandardBaseModel
+from guidellm.schemas.scheduler import (
+    ConstraintArgs,
     MaxDurationConstraintArgs,
     MaxErrorRateConstraintArgs,
     MaxErrorsConstraintArgs,
     MaxGlobalErrorRateConstraintArgs,
     MaxRequestsConstraintArgs,
 )
-from guidellm.scheduler.constraints.args import ConstraintArgs
-from guidellm.schemas import RequestInfo, StandardBaseModel
 from guidellm.utils.mixins import InfoMixin
 
 

@@ -10,10 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from guidellm.data.tokenizers.huggingface import (
-    HuggingFaceTokenizer,
-    HuggingFaceTokenizerArgs,
-)
+from guidellm.data.tokenizers.huggingface import HuggingFaceTokenizer
+from guidellm.schemas.data import HuggingFaceTokenizerArgs
 from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR, seed_hub_cache_for_model
 
 # Unique id so a developer machine's real ``gpt2`` hub cache cannot shadow the fixture.

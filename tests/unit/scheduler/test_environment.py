@@ -15,8 +15,8 @@ from guidellm.scheduler import (
     SchedulerState,
     SynchronousStrategy,
 )
-from guidellm.scheduler.constraints import MaxRequestsConstraintArgs
 from guidellm.schemas import RequestInfo
+from guidellm.schemas.scheduler import MaxRequestsConstraintArgs
 from guidellm.utils.mixins import InfoMixin
 
 

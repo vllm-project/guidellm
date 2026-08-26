@@ -14,7 +14,7 @@ from typing import Literal
 
 from pydantic import Field, computed_field
 
-from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
+from guidellm.schemas.base.base import StandardBaseDict, StandardBaseModel
 
 __all__ = ["RequestInfo", "RequestSettings", "RequestTimings"]
 

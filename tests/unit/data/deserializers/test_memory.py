@@ -11,12 +11,14 @@ from guidellm.data.deserializers.deserializer import (
     DataNotSupportedError,
 )
 from guidellm.data.deserializers.memory import (
-    InMemoryDictDataArgs,
     InMemoryDictDatasetDeserializer,
-    InMemoryDictListDataArgs,
     InMemoryDictListDatasetDeserializer,
-    InMemoryItemListDataArgs,
     InMemoryItemListDatasetDeserializer,
+)
+from guidellm.schemas.data import (
+    InMemoryDictDataArgs,
+    InMemoryDictListDataArgs,
+    InMemoryItemListDataArgs,
 )
 
 

@@ -6,7 +6,7 @@ import pytest
 
 from guidellm.benchmark.entrypoints import resolve_output_formats
 from guidellm.benchmark.outputs import GenerativeBenchmarkerOutput
-from guidellm.benchmark.outputs.serialized import JSONBenchmarkOutputArgs
+from guidellm.schemas.benchmark import JSONBenchmarkOutputArgs
 
 
 @pytest.mark.asyncio

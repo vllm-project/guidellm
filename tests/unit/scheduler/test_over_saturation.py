@@ -17,9 +17,9 @@ from guidellm.scheduler import (
     SchedulerUpdateAction,
     SerializableConstraintInitializer,
 )
-from guidellm.scheduler.constraints import OverSaturationConstraintArgs
 from guidellm.scheduler.constraints.saturation import SlopeChecker
 from guidellm.schemas import RequestInfo, RequestTimings
+from guidellm.schemas.scheduler import OverSaturationConstraintArgs
 
 
 class TestOverSaturationConstraintInternal:

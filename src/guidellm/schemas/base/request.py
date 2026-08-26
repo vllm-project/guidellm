@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from pydantic import Field, computed_field
 
-from guidellm.schemas.base import StandardBaseDict, StandardBaseModel
+from guidellm.schemas.base.base import StandardBaseDict, StandardBaseModel
 from guidellm.utils.dict import deep_update
 
 TurnType = Literal[

@@ -10,9 +10,9 @@ import pytest
 
 from guidellm.data.preprocessors.tool_calling import (
     ToolCallingMessageExtractor,
-    ToolCallingMessageExtractorArgs,
     _normalize_message,
 )
+from guidellm.schemas.data import ToolCallingMessageExtractorArgs
 
 
 class TestToolCallingMessageExtractorToolResponses:
