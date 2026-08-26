@@ -11,6 +11,7 @@ include = ["*"]
 guidellm = ["py.typed"]
 "guidellm.data" = ["*.gz"]
 "guidellm.benchmark.scenarios" = ["*.json", "**/*.json"]
+"guidellm.benchmark.outputs.html_report" = ["*.html", "*.css", "*.js"]
 
 [tool.uv]
 required-environments = [
@@ -299,6 +300,9 @@ select = [
 "scripts/**/*.py" = [
     "T201",    # print statements are the primary output mechanism for scripts
     "INP001",  # scripts/ is not a package
+]
+"tests/js/**/*.py" = [
+    "INP001",  # Node test helpers live beside package.json, not as a Python package
 ]
 
 [tool.ruff.lint.isort]

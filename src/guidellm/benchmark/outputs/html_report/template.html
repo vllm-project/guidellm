@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GuideLLM Benchmark Report</title>
+  <style>
+__GUIDELLM_REPORT_CSS__
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="brand">GuideLLM</div>
+      <h1>Benchmark performance report</h1>
+      <div class="meta">
+        <span><strong>Model:</strong> <span id="meta-model">__GUIDELLM_META_MODEL__</span></span>
+        <span>
+          <strong>Target:</strong>
+          <button type="button" class="help-q" data-help="target" aria-label="About Target">?</button>
+          <span id="meta-target">__GUIDELLM_META_TARGET__</span>
+        </span>
+        <span>
+          <strong>Profile:</strong>
+          <button type="button" class="help-q" data-help="profile" aria-label="About Profile">?</button>
+          <span id="meta-profile">__GUIDELLM_META_PROFILE__</span>
+        </span>
+        <span><strong>Time:</strong> <span id="meta-time">__GUIDELLM_META_TIME__</span></span>
+        <span><strong>GuideLLM:</strong> <span id="meta-version">__GUIDELLM_META_VERSION__</span></span>
+      </div>
+    </header>
+
+    <div class="kpi-run-picker" id="kpi-run-picker" hidden>
+      <label for="kpi-run-select">
+        Metrics for
+        <button type="button" class="help-q" data-help="metrics_for" aria-label="About Metrics for">?</button>
+      </label>
+      <select id="kpi-run-select" aria-label="Select run for top metrics"></select>
+      <span class="kpi-run-note">
+        Updates KPIs and the latency-components chart; multi-run comparison charts stay unchanged.
+        <button type="button" class="help-q" data-help="peak_tok_s" aria-label="About Peak tok/s">?</button>
+      </span>
+    </div>
+    <section class="kpis" aria-label="Key metrics">
+      <div class="kpi">
+        <button type="button" class="help-q" data-help="rps" aria-label="About Requests / sec">?</button>
+        <div class="label">Requests / sec</div>
+        <div class="value" id="kpi-rps">__GUIDELLM_KPI_RPS__</div>
+      </div>
+      <div class="kpi">
+        <button type="button" class="help-q" data-help="out_tps" aria-label="About Output tokens / sec">?</button>
+        <div class="label">Output tokens / sec</div>
+        <div class="value" id="kpi-out-tps">__GUIDELLM_KPI_OUT_TPS__</div>
+      </div>
+      <div class="kpi">
+        <button type="button" class="help-q" data-help="total_tps" aria-label="About Total tokens / sec">?</button>
+        <div class="label">Total tokens / sec</div>
+        <div class="value" id="kpi-total-tps">__GUIDELLM_KPI_TOTAL_TPS__</div>
+      </div>
+      <div class="kpi kpi-latency">
+        <button type="button" class="help-q" data-help="request_latency" aria-label="About Request latency">?</button>
+        <div class="label">Request latency</div>
+        <div class="kpi-pair">
+          <div class="kpi-stat">
+            <span class="kpi-stat-label">P95</span>
+            <span class="kpi-stat-value" id="kpi-lat-p95">__GUIDELLM_KPI_LAT_P95__</span>
+            <span class="kpi-stat-unit">ms</span>
+          </div>
+          <div class="kpi-stat">
+            <span class="kpi-stat-label">P99</span>
+            <span class="kpi-stat-value" id="kpi-lat-p99">__GUIDELLM_KPI_LAT_P99__</span>
+            <span class="kpi-stat-unit">ms</span>
+          </div>
+        </div>
+      </div>
+      <div class="kpi kpi-latency">
+        <button type="button" class="help-q" data-help="ttft" aria-label="About TTFT">?</button>
+        <div class="label">TTFT</div>
+        <div class="kpi-pair">
+          <div class="kpi-stat">
+            <span class="kpi-stat-label">P95</span>
+            <span class="kpi-stat-value" id="kpi-ttft-p95">__GUIDELLM_KPI_TTFT_P95__</span>
+            <span class="kpi-stat-unit">ms</span>
+          </div>
+          <div class="kpi-stat">
+            <span class="kpi-stat-label">P99</span>
+            <span class="kpi-stat-value" id="kpi-ttft-p99">__GUIDELLM_KPI_TTFT_P99__</span>
+            <span class="kpi-stat-unit">ms</span>
+          </div>
+        </div>
+      </div>
+      <div class="kpi kpi-latency">
+        <button type="button" class="help-q" data-help="itl" aria-label="About ITL">?</button>
+        <div class="label">ITL</div>
+        <div class="kpi-pair">
+          <div class="kpi-stat">
+            <span class="kpi-stat-label">P95</span>
+            <span class="kpi-stat-value" id="kpi-itl-p95">__GUIDELLM_KPI_ITL_P95__</span>
+            <span class="kpi-stat-unit">ms</span>
+          </div>
+          <div class="kpi-stat">
+            <span class="kpi-stat-label">P99</span>
+            <span class="kpi-stat-value" id="kpi-itl-p99">__GUIDELLM_KPI_ITL_P99__</span>
+            <span class="kpi-stat-unit">ms</span>
+          </div>
+        </div>
+      </div>
+      <div class="kpi">
+        <button type="button" class="help-q" data-help="error_rate" aria-label="About Error rate">?</button>
+        <div class="label">Error rate</div>
+        <div class="value" id="kpi-error">__GUIDELLM_KPI_ERROR__</div>
+      </div>
+    </section>
+
+    <section id="static-summary" class="static-summary" aria-label="Static report summary">
+      <h2>Run comparison</h2>
+      __GUIDELLM_STATIC_TABLE__
+      <p class="static-summary-note">
+        Charts, tabs, and the interactive details below require JavaScript.
+      </p>
+    </section>
+
+    <nav class="tabs" role="tablist" aria-label="Report sections">
+      <button type="button" class="tab-btn active" role="tab" id="tab-summary" data-tab="summary" aria-controls="panel-summary" aria-selected="true">Summary</button>
+      <button type="button" class="tab-btn" role="tab" id="tab-performance" data-tab="performance" aria-controls="panel-performance" aria-selected="false" tabindex="-1">Performance</button>
+      <button type="button" class="tab-btn" role="tab" id="tab-turn" data-tab="turn" aria-controls="panel-turn" aria-selected="false" tabindex="-1">By turn</button>
+      <button type="button" class="tab-btn" role="tab" id="tab-details" data-tab="details" aria-controls="panel-details" aria-selected="false" tabindex="-1">Details</button>
+    </nav>
+
+    <section id="panel-summary" class="panel active" role="tabpanel" aria-labelledby="tab-summary">
+      <div class="grid">
+        <article class="card" id="card-load-latency">
+          <h2>
+            <span class="card-heading">Request latency by benchmark</span>
+            <button type="button" class="help-q" data-help="lat_by_conc" aria-label="About Request latency by benchmark">?</button>
+          </h2>
+          <p class="hint">End-to-end P95/P99 as load increases — lower is better.</p>
+          <div class="chart chart-hbar" id="chart-load-latency"></div>
+        </article>
+        <article class="card">
+          <h2>
+            <span class="card-heading">Request outcomes</span>
+            <button type="button" class="help-q" data-help="outcomes" aria-label="About Request outcomes">?</button>
+          </h2>
+          <p class="hint" id="hint-status">Share of successful, incomplete, and errored requests.</p>
+          <div class="chart" id="chart-status"></div>
+        </article>
+        <article class="card">
+          <h2 id="title-breakdown">Latency components</h2>
+          <p class="hint" id="hint-breakdown">P95 and P99 latency components for the selected run.</p>
+          <div class="chart chart-hbar" id="chart-breakdown"></div>
+        </article>
+      </div>
+      <article class="card card-spaced">
+        <h2 id="title-compare">Run comparison</h2>
+        <div id="table-compare"></div>
+      </article>
+    </section>
+
+    <section id="panel-performance" class="panel" role="tabpanel" aria-labelledby="tab-performance" hidden>
+      <div class="grid grid-2">
+        <article class="card">
+          <h2 id="title-lat-e2e">First-token latency by benchmark</h2>
+          <p class="hint" id="hint-lat-e2e">P95 and P99 — lower is better.</p>
+          <div class="chart chart-hbar" id="chart-lat-e2e"></div>
+        </article>
+        <article class="card">
+          <h2 id="title-lat-gen">Generation latency by benchmark</h2>
+          <p class="hint" id="hint-lat-gen">ITL and TPOT — lower is better.</p>
+          <div class="chart chart-hbar" id="chart-lat-gen"></div>
+        </article>
+        <article class="card">
+          <h2 id="title-tps">Token throughput by benchmark</h2>
+          <p class="hint" id="hint-tps">Total, input, and output tokens per second.</p>
+          <div class="chart chart-hbar" id="chart-tps-conc"></div>
+        </article>
+        <article class="card" id="card-efficiency">
+          <h2 id="title-efficiency">Throughput efficiency</h2>
+          <p class="hint" id="hint-efficiency">Total tokens/sec per concurrent request.</p>
+          <div class="chart chart-hbar" id="chart-efficiency"></div>
+          <div id="efficiency-stats" class="efficiency-stats" hidden></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="panel-turn" class="panel" role="tabpanel" aria-labelledby="tab-turn" hidden>
+      <div id="turn-agent-filter" class="turn-agent-filter" hidden>
+        <label for="turn-agent-mode">Requests</label>
+        <select id="turn-agent-mode" aria-describedby="turn-agent-filter-tip">
+          <option value="all">All Requests</option>
+          <option value="parents">Parent agents only</option>
+          <option value="subagents">Subagents only</option>
+        </select>
+        <button type="button" class="help-q" data-help="turn_agents" aria-label="About request filter for By turn">?</button>
+        <span id="turn-agent-filter-tip" class="turn-agent-filter-tip">Filter parent vs subagent requests in turn curves.</span>
+      </div>
+      <p class="note" id="turn-note"></p>
+      <article class="card">
+        <h2>
+          <span class="card-heading">Latency &amp; prompt size by turn</span>
+          <button type="button" class="help-q" data-help="lat_vs_turn" aria-label="About Latency and prompt size by turn">?</button>
+        </h2>
+        <p class="hint">Latency on the left axis; prompt median tokens on the right (dashed).</p>
+        <div class="chart chart-turn" id="chart-turn-combined"></div>
+      </article>
+      <article class="card card-spaced">
+        <h2>
+          <span class="card-heading">Per-turn table</span>
+          <button type="button" class="help-q" data-help="by_turn" aria-label="About By turn">?</button>
+        </h2>
+        <div id="table-turn"></div>
+      </article>
+    </section>
+
+    <section id="panel-details" class="panel" role="tabpanel" aria-labelledby="tab-details" hidden>
+      <div class="grid">
+        <article class="card">
+          <h2 id="title-extra-latency">
+            <span class="card-heading">Extra latency</span>
+          </h2>
+          <div id="table-extra-latency"></div>
+        </article>
+        <article class="card">
+          <h2>
+            <span class="card-heading">Request size</span>
+            <button type="button" class="help-q" data-help="request_size" aria-label="About Request size">?</button>
+          </h2>
+          <div id="table-request-size"></div>
+        </article>
+        <article class="card" id="rtt-card">
+          <h2>
+            <span class="card-heading">WebSocket round-trip</span>
+            <button type="button" class="help-q" data-help="ws_rtt" aria-label="About WebSocket round-trip">?</button>
+          </h2>
+          <div id="table-rtt"></div>
+        </article>
+      </div>
+      <div id="modality-sections" class="modality-sections"></div>
+    </section>
+
+    <footer class="footer">
+      <a
+        class="footer-github"
+        href="https://github.com/vllm-project/guidellm"
+        aria-label="GitHub repository vllm-project/guidellm"
+      >
+        <!-- GitHub Mark path from Simple Icons (CC0 1.0); used to link to the project repo. -->
+        <svg
+          class="footer-github-icon"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path
+            fill="currentColor"
+            d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"
+          />
+        </svg>
+        <span>vllm-project/guidellm</span>
+      </a>
+    </footer>
+  </div>
+
+  <script>
+    window.GUIDELLM_REPORT = __GUIDELLM_REPORT_JSON__;
+  </script>
+  <script>
+__GUIDELLM_REPORT_JS__
+  </script>
+</body>
+</html>
