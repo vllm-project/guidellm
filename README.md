@@ -168,7 +168,7 @@ This file provides a compact tabular view of each benchmark with the fields most
 
 **benchmarks.html**
 
-The HTML report provides a visual summary of results, including charts of latency distributions, throughput behavior, and generation patterns. It's ideal for quick exploration or sharing with teammates without requiring them to parse JSON.
+A self-contained HTML report with charts and tables for throughput and latency (emphasizing P95/P99). The file embeds its own CSS and JavaScript, so it can be shared without network access or a versioned UI dependency.
 
 ## Common Use Cases and Configurations
 

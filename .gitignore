@@ -186,6 +186,10 @@ cython_debug/
 !src/guidellm/benchmark/scenarios/*.json
 !src/guidellm/benchmark/scenarios/*.yaml
 
+# HTML report Node smoke-test manifests (needed by tox -e test-html-js)
+!tests/js/package.json
+!tests/js/package-lock.json
+
 # Vendored offline tokenizer fixtures for tests (no Hub downloads)
 !tests/fixtures/tokenizers/**/*.json
 !tests/fixtures/tokenizers/**/*.yaml
@@ -208,9 +212,9 @@ cython_debug/
 # Gemini CLI
 .gemini/
 
-# UI Section - Next.js/React application under src/ui/
-# dependencies
+# Optional local Node tooling leftovers
 /node_modules/
+tests/js/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -218,41 +222,14 @@ cython_debug/
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
-# testing
 coverage/
-
-# next.js
-/src/ui/.next/
-/src/ui/out/
-
-# production
 build/
-
-# misc
 *.pem
-
-# debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-
-# vercel
-src/ui/.vercel
-
-# typescript
 *.tsbuildinfo
-src/ui/next-env.d.ts
-
-# Root-level UI config files that should be tracked
-!package.json
-!package-lock.json
-!tsconfig.json
-!tsconfig.*.json
-!src/ui/lib
-!src/ui/public/manifest.json
-!src/ui/serve.json
 .eslintcache
 
 # e2e tests
