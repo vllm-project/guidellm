@@ -74,10 +74,10 @@ class MockProcessTarget:
 
 @pytest.fixture(
     params=[
-        {"ctx_name": "fork"},
+        {"ctx_name": "forkserver"},
         {"ctx_name": "spawn"},
     ],
-    ids=["fork_ctx", "spawn_ctx"],
+    ids=["forkserver_ctx", "spawn_ctx"],
 )
 def multiprocessing_contexts(request):
     context = multiprocessing.get_context(request.param["ctx_name"])

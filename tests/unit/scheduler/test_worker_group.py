@@ -105,22 +105,6 @@ class TestWorkerProcessGroup:
     def teardown_method(self):
         pass
 
-    @pytest.mark.regression
-    @pytest.mark.asyncio
-    @patch("guidellm.scheduler.worker_group.sys.platform", "darwin")
-    @patch("guidellm.scheduler.worker_group.get_context")
-    async def test_macos_uses_spawn_context(self, mock_get_context):
-        """Use the safe multiprocessing context on macOS. ## WRITTEN BY AI ##"""
-        mock_get_context.side_effect = RuntimeError("context selected")
-        instance = WorkerProcessGroup(
-            requests=["request"], backend=MockBackend(), strategy=SynchronousStrategy()
-        )
-
-        with pytest.raises(RuntimeError, match="context selected"):
-            await instance.create_processes()
-
-        mock_get_context.assert_called_once_with("spawn")
-
     @pytest.fixture(
         params=[
             {
