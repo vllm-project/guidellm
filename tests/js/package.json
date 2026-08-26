@@ -1,0 +1,11 @@
+{
+  "name": "guidellm-html-report-js-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test report_smoke.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

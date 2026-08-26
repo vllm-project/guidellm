@@ -1,165 +1,506 @@
+"""
+Unit tests for the self-contained HTML benchmark report output.
+
 ## WRITTEN BY AI ##
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
 from guidellm.benchmark.outputs.html import (
-    _filter_duplicate_percentiles,
-    _TabularDistributionSummary,
+    GenerativeBenchmarkerHTML,
+    HTMLBenchmarkOutputArgs,
+    build_report_view,
+    render_html_report,
 )
-from guidellm.schemas import Percentiles
+from guidellm.scheduler import (
+    AsyncConstantStrategy,
+    ConcurrentStrategy,
+    ThroughputStrategy,
+)
+from guidellm.schemas import DistributionSummary
+from guidellm.schemas.benchmark import BenchmarkOutputArgs
+from tests.unit.benchmark.html_report_fixtures import (
+    make_benchmark as _make_benchmark,
+)
+from tests.unit.benchmark.html_report_fixtures import (
+    make_request as _make_request,
+)
+from tests.unit.benchmark.html_report_fixtures import (
+    make_scenario as _scenario,
+)
+from tests.unit.benchmark.html_report_fixtures import (
+    report as _report,
+)
 
 
-def test_filter_all_same_values():
-    """Test filtering when all percentiles have the same value."""
-    percentiles = {
-        "p001": 15.288091352804853,
-        "p01": 15.288091352804853,
-        "p05": 15.288091352804853,
-        "p10": 15.288091352804853,
-        "p25": 15.288091352804853,
-        "p50": 15.288091352804853,
-        "p75": 15.288091352804853,
-        "p90": 15.288091352804853,
-        "p95": 15.288091352804853,
-        "p99": 15.288091352804853,
-        "p999": 15.288091352804853,
-    }
+@pytest.mark.smoke
+def test_from_args_creates_instance():
+    """
+    HTML args should construct a GenerativeBenchmarkerHTML instance.
 
-    filtered = _filter_duplicate_percentiles(percentiles)
-
-    # Should only keep the largest (p999) for mathematical accuracy
-    assert filtered == {"p999": 15.288091352804853}
+    ## WRITTEN BY AI ##
+    """
+    args = HTMLBenchmarkOutputArgs(path=Path("report.html"))
+    output = GenerativeBenchmarkerHTML.from_args(args)
+    assert output.output_path == Path("report.html")
 
 
-def test_filter_consecutive_duplicates():
-    """Test filtering when some consecutive percentiles have the same value."""
-    percentiles = {
-        "p001": 15.288091352804853,
-        "p01": 15.288091352804853,
-        "p05": 15.288091352804853,
-        "p10": 15.288091352804853,
-        "p25": 15.288091352804853,
-        "p50": 16.41327511776994,  # Different value
-        "p75": 16.41327511776994,
-        "p90": 17.03541629998259,  # Different value
-        "p95": 17.03541629998259,
-        "p99": 17.03541629998259,
-        "p999": 17.03541629998259,
-    }
+@pytest.mark.smoke
+def test_from_args_rejects_wrong_type():
+    """
+    Non-HTML args should raise TypeError.
 
-    filtered = _filter_duplicate_percentiles(percentiles)
+    ## WRITTEN BY AI ##
+    """
 
-    # Should keep largest of each group for mathematical accuracy
-    assert filtered == {
-        "p25": 15.288091352804853,
-        "p75": 16.41327511776994,
-        "p999": 17.03541629998259,
-    }
+    class DummyArgs(BenchmarkOutputArgs):
+        kind: str = "dummy"
+
+    with pytest.raises(TypeError, match="Expected HTMLBenchmarkOutputArgs"):
+        GenerativeBenchmarkerHTML.from_args(DummyArgs(kind="dummy"))
 
 
-def test_no_duplicates():
-    """Test that unique values are all preserved."""
-    percentiles = {
-        "p001": 13.181080445834912,
-        "p01": 13.181080445834912,  # Same as p001
-        "p05": 13.530595573836457,  # Different
-        "p10": 13.843972502554365,
-        "p25": 14.086376978251748,
-        "p50": 14.403258051191058,
-        "p75": 14.738608817056042,
-        "p90": 15.18136631856698,
-        "p95": 15.7213110894772,
-        "p99": 15.7213110894772,  # Same as p95
-        "p999": 15.7213110894772,  # Same as p99
-    }
+@pytest.mark.sanity
+def test_build_report_view_single_and_multi_run():
+    """
+    Compact view should expose p95/p99 values and peak-throughput KPIs.
 
-    filtered = _filter_duplicate_percentiles(percentiles)
+    ## WRITTEN BY AI ##
+    """
+    single_report = _report(
+        _make_benchmark(
+            strategy=AsyncConstantStrategy(rate=2.0),
+            rps=2.0,
+            tps=40.0,
+        )
+    )
+    single_view = build_report_view(single_report)
+    assert single_view["header"]["multi_run"] is False
+    assert single_view["header"]["has_multi_turn"] is False
+    assert single_view["runs"][0]["ttft_p95_ms"] == 150.0
+    assert single_view["runs"][0]["ttft_p99_ms"] == 180.0
+    assert single_view["runs"][0]["label"] == "constant@2.00"
+    assert single_view["runs"][0]["configured_request_rate"] == 2.0
+    assert "kpis" not in single_view
+    assert "modalities" not in single_view["runs"][0]
+    assert single_view["runs"][0]["total_tps"] == 40.0
 
-    # Should keep largest of each duplicate group (e.g. p999 instead of p95)
-    assert filtered == {
-        "p01": 13.181080445834912,
-        "p05": 13.530595573836457,
-        "p10": 13.843972502554365,
-        "p25": 14.086376978251748,
-        "p50": 14.403258051191058,
-        "p75": 14.738608817056042,
-        "p90": 15.18136631856698,
-        "p999": 15.7213110894772,
-    }
-
-
-def test_empty_percentiles():
-    """Test with empty percentiles dictionary."""
-    filtered = _filter_duplicate_percentiles({})
-    assert filtered == {}
-
-
-def test_single_percentile():
-    """Test with only one percentile."""
-    percentiles = {"p50": 14.403258051191058}
-    filtered = _filter_duplicate_percentiles(percentiles)
-    assert filtered == {"p50": 14.403258051191058}
-
-
-def test_two_different_values():
-    """Test with two different values."""
-    percentiles = {
-        "p25": 14.086376978251748,
-        "p50": 14.403258051191058,
-    }
-    filtered = _filter_duplicate_percentiles(percentiles)
-    assert filtered == percentiles
-
-
-def test_partial_percentiles():
-    """Test that order is maintained even with partial percentiles."""
-    percentiles = {
-        "p50": 16.41327511776994,
-        "p10": 15.288091352804853,
-        "p90": 17.03541629998259,
-    }
-
-    filtered = _filter_duplicate_percentiles(percentiles)
-
-    # Should maintain order from percentile_order list
-    assert list(filtered.keys()) == ["p10", "p50", "p90"]
-
-
-def test_model_dump_filters_duplicates():
-    """Test that model_dump applies percentile filtering."""
-    # Create a distribution with duplicate percentiles (typical of small datasets)
-    dist = _TabularDistributionSummary(
-        mean=15.5,
-        median=15.288091352804853,
-        mode=15.288091352804853,
-        variance=0.1,
-        std_dev=0.316,
-        min=15.288091352804853,
-        max=17.03541629998259,
-        count=3,
-        total_sum=46.5,
-        percentiles=Percentiles(
-            p001=15.288091352804853,
-            p01=15.288091352804853,
-            p05=15.288091352804853,
-            p10=15.288091352804853,
-            p25=15.288091352804853,
-            p50=16.41327511776994,
-            p75=16.41327511776994,
-            p90=17.03541629998259,
-            p95=17.03541629998259,
-            p99=17.03541629998259,
-            p999=17.03541629998259,
+    multi_report = _report(
+        _make_benchmark(
+            strategy=ConcurrentStrategy(streams=2),
+            rps=1.0,
+            tps=20.0,
+            measure_start=1_700_000_000.0,
+        ),
+        _make_benchmark(
+            strategy=ConcurrentStrategy(streams=4),
+            rps=2.0,
+            tps=50.0,
+            measure_start=1_700_000_010.0,
         ),
     )
+    multi_view = build_report_view(multi_report)
+    assert multi_view["header"]["multi_run"] is True
+    assert multi_view["header"]["peak_index"] == 1
+    assert "kpis" not in multi_view
+    assert multi_view["runs"][1]["total_tps"] == 50.0
+    assert multi_view["runs"][1]["label"] == "concurrent@4"
+    assert multi_view["runs"][1]["concurrency"] == 4.0
+    assert multi_view["runs"][1]["configured_concurrency"] == 4
+    assert multi_view["runs"][0]["configured_concurrency"] == 2
+    assert multi_view["runs"][0]["configured_request_rate"] is None
+    assert multi_view["runs"][1]["configured_request_rate"] is None
 
-    data = dist.model_dump()
+    throughput_report = _report(
+        _make_benchmark(
+            strategy=ThroughputStrategy(max_concurrency=8),
+            rps=3.0,
+            tps=60.0,
+        )
+    )
+    throughput_view = build_report_view(throughput_report)
+    assert throughput_view["runs"][0]["strategy"] == "throughput"
+    assert throughput_view["runs"][0]["configured_concurrency"] == 8
+    assert throughput_view["runs"][0]["configured_request_rate"] is None
 
-    # Check that percentiles were filtered, keeping largest of each group
-    assert data["percentiles"] == {
-        "p25": 15.288091352804853,
-        "p75": 16.41327511776994,
-        "p999": 17.03541629998259,
-    }
+    unlimited_throughput = _report(
+        _make_benchmark(
+            strategy=ThroughputStrategy(),
+            rps=4.0,
+            tps=80.0,
+        )
+    )
+    unlimited_view = build_report_view(unlimited_throughput)
+    assert unlimited_view["runs"][0]["configured_concurrency"] is None
+    assert unlimited_view["runs"][0]["configured_request_rate"] is None
 
-    # Ensure other fields remain unchanged
-    assert data["mean"] == 15.5
-    assert data["median"] == 15.288091352804853
-    assert data["count"] == 3
+
+@pytest.mark.sanity
+def test_header_model_prefers_resolved_backend_info():
+    """
+    Header model should prefer the resolved per-run backend model.
+
+    ## WRITTEN BY AI ##
+    """
+    report = _report(
+        _make_benchmark(
+            strategy=ConcurrentStrategy(streams=4),
+            rps=2.0,
+            tps=50.0,
+            backend_model="Qwen/Qwen3-0.6B",
+        ),
+        scenario=_scenario(model=""),
+    )
+    view = build_report_view(report)
+    assert view["header"]["model"] == "Qwen/Qwen3-0.6B"
+
+
+@pytest.mark.sanity
+def test_build_report_view_multi_turn():
+    """
+    Multi-turn requests should produce per-turn aggregates with latency percentiles.
+
+    ## WRITTEN BY AI ##
+    """
+    requests = [
+        _make_request(
+            0,
+            latency_s=0.2,
+            ttft_ms=80.0,
+            itl_ms=10.0,
+            prompt_tokens=50,
+            history_len=0,
+            start_time=10.0,
+        ),
+        _make_request(
+            0,
+            latency_s=0.22,
+            ttft_ms=85.0,
+            itl_ms=11.0,
+            prompt_tokens=55,
+            history_len=0,
+            start_time=11.0,
+        ),
+        _make_request(
+            1,
+            latency_s=0.4,
+            ttft_ms=120.0,
+            itl_ms=14.0,
+            prompt_tokens=120,
+            history_len=1,
+            start_time=12.0,
+        ),
+        _make_request(
+            1,
+            latency_s=0.45,
+            ttft_ms=130.0,
+            itl_ms=15.0,
+            prompt_tokens=130,
+            history_len=1,
+            start_time=13.0,
+        ),
+        _make_request(
+            2,
+            latency_s=0.7,
+            ttft_ms=180.0,
+            itl_ms=18.0,
+            prompt_tokens=220,
+            history_len=2,
+            start_time=14.0,
+        ),
+    ]
+    report = _report(
+        _make_benchmark(
+            strategy=AsyncConstantStrategy(rate=1.0),
+            rps=1.5,
+            tps=30.0,
+            requests=requests,
+        )
+    )
+    view = build_report_view(report)
+    assert view["header"]["has_multi_turn"] is True
+    assert view["by_turn"] is not None
+    assert [row["turn_index"] for row in view["by_turn"]] == [0, 1, 2]
+    assert view["by_turn"][2]["prompt_tokens_median"] == 220.0
+    assert view["by_turn"][2]["request_latency_p95_ms"] is not None
+    # Single-agent multi-turn: no agent filter note; picker not needed.
+    assert view["turn_note"] is None
+    assert view["turn_agents"] is not None
+    assert len(view["turn_agents"]) == 1
+    assert view["turn_agents"][0]["is_subagent"] is False
+    assert view["turn_samples"] is not None
+    assert len(view["turn_samples"]) == 5
+    assert all("use_history_axis" not in row for row in view["by_turn"])
+    # Turn P95 matches DistributionSummary for the single turn-2 sample.
+    turn2_latency_ms = float(requests[4].request_latency) * 1000.0
+    expected = DistributionSummary.from_values([turn2_latency_ms]).percentiles.p95
+    assert view["by_turn"][2]["request_latency_p95_ms"] == expected
+
+
+@pytest.mark.sanity
+def test_build_report_view_multi_turn_subagents_only_defaults_to_all():
+    """
+    When every agent is a subagent, default by_turn uses all requests.
+
+    ## WRITTEN BY AI ##
+    """
+    requests = [
+        _make_request(
+            0,
+            agent_id="primary",
+            latency_s=0.2,
+            ttft_ms=80.0,
+            itl_ms=10.0,
+            prompt_tokens=50,
+            history_len=0,
+            start_time=10.0,
+        ),
+        _make_request(
+            1,
+            agent_id="primary",
+            latency_s=0.3,
+            ttft_ms=90.0,
+            itl_ms=11.0,
+            prompt_tokens=60,
+            history_len=1,
+            start_time=11.0,
+        ),
+        _make_request(
+            2,
+            agent_id="primary",
+            latency_s=0.4,
+            ttft_ms=100.0,
+            itl_ms=12.0,
+            prompt_tokens=70,
+            history_len=2,
+            start_time=12.0,
+        ),
+        _make_request(
+            0,
+            agent_id="other",
+            latency_s=0.9,
+            ttft_ms=200.0,
+            itl_ms=20.0,
+            prompt_tokens=40,
+            history_len=0,
+            start_time=13.0,
+        ),
+    ]
+    report = _report(
+        _make_benchmark(
+            strategy=AsyncConstantStrategy(rate=1.0),
+            rps=1.0,
+            tps=20.0,
+            requests=requests,
+        )
+    )
+    view = build_report_view(report)
+    assert view["by_turn"] is not None
+    assert [row["turn_index"] for row in view["by_turn"]] == [0, 1, 2]
+    # Turn 0 mixes primary + other when defaulting to all requests.
+    assert view["by_turn"][0]["count"] == 2
+    assert view["turn_note"] is not None
+    assert "all requests" in view["turn_note"]
+    assert "4/4 requests" in view["turn_note"]
+
+    agents = view["turn_agents"]
+    assert agents is not None
+    assert len(agents) == 2
+    assert agents[0]["id"] == "primary"
+    assert agents[0]["count"] == 3
+    assert agents[0]["is_subagent"] is True
+    assert agents[1]["id"] == "other"
+    assert agents[1]["count"] == 1
+    assert agents[1]["is_subagent"] is True
+
+    samples = view["turn_samples"]
+    assert samples is not None
+    assert len(samples) == 4
+    assert {s["agent_id"] for s in samples} == {"primary", "other"}
+    assert all(
+        set(s)
+        >= {
+            "turn_index",
+            "agent_id",
+            "latency_ms",
+            "ttft_ms",
+            "itl_ms",
+            "prompt_tokens",
+            "history_len",
+        }
+        for s in samples
+    )
+
+
+@pytest.mark.sanity
+def test_build_report_view_turn_agents_marks_default_vs_subagent():
+    """
+    Parent+subagent runs default by_turn to parent agents only.
+
+    ## WRITTEN BY AI ##
+    """
+    requests = [
+        _make_request(
+            0,
+            agent_id="default",
+            latency_s=0.2,
+            ttft_ms=80.0,
+            itl_ms=10.0,
+            prompt_tokens=50,
+            history_len=0,
+            start_time=10.0,
+        ),
+        _make_request(
+            1,
+            agent_id="default",
+            latency_s=0.3,
+            ttft_ms=90.0,
+            itl_ms=11.0,
+            prompt_tokens=60,
+            history_len=1,
+            start_time=11.0,
+        ),
+        _make_request(
+            0,
+            agent_id="worker",
+            latency_s=0.5,
+            ttft_ms=110.0,
+            itl_ms=14.0,
+            prompt_tokens=40,
+            history_len=0,
+            start_time=12.0,
+        ),
+        _make_request(
+            1,
+            agent_id="worker",
+            latency_s=0.55,
+            ttft_ms=120.0,
+            itl_ms=15.0,
+            prompt_tokens=45,
+            history_len=1,
+            start_time=13.0,
+        ),
+    ]
+    view = build_report_view(
+        _report(
+            _make_benchmark(
+                strategy=AsyncConstantStrategy(rate=1.0),
+                rps=1.0,
+                tps=20.0,
+                requests=requests,
+            )
+        )
+    )
+    agents = {a["id"]: a for a in (view["turn_agents"] or [])}
+    assert agents["default"]["label"] == "default"
+    assert agents["default"]["is_subagent"] is False
+    assert agents["worker"]["is_subagent"] is True
+    assert agents["default"]["count"] == 2
+    assert agents["worker"]["count"] == 2
+    # Tie on count: lexicographic label puts default before worker.
+    assert [a["id"] for a in view["turn_agents"]] == ["default", "worker"]
+    assert view["turn_note"] is not None
+    assert "parent agents only" in view["turn_note"]
+    assert "2/4 requests" in view["turn_note"]
+    # Default by_turn uses parent agents only.
+    assert [row["turn_index"] for row in view["by_turn"]] == [0, 1]
+    assert all(row["count"] == 1 for row in view["by_turn"])
+    assert view["by_turn"][0]["prompt_tokens_median"] == 50.0
+    assert view["by_turn"][1]["prompt_tokens_median"] == 60.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.sanity
+async def test_finalize_writes_self_contained_html(tmp_path: Path):
+    """
+    Finalize should write a standalone HTML file with embedded metrics.
+
+    ## WRITTEN BY AI ##
+    """
+    report = _report(
+        _make_benchmark(
+            strategy=AsyncConstantStrategy(rate=1.0),
+            rps=1.0,
+            tps=20.0,
+        ),
+        _make_benchmark(
+            strategy=AsyncConstantStrategy(rate=2.0),
+            rps=2.0,
+            tps=45.0,
+            measure_start=1_700_000_010.0,
+        ),
+    )
+    output_file = tmp_path / "benchmarks.html"
+    path = await GenerativeBenchmarkerHTML(output_path=output_file).finalize(report)
+    assert path == output_file
+    assert path.exists()
+    content = path.read_text(encoding="utf-8")
+
+    assert "GuideLLM" in content
+    assert "window.GUIDELLM_REPORT" in content
+    assert "ttft_p95_ms" in content
+    assert "ttft_p99_ms" in content
+    assert "total_tps" in content
+    assert re.search(r'<link[^>]+href=["\']https?://', content) is None
+    assert re.search(r'<script[^>]+src=["\']https?://', content) is None
+    assert "vllm-project.github.io" not in content
+
+
+@pytest.mark.sanity
+def test_render_html_includes_embedded_assets():
+    """
+    Rendered HTML should inline CSS and JS without template placeholders.
+
+    ## WRITTEN BY AI ##
+    """
+    report = _report(
+        _make_benchmark(
+            strategy=AsyncConstantStrategy(rate=1.5),
+            rps=1.5,
+            tps=30.0,
+        )
+    )
+    html = render_html_report(build_report_view(report))
+    assert "<style>" in html
+    assert "function" in html
+    assert "__GUIDELLM_REPORT_CSS__" not in html
+    assert "__GUIDELLM_REPORT_JS__" not in html
+    assert "__GUIDELLM_REPORT_JSON__" not in html
+    assert "__GUIDELLM_STATIC_TABLE__" not in html
+    assert "__GUIDELLM_KPI_RPS__" not in html
+    assert "static-summary" in html
+    assert "<noscript>" not in html
+    assert "require JavaScript" in html
+    assert 'id="kpi-rps">' in html
+    assert "constant@1.50" in html
+    # Peak-run defaults are embedded for no-JS viewers.
+    assert re.search(r'id="kpi-rps">[^<—]+</div>', html)
+    assert re.search(r'id="meta-model">[^<—]+</span>', html)
+    assert 'class="help-q"' in html
+    assert "Time to First Token (TTFT)" in html
+    assert "var HELP" in html
+    assert "help-tip-also" in html
+    assert 'also: ["p95", "p99"]' in html
+    assert 'role="tablist"' in html
+    assert "Latency components" in html
+    assert "prompt_vs_turn" not in html
+    assert "function niceNum" not in html
+    assert "function drawStackedBars" not in html
+    assert "function drawGroupedBars" not in html
+    assert "COLORS.itl" in html
+    assert "card-spaced" in html
+    assert "modality-sections" in html
+    assert 'style="margin-top:16px"' not in html
+    assert 'id="turn-agent-filter"' in html
+    assert "setupTurnAgentFilter" in html
+    assert "turn-agent-mode" in html
+    assert "All Requests" in html
+    assert "Parent agents only" in html
+    assert "Subagents only" in html
+    assert "Specific agents" not in html
+    assert "turn-agent-checks" not in html
