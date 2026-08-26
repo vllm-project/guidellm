@@ -5,12 +5,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
-import numpy as np
-import torch
 
 # CRITICAL: Use 'import ... as libs' pattern to preserve lazy loading
 # This defers errors until attributes are actually accessed
 import guidellm.extras.audio as libs
+from guidellm.extras import numpy as np
+from guidellm.extras import torch
 from guidellm.logger import logger
 
 __all__ = [

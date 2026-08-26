@@ -14,9 +14,9 @@ import math
 from collections.abc import Callable, Sequence
 from typing import Literal, TypeVar
 
-import numpy as np
 from pydantic import Field
 
+import guidellm.extras.numpy as np
 from guidellm.schemas.base.base import StandardBaseModel, StatusBreakdown
 
 __all__ = [

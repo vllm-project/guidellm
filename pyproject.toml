@@ -356,6 +356,8 @@ source_modules = [
 forbidden_modules = [
   "datasets",
   "transformers",
+  "torch",
+  "numpy",
 ]
 
 [[tool.importlinter.contracts]]

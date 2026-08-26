@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-import numpy as np
 from pydantic import Field, computed_field
 
+import guidellm.extras.numpy as np
 from guidellm.schemas.base.base import StandardBaseDict
 from guidellm.schemas.base.info import RequestInfo
 from guidellm.schemas.base.request import UsageMetrics
