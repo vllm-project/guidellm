@@ -15,7 +15,7 @@ __getattr__, __dir__, __all__ = lazy.attach(
             "benchmark_generative_text",
             "reimport_benchmarks_report",
         ],
-        "mock_server": ["MockServer", "MockServerConfig"],
+        "mock_server": ["MockServer"],
         "data": ["process_dataset"],
     },
 )

@@ -23,13 +23,13 @@ from sanic.logging.formatter import LegacyAccessFormatter, LegacyFormatter
 from sanic.request import File, Request
 from sanic.response import BaseHTTPResponse, HTTPResponse
 
-from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.handlers import (
     ChatCompletionsHandler,
     CompletionsHandler,
     ResponsesHandler,
     TokenizerHandler,
 )
+from guidellm.schemas.mock_server import MockServerConfig
 
 __all__ = ["MockServer"]
 

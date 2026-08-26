@@ -21,7 +21,6 @@ from sanic.request import Request
 from sanic.response import HTTPResponse, ResponseStream
 from transformers import PreTrainedTokenizer
 
-from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.models import (
     CompletionChoice,
     CompletionsRequest,
@@ -37,6 +36,7 @@ from guidellm.mock_server.utils import (
     sample_number,
     times_generator,
 )
+from guidellm.schemas.mock_server import MockServerConfig
 
 __all__ = ["CompletionsHandler"]
 

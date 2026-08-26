@@ -15,7 +15,6 @@ from sanic.request import Request
 from sanic.response import HTTPResponse
 from transformers import AutoTokenizer
 
-from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.models import (
     DetokenizeRequest,
     DetokenizeResponse,
@@ -25,6 +24,7 @@ from guidellm.mock_server.models import (
     TokenizeResponse,
 )
 from guidellm.mock_server.utils import MockTokenizer
+from guidellm.schemas.mock_server import MockServerConfig
 
 __all__ = ["TokenizerHandler"]
 

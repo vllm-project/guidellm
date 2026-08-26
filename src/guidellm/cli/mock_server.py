@@ -5,6 +5,7 @@ from __future__ import annotations
 import click
 
 import guidellm.entrypoints as entry
+from guidellm.schemas.mock_server import MockServerConfig
 from guidellm.utils.console import Console
 
 __all__ = ["mock_server"]
@@ -127,7 +128,7 @@ def mock_server(
     fail_after_requests: int | None,
     max_concurrent_requests: int | None,
 ):
-    config = entry.MockServerConfig(
+    config = MockServerConfig(
         host=host,
         port=port,
         workers=workers,
