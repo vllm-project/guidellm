@@ -5,9 +5,9 @@ from __future__ import annotations
 import click
 from pydantic import ValidationError
 
+import guidellm.entrypoints as entry
 import guidellm.utils.cli as cli_tools
 from guidellm.cli.preprocess.args import PreprocessDatasetArgs
-from guidellm.data import process_dataset
 from guidellm.schemas.data import DataArgs
 from guidellm.utils.click_pydantic import (
     RegistryAwareCommand,
@@ -74,7 +74,7 @@ def dataset(
             ctx, err, base_class=PreprocessDatasetArgs
         ) from err
 
-    process_dataset(
+    entry.process_dataset(
         data=data_config,
         output_path=output_path,
         tokenizer=args.tokenizer,
