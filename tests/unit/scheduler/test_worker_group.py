@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import multiprocessing
+import threading
 import time
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import BaseManager
@@ -506,3 +508,160 @@ class TestWorkerProcessGroup:
         assert instance.error_event is None
         assert instance.mp_manager is None
         assert instance.mp_context is None
+
+
+class TestWorkerGroupStateDuplicateTerminalUpdate:
+    """
+    Regression coverage for a request receiving two terminal status updates:
+    once from the worker's cancel loop (which aborts every node not yet in
+    the DAG's completed set, including one an in-flight task still owns) and
+    once from that task's own completion/cancellation handling. ## WRITTEN BY AI ##
+    """
+
+    def _build_state(self) -> WorkerGroupState:
+        return WorkerGroupState(
+            start_time=time.time(),
+            processes=[],
+            strategy=SynchronousStrategy(),
+            constraints={},
+            stop_send_requests_event=threading.Event(),
+            send_requests_stopped_event=threading.Event(),
+            requests_generated_event=multiprocessing.Event(),
+            constraint_reached_event=multiprocessing.Event(),
+            shutdown_event=multiprocessing.Event(),
+            error_event=multiprocessing.Event(),
+            messaging=None,
+        )
+
+    def _advance(
+        self, state: WorkerGroupState, request_id: str, status: str
+    ) -> RequestInfo:
+        info = RequestInfo(request_id=request_id, status=status)
+        state.received_callback((None, f"request-{request_id}", info))
+        return info
+
+    @pytest.mark.regression
+    def test_cancel_loop_then_in_flight_completion_does_not_raise_or_double_count(
+        self,
+    ):
+        """A 'cancelled' update (cancel loop) followed by a stray 'completed'
+        for the same request (the task that was already reported cancelled
+        finishing anyway) must not raise and must not double-count.
+        ## WRITTEN BY AI ##
+        """
+        state = self._build_state()
+        for status in ("queued", "pending", "in_progress"):
+            self._advance(state, "req-1", status)
+
+        self._advance(state, "req-1", "cancelled")
+        # Must not raise KeyError: on `main` this crashes inside
+        # `_update_state_request_counts` because "completed" unconditionally
+        # removes from `_processing_request_ids`, which "cancelled" already did.
+        self._advance(state, "req-1", "completed")
+
+        assert state._state.processed_requests == 1
+        assert state._state.cancelled_requests == 1
+        assert state._state.successful_requests == 0
+        assert state._state.processing_requests == 0
+
+    @pytest.mark.regression
+    def test_in_flight_completion_then_stray_cancel_does_not_double_count(self):
+        """The other interleaving: the in-flight task's own 'completed'
+        update lands first, and a stray 'cancelled' for the same request
+        (e.g. from a cancel loop that started before completion but was
+        delayed) arrives after. On `main` this does not raise (the
+        "cancelled" branch's remove is already guarded) but silently
+        double-counts `processed_requests`. ## WRITTEN BY AI ##
+        """
+        state = self._build_state()
+        for status in ("queued", "pending", "in_progress"):
+            self._advance(state, "req-2", status)
+
+        self._advance(state, "req-2", "completed")
+        self._advance(state, "req-2", "cancelled")
+
+        assert state._state.processed_requests == 1
+        assert state._state.successful_requests == 1
+        assert state._state.cancelled_requests == 0
+
+    @pytest.mark.regression
+    def test_normal_single_terminal_update_still_counts(self):
+        """Control: the ordinary, non-racing lifecycle still counts exactly
+        once, so the new guards do not mask a real update. ## WRITTEN BY AI ##
+        """
+        state = self._build_state()
+        for status in ("queued", "pending", "in_progress", "completed"):
+            self._advance(state, "req-3", status)
+
+        assert state._state.processed_requests == 1
+        assert state._state.successful_requests == 1
+        assert state._state.queued_requests == 0
+        assert state._state.pending_requests == 0
+        assert state._state.processing_requests == 0
+
+    @pytest.mark.regression
+    def test_stray_pending_after_finalization_is_ignored(self):
+        """A stray 'pending' update for a request already finalized (e.g. an
+        out-of-order / duplicate delivery) must not raise and must not
+        resurrect the request into `_pending_request_ids`. ## WRITTEN BY AI ##
+        """
+        state = self._build_state()
+        for status in ("queued", "pending", "in_progress", "cancelled"):
+            self._advance(state, "req-4", status)
+
+        self._advance(state, "req-4", "pending")
+
+        assert state._state.processed_requests == 1
+        assert state._state.cancelled_requests == 1
+        assert state._state.pending_requests == 0
+        assert "req-4" not in state._pending_request_ids
+
+    @pytest.mark.regression
+    def test_stray_in_progress_after_finalization_is_ignored(self):
+        """Same as above for a stray 'in_progress' update after the request
+        already reached a terminal state. ## WRITTEN BY AI ##
+        """
+        state = self._build_state()
+        for status in ("queued", "pending", "in_progress", "completed"):
+            self._advance(state, "req-5", status)
+
+        self._advance(state, "req-5", "in_progress")
+
+        assert state._state.processed_requests == 1
+        assert state._state.successful_requests == 1
+        assert state._state.processing_requests == 0
+        assert "req-5" not in state._processing_request_ids
+
+    @pytest.mark.regression
+    def test_cancelled_while_still_queued_is_finalized_from_queued_set(self):
+        """A request cancelled before it was ever dispatched (still in
+        `_queued_request_ids`, no 'pending'/'in_progress' update yet) must be
+        finalized from the queued set, not just the pending/processing ones.
+        ## WRITTEN BY AI ##
+        """
+        state = self._build_state()
+        self._advance(state, "req-6", "queued")
+
+        self._advance(state, "req-6", "cancelled")
+
+        assert state._state.processed_requests == 1
+        assert state._state.cancelled_requests == 1
+        assert state._state.queued_requests == 0
+        assert "req-6" not in state._queued_request_ids
+
+    @pytest.mark.regression
+    def test_errored_while_pending_is_finalized_from_pending_set(self):
+        """A request that errors after being dispatched but before entering
+        `_processing_request_ids` (still in `_pending_request_ids`) must be
+        finalized from the pending set. ## WRITTEN BY AI ##
+        """
+        state = self._build_state()
+        for status in ("queued", "pending"):
+            self._advance(state, "req-7", status)
+
+        self._advance(state, "req-7", "errored")
+
+        assert state._state.processed_requests == 1
+        assert state._state.errored_requests == 1
+        assert state._state.pending_requests == 0
+        assert "req-7" not in state._pending_request_ids
