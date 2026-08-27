@@ -11,6 +11,7 @@ status updates throughout request processing.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 import traceback
 from collections.abc import AsyncIterator
@@ -238,6 +239,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 poll_interval=self.messaging.poll_interval,
             )
             processing_task.cancel()
+            # Let in-flight nodes finish reporting their own terminal update
+            # before the sweep below, so a node is never reported twice.
+            with contextlib.suppress(asyncio.CancelledError):
+                await processing_task
 
             # 4. Cancel pending requests until proc canceled (manual, shutdown, error)
             await self._cancel_requests_loop()
