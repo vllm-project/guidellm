@@ -9,8 +9,7 @@ include = ["*"]
 
 [tool.setuptools.package-data]
 guidellm = ["py.typed"]
-"guidellm.data" = ["*.gz"]
-"guidellm.benchmark.scenarios" = ["*.json", "**/*.json"]
+"guidellm.schemas.benchmark.scenarios" = ["*.json", "**/*.json"]
 "guidellm.benchmark.outputs.html_report" = ["*.html", "*.css", "*.js"]
 
 [tool.uv]
