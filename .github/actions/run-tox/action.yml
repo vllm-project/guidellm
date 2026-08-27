@@ -25,6 +25,11 @@ runs:
         restore-keys: |
           huggingface-${{ runner.os }}-${{ inputs.python-version }}-
           huggingface-${{ runner.os }}-
+    - name: Install Rust toolchain
+      run: |
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      shell: bash
     - name: Install system dependencies
       run: |
         sudo apt update && sudo apt install -y ffmpeg
