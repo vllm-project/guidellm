@@ -655,6 +655,71 @@ class TestWorkerProcess:
                 f"Process exited with error code: {process.exitcode}"
             )
 
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(5)
+    async def test_process_requests_awaits_cancellation_before_cancel_loop(
+        self,
+        valid_instances: tuple[WorkerProcess, InterProcessMessagingQueue, dict],
+    ):
+        """``_process_requests`` must fully drain ``_process_requests_loop``'s
+        own cancellation (which reports each in-flight node's terminal status
+        itself) before ``_cancel_requests_loop`` sweeps ``turns_queue``: a
+        node cancelled by the sweep while its own task is still finishing is
+        exactly the race that double-reports a request's terminal status
+        (worker_group.py's ``_update_state_request_counts``).
+        ## WRITTEN BY AI ##
+        """
+        instance, _main_messaging, _constructor_args = valid_instances
+        events: list[str] = []
+
+        async def fake_processing_startup():
+            events.append("startup")
+
+        async def fake_process_requests_loop():
+            try:
+                await asyncio.sleep(1000)
+            except asyncio.CancelledError:
+                events.append("loop_cancel_start")
+                # Simulate an in-flight node task still finishing its own
+                # cancellation handling (reporting its terminal status).
+                await asyncio.sleep(0.05)
+                events.append("loop_cancel_done")
+                raise
+
+        async def fake_cancel_requests_loop():
+            events.append("cancel_requests_loop")
+
+        async def fake_processing_shutdown():
+            events.append("shutdown")
+
+        instance._processing_startup = fake_processing_startup
+        instance._process_requests_loop = fake_process_requests_loop
+        instance._cancel_requests_loop = fake_cancel_requests_loop
+        instance._processing_shutdown = fake_processing_shutdown
+
+        process_requests_task = asyncio.create_task(instance._process_requests())
+        # Give the inner processing loop task a chance to actually start and
+        # suspend on its (mocked) long-running work before triggering the
+        # constraint, so cancellation exercises its except-CancelledError
+        # handling rather than short-circuiting a task that never ran.
+        await asyncio.sleep(0.01)
+        instance.constraint_reached_event.set()
+        await process_requests_task
+
+        # On `main` this reads ["startup", "cancel_requests_loop", "shutdown"]
+        # without "loop_cancel_start"/"loop_cancel_done" ever appearing before
+        # it: the cancel loop sweeps turns_queue before the in-flight task's
+        # own cancellation handling (and its own terminal-status report) has
+        # even started.
+        assert events == [
+            "startup",
+            "loop_cancel_start",
+            "loop_cancel_done",
+            "cancel_requests_loop",
+            "shutdown",
+        ]
+
 
 class MockMessaging:
     """Mock messaging queue for testing worker DAG functionality.

@@ -727,38 +727,27 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             self._state.queued_requests = len(self._queued_request_ids)
             self._state.created_requests += 1
         elif info.status == "pending":
+            if info.request_id not in self._queued_request_ids:
+                # Already finalized by a racing terminal update; ignore.
+                return
             self._queued_request_ids.remove(info.request_id)
             self._state.queued_requests = len(self._queued_request_ids)
             self._pending_request_ids.add(info.request_id)
             self._state.pending_requests = len(self._pending_request_ids)
         elif info.status == "in_progress":
+            if info.request_id not in self._pending_request_ids:
+                # Already finalized by a racing terminal update; ignore.
+                return
             self._pending_request_ids.remove(info.request_id)
             self._state.pending_requests = len(self._pending_request_ids)
             self._processing_request_ids.add(info.request_id)
             self._state.processing_requests = len(self._processing_request_ids)
         elif info.status == "first_token":
             pass
-        elif info.status == "completed":
-            info.timings.finalized = finalized
-            self._processing_request_ids.remove(info.request_id)
-            self._state.processing_requests = len(self._processing_request_ids)
-            self._state.processed_requests += 1
-            self._state.successful_requests += 1
-        elif info.status in ("errored", "cancelled"):
-            info.timings.finalized = finalized
-            if info.request_id in self._queued_request_ids:
-                self._queued_request_ids.remove(info.request_id)
-                self._state.queued_requests = len(self._queued_request_ids)
-            elif info.request_id in self._pending_request_ids:
-                self._pending_request_ids.remove(info.request_id)
-                self._state.pending_requests = len(self._pending_request_ids)
-            elif info.request_id in self._processing_request_ids:
-                self._processing_request_ids.remove(info.request_id)
-                self._state.processing_requests = len(self._processing_request_ids)
-
-            self._state.processed_requests += 1
-            self._state.errored_requests += 1 if info.status == "errored" else 0
-            self._state.cancelled_requests += 1 if info.status == "cancelled" else 0
+        elif info.status in ("completed", "errored", "cancelled"):
+            if not self._finalize_terminal_request(info, finalized):
+                # Already finalized by a racing terminal update; ignore.
+                return
         else:
             raise ValueError(f"Unknown request_info status {info.status} for {info}")
 
@@ -772,6 +761,46 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             self._state.end_requests_time or float("-inf"),
             finalized,
         )
+
+    def _finalize_terminal_request(self, info: RequestInfo, finalized: float) -> bool:
+        """
+        Apply a completed/errored/cancelled update to the tracking sets.
+
+        :return: False if the request was already finalized by a prior
+            terminal update (nothing is changed in that case), True otherwise.
+        """
+        if info.status == "completed":
+            if info.request_id not in self._processing_request_ids:
+                return False
+            info.timings.finalized = finalized
+            self._processing_request_ids.remove(info.request_id)
+            self._state.processing_requests = len(self._processing_request_ids)
+            self._state.processed_requests += 1
+            self._state.successful_requests += 1
+            return True
+
+        if (
+            info.request_id not in self._queued_request_ids
+            and info.request_id not in self._pending_request_ids
+            and info.request_id not in self._processing_request_ids
+        ):
+            return False
+
+        info.timings.finalized = finalized
+        if info.request_id in self._queued_request_ids:
+            self._queued_request_ids.remove(info.request_id)
+            self._state.queued_requests = len(self._queued_request_ids)
+        elif info.request_id in self._pending_request_ids:
+            self._pending_request_ids.remove(info.request_id)
+            self._state.pending_requests = len(self._pending_request_ids)
+        elif info.request_id in self._processing_request_ids:
+            self._processing_request_ids.remove(info.request_id)
+            self._state.processing_requests = len(self._processing_request_ids)
+
+        self._state.processed_requests += 1
+        self._state.errored_requests += 1 if info.status == "errored" else 0
+        self._state.cancelled_requests += 1 if info.status == "cancelled" else 0
+        return True
 
     def _update_with_constraints(self, info: RequestInfo):
         actions: dict[str, SchedulerUpdateAction] = {
