@@ -83,7 +83,7 @@ class Settings(BaseSettings):
 
     # Scheduler settings
     # NOTE: We do not support "fork" because it causes issues
-    mp_context_type: Literal["spawn", "forkserver"] | None = "forkserver"
+    mp_context_type: Literal["spawn", "forkserver"] | None = "spawn"
     mp_serialization: Literal["dict", "sequence"] | None = "dict"
     mp_encoding: (
         Literal["msgpack", "msgspec"]
