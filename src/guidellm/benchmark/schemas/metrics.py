@@ -790,7 +790,7 @@ class GenerativeMetrics(StandardBaseDict):
             "Distribution of delays between a request's targeted start and the "
             "time it was dispatched. Grows when the scheduler cannot keep up "
             "with the configured rate. None when the strategy does not define "
-            "an arrival schedule, or for reports predating this field"
+            "an arrival schedule"
         ),
     )
     request_scheduled_latency: StatusDistributionSummary | None = Field(
@@ -799,7 +799,7 @@ class GenerativeMetrics(StandardBaseDict):
             "Distribution of request latencies measured from each request's "
             "targeted start rather than its dispatch, including scheduler "
             "delay. None when the strategy does not define an arrival "
-            "schedule, or for reports predating this field"
+            "schedule"
         ),
     )
     request_streaming_iterations_count: StatusDistributionSummary = Field(
