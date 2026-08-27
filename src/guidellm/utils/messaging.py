@@ -133,6 +133,8 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         self.shutdown_event: ThreadingEvent | None = None
         self.buffer_send_queue: culsans.Queue[SendMessageT] | None = None
         self.buffer_receive_queue: culsans.Queue[ReceiveMessageT] | None = None
+        self.receive_demand_event: ThreadingEvent | None = None
+        self._receive_demand: int = 0
         self.send_task: asyncio.Task | None = None
         self.receive_task: asyncio.Task | None = None
         self.running = False
@@ -218,6 +220,8 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
         self.buffer_receive_queue = culsans.Queue[ReceiveMessageT](
             maxsize=self.max_buffer_receive_size or 0
         )
+        self.receive_demand_event = ThreadingEvent()
+        self._receive_demand = 0
 
         message_encoding: MessageEncoding = MessageEncoding(
             serialization=self.serialization,
@@ -271,6 +275,7 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
                 await self.buffer_receive_queue.aclose()
         self.buffer_send_queue = None
         self.buffer_receive_queue = None
+        self.receive_demand_event = None
         self.send_stopped_event = None
         self.receive_stopped_event = None
         self.shutdown_event = None
@@ -361,9 +366,13 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
             raise RuntimeError(
                 "buffer receive queue is None; check start()/stop() calls"
             )
-        return await asyncio.wait_for(
-            self.buffer_receive_queue.async_get(), timeout=timeout
-        )
+        self._signal_receive_demand()
+        try:
+            return await asyncio.wait_for(
+                self.buffer_receive_queue.async_get(), timeout=timeout
+            )
+        finally:
+            self._receive_demand -= 1
 
     def get_sync(self, timeout: float | None = None) -> ReceiveMessageT:
         """
@@ -376,10 +385,14 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
             raise RuntimeError(
                 "buffer receive queue is None; check start()/stop() calls"
             )
-        if timeout is not None and timeout <= 0:
-            return self.buffer_receive_queue.get_nowait()
-        else:
-            return self.buffer_receive_queue.sync_get(timeout=timeout)
+        self._signal_receive_demand()
+        try:
+            if timeout is not None and timeout <= 0:
+                return self.buffer_receive_queue.get_nowait()
+            else:
+                return self.buffer_receive_queue.sync_get(timeout=timeout)
+        finally:
+            self._receive_demand -= 1
 
     async def put(self, item: SendMessageT, timeout: float | None = None):
         """
@@ -409,6 +422,27 @@ class InterProcessMessaging(Generic[SendMessageT, ReceiveMessageT], ABC):
             self.buffer_send_queue.put_nowait(item)
         else:
             self.buffer_send_queue.sync_put(item, timeout=timeout)
+
+    def _signal_receive_demand(self):
+        """
+        Register a consumer waiting on the receive buffer and wake the receive
+        thread so it can fetch a message for it.
+        """
+        self._receive_demand += 1
+        if self.receive_demand_event is not None:
+            self.receive_demand_event.set()
+
+    def _has_receive_demand(self) -> bool:
+        """
+        Check whether a consumer is waiting on the receive buffer for a message
+        that is not already buffered.
+
+        :return: True if more consumers are waiting than messages are buffered
+        """
+        if self.buffer_receive_queue is None:
+            return False
+
+        return self._receive_demand > self.buffer_receive_queue.qsize()
 
     def _create_check_stop_callable(
         self,
@@ -670,7 +704,7 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
 
             time.sleep(0)  # Yield to other threads
 
-    def _receive_messages_task_thread(  # noqa: C901
+    def _receive_messages_task_thread(  # noqa: C901, PLR0912
         self,
         receive_callback: Callable[[Any], Any] | None,
         message_encoding: MessageEncoding,
@@ -682,6 +716,21 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
 
         while not check_stop(pending_item is not None, queue_empty_count):
             if pending_item is None:
+                if self.worker_index is not None and not self._has_receive_demand():
+                    # Worker: only take from the shared pending queue when a
+                    # consumer is waiting. Otherwise the item is stuck in this
+                    # worker's buffer while other workers with free capacity
+                    # have nothing to process.
+                    if self.shutdown_event is not None and self.shutdown_event.is_set():
+                        # Count as an empty poll so check_stop can terminate
+                        queue_empty_count += 1
+                    elif self.receive_demand_event is not None:
+                        # Block until a consumer signals demand (or poll interval)
+                        self.receive_demand_event.clear()
+                        if not self._has_receive_demand():
+                            self.receive_demand_event.wait(timeout=self.poll_interval)
+                    continue
+
                 try:
                     if self.worker_index is None:
                         # Main publisher
@@ -696,7 +745,10 @@ class InterProcessMessagingQueue(InterProcessMessaging[SendMessageT, ReceiveMess
                             raise RuntimeError(
                                 "pending_queue is None; check start()/stop() calls"
                             )
-                        item = self.pending_queue.get(timeout=self.poll_interval)
+                        # Queue.get holds the read lock while it polls, so a
+                        # worker waiting on an empty queue blocks the others;
+                        # keep that window short.
+                        item = self.pending_queue.get(timeout=self.poll_interval / 10)
                     pending_item = message_encoding.decode(item)
                     queue_empty_count = 0
                 except (culsans.QueueEmpty, queue.Empty):
