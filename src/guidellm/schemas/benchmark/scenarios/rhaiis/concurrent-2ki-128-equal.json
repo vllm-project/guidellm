@@ -1,0 +1,45 @@
+{
+  "metadata": {
+    "name": "concurrent-2ki-128-equal",
+    "description": "Prefill heavy scenario.\n"
+  },
+  "spec": {
+    "backend": {
+      "kind": "openai_http",
+      "request_format": "/v1/chat/completions"
+    },
+    "profile": {
+      "kind": "concurrent"
+    },
+    "data": [
+      {
+        "kind": "synthetic_text",
+        "prompt_tokens": 2048,
+        "output_tokens": 128
+      }
+    ],
+    "constraints": [
+      {
+        "kind": "max_duration",
+        "seconds": 45
+      }
+    ]
+  },
+  "benchmarks": [
+    {
+      "profile.streams": 1
+    },
+    {
+      "profile.streams": 50
+    },
+    {
+      "profile.streams": 100
+    },
+    {
+      "profile.streams": 200
+    },
+    {
+      "profile.streams": 300
+    }
+  ]
+}

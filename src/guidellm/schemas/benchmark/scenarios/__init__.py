@@ -28,13 +28,13 @@ def get_builtin_scenarios() -> dict[str, Path]:
 
     Scans the scenarios directory for JSON files and returns a mapping of scenario
     names to their file paths. Each scenario is indexed by both its stem name
-    (filename without extension) and full filename for convenient lookup.
+    (filename without extension) for convenient lookup.
 
     :return: Dictionary mapping scenario names and filenames to their Path objects
     """
     builtin = {}
-    for path in SCENARIO_DIR.glob("*.json"):
-        builtin[path.stem] = path
-        builtin[path.name] = path
+    for path in SCENARIO_DIR.rglob("*.json"):
+        shorthand = str(path.relative_to(SCENARIO_DIR).with_suffix(""))
+        builtin[shorthand] = path
 
     return builtin
