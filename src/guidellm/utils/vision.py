@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
-import numpy as np
+
+import guidellm.extras.numpy as np
 
 # CRITICAL: Use 'import ... as libs' pattern to preserve lazy loading
 # This defers errors until attributes are actually accessed

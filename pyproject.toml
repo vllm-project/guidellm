@@ -322,6 +322,7 @@ containers = ["guidellm"]
 layers = [
   "__main__",
   "cli",
+  "entrypoints",
   "benchmark | mock_server",
   "data | backends",
   "scheduler",
@@ -355,6 +356,19 @@ source_modules = [
 forbidden_modules = [
   "datasets",
   "transformers",
+  "torch",
+  "numpy",
+]
+
+[[tool.importlinter.contracts]]
+name = "Disallow importing entrypoint modules directly"
+type = "protected"
+protected_modules = [
+    "guidellm.benchmark",
+    "guidellm.mock_server",
+]
+allowed_importers = [
+    "guidellm.entrypoints",
 ]
 
 

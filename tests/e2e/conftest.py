@@ -11,8 +11,8 @@ from typing import Any, Protocol
 import httpx
 import pytest
 
-from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.server import MockServer
+from guidellm.schemas.mock_server import MockServerConfig
 from tests.e2e.vllm_sim_server import VllmSimServer
 
 MOCK_SERVER_HOST = "127.0.0.1"

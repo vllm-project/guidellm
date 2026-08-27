@@ -11,7 +11,7 @@ from pydantic import (
     Field,
 )
 
-from guidellm.schemas import ReloadableBaseModel, standard_model_config
+from guidellm.schemas.base import ReloadableBaseModel, standard_model_config
 from guidellm.schemas.benchmark import RandomArgs
 from guidellm.schemas.data import (
     DataLoaderArgs,

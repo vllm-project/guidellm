@@ -7,7 +7,7 @@ from pathlib import Path
 
 import click
 
-from guidellm.benchmark import reimport_benchmarks_report
+import guidellm.entrypoints as entry
 from guidellm.schemas.benchmark import BenchmarkOutputArgs
 from guidellm.utils.click_pydantic import RegistryAwareCommand, registry_option
 
@@ -36,4 +36,4 @@ __all__ = ["export"]
     help="Output formats for the report (default: console, json, html, csv).",
 )
 def export(path, outputs):
-    asyncio.run(reimport_benchmarks_report(path, outputs))
+    asyncio.run(entry.reimport_benchmarks_report(path, outputs))

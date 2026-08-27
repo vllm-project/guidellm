@@ -82,7 +82,8 @@ class Settings(BaseSettings):
     default_sweep_number: int = 10
 
     # Scheduler settings
-    mp_context_type: Literal["spawn", "fork", "forkserver"] | None = "fork"
+    # NOTE: We do not support "fork" because it causes issues
+    mp_context_type: Literal["spawn", "forkserver"] | None = "spawn"
     mp_serialization: Literal["dict", "sequence"] | None = "dict"
     mp_encoding: (
         Literal["msgpack", "msgspec"]

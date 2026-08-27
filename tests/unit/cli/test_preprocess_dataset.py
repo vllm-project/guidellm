@@ -116,7 +116,7 @@ def test_preprocess_dataset_rejects_legacy_config_flag():
 
 
 @pytest.mark.regression
-@patch.object(_dataset_mod, "process_dataset")
+@patch.object(_dataset_mod.entry, "process_dataset")
 def test_preprocess_dataset_passes_registry_args(mock_process_dataset):
     """
     Parsed registry options should be forwarded to process_dataset.
@@ -163,7 +163,7 @@ def test_preprocess_dataset_passes_registry_args(mock_process_dataset):
 
 
 @pytest.mark.regression
-@patch.object(_dataset_mod, "process_dataset")
+@patch.object(_dataset_mod.entry, "process_dataset")
 def test_preprocess_dataset_defaults_data_loader(mock_process_dataset):
     """
     Omitting --data-loader should forward the default pytorch loader config.

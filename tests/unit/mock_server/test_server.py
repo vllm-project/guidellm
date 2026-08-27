@@ -9,8 +9,8 @@ import pytest
 import pytest_asyncio
 from pydantic import ValidationError
 
-from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.server import MockServer
+from guidellm.schemas.mock_server.config import MockServerConfig
 
 
 # Start server in a separate process

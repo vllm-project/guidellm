@@ -25,8 +25,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-from guidellm.mock_server.config import MockServerConfig
 from guidellm.mock_server.server import MockServer
+from guidellm.schemas.mock_server.config import MockServerConfig
 from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 pytestmark = [pytest.mark.smoke]
