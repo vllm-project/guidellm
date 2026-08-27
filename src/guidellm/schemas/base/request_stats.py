@@ -117,7 +117,7 @@ class GenerativeRequestStats(StandardBaseDict):
     @property
     def request_dispatch_delay(self) -> float | None:
         """
-        Delay between the scheduled arrival time and the actual dispatch.
+        Delay between the scheduled arrival time and the actual dispatch in seconds.
 
         Non-zero when the scheduler could not issue the request at the time its
         strategy targeted, for example while a concurrency limit is saturated.
@@ -140,7 +140,7 @@ class GenerativeRequestStats(StandardBaseDict):
     @property
     def request_scheduled_latency(self) -> float | None:
         """
-        Request latency measured from the scheduled arrival time.
+        Request latency measured from the scheduled arrival time in seconds.
 
         Unlike :attr:`request_latency`, which starts when the request was
         dispatched, this includes any time the request waited for the scheduler
