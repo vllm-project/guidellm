@@ -66,23 +66,7 @@ These metrics provide a breakdown of the overall request statuses, helping users
 - **Definition**: `request_scheduled_latency` is `request_end - targeted_start`: request latency measured from the scheduled arrival time rather than from dispatch. When all three timestamps are present it equals Dispatch Delay plus Request Latency.
 - **Use Case**: Describes what a client holding to the configured arrival schedule would have experienced, including time spent waiting to be dispatched. When the benchmark keeps up this matches Request Latency; when it falls behind, the gap between the two is latency that Request Latency alone does not show.
 
-### Applicability of Dispatch Delay and Scheduled Latency
-
-Both metrics are derived from `targeted_start`, so they only describe arrival-schedule delay for strategies that define an arrival schedule:
-
-- `constant` and `poisson` derive each target from the configured rate.
-- `trace` derives each target from the replayed dataset timestamps. Trace requests that carry no relative timestamp fall back to the benchmark start time and take on the `throughput` caveat below.
-
-The `synchronous`, `concurrent`, and `throughput` strategies set an ASAP-style target instead, and each is unusable for a different reason:
-
-- `synchronous` and `concurrent` target the previous request's completion, apart from the requests staggered across a configured rampup. The target is therefore derived from the system's own responses, so a delay measured against it is circular: it describes harness turnaround rather than lag against an arrival schedule.
-- `throughput` targets the benchmark start time for every request, so the value grows with elapsed run time and is not a delay at all.
-
-For those three strategies **both metrics are reported as `null`** rather than as zero, and their columns do not appear in the CSV. Reporting zero would read as "no delay measured", which is a stronger and more misleading claim than "not applicable". This matters for the default `sweep` profile, which runs `synchronous` and `throughput` alongside its rate-based strategies.
-
-For multi-turn conversation datasets, a turn's target is fixed when a scheduler slot opens rather than when the preceding turn completes, so configured think time between turns is counted as Dispatch Delay.
-
-Where the metrics do apply they are recorded in the serialized report and the CSV output for offline analysis. They are omitted from the final console latency table in all cases, since that table is shared across every profile in a run.
+Dispatch Delay and Scheduled Latency only apply to some of the scheduling strategies. See [Applicability of Dispatch Delay and Scheduled Latency](#applicability-of-dispatch-delay-and-scheduled-latency) below.
 
 ### Time to First Token (TTFT)
 
@@ -148,3 +132,21 @@ GuideLLM calculates a comprehensive set of percentiles for each metric, includin
 - **Percentiles**: Offer a detailed view of the distribution, helping identify outliers and performance at different levels of service.
 
 By combining these metrics and statistical summaries, GuideLLM enables users to gain a deep understanding of their LLM deployments, optimize performance, and ensure scalability and cost-effectiveness.
+
+## Applicability of Dispatch Delay and Scheduled Latency
+
+Both metrics are derived from `targeted_start`, so they only describe arrival-schedule delay for strategies that define an arrival schedule:
+
+- `constant` and `poisson` derive each target from the configured rate.
+- `trace` derives each target from the replayed dataset timestamps. Trace requests that carry no relative timestamp fall back to the benchmark start time and take on the `throughput` caveat below.
+
+The `synchronous`, `concurrent`, and `throughput` strategies set an ASAP-style target instead, and each is unusable for a different reason:
+
+- `synchronous` and `concurrent` target the previous request's completion, apart from the requests staggered across a configured rampup. The target is therefore derived from the system's own responses, so a delay measured against it is circular: it describes harness turnaround rather than lag against an arrival schedule.
+- `throughput` targets the benchmark start time for every request, so the value grows with elapsed run time and is not a delay at all.
+
+For those three strategies **both metrics are reported as `null`** rather than as zero, and their columns do not appear in the CSV. Reporting zero would read as "no delay measured", which is a stronger and more misleading claim than "not applicable". This matters for the default `sweep` profile, which runs `synchronous` and `throughput` alongside its rate-based strategies.
+
+For multi-turn conversation datasets, a turn's target is fixed when a scheduler slot opens rather than when the preceding turn completes, so configured think time between turns is counted as Dispatch Delay.
+
+Where the metrics do apply they are recorded in the serialized report and the CSV output for offline analysis. They are omitted from the final console latency table in all cases, since that table is shared across every profile in a run.
