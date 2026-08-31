@@ -17,7 +17,7 @@ from guidellm.scheduler import (
     SynchronousStrategy,
     ThroughputStrategy,
 )
-from guidellm.scheduler.strategies import StrategyType
+from guidellm.scheduler.strategies import StrategyType, TraceReplayStrategy
 from guidellm.schemas import RequestInfo
 
 
@@ -744,3 +744,36 @@ class TestAsyncPoissonStrategy:
 
         for key, value in constructor_args.items():
             assert getattr(base_json_reconstructed, key) == value
+
+
+class TestDefinesArrivalSchedule:
+    """
+    Verify which strategies report an independent arrival schedule.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("strategy", "expected"),
+        [
+            (SynchronousStrategy(), False),
+            (ConcurrentStrategy(streams=2), False),
+            (ThroughputStrategy(), False),
+            (AsyncConstantStrategy(rate=10.0), True),
+            (AsyncPoissonStrategy(rate=10.0), True),
+            (TraceReplayStrategy(), True),
+        ],
+    )
+    def test_defines_arrival_schedule(
+        self, strategy: SchedulingStrategy, expected: bool
+    ):
+        """
+        Only rate- and trace-driven strategies define an arrival schedule.
+
+        The others target an ASAP start, so schedule-relative metrics do not
+        apply to them.
+
+        ## WRITTEN BY AI ##
+        """
+        assert strategy.defines_arrival_schedule is expected
