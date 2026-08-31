@@ -339,6 +339,23 @@ class TestWEKATraceFormat:
         with pytest.raises(DataNotSupportedError, match=match):
             self.deserialize(deserializer, trace)
 
+    @pytest.mark.regression
+    def test_rejects_empty_conversation_after_first_row(
+        self, tmp_path: Path, deserializer
+    ):
+        """Reject an empty nested conversation during deserialization.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"id": "conv0", "requests": [{"t": 0, "in": 10, '
+            '"out": 5, "hash_ids": []}]}\n'
+            '{"id": "conv1", "requests": []}\n',
+        )
+        with pytest.raises(DataNotSupportedError, match="conversation is empty"):
+            self.deserialize(deserializer, trace)
+
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(
         self, tmp_path: Path, deserializer, default_block_size

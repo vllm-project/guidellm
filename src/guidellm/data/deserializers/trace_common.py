@@ -339,6 +339,8 @@ def _validate_dataset(config: TraceDataArgs, trace_format: TraceFormatBase) -> N
         }
     )
     for conv in trace_format:  # type: ignore[attr-defined]
+        if len(conv) == 0:
+            raise DataNotSupportedError("Trace conversation is empty")
         if config.conversation_id_column in features:
             features.pop(config.conversation_id_column)
         _raise_if_nonetype_found(conv)
