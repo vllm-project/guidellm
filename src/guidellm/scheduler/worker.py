@@ -12,9 +12,12 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+import sys
 import time
 import traceback
 from collections.abc import AsyncIterator
+from multiprocessing.connection import Connection
 from multiprocessing.synchronize import Barrier as ProcessingBarrier
 from multiprocessing.synchronize import Event as ProcessingEvent
 from typing import Annotated, Generic, Literal
@@ -94,6 +97,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         constraint_reached_event: ProcessingEvent,
         shutdown_event: ProcessingEvent,
         error_event: ProcessingEvent,
+        stdout_conn: Connection,
+        stderr_conn: Connection,
     ):
         """
         Initialize worker process instance.
@@ -110,6 +115,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :param constraint_reached_event: Event signaling processing constraint reached
         :param shutdown_event: Event signaling graceful shutdown request
         :param error_event: Event signaling error conditions across processes
+        :param stdout_conn: Write-end pipe connection for stdout redirect, or None
+        :param stderr_conn: Write-end pipe connection for stderr redirect, or None
         """
         self.worker_index = worker_index
         self.messaging = messaging
@@ -122,6 +129,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.constraint_reached_event = constraint_reached_event
         self.shutdown_event = shutdown_event
         self.error_event = error_event
+
+        self.stdout_conn = stdout_conn
+        self.stderr_conn = stderr_conn
 
         # Internal states
         self.startup_completed = False
@@ -138,6 +148,11 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
         :raises RuntimeError: If worker encounters unrecoverable error during execution
         """
+        os.dup2(self.stdout_conn.fileno(), sys.stdout.fileno())
+        os.dup2(self.stderr_conn.fileno(), sys.stderr.fileno())
+        self.stdout_conn.close()
+        self.stderr_conn.close()
+
         try:
             if HAS_UVLOOP:
                 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
