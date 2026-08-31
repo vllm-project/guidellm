@@ -220,6 +220,52 @@ class TestTraceDatasetDeserializer:
         for i, turn in enumerate(conv):
             assert turn.columns["relative_timestamp_column"][0] == i
 
+    @pytest.mark.regression
+    def test_accepts_columns_beyond_the_required_ones(
+        self, tmp_path: Path, deserializer
+    ):
+        """Extra trace columns are ignored rather than rejected.
+
+        Real trace files carry per-request metadata (model, type, timings) that
+        the deserializer does not consume.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 1, "input_length": 10, "output_length": 1, '
+            '"model": "a", "type": "s", "api_time": 4.87}\n'
+            '{"timestamp": 2, "input_length": 20, "output_length": 2, '
+            '"model": "a", "type": "n", "api_time": 2.87}\n',
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = load_graph_turns(next(iter(ds)))
+        assert len(turns) == 2
+        for i, turn in enumerate(turns):
+            assert turn.columns["prompt_tokens_count_column"][0] == (i + 1) * 10
+            assert turn.columns["output_tokens_count_column"][0] == i + 1
+
+    @pytest.mark.regression
+    def test_accepts_missing_values_outside_the_required_columns(
+        self, tmp_path: Path, deserializer
+    ):
+        """Nulls outside the required columns do not fail validation.
+
+        Covers both shapes real traces produce: a column absent from some
+        records, and a column that is null on every record.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 1, "input_length": 10, "output_length": 1, '
+            '"ttft": 0.4, "stop": null}\n'
+            '{"timestamp": 2, "input_length": 20, "output_length": 2, "stop": null}\n',
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = load_graph_turns(next(iter(ds)))
+        assert len(turns) == 2
+
     @pytest.mark.smoke
     def test_rejects_invalid_path(self, deserializer):
         with pytest.raises(ValidationError, match="not a valid path"):
@@ -276,6 +322,17 @@ class TestTraceDatasetDeserializer:
                 '{"timestamp": 0, "input_length": 10, "output_length": null}\n',
                 {},
                 "Missing column values",
+            ),
+            (
+                '{"timestamp": "bad", "input_length": 10, "output_length": 5, '
+                '"model": "a"}\n',
+                {},
+                "scalar of type float",
+            ),
+            (
+                '{"timestamp": 0, "input_length": [1, 2], "output_length": 5}\n',
+                {},
+                "Couldn't cast",
             ),
         ],
     )
