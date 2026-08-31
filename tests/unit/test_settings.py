@@ -39,24 +39,26 @@ def test_settings_from_env_variables(mocker):
     mocker.patch.dict(
         "os.environ",
         {
-            "GUIDELLM__logging__disabled": "true",
+            "GUIDELLM__logging__console_colorize": "false",
         },
     )
 
     loaded = Settings()
-    assert loaded.logging.disabled is True
+    assert loaded.logging.console_colorize is False
 
 
 @pytest.mark.sanity
-def test_logging_settings():
+def test_logging_settings_defaults():
+    logging_settings = LoggingSettings()
+    assert logging_settings.console_colorize == "auto"
     logging_settings = LoggingSettings(
-        disabled=True,
         console_log_level="DEBUG",
+        console_colorize=True,
         log_file="app.log",
         log_file_level="ERROR",
     )
-    assert logging_settings.disabled is True
     assert logging_settings.console_log_level == "DEBUG"
+    assert logging_settings.console_colorize is True
     assert logging_settings.log_file == "app.log"
     assert logging_settings.log_file_level == "ERROR"
 
@@ -70,7 +72,7 @@ def test_generate_env_file(mocker):
     )
     loaded = Settings(_env_file=None)
     env_file_content = loaded.generate_env_file()
-    assert "GUIDELLM__LOGGING__DISABLED" in env_file_content
+    assert "GUIDELLM__LOGGING__CONSOLE_COLORIZE" in env_file_content
     assert "REPORT_GENERATION" not in env_file_content
 
 
@@ -79,11 +81,11 @@ def test_reload_settings(mocker):
     mocker.patch.dict(
         "os.environ",
         {
-            "GUIDELLM__logging__disabled": "false",
+            "GUIDELLM__logging__console_log_level": "DEBUG",
         },
     )
     reload_settings()
-    assert settings.logging.disabled is False
+    assert settings.logging.console_log_level == "DEBUG"
 
 
 @pytest.mark.sanity
@@ -91,7 +93,7 @@ def test_print_config(capsys):
     print_config()
     captured = capsys.readouterr()
     assert "Settings:" in captured.out
-    assert "GUIDELLM__LOGGING__DISABLED" in captured.out
+    assert "GUIDELLM__LOGGING__CONSOLE_COLORIZE" in captured.out
 
 
 @pytest.mark.sanity
