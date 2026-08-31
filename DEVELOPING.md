@@ -241,11 +241,10 @@ Review the coverage report to confirm that your new code is adequately tested.
 
 Logging is useful for learning how GuideLLM works and finding problems.
 
-Logging is set using the following environment variables:
+The primary configuration API is :func:`~guidellm.logger.configure_logger`. Environment variables below populate fallback defaults at import time only:
 
-- `GUIDELLM__LOGGING__DISABLED`: Disable logging (default: false).
-- `GUIDELLM__LOGGING__CLEAR_LOGGERS`: Clear existing loggers from loguru (default: true).
-- `GUIDELLM__LOGGING__CONSOLE_LOG_LEVEL`: Log level for console logging (default: none, options: DEBUG, INFO, WARNING, ERROR, CRITICAL).
+- `GUIDELLM__LOGGING__CONSOLE_LOG_LEVEL`: Log level for console logging (default: INFO; set empty to disable).
+- `GUIDELLM__LOGGING__CONSOLE_COLORIZE`: Console ANSI colorization (default: auto; options: auto, true, false).
 - `GUIDELLM__LOGGING__LOG_FILE`: Path to the log file for file logging (default: guidellm.log if log file level set else none)
 - `GUIDELLM__LOGGING__LOG_FILE_LEVEL`: Log level for file logging (default: INFO if log file set else none).
 

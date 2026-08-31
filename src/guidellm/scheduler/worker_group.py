@@ -262,6 +262,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 error_event=self.error_event,
                 stdout_conn=stdout_writer,
                 stderr_conn=stderr_writer,
+                parent_logger=logger,
             )
             proc = self.mp_context.Process(target=worker.run, daemon=False)
             proc.start()

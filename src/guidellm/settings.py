@@ -20,12 +20,15 @@ __all__ = [
 
 class LoggingSettings(BaseModel):
     """
-    Logging settings for the application
+    Fallback defaults for logging configuration.
+
+    Used as the schema for :func:`~guidellm.logger.configure_logger` and
+    populated from environment variables at process start. Not a live config
+    driver — callers should pass explicit values to ``configure_logger``.
     """
 
-    disabled: bool = False
-    clear_loggers: bool = True
-    console_log_level: str = "WARNING"
+    console_log_level: str | None = "INFO"
+    console_colorize: Literal["auto"] | bool = "auto"
     log_file: str | None = None
     log_file_level: str | None = None
 
@@ -62,7 +65,7 @@ class Settings(BaseSettings):
     The format to populate the settings is next
 
     ```sh
-    export GUIDELLM__LOGGING__DISABLED=true
+    export GUIDELLM__LOGGING__CONSOLE_LOG_LEVEL=DEBUG
     ```
     """
 
