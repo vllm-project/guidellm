@@ -405,6 +405,23 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         self._add_stats_for_metric(
             headers, values, benchmark.metrics.request_latency, "Request Latency", "Sec"
         )
+        # None for strategies without an arrival schedule; emit no columns.
+        if benchmark.metrics.request_dispatch_delay is not None:
+            self._add_stats_for_metric(
+                headers,
+                values,
+                benchmark.metrics.request_dispatch_delay,
+                "Dispatch Delay",
+                "Sec",
+            )
+        if benchmark.metrics.request_scheduled_latency is not None:
+            self._add_stats_for_metric(
+                headers,
+                values,
+                benchmark.metrics.request_scheduled_latency,
+                "Scheduled Latency",
+                "Sec",
+            )
         self._add_stats_for_metric(
             headers,
             values,

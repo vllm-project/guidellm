@@ -270,3 +270,108 @@ async def test_finalize_aligns_columns_in_written_csv(tmp_path: Path):
     data_rows = rows[3:]
     assert data_rows[0] == ["a1", ""]
     assert data_rows[1] == ["a2", "b2"]
+
+
+# Metrics read by GenerativeBenchmarkerCSV._add_request_latency_metrics.
+_LATENCY_CSV_METRICS = (
+    "request_latency",
+    "request_dispatch_delay",
+    "request_scheduled_latency",
+    "request_streaming_iterations_count",
+    "time_to_first_token_ms",
+    "time_to_first_output_token_ms",
+    "time_per_output_token_ms",
+    "inter_token_latency_ms",
+    "time_to_last_round_trip_ms",
+    "avg_round_trip_time_ms",
+)
+
+
+def _latency_metric_groups(
+    tmp_path: Path, schedule_metrics_missing: bool = False
+) -> list[str]:
+    """Emit the latency CSV section and return its column group names in order.
+
+    ## WRITTEN BY AI ##
+    """
+    distribution = StatusDistributionSummary.from_values([1.0, 2.0, 3.0], [], [])
+    metrics = dict.fromkeys(_LATENCY_CSV_METRICS, distribution)
+    if schedule_metrics_missing:
+        for name in ("request_dispatch_delay", "request_scheduled_latency"):
+            metrics[name] = None
+    benchmark = SimpleNamespace(metrics=SimpleNamespace(**metrics))
+
+    output = GenerativeBenchmarkerCSV(output_path=tmp_path)
+    headers: list[list[str]] = []
+    values: list[str | int | float] = []
+    output._add_request_latency_metrics(benchmark, headers, values)
+
+    groups: list[str] = []
+    for header in headers:
+        if header[0] not in groups:
+            groups.append(header[0])
+
+    return groups
+
+
+class TestRequestLatencyCSVMetrics:
+    """
+    Verify the latency section of the CSV export.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.sanity
+    def test_exports_schedule_relative_metrics(self, tmp_path: Path):
+        """
+        Dispatch delay and scheduled latency reach the CSV even though they are
+        omitted from the console table.
+
+        ## WRITTEN BY AI ##
+        """
+        groups = _latency_metric_groups(tmp_path)
+
+        assert "Dispatch Delay" in groups
+        assert "Scheduled Latency" in groups
+
+    @pytest.mark.regression
+    def test_preserves_existing_column_order(self, tmp_path: Path):
+        """
+        Pre-existing latency columns keep their relative order, so the new
+        groups are additions rather than a reshuffle.
+
+        ## WRITTEN BY AI ##
+        """
+        groups = _latency_metric_groups(tmp_path)
+        existing = [
+            group
+            for group in groups
+            if group not in {"Dispatch Delay", "Scheduled Latency"}
+        ]
+
+        assert existing == [
+            "Request Latency",
+            "Streaming Iterations",
+            "Time to First Token",
+            "Time to First Output Token",
+            "Time per Output Token",
+            "Inter Token Latency",
+            "Time To Last Round Trip",
+            "Avg Round Trip Time",
+        ]
+
+    @pytest.mark.regression
+    def test_omits_schedule_metrics_when_not_applicable(self, tmp_path: Path):
+        """
+        Schedule-relative metrics set to None produce no CSV columns.
+
+        GenerativeMetrics.compile leaves these None for strategies without an
+        arrival schedule, so a throughput row carries no misleading values.
+
+        ## WRITTEN BY AI ##
+        """
+        groups = _latency_metric_groups(tmp_path, schedule_metrics_missing=True)
+
+        assert "Dispatch Delay" not in groups
+        assert "Scheduled Latency" not in groups
+        assert "Request Latency" in groups

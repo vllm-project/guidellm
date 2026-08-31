@@ -113,6 +113,51 @@ class GenerativeRequestStats(StandardBaseDict):
 
         return end - start
 
+    @computed_field  # type: ignore[misc]
+    @property
+    def request_dispatch_delay(self) -> float | None:
+        """
+        Delay between the scheduled arrival time and the actual dispatch in seconds.
+
+        Non-zero when the scheduler could not issue the request at the time its
+        strategy targeted, for example while a concurrency limit is saturated.
+        Only describes arrival-schedule delay for strategies that define an
+        arrival schedule (constant, poisson, and trace when the dataset supplies
+        timestamps); the synchronous, concurrent, and throughput strategies
+        target an ASAP start instead. See the metrics guide for full caveats.
+
+        :return: Duration from targeted start to request start in seconds, or
+            None if unavailable
+        """
+        targeted = self.info.timings.targeted_start
+        start = self.info.timings.request_start
+        if targeted is None or start is None:
+            return None
+
+        return start - targeted
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def request_scheduled_latency(self) -> float | None:
+        """
+        Request latency measured from the scheduled arrival time in seconds.
+
+        Unlike :attr:`request_latency`, which starts when the request was
+        dispatched, this includes any time the request waited for the scheduler
+        to reach it. The two are equal when the scheduler keeps up with the
+        configured rate and diverge once it falls behind. Carries the same
+        strategy caveat as :attr:`request_dispatch_delay`.
+
+        :return: Duration from targeted start to request completion in seconds,
+            or None if unavailable
+        """
+        targeted = self.info.timings.targeted_start
+        end = self.info.timings.request_end
+        if targeted is None or end is None:
+            return None
+
+        return end - targeted
+
     # General token stats
     @computed_field  # type: ignore[misc]
     @property

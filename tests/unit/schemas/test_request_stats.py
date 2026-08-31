@@ -274,6 +274,8 @@ class TestGenerativeRequestStats:
             "request_start_time",
             "request_end_time",
             "request_latency",
+            "request_dispatch_delay",
+            "request_scheduled_latency",
             "prompt_tokens",
             "output_tokens",
             "total_tokens",
@@ -437,6 +439,76 @@ class TestGenerativeRequestStats:
         assert instance.time_to_first_token_ms is None
         assert instance.time_per_output_token_ms is None
         assert instance.inter_token_latency_ms is None
+
+    @pytest.mark.sanity
+    def test_dispatch_delay_and_scheduled_latency(self):
+        """
+        Schedule-relative metrics measure from the targeted arrival time.
+
+        ## WRITTEN BY AI ##
+        """
+        info = RequestInfo(request_id="targeted", status="completed")
+        info.timings.targeted_start = 100.0
+        info.timings.request_start = 103.5
+        info.timings.request_end = 104.0
+        info.timings.resolve_end = 104.0
+        instance = GenerativeRequestStats(
+            request_id="targeted",
+            info=info,
+            input_metrics=UsageMetrics(text_tokens=4),
+            output_metrics=UsageMetrics(text_tokens=6),
+        )
+
+        assert instance.request_latency == pytest.approx(0.5)
+        assert instance.request_dispatch_delay == pytest.approx(3.5)
+        assert instance.request_scheduled_latency == pytest.approx(4.0)
+
+    @pytest.mark.sanity
+    def test_scheduled_latency_decomposes_into_delay_and_latency(self):
+        """
+        Scheduled latency equals dispatch delay plus request latency.
+
+        ## WRITTEN BY AI ##
+        """
+        info = RequestInfo(request_id="decompose", status="completed")
+        info.timings.targeted_start = 5.0
+        info.timings.request_start = 11.25
+        info.timings.request_end = 13.75
+        info.timings.resolve_end = 13.75
+        instance = GenerativeRequestStats(
+            request_id="decompose",
+            info=info,
+            input_metrics=UsageMetrics(text_tokens=4),
+            output_metrics=UsageMetrics(text_tokens=6),
+        )
+
+        assert instance.request_dispatch_delay is not None
+        assert instance.request_latency is not None
+        assert instance.request_scheduled_latency == pytest.approx(
+            instance.request_dispatch_delay + instance.request_latency
+        )
+
+    @pytest.mark.sanity
+    def test_schedule_metrics_none_without_targeted_start(self):
+        """
+        Schedule-relative metrics are None when no targeted start was recorded.
+
+        ## WRITTEN BY AI ##
+        """
+        info = RequestInfo(request_id="untargeted", status="completed")
+        info.timings.request_start = 1.0
+        info.timings.request_end = 2.0
+        info.timings.resolve_end = 2.0
+        instance = GenerativeRequestStats(
+            request_id="untargeted",
+            info=info,
+            input_metrics=UsageMetrics(text_tokens=4),
+            output_metrics=UsageMetrics(text_tokens=6),
+        )
+
+        assert instance.request_dispatch_delay is None
+        assert instance.request_scheduled_latency is None
+        assert instance.request_latency == pytest.approx(1.0)
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):

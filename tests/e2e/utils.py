@@ -43,10 +43,29 @@ class GuidellmClient:
         self.stdout: str | None = None
         self.stderr: str | None = None
 
+    @staticmethod
+    def _build_profile_config(
+        profile: str, rate: int, max_concurrency: int | None
+    ) -> str:
+        """
+        Build the ``--profile`` value, including an optional concurrency cap.
+
+        :param profile: Type of rate control (constant, etc.)
+        :param rate: Request rate
+        :param max_concurrency: Cap on concurrent requests, or None for no cap
+        :return: Comma-separated profile configuration string
+        """
+        config = f"kind={profile},rate={rate}"
+        if max_concurrency is not None:
+            config += f",max_concurrency={max_concurrency}"
+
+        return config
+
     def start_benchmark(
         self,
         profile: str = "constant",
         rate: int = 10,
+        max_concurrency: int | None = None,
         max_seconds: int | None = None,
         max_requests: int | None = None,
         max_error_rate: float | None = None,
@@ -62,6 +81,7 @@ class GuidellmClient:
 
         :param profile: Type of rate control (constant, etc.)
         :param rate: Request rate
+        :param max_concurrency: Cap on concurrent requests the scheduler dispatches
         :param max_seconds: Maximum duration in seconds
         :param max_requests: Maximum number of requests
         :param max_error_rate: Maximum error rate before stopping
@@ -93,11 +113,13 @@ class GuidellmClient:
 
         backend_config = backend or f"kind=openai_http,target={self.target}"
 
+        profile_config = self._build_profile_config(profile, rate, max_concurrency)
+
         cmd_parts = [
             *([f"{k}={v}" for k, v in offline_env.items()]),
             f"{guidellm_exe} run",
             f'--backend "{backend_config}"',
-            f'--profile "kind={profile},rate={rate}"',
+            f'--profile "{profile_config}"',
         ]
 
         if max_seconds is not None:
