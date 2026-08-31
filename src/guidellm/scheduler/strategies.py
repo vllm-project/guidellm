@@ -104,6 +104,20 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         """
         return None
 
+    @property
+    def defines_arrival_schedule(self) -> bool:
+        """
+        Whether targeted start times follow an independent arrival schedule.
+
+        Strategies returning an ASAP-style target, such as the previous
+        request's completion time or the benchmark start time, do not define an
+        arrival schedule, so schedule-relative metrics are not meaningful for
+        them.
+
+        :return: True if targeted start times follow an arrival schedule
+        """
+        return False
+
     def init_processes_timings(
         self,
         worker_count: PositiveInt,
@@ -494,6 +508,13 @@ class AsyncConstantStrategy(SchedulingStrategy):
         return f"constant@{self.rate:.2f}"
 
     @property
+    def defines_arrival_schedule(self) -> bool:
+        """
+        :return: Always True; targets are derived from an arrival schedule
+        """
+        return True
+
+    @property
     def processes_limit(self) -> PositiveInt | None:
         """
         :return: Max concurrency if set, otherwise None for unlimited
@@ -592,6 +613,13 @@ class AsyncPoissonStrategy(SchedulingStrategy):
         :return: String identifier with rate value
         """
         return f"poisson@{self.rate:.2f}"
+
+    @property
+    def defines_arrival_schedule(self) -> bool:
+        """
+        :return: Always True; targets are derived from an arrival schedule
+        """
+        return True
 
     @property
     def processes_limit(self) -> PositiveInt | None:
@@ -704,6 +732,13 @@ class TraceReplayStrategy(SchedulingStrategy):
 
     def __str__(self) -> str:
         return f"trace@{self.time_scale:.2f}"
+
+    @property
+    def defines_arrival_schedule(self) -> bool:
+        """
+        :return: Always True; targets are derived from an arrival schedule
+        """
+        return True
 
     @property
     def processes_limit(self) -> PositiveInt | None:
