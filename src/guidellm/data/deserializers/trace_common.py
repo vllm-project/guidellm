@@ -316,16 +316,16 @@ def _validate_row(row: dict, config: TraceDataArgs) -> None:
         )
 
 
-def _raise_if_nonetype_found(dataset: Dataset) -> None:
-    for col in dataset.column_names:
+def _raise_if_nonetype_found(dataset: Dataset, features: Features) -> None:
+    for col in features:
         if dataset.data[col].null_count != 0:
             raise DataNotSupportedError(f"Missing column values in {col}")
 
 
 def _raise_if_incorrect_types(dataset: Dataset, features: Features) -> None:
     try:
-        dataset.cast(features)
-    except ValueError as e:
+        dataset.select_columns(list(features)).cast(features)
+    except (TypeError, ValueError) as e:
         raise DataNotSupportedError(str(e)) from e
 
 
@@ -343,7 +343,7 @@ def _validate_dataset(config: TraceDataArgs, trace_format: TraceFormatBase) -> N
             raise DataNotSupportedError("Trace conversation is empty")
         if config.conversation_id_column in features:
             features.pop(config.conversation_id_column)
-        _raise_if_nonetype_found(conv)
+        _raise_if_nonetype_found(conv, features)
         _raise_if_incorrect_types(conv, features)
         for row in conv:
             _validate_row(row, config)
