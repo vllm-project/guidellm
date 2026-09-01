@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from guidellm.benchmark.entrypoints import resolve_output_formats
+from guidellm.benchmark.entrypoints import resolve_backend, resolve_output_formats
 from guidellm.benchmark.outputs import GenerativeBenchmarkerOutput
+from guidellm.schemas.backends import OpenAIHTTPBackendArgs
 from guidellm.schemas.benchmark import JSONBenchmarkOutputArgs
 
 
@@ -33,3 +35,30 @@ async def test_resolve_output_formats_preserves_duplicate_kinds(tmp_path: Path):
         tmp_path / "first.json",
         tmp_path / "second.json",
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+async def test_resolve_backend_shuts_down_after_validation_error():
+    """
+    resolve_backend shuts down a started backend when validation fails.
+
+    ## WRITTEN BY AI ##
+    """
+    backend = MagicMock()
+    backend.process_startup = AsyncMock()
+    backend.validate = AsyncMock(side_effect=RuntimeError("validation failed"))
+    backend.default_model = AsyncMock()
+    backend.process_shutdown = AsyncMock()
+    args = OpenAIHTTPBackendArgs(target="http://localhost:8000")
+
+    with (
+        patch("guidellm.benchmark.entrypoints.Backend.create", return_value=backend),
+        pytest.raises(RuntimeError, match="validation failed"),
+    ):
+        await resolve_backend(args)
+
+    backend.process_startup.assert_awaited_once_with()
+    backend.validate.assert_awaited_once_with()
+    backend.default_model.assert_not_awaited()
+    backend.process_shutdown.assert_awaited_once_with()
