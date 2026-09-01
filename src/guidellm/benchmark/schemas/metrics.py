@@ -901,6 +901,31 @@ class GenerativeMetrics(StandardBaseDict):
         incomplete = accumulator.incomplete.get_within_range(start_time, end_time)
         errored = accumulator.errored.get_within_range(start_time, end_time)
 
+        def _first_token_within_measurement(
+            request: GenerativeRequestStats,
+        ) -> bool:
+            request_start = request.request_start_time
+            first_token = request.first_token_iteration
+            return (
+                request_start is not None
+                and first_token is not None
+                and start_time <= request_start <= first_token <= end_time
+            )
+
+        successful_first_token = [
+            request
+            for request in successful
+            if _first_token_within_measurement(request)
+        ]
+        incomplete_first_token = [
+            request
+            for request in incomplete
+            if _first_token_within_measurement(request)
+        ]
+        errored_first_token = [
+            request for request in errored if _first_token_within_measurement(request)
+        ]
+
         # Schedule-relative metrics describe lag against an arrival schedule.
         # Closed-loop strategies derive each target from the system's own
         # responses, so a delay measured against them is circular rather than a
@@ -987,9 +1012,9 @@ class GenerativeMetrics(StandardBaseDict):
             ),
             time_to_first_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_first_token_ms or 0.0,
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+                successful=successful_first_token,
+                incomplete=incomplete_first_token,
+                errored=errored_first_token,
             ),
             time_to_last_round_trip_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_last_round_trip_ms or 0.0,
@@ -1032,18 +1057,24 @@ class GenerativeMetrics(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             output_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.output_tokens_timings,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.total_tokens_timings,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             output_tokens_per_iteration=StatusDistributionSummary.from_values_function(
                 function=lambda req: [

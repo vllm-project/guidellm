@@ -279,6 +279,63 @@ def _make_accumulator(
     return accumulator
 
 
+@pytest.mark.regression
+def test_compile_filters_token_and_ttft_events_to_measurement_window():
+    """
+    Token rates and TTFT include only events inside the measurement window.
+
+    Requests crossing either boundary remain part of the request totals, while
+    their token events are filtered by timestamp.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def _make_stats(
+        request_id: str,
+        request_start: float,
+        request_end: float,
+        first_token: float,
+        last_token: float,
+    ) -> GenerativeRequestStats:
+        timings = RequestTimings(
+            resolve_start=request_start,
+            resolve_end=request_end,
+            request_start=request_start,
+            request_end=request_end,
+            first_token_iteration=first_token,
+            last_token_iteration=last_token,
+            token_iterations=3,
+        )
+        return GenerativeRequestStats(
+            request_id=request_id,
+            info=RequestInfo(
+                request_id=request_id, status="completed", timings=timings
+            ),
+            input_metrics=UsageMetrics(text_tokens=4),
+            output_metrics=UsageMetrics(text_tokens=3),
+        )
+
+    metrics = GenerativeMetrics.compile(
+        _make_accumulator(
+            [
+                _make_stats("warmup", 5.0, 12.0, 8.0, 12.0),
+                _make_stats("warmup-first-in-profile", 8.0, 18.0, 12.0, 16.0),
+                _make_stats("profile", 11.0, 18.0, 12.0, 16.0),
+                _make_stats("cooldown", 18.0, 24.0, 22.0, 24.0),
+            ],
+            start_time=10.0,
+            end_time=20.0,
+        )
+    )
+
+    assert metrics.request_totals.successful == 4
+    assert metrics.time_to_first_token_ms.successful.count == 1
+    assert metrics.time_to_first_token_ms.successful.mean == pytest.approx(1000.0)
+    assert metrics.prompt_tokens_per_second.successful.count == 8
+    assert metrics.output_tokens_per_second.successful.count == 8
+    assert metrics.tokens_per_second.successful.count == 16
+
+
 class TestScheduleRelativeMetrics:
     """
     Verify the schedule-relative distributions added alongside request_latency.
