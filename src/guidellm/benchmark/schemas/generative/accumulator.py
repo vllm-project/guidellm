@@ -608,25 +608,30 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
         self, start_time: float, end_time: float
     ) -> list[GenerativeRequestStats]:
         """
-        Retrieve request statistics within a specified time range.
+        Retrieve request statistics that were initiated within a time range.
 
-        :param start_time: Start timestamp for filtering (requests must end after this)
-        :param end_time: End timestamp for filtering (requests must start before this)
-        :return: List of request statistics within the time range
+        Filters by request start time so that warmup/cooldown phases cleanly
+        exclude requests that began outside the measurement window, even if
+        those requests completed during (overlapped with) the window.
+
+        :param start_time: Start timestamp for filtering (requests must have
+            started at or after this timestamp)
+        :param end_time: End timestamp for filtering (requests must have started
+            at or before this timestamp)
+        :return: List of request statistics initiated within the time range
         """
         return [
             stats
             for stats in self.requests_stats
-            if (stats.request_end_time >= start_time)
-            and (
-                (
-                    stats.request_start_time is not None
-                    and stats.request_start_time <= end_time
-                )
-                or (
-                    stats.request_start_time is None
-                    and stats.request_end_time <= end_time
-                )
+            if (
+                stats.request_start_time is not None
+                and stats.request_start_time >= start_time
+                and stats.request_start_time <= end_time
+            )
+            or (
+                stats.request_start_time is None
+                and stats.request_end_time >= start_time
+                and stats.request_end_time <= end_time
             )
         ]
 
