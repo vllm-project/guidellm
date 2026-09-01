@@ -330,6 +330,13 @@ class TestWEKATraceFormat:
                 '{"id": "conv0", "requests": []}\n',
                 "requests was empty",
             ),
+            (
+                '{"id": "conv0", "requests": [{"t": 0, "in": 10, "out": 5,'
+                '"hash_ids": [], "model": "a", "ttft": 0.5}]}\n'
+                '{"id": "conv1", "requests": [{"t": 0, "in": 10, "out": 5,'
+                '"model": "a"}]}\n',
+                "Missing column values in hash_ids",
+            ),
         ],
     )
     def test_trace_validation_raises(
@@ -355,6 +362,47 @@ class TestWEKATraceFormat:
         )
         with pytest.raises(DataNotSupportedError, match="conversation is empty"):
             self.deserialize(deserializer, trace)
+
+    @pytest.mark.regression
+    def test_accepts_spec_metadata_on_request_records(
+        self, tmp_path: Path, deserializer, default_block_size
+    ):
+        """Accept WEKA request records carrying the fields the specification defines.
+
+        Those are model, type, input_types, output_types and stop on every
+        record, plus api_time, ttft and think_time, which are optional.
+
+        ## WRITTEN BY AI ##
+        """
+        first_in = 2 * default_block_size
+        second_in = 3 * default_block_size
+        trace = write_trace(
+            tmp_path,
+            '{"id": "conv0", "hash_id_scope": "local", "requests": ['
+            f'{{"t": 0.0, "type": "s", "model": "a", "in": {first_in}, "out": 205, '
+            '"hash_ids": [1, 2], "input_types": ["text"], '
+            '"output_types": ["thinking", "tool_use"], "stop": "tool_use", '
+            '"api_time": 4.87, "ttft": 0.5, "think_time": 0.0}, '
+            f'{{"t": 17.0, "type": "n", "model": "a", "in": {second_in}, "out": 82, '
+            '"hash_ids": [1, 2, 3], "input_types": ["tool_result"], '
+            '"output_types": ["tool_use"], "stop": "tool_use", '
+            '"api_time": 2.87}]}\n',
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = load_graph_turns(next(iter(ds)))
+        assert len(turns) == 2
+        assert [turn.columns["prompt_tokens_count_column"][0] for turn in turns] == [
+            first_in,
+            second_in,
+        ]
+        assert [turn.columns["output_tokens_count_column"][0] for turn in turns] == [
+            205,
+            82,
+        ]
+        assert [turn.columns["relative_timestamp_column"][0] for turn in turns] == [
+            0.0,
+            17.0,
+        ]
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(
