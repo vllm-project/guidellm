@@ -623,16 +623,9 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
         return [
             stats
             for stats in self.requests_stats
-            if (
-                stats.request_start_time is not None
-                and stats.request_start_time >= start_time
-                and stats.request_start_time <= end_time
-            )
-            or (
-                stats.request_start_time is None
-                and stats.request_end_time >= start_time
-                and stats.request_end_time <= end_time
-            )
+            if stats.request_start_time is not None
+            and stats.request_start_time >= start_time
+            and stats.request_start_time <= end_time
         ]
 
     def update_estimate(
