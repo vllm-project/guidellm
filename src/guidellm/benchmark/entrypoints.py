@@ -99,16 +99,17 @@ async def resolve_backend(
         )
 
     await backend_instance.process_startup()
-    await backend_instance.validate()
+    try:
+        await backend_instance.validate()
 
-    if console_step:
-        console_step.update(
-            title="Resolving default model from backend.default_model",
-            status_level="info",
-        )
-    model = await backend_instance.default_model()
-
-    await backend_instance.process_shutdown()
+        if console_step:
+            console_step.update(
+                title="Resolving default model from backend.default_model",
+                status_level="info",
+            )
+        model = await backend_instance.default_model()
+    finally:
+        await backend_instance.process_shutdown()
 
     if console_step:
         console_step.finish(
