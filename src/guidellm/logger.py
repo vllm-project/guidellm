@@ -34,6 +34,7 @@ import contextlib
 import multiprocessing as mp
 import sys
 from multiprocessing.context import BaseContext
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
@@ -118,7 +119,7 @@ class FileLogHandler:
     def configure(
         self,
         level: str | None,
-        path: str | None,
+        path: Path,
         *,
         mp_context: BaseContext,
     ) -> int | None:
@@ -126,7 +127,7 @@ class FileLogHandler:
             with contextlib.suppress(ValueError):
                 logger.remove(self._sink_id)
             self._sink_id = None
-        if level is None or path is None:
+        if level is None:
             return None
         self._sink_id = logger.add(
             path,
@@ -163,16 +164,11 @@ def configure_logger(config: LoggingSettings | None = None) -> None:
         mp_context=mp_context,
     )
 
-    if config.log_file or config.log_file_level:
-        log_file = config.log_file or "guidellm.log"
-        log_file_level = config.log_file_level or "INFO"
-        _file_handler.configure(
-            level=log_file_level,
-            path=log_file,
-            mp_context=mp_context,
-        )
-    else:
-        _file_handler.configure(level=None, path=None, mp_context=mp_context)
+    _file_handler.configure(
+        level=config.log_file_level,
+        path=config.log_file,
+        mp_context=mp_context,
+    )
 
 
 # Logger should be configured in the main process only
