@@ -405,6 +405,9 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
                 yield response, request, request_info, scheduler_state
             except asyncio.TimeoutError:
+                if self.shutdown_event.is_set():  # type: ignore[union-attr]
+                    # Everything yielded, exit
+                    break
                 # Time-based constraints (max_duration) must be evaluated even when
                 # workers are sleeping until a future target start, because no
                 # request updates arrive during that wait.
@@ -418,9 +421,6 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                         self.constraint_reached_event.set()
                     if state_update.stop_queueing:
                         self.state.stop_send_requests_event.set()
-                if self.shutdown_event.is_set():  # type: ignore[union-attr]
-                    # Everything yielded, exit
-                    break
 
     async def shutdown(self) -> list[Exception]:
         """

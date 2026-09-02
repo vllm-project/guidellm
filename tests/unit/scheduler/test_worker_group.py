@@ -320,6 +320,37 @@ class TestWorkerProcessGroup:
         assert get_calls == 3
         group.state.update_state.assert_called()
 
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_request_updates_skips_constraint_eval_when_shutdown(self):
+        """Idle timeout with shutdown already set must not re-evaluate constraints.
+
+        ## WRITTEN BY AI ##
+        """
+        group = WorkerProcessGroup(
+            requests=["req"],
+            backend=MockBackend(),
+            strategy=SynchronousStrategy(),
+        )
+        error_event = Mock()
+        error_event.is_set.return_value = False
+        shutdown_event = Mock()
+        shutdown_event.is_set.return_value = True
+        group.error_event = error_event
+        group.shutdown_event = shutdown_event
+        group.state = Mock()
+
+        async def mock_get(*, timeout: float | None = None):
+            raise asyncio.TimeoutError
+
+        group.messaging = Mock()
+        group.messaging.get = mock_get
+
+        results = [update async for update in group.request_updates()]
+
+        assert results == []
+        group.state.update_state.assert_not_called()
+
     @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
     @async_timeout(10)
