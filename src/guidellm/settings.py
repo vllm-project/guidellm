@@ -29,7 +29,7 @@ class LoggingSettings(BaseModel):
 
     console_log_level: str | None = "INFO"
     console_colorize: Literal["auto"] | bool = "auto"
-    log_file: str | None = None
+    log_file: Path = Path("guidellm.log")
     log_file_level: str | None = None
 
 
