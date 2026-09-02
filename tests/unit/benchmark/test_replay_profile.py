@@ -34,20 +34,17 @@ class TestReplayProfile:
     @pytest.mark.asyncio
     async def test_resolve_profile_passes_replay_specific_kwargs(self, tmp_path: Path):
         """
-        resolve_profile wires replay data, samples, and time_scale into the profile.
+        resolve_profile wires replay data and samples into the profile.
 
         ## WRITTEN BY AI ##
         """
         profile = await resolve_profile(
-            profile=ReplayProfileArgs.model_validate(
-                {"kind": "replay", "time_scale": 2.0}
-            ),
+            profile=ReplayProfileArgs.model_validate({"kind": "replay"}),
             constraints={"max_requests": {"max_num": 2}},
             random_seed=42,
         )
 
         assert isinstance(profile, ReplayProfile)
-        assert profile.args.time_scale == 2.0
         assert profile.constraints["max_requests"] == {"max_num": 2}
 
     @pytest.mark.smoke
@@ -57,10 +54,9 @@ class TestReplayProfile:
 
         ## WRITTEN BY AI ##
         """
-        profile = _replay_profile(time_scale=2.0)
+        profile = _replay_profile()
 
         strategy = profile.next_strategy(None, None)
         assert profile.strategy_types == ["trace"]
         assert isinstance(strategy, TraceReplayStrategy)
-        assert strategy.time_scale == 2.0
         assert profile.next_strategy(strategy, None) is None

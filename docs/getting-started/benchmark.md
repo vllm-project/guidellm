@@ -210,12 +210,10 @@ guidellm run --profile kind=sweep,sweep_size=10,rampup_duration=10,strategy_type
 Replays trace events using timestamps from a trace file dataset. See [Trace Replay Benchmarking](#trace-replay-benchmarking) below for data setup.
 
 ```bash
-guidellm run --profile kind=replay,time_scale=1.0
+guidellm run --profile kind=replay
 ```
 
-| Profile parameter | Description                                   | Example                                |
-| ----------------- | --------------------------------------------- | -------------------------------------- |
-| `time_scale`      | Time scale for intervals between trace events | `--profile kind=replay,time_scale=2.0` |
+Timeline options such as `time_scale` and wait caps belong on `--data`, not the profile.
 
 ## Data Options
 
@@ -253,11 +251,11 @@ Run with the `replay` profile:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=trace_synthetic,path=path/to/trace.jsonl \
-  --profile kind=replay,time_scale=1.0
+  --data kind=trace_synthetic,path=path/to/trace.jsonl,time_scale=1.0 \
+  --profile kind=replay
 ```
 
-The replay profile parameter `time_scale` acts as a scaling factor for the intervals between trace events: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast.
+The data parameter `time_scale` acts as a scaling factor for the intervals between trace events after wait and pack caps: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast. Wait caps (`max_wait`, `max_session_wait`, `min_concurrent_sessions`) are applied in original trace seconds before `time_scale`.
 
 `--constraint kind=max_duration,seconds=<n>` stops in-flight waits as well as new request starts. Workers sleeping until a future replay timestamp are cancelled when the duration elapses.
 
@@ -269,7 +267,7 @@ Every format by default looks for the columns "timestamp", "input_length", and "
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --data kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length \
-  --profile kind=replay,time_scale=1.0
+  --profile kind=replay
 ```
 
 This functionality extends to columns required by specific formats. These additional columns and other format-specific arguments are described in the [Trace File Formats documentation](../guides/trace_replay.md)

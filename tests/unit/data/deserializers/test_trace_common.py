@@ -78,6 +78,46 @@ class TestTraceFormatRegistry:
             TraceFormatRegistry.dispatch(config, dataset)
 
 
+class TestTraceDataArgsSessionDuration:
+    @pytest.mark.smoke
+    def test_accepts_wait_caps_and_time_scale(self, tmp_path: Path):
+        """Wait caps and time_scale are valid format-agnostic trace data arguments.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        args = MinimalTraceFormatArgs(
+            path=path,
+            max_wait=30.0,
+            max_session_wait=60.0,
+            min_concurrent_sessions=8,
+            time_scale=2.0,
+        )
+        assert args.max_wait == 30.0
+        assert args.max_session_wait == 60.0
+        assert args.min_concurrent_sessions == 8
+        assert args.time_scale == 2.0
+
+    @pytest.mark.smoke
+    def test_defaults_leave_faithful_replay(self, tmp_path: Path):
+        """Unset wait caps and default time_scale leave timestamps unchanged.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        args = MinimalTraceFormatArgs(path=path)
+        assert args.max_wait is None
+        assert args.max_session_wait is None
+        assert args.min_concurrent_sessions is None
+        assert args.time_scale == 1.0
+
+
 @dataclasses.dataclass
 class TraceColumnGenerator:
     name: str
@@ -126,6 +166,10 @@ class TestTraceDatasetDeserializer:
                 "timestamp_column",
                 "prompt_tokens_column",
                 "output_tokens_column",
+                "max_wait",
+                "max_session_wait",
+                "min_concurrent_sessions",
+                "time_scale",
             ),
             kwargs,
         )
@@ -219,6 +263,40 @@ class TestTraceDatasetDeserializer:
         conv = load_graph_turns(next(iter(ds)))
         for i, turn in enumerate(conv):
             assert turn.columns["relative_timestamp_column"][0] == i
+
+    @pytest.mark.smoke
+    def test_max_wait_rewrites_emitted_timestamps(self, tmp_path: Path, deserializer):
+        """max_wait compresses intra-session gaps on emitted graphs.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 10, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 1450, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(deserializer, trace, max_wait=30.0)
+        conv = load_graph_turns(next(iter(ds)))
+        timestamps = [turn.columns["relative_timestamp_column"][0] for turn in conv]
+        assert timestamps == pytest.approx([0.0, 10.0, 40.0])
+
+    @pytest.mark.smoke
+    def test_time_scale_applied_after_wait_caps(self, tmp_path: Path, deserializer):
+        """Wait caps run in original seconds; time_scale multiplies the result.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 10, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 1450, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(deserializer, trace, max_wait=30.0, time_scale=2.0)
+        conv = load_graph_turns(next(iter(ds)))
+        timestamps = [turn.columns["relative_timestamp_column"][0] for turn in conv]
+        assert timestamps == pytest.approx([0.0, 20.0, 80.0])
 
     @pytest.mark.regression
     def test_accepts_columns_beyond_the_required_ones(

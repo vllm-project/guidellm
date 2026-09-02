@@ -29,6 +29,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
+from guidellm.data.deserializers.trace_session_timing import TraceSessionTiming
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationParentRef,
@@ -183,15 +184,25 @@ class TraceExamplesIterable(_BaseExamplesIterable):
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
         self.iteration_count += 1
         samples_count = 0
+        # Fresh instance per iteration so packing state does not leak across epochs.
+        timing = TraceSessionTiming(
+            max_wait=self.config.max_wait,
+            max_session_wait=self.config.max_session_wait,
+            min_concurrent_sessions=self.config.min_concurrent_sessions,
+            time_scale=self.config.time_scale,
+        )
         for conv in self.format:  # type: ignore[attr-defined]
             start_ts = conv[0][self.config.timestamp_column]
-            row = self._create_conversation_row(conv, start_ts)
+            row = self._create_conversation_row(conv, start_ts, timing)
             samples_count += len(conv)
             yield samples_count, row
             self.format.reset()
 
     def _create_conversation_row(
-        self, conversation: Dataset, start_ts: float
+        self,
+        conversation: Dataset,
+        start_ts: float,
+        timing: TraceSessionTiming,
     ) -> dict[str, Any]:
         """Build a ``conversation_turns`` payload for linear or branched graphs."""
         turns = []
@@ -221,6 +232,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                 )
             )
         graph_data = ConversationGraphData(turns=turns)
+        timing.apply(graph_data)
         payload = json.dumps(graph_data.model_dump(mode="json"))
         return {
             "conversation_turns": (

@@ -17,8 +17,3 @@ class ReplayProfileArgs(ProfileArgs):
         default="replay",
         description="Profile type discriminator for trace replay scheduling",
     )
-    time_scale: float = Field(
-        default=1.0,
-        gt=0,
-        description="Scale factor applied to relative timestamps",
-    )

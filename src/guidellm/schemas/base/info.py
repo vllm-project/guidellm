@@ -147,7 +147,7 @@ class RequestSettings(StandardBaseDict):
     Populated by dataset finalizers (for example from trace ``relative_timestamp``
     columns). Scheduling strategies read these fields at dequeue. For trace replay,
     a non-null ``relative_timestamp`` becomes an absolute start time at dequeue:
-    ``start_time + time_scale * relative_timestamp``. When ``relative_timestamp``
+    ``start_time + relative_timestamp``. When ``relative_timestamp``
     is null, trace replay schedules the request at benchmark start (no trace offset).
     """
 
@@ -157,7 +157,7 @@ class RequestSettings(StandardBaseDict):
         description=(
             "Trace offset in seconds from the first event after sorting (0 for the "
             "earliest event). Trace replay converts this to an absolute start time "
-            "at dequeue: start_time + time_scale * relative_timestamp. When null, "
+            "at dequeue: start_time + relative_timestamp. When null, "
             "trace replay uses benchmark start time only."
         ),
     )

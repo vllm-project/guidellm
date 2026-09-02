@@ -205,8 +205,8 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   ```bash
   guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
-    --profile kind=replay,time_scale=1.0 \
-    --data kind=trace_synthetic,path=path/to/trace.jsonl
+    --profile kind=replay \
+    --data kind=trace_synthetic,path=path/to/trace.jsonl,time_scale=1.0
   ```
 
   All trace formats by default look for the columns "timestamp", "input_length", and "output_length". If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
@@ -214,11 +214,11 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   ```bash
   guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
-    --profile kind=replay,time_scale=1.0 \
+    --profile kind=replay \
     --data kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
   ```
 
-  For replay, `time_scale` on the profile is a time scale for the intervals between trace events. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. Use `--constraint kind=max_requests,count=<n>` only as a runtime completion constraint; it does not limit the trace rows loaded from the file. `--constraint kind=max_duration,seconds=<n>` also cancels in-flight waits, including replay sleeps.
+  For replay, `time_scale` on `--data` is a time scale for the intervals between trace events after wait and pack caps. Wait caps (`max_wait`, `max_session_wait`, `min_concurrent_sessions`) are applied in original trace seconds before `time_scale`. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. Use `--constraint kind=max_requests,count=<n>` only as a runtime completion constraint; it does not limit the trace rows loaded from the file. `--constraint kind=max_duration,seconds=<n>` also cancels in-flight waits, including replay sleeps.
 
 - **JSON files (`.json`)**: Where the entire dataset is represented as a JSON array of objects nested under a specific key. To surface the correct key to use, a `--data-column-mapper` argument must be passed in of `"field": "NAME"` for where the array exists. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
 

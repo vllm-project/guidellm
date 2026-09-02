@@ -25,10 +25,10 @@ class ReplayProfile(Profile):
     """
     Replay a trace file using per-row ``relative_timestamp`` from the dataset.
 
-    Each request is scheduled at
-    ``start_time + time_scale * relative_timestamp`` via ``RequestSettings`` on
-    the dataset finalizer output. For this profile, ``rate`` is interpreted as
-    ``time_scale`` (not requests per second).
+    Each request is scheduled at ``start_time + relative_timestamp`` via
+    ``RequestSettings`` on the dataset finalizer output. Timeline options such as
+    ``time_scale`` and wait caps are applied by the trace dataset before
+    scheduling.
 
     When ``data_samples`` is set, the default ``max_requests`` constraint matches
     the truncated dataset size.
@@ -59,4 +59,4 @@ class ReplayProfile(Profile):
         # Replay has a single strategy; return it once, then None
         if prev_strategy is not None:
             return None
-        return TraceReplayStrategy(time_scale=self.args.time_scale)
+        return TraceReplayStrategy()
