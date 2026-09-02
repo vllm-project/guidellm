@@ -64,11 +64,12 @@ The p99 (99th percentile) values are particularly important for SLO analysis, as
 
 ## Analyzing the Results File
 
-For deeper analysis, GuideLLM saves detailed results to multiple files by default in your current directory:
+For deeper analysis, GuideLLM saves these detailed results by default in your current directory:
 
 - `benchmarks.json`: Complete benchmark data in JSON format
 - `benchmarks.csv`: Summary of key metrics in CSV format
-- `benchmarks.html`: Self-contained HTML report with visualizations
+
+To also generate a self-contained HTML report, add `--output kind=html,path=benchmarks.html` to the benchmark command.
 
 ### File Formats
 
