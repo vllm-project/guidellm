@@ -405,17 +405,32 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
                 yield response, request, request_info, scheduler_state
             except asyncio.TimeoutError:
+                # Time-based constraints (max_duration) must be evaluated even when
+                # workers are sleeping until a future target start, because no
+                # request updates arrive during that wait.
+                if self.state is not None:
+                    state_update = self.state.update_state()
+                    if (
+                        state_update.stop_processing
+                        and self.constraint_reached_event is not None
+                        and not self.constraint_reached_event.is_set()
+                    ):
+                        self.constraint_reached_event.set()
+                    if state_update.stop_queueing:
+                        self.state.stop_send_requests_event.set()
                 if self.shutdown_event.is_set():  # type: ignore[union-attr]
                     # Everything yielded, exit
                     break
 
-    async def shutdown(self) -> list[Exception]:  # noqa: C901
+    async def shutdown(self) -> list[Exception]:
         """
         Gracefully shut down the worker process group and clean up resources.
 
         Performs safe shutdown of worker processes, background tasks, and
         multiprocessing resources. Coordinates orderly termination across
         all workers and collects any exceptions encountered during shutdown.
+        Workers that ignore the shutdown event are terminated, then killed,
+        so ``Manager.shutdown`` cannot block indefinitely on live connections.
 
         :return: List of exceptions encountered during shutdown; empty if no errors
         """
@@ -441,22 +456,10 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
         # Clear out create processes values
         if self.processes is not None:
-            for proc in self.processes:
-                try:
-                    await asyncio.to_thread(proc.join, timeout=5.0)
-                    if proc.exitcode is not None and proc.exitcode != 0:
-                        exit_info = (
-                            f"signal {-proc.exitcode}"
-                            if proc.exitcode < 0
-                            else f"exit code {proc.exitcode}"
-                        )
-                        exceptions.append(
-                            RuntimeError(
-                                f"Worker {proc.pid} exited abnormally ({exit_info})"
-                            )
-                        )
-                except Exception as err:  # noqa: BLE001
-                    exceptions.append(err)
+            join_errors = await asyncio.gather(
+                *[self._join_or_kill_process(proc) for proc in self.processes]
+            )
+            exceptions.extend(err for err in join_errors if err is not None)
         self.processes = None
         self.startup_barrier = None
         self.requests_generated_event = None
@@ -465,13 +468,49 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         self.error_event = None
         if self.mp_manager is not None:
             try:
-                self.mp_manager.shutdown()
+                # Bound this: a live worker holding a Manager connection
+                # can otherwise block here until the process is killed externally.
+                await asyncio.wait_for(
+                    asyncio.to_thread(self.mp_manager.shutdown),
+                    timeout=5.0,
+                )
             except Exception as err:  # noqa: BLE001
                 exceptions.append(err)
         self.mp_manager = None
         self.mp_context = None
 
         return exceptions
+
+    async def _join_or_kill_process(self, proc: BaseProcess) -> Exception | None:
+        """Join a worker, then terminate and kill if it does not exit.
+
+        :param proc: Worker process to wait for
+        :return: Abnormal-exit error if the process exited on its own with a
+            non-zero code; ``None`` if it exited cleanly or was force-stopped
+        """
+        try:
+            await asyncio.to_thread(proc.join, timeout=5.0)
+            force_stopped = False
+            if proc.is_alive():
+                proc.terminate()
+                await asyncio.to_thread(proc.join, timeout=2.0)
+                force_stopped = True
+            if proc.is_alive():
+                proc.kill()
+                await asyncio.to_thread(proc.join, timeout=2.0)
+                force_stopped = True
+            if not force_stopped and proc.exitcode is not None and proc.exitcode != 0:
+                exit_info = (
+                    f"signal {-proc.exitcode}"
+                    if proc.exitcode < 0
+                    else f"exit code {proc.exitcode}"
+                )
+                return RuntimeError(
+                    f"Worker {proc.pid} exited abnormally ({exit_info})"
+                )
+        except Exception as err:  # noqa: BLE001
+            return err
+        return None
 
 
 class _StateUpdate(NamedTuple):
@@ -590,7 +629,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                         scheduler_start_time=self.start_time,
                         settings=node.settings,
                     )
-                    state_update = self._locked_update(request_info)
+                    state_update = self.update_state(request_info)
                     request_info.timings.queued = time.time()
                     if self.messaging.buffer_receive_queue is None:
                         raise RuntimeError("buffer receive queue is None")
@@ -618,8 +657,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                     self.stop_send_requests_event.set()
                     return
 
-            self._locked_update(
-                info=None,
+            self.update_state(
                 add_constraints={
                     "requests_exhausted": RequestsExhaustedConstraint(
                         num_requests=count
@@ -657,7 +695,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         """
         try:
             response, request, request_info = update
-            state_update = self._locked_update(info=request_info)
+            state_update = self.update_state(info=request_info)
 
             # Check if we need to tell workers to stop pulling new requests
             # based on no more requests sent and all requests removed from queue
@@ -697,19 +735,30 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             state_update.state,  # inject state for updates to be yielded back
         )
 
-    def _locked_update(
+    def update_state(
         self,
         info: RequestInfo | None = None,
         add_constraints: dict[str, Constraint] | None = None,
     ) -> _StateUpdate:
+        """Update scheduler state and re-evaluate constraints.
+
+        With no ``info``, only scheduler state is considered. The coordinator
+        poll loop uses that so time-based constraints such as ``max_duration``
+        can fire while workers are sleeping and no request updates arrive.
+
+        :param info: Request that changed, or ``None`` for a state-only recheck
+        :param add_constraints: Constraints to register before evaluation
+        :return: Copied scheduler state and stop flags
+        """
         with self._update_lock:
             if add_constraints is not None:
                 self.constraints.update(add_constraints)
 
+            self._state.end_time = time.time()  # Always update in case last update
             if info is not None:
-                self._state.end_time = time.time()  # Always update in case last update
                 self._update_state_request_counts(info)
-                self._update_with_constraints(info)
+
+            self._update_with_constraints(info)
 
             state_copy: SchedulerState = self._state.model_copy()
 
@@ -751,11 +800,17 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         else:
             raise ValueError(f"Unknown request_info status {info.status} for {info}")
 
+        self._update_request_time_bounds(info, finalized)
+
+    def _update_request_time_bounds(self, info: RequestInfo, finalized: float) -> None:
         # Keep global count of the earliest start and latest end
-        self._state.start_requests_time = min(
-            info.timings.request_start or float("inf"),
-            self._state.start_requests_time or float("inf"),
-        )
+        if info.timings.request_start is not None:
+            self._state.start_requests_time = min(
+                info.timings.request_start,
+                self._state.start_requests_time
+                if self._state.start_requests_time is not None
+                else info.timings.request_start,
+            )
         self._state.end_requests_time = max(
             info.timings.request_end or float("-inf"),
             self._state.end_requests_time or float("-inf"),
@@ -802,7 +857,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self._state.cancelled_requests += 1 if info.status == "cancelled" else 0
         return True
 
-    def _update_with_constraints(self, info: RequestInfo):
+    def _update_with_constraints(self, info: RequestInfo | None):
         actions: dict[str, SchedulerUpdateAction] = {
             name: const(self._state, info) for name, const in self.constraints.items()
         }

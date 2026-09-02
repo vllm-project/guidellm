@@ -510,23 +510,27 @@ class OverSaturationConstraint(Constraint):
         return is_concurrent_slope_positive and is_ttft_slope_positive
 
     def __call__(
-        self, state: SchedulerState, request_info: RequestInfo
+        self, state: SchedulerState, request_info: RequestInfo | None
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against current scheduler state.
 
         :param state: Current scheduler state.
-        :param request_info: Individual request information.
+        :param request_info: Individual request information, or ``None`` on poll
+            (does not record concurrent/TTFT samples).
         :return: Action indicating whether to continue or stop operations.
         """
         duration = time.time() - state.start_time
 
-        if request_info.status == "in_progress":
+        if request_info is not None and request_info.status == "in_progress":
             concurrent_requests = state.processing_requests
             self._add_started(
                 {"concurrent_requests": concurrent_requests, "duration": duration}
             )
-        elif request_info.status in ("first_token", "completed"):
+        elif request_info is not None and request_info.status in (
+            "first_token",
+            "completed",
+        ):
             if (
                 request_info.request_id not in self._ttft_reported_request_ids
                 and request_info.timings

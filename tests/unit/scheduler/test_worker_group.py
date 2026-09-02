@@ -9,8 +9,8 @@ from multiprocessing.context import BaseContext
 from multiprocessing.managers import BaseManager
 from multiprocessing.process import BaseProcess
 from multiprocessing.synchronize import Barrier, Event
-from typing import Any, Generic, Literal
-from unittest.mock import patch
+from typing import Any, Generic, Literal, cast
+from unittest.mock import Mock, patch
 
 import pytest
 from pydantic import Field
@@ -264,6 +264,61 @@ class TestWorkerProcessGroup:
         """Test WorkerProcessGroup initialization without required fields."""
         with pytest.raises(TypeError):
             WorkerProcessGroup()
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_request_updates_swallows_asyncio_timeout_error(self):
+        """Idle polls from asyncio.wait_for must not abort request_updates.
+
+        On Python 3.10, asyncio.TimeoutError is not builtin TimeoutError, so the
+        poll loop must catch the asyncio type that wait_for actually raises.
+
+        ## WRITTEN BY AI ##
+        """
+        group = WorkerProcessGroup(
+            requests=["req"],
+            backend=MockBackend(),
+            strategy=SynchronousStrategy(),
+        )
+        error_event = Mock()
+        error_event.is_set.return_value = False
+        shutdown_event = Mock()
+        shutdown_checks = 0
+
+        def shutdown_is_set() -> bool:
+            nonlocal shutdown_checks
+            shutdown_checks += 1
+            return shutdown_checks > 1
+
+        shutdown_event.is_set.side_effect = shutdown_is_set
+        group.error_event = error_event
+        group.shutdown_event = shutdown_event
+        group.constraint_reached_event = Mock()
+        group.constraint_reached_event.is_set.return_value = False
+        state_update = Mock()
+        state_update.stop_processing = False
+        state_update.stop_queueing = False
+        group.state = Mock()
+        group.state.update_state.return_value = state_update
+
+        payload = (None, "req", Mock(), Mock())
+        get_calls = 0
+
+        async def mock_get(*, timeout: float | None = None):
+            nonlocal get_calls
+            get_calls += 1
+            if get_calls == 2:
+                return payload
+            raise asyncio.TimeoutError
+
+        group.messaging = Mock()
+        group.messaging.get = mock_get
+
+        results = [update async for update in group.request_updates()]
+
+        assert results == [payload]
+        assert get_calls == 3
+        group.state.update_state.assert_called()
 
     @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke
@@ -649,3 +704,124 @@ class TestWorkerGroupStateDuplicateTerminalUpdate:
         assert state._state.errored_requests == 1
         assert state._state.pending_requests == 0
         assert "req-7" not in state._pending_request_ids
+
+
+class TestWorkerGroupStateUpdate:
+    @pytest.mark.smoke
+    def test_update_state_max_duration_without_request(self):
+        """Elapsed max_duration stops processing on a state-only update.
+
+        ## WRITTEN BY AI ##
+        """
+        start_time = time.time() - 10.0
+        constraint = MaxDurationConstraint(args=MaxDurationConstraintArgs(seconds=1.0))
+        group_state = WorkerGroupState(
+            start_time=start_time,
+            processes=[],
+            strategy=SynchronousStrategy(),
+            constraints={"max_duration": constraint},
+            stop_send_requests_event=threading.Event(),
+            send_requests_stopped_event=threading.Event(),
+            requests_generated_event=threading.Event(),
+            constraint_reached_event=threading.Event(),
+            shutdown_event=threading.Event(),
+            error_event=threading.Event(),
+            messaging=Mock(),
+        )
+        update = group_state.update_state()
+        assert update.stop_processing
+        assert update.stop_queueing
+        assert group_state._state.end_processing_time is not None
+        assert "max_duration" in group_state._state.end_processing_constraints
+
+
+class _HangUntilSignaledProcess:
+    """Process double that stays alive until terminate or kill is called."""
+
+    def __init__(self, *, die_on: str):
+        self.pid = 4242
+        self.exitcode: int | None = None
+        self._alive = True
+        self._die_on = die_on
+        self.terminate_calls = 0
+        self.kill_calls = 0
+        self.join_timeouts: list[float | None] = []
+
+    def is_alive(self) -> bool:
+        return self._alive
+
+    def join(self, timeout: float | None = None) -> None:
+        self.join_timeouts.append(timeout)
+        if not self._alive:
+            return
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+        if self._die_on == "terminate":
+            self._alive = False
+            self.exitcode = -15
+
+    def kill(self) -> None:
+        self.kill_calls += 1
+        if self._die_on == "kill":
+            self._alive = False
+            self.exitcode = -9
+
+
+class TestWorkerProcessGroupForcedShutdown:
+    """Shutdown must not block forever on workers that ignore the stop event."""
+
+    def _group_with_process(
+        self, proc: _HangUntilSignaledProcess
+    ) -> tuple[WorkerProcessGroup, Mock, Mock]:
+        group = WorkerProcessGroup(
+            requests=["req"],
+            backend=MockBackend(),
+            strategy=SynchronousStrategy(),
+        )
+        shutdown_event = Mock()
+        mp_manager = Mock()
+        group.processes = [cast("BaseProcess", proc)]
+        group.shutdown_event = shutdown_event
+        group.mp_manager = mp_manager
+        return group, shutdown_event, mp_manager
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(5.0)
+    async def test_shutdown_terminates_worker_that_ignores_join(self):
+        """Workers still alive after join timeout are SIGTERM'd.
+
+        ## WRITTEN BY AI ##
+        """
+        proc = _HangUntilSignaledProcess(die_on="terminate")
+        group, shutdown_event, mp_manager = self._group_with_process(proc)
+
+        exceptions = await group.shutdown()
+
+        assert exceptions == []
+        assert proc.terminate_calls == 1
+        assert proc.kill_calls == 0
+        assert proc.join_timeouts == [5.0, 2.0]
+        mp_manager.shutdown.assert_called_once()
+        shutdown_event.set.assert_called_once()
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(5.0)
+    async def test_shutdown_kills_worker_that_ignores_terminate(self):
+        """Workers that ignore SIGTERM are SIGKILL'd.
+
+        ## WRITTEN BY AI ##
+        """
+        proc = _HangUntilSignaledProcess(die_on="kill")
+        group, shutdown_event, mp_manager = self._group_with_process(proc)
+
+        exceptions = await group.shutdown()
+
+        assert exceptions == []
+        assert proc.terminate_calls == 1
+        assert proc.kill_calls == 1
+        assert proc.join_timeouts == [5.0, 2.0, 2.0]
+        mp_manager.shutdown.assert_called_once()
+        shutdown_event.set.assert_called_once()

@@ -1243,3 +1243,93 @@ class TestConstraintsInitializerFactory:
         action_exceeded = constraint(state_exceeded, request)
         assert action_exceeded.request_queuing == "stop"
         assert action_exceeded.request_processing == "stop_local"
+
+
+class TestConstraintNoneRequest:
+    """State-only constraint evaluation with request=None."""
+
+    @pytest.mark.smoke
+    def test_max_duration_accepts_none_request(self):
+        """max_duration can fire from scheduler state without a request.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = MaxDurationConstraint(args=MaxDurationConstraintArgs(seconds=1.0))
+        start_time = time.time() - 5.0
+        state = SchedulerState(node_id=0, num_processes=1, start_time=start_time)
+        action = constraint(state, None)
+        assert action.request_queuing == "stop"
+        assert action.request_processing == "stop_local"
+
+    @pytest.mark.smoke
+    def test_max_requests_accepts_none_request(self):
+        """max_requests evaluates counts with request=None.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = MaxNumberConstraint(args=MaxRequestsConstraintArgs(count=10))
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=time.time(),
+            created_requests=3,
+            processed_requests=3,
+        )
+        action = constraint(state, None)
+        assert action.request_queuing == "continue"
+        assert action.request_processing == "continue"
+
+    @pytest.mark.smoke
+    def test_max_errors_accepts_none_request(self):
+        """max_errors evaluates error counts with request=None.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = MaxErrorsConstraint(args=MaxErrorsConstraintArgs(count=5))
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=time.time(),
+            errored_requests=5,
+        )
+        action = constraint(state, None)
+        assert action.request_queuing == "stop"
+        assert action.request_processing == "stop_all"
+
+    @pytest.mark.smoke
+    def test_max_error_rate_none_request_does_not_record_sample(self):
+        """Poll rechecks must not append to the sliding error window.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = MaxErrorRateConstraint(
+            args=MaxErrorRateConstraintArgs(rate=0.5, window=5)
+        )
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=time.time(),
+            processed_requests=0,
+        )
+        constraint(state, None)
+        assert constraint.error_window == []
+
+    @pytest.mark.smoke
+    def test_max_global_error_rate_accepts_none_request(self):
+        """Global error rate evaluates from state with request=None.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = MaxGlobalErrorRateConstraint(
+            args=MaxGlobalErrorRateConstraintArgs(rate=0.5, minimum=1)
+        )
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=time.time(),
+            processed_requests=10,
+            errored_requests=1,
+        )
+        action = constraint(state, None)
+        assert action.request_queuing == "continue"
+        assert action.request_processing == "continue"

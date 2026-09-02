@@ -542,3 +542,25 @@ class TestSlopeChecker:
         slope_checker.add_data_point(3.0, 6.0)
         result = slope_checker.check_slope(3.0)
         # Might be True or False depending on confidence intervals
+
+
+class TestOverSaturationNoneRequest:
+    @pytest.mark.smoke
+    def test_none_request_does_not_record_samples(self):
+        """Poll rechecks must not record concurrent or TTFT samples.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = OverSaturationConstraint(
+            minimum_duration=0.0, minimum_window_size=3, mode="enforce"
+        )
+        start_time = time.time()
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=start_time,
+            processing_requests=4,
+        )
+        constraint(state, None)
+        assert constraint.started_requests == []
+        assert constraint.finished_requests == []

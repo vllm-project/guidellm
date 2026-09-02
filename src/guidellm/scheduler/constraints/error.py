@@ -8,7 +8,6 @@ when to stop benchmark execution due to excessive errors.
 
 from __future__ import annotations
 
-import time
 from typing import Literal, cast
 
 from pydantic import Field
@@ -25,7 +24,7 @@ from guidellm.schemas.scheduler.constraints import (
     MaxGlobalErrorRateConstraintArgs,
 )
 
-from .constraint import Constraint, PydanticConstraintInitializer
+from .constraint import Constraint, PydanticConstraintInitializer, constraint_stop_time
 from .factory import ConstraintsInitializerFactory
 
 __all__ = [
@@ -63,16 +62,15 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
         return cast("Constraint", self.model_copy())
 
     def __call__(
-        self, state: SchedulerState, request_info: RequestInfo
+        self, state: SchedulerState, request_info: RequestInfo | None
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against current error count.
 
         :param state: Current scheduler state with error counts
-        :param request_info: Individual request information (unused)
+        :param request_info: Individual request information, or ``None`` on poll
         :return: Action indicating whether to continue or stop operations
         """
-        _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_errors = (
             self.args.count
@@ -80,9 +78,7 @@ class MaxErrorsConstraint(PydanticConstraintInitializer):
             else self.args.count[min(current_index, len(self.args.count) - 1)]
         )
         errors_exceeded = state.errored_requests >= max_errors
-        stop_time = (
-            None if not errors_exceeded else request_info.completed_at or time.time()
-        )
+        stop_time = constraint_stop_time(request_info, stopped=errors_exceeded)
 
         return SchedulerUpdateAction(
             request_queuing="stop" if errors_exceeded else "continue",
@@ -133,13 +129,14 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         return cast("Constraint", self.model_copy())
 
     def __call__(
-        self, state: SchedulerState, request_info: RequestInfo
+        self, state: SchedulerState, request_info: RequestInfo | None
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against sliding window error rate.
 
         :param state: Current scheduler state with request counts
-        :param request_info: Individual request with completion status
+        :param request_info: Individual request with completion status, or ``None``
+            on poll (does not record a window sample)
         :return: Action indicating whether to continue or stop operations
         """
         current_index = max(0, self.current_index)
@@ -149,7 +146,11 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
             else self.args.rate[min(current_index, len(self.args.rate) - 1)]
         )
 
-        if request_info.status in ["completed", "errored", "cancelled"]:
+        if request_info is not None and request_info.status in [
+            "completed",
+            "errored",
+            "cancelled",
+        ]:
             self.error_window.append(request_info.status == "errored")
             if len(self.error_window) > self.args.window:
                 self.error_window.pop(0)
@@ -162,7 +163,7 @@ class MaxErrorRateConstraint(PydanticConstraintInitializer):
         exceeded_min_processed = state.processed_requests >= self.args.window
         exceeded_error_rate = error_rate >= max_error_rate
         exceeded = exceeded_min_processed and exceeded_error_rate
-        stop_time = None if not exceeded else request_info.completed_at or time.time()
+        stop_time = constraint_stop_time(request_info, stopped=exceeded)
 
         return SchedulerUpdateAction(
             request_queuing="stop" if exceeded else "continue",
@@ -214,16 +215,15 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
         return cast("Constraint", self.model_copy())
 
     def __call__(
-        self, state: SchedulerState, request_info: RequestInfo
+        self, state: SchedulerState, request_info: RequestInfo | None
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against global error rate.
 
         :param state: Current scheduler state with global request and error counts
-        :param request_info: Individual request information (unused)
+        :param request_info: Individual request information, or ``None`` on poll
         :return: Action indicating whether to continue or stop operations
         """
-        _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_error_rate = (
             self.args.rate
@@ -241,7 +241,7 @@ class MaxGlobalErrorRateConstraint(PydanticConstraintInitializer):
         )
         exceeded_error_rate = error_rate >= max_error_rate
         exceeded = exceeded_min_processed and exceeded_error_rate
-        stop_time = None if not exceeded else request_info.completed_at or time.time()
+        stop_time = constraint_stop_time(request_info, stopped=exceeded)
 
         return SchedulerUpdateAction(
             request_queuing="stop" if exceeded else "continue",

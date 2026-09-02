@@ -32,6 +32,7 @@ Example:
 
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Literal, Protocol, runtime_checkable
 
@@ -47,7 +48,25 @@ __all__ = [
     "PydanticConstraintInitializer",
     "SerializableConstraintInitializer",
     "UnserializableConstraintInitializer",
+    "constraint_stop_time",
 ]
+
+
+def constraint_stop_time(request: RequestInfo | None, *, stopped: bool) -> float | None:
+    """Return ``stop_time`` when a constraint has triggered.
+
+    Uses the request's ``completed_at`` when a real request is present;
+    otherwise wall-clock now (state-only rechecks during scheduler polls).
+
+    :param request: Request that triggered evaluation, or ``None`` on poll
+    :param stopped: Whether the constraint is currently stopping execution
+    :return: Stop timestamp, or ``None`` if the constraint has not triggered
+    """
+    if not stopped:
+        return None
+    if request is not None and request.completed_at is not None:
+        return request.completed_at
+    return time.time()
 
 
 @runtime_checkable
@@ -64,7 +83,7 @@ class Constraint(Protocol):
     Example:
     ::
         def my_constraint(
-            state: SchedulerState, request: RequestInfo
+            state: SchedulerState, request: RequestInfo | None
         ) -> SchedulerUpdateAction:
             if state.processing_requests > 100:
                 return SchedulerUpdateAction(request_queuing="stop")
@@ -72,13 +91,14 @@ class Constraint(Protocol):
     """
 
     def __call__(
-        self, state: SchedulerState, request: RequestInfo
+        self, state: SchedulerState, request: RequestInfo | None
     ) -> SchedulerUpdateAction:
         """
-        Evaluate constraint against scheduler state and request information.
+        Evaluate constraint against scheduler state and optional request information.
 
         :param state: Current scheduler state with metrics and timing information
-        :param request: Individual request information and metadata
+        :param request: Individual request metadata, or ``None`` for a state-only
+            recheck (for example the coordinator poll loop)
         :return: Action indicating whether to continue or stop scheduler operations
         """
 
@@ -264,7 +284,7 @@ class UnserializableConstraintInitializer(PydanticConstraintInitializer):
         )
 
     def __call__(
-        self, state: SchedulerState, request: RequestInfo
+        self, state: SchedulerState, request: RequestInfo | None
     ) -> SchedulerUpdateAction:
         """
         Raise error since unserializable constraints cannot be invoked.
