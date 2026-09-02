@@ -142,7 +142,7 @@ You will see progress updates and per-benchmark summaries during the run, as giv
 
 ### Inspect Outputs
 
-After the benchmark completes, GuideLLM saves all results into the output directory you specified (default: the current directory). You'll see a summary printed in the console along with a set of file locations (`.json,` `.csv`, `.html`) that contain the full results of the run.
+After the benchmark completes, GuideLLM saves JSON and CSV results into the output directory you specified (default: the current directory). You'll see a summary printed in the console along with the generated file locations. An HTML report is optional and must be requested explicitly with `--output kind=html,path=benchmarks.html`.
 
 The following section, **Output Files and Reports**, explains what each file contains and how to use them for analysis, visualization, or automation.
 
@@ -160,13 +160,13 @@ The console provides a lightweight summary with high-level statistics for each b
 
 This file is the authoritative record of the entire benchmark session. It includes configuration, metadata, per-benchmark statistics, and sample request entries with individual request timings. Use it for debugging, deeper analysis, or loading into Python with `GenerativeBenchmarksReport`.
 
-Alternatively, a YAML version of this file can be generated for easier human readability with the same content as `benchmarks.json` using `--output yaml "path=benchmarks.yaml"`.
+Alternatively, a YAML version of this file can be generated for easier human readability with the same content as `benchmarks.json` using `--output kind=yaml,path=benchmarks.yaml`.
 
 **benchmarks.csv**
 
 This file provides a compact tabular view of each benchmark with the fields most commonly used for reporting—throughput, latency percentiles, token counts, and rate information. It opens cleanly in spreadsheets and BI tools and is well-suited for comparisons across runs.
 
-**benchmarks.html**
+**benchmarks.html** (optional)
 
 A self-contained HTML report with charts and tables for throughput and latency (emphasizing P95/P99). The file embeds its own CSS and JavaScript, so it can be shared without network access or a versioned UI dependency.
 
