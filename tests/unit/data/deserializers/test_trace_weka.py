@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
@@ -16,7 +17,8 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
 )
-from guidellm.schemas.data import WEKATraceFormatArgs
+from guidellm.schemas.data import DEFAULT_SYNTHETIC_TOOLS, WEKATraceFormatArgs
+from guidellm.settings import settings
 
 
 def ascending_processor() -> Mock:
@@ -144,6 +146,11 @@ class TestWEKATraceFormat:
                 "output_tokens_column",
                 "hash_ids_column",
                 "hash_id_block_size",
+                "tools",
+                "tool_response_tokens",
+                "tool_response_tokens_stdev",
+                "tool_response_tokens_min",
+                "tool_response_tokens_max",
             ),
             kwargs,
         )
@@ -670,6 +677,139 @@ class TestWEKATraceFormat:
         }
 
     @pytest.mark.sanity
+    def test_nested_subagent_preserves_file_order(self, tmp_path: Path, deserializer):
+        """A nested subagent spawns from the preceding inner API row.
+
+        Inner timestamps that would sort the nested group first must not
+        move it; file order is topology at every nesting level.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {"t": 0.0, "in": 10, "out": 5, "hash_ids": []},
+                        {
+                            "t": 1.0,
+                            "type": "subagent",
+                            "agent_id": "explore",
+                            "requests": [
+                                {"t": 10.0, "in": 8, "out": 2, "hash_ids": []},
+                                {
+                                    "t": 1.0,
+                                    "type": "subagent",
+                                    "agent_id": "nested",
+                                    "requests": [
+                                        {"t": 1.0, "in": 6, "out": 2, "hash_ids": []},
+                                    ],
+                                },
+                                {"t": 11.0, "in": 8, "out": 2, "hash_ids": []},
+                            ],
+                        },
+                        {"t": 20.0, "in": 12, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert set(turns) == {"main_0", "sa_0_0", "sa_1_0", "sa_0_1", "main_1"}
+        assert turns["sa_0_0"].agent_id == "explore"
+        assert turns["sa_1_0"].agent_id == "nested"
+        assert turns["sa_0_0"].parents[0].parent_node_id == "main_0"
+        assert turns["sa_0_0"].parents[0].history_context == "new"
+        assert turns["sa_1_0"].parents[0].parent_node_id == "sa_0_0"
+        assert turns["sa_1_0"].parents[0].history_context == "new"
+        sa_0_1_parents = {
+            parent.parent_node_id: parent.history_context
+            for parent in turns["sa_0_1"].parents
+        }
+        assert sa_0_1_parents == {"sa_0_0": "full", "sa_1_0": "last"}
+        main_1_parents = {
+            parent.parent_node_id: parent.history_context
+            for parent in turns["main_1"].parents
+        }
+        assert main_1_parents == {"main_0": "full", "sa_0_1": "last"}
+
+    @pytest.mark.sanity
+    def test_empty_inner_subagent_requests_are_skipped(
+        self, tmp_path: Path, deserializer
+    ):
+        """A subagent group with no inner API rows is omitted.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {"t": 0.0, "in": 10, "out": 5, "hash_ids": []},
+                        {
+                            "t": 1.0,
+                            "type": "subagent",
+                            "agent_id": "explore",
+                            "requests": [],
+                        },
+                        {"t": 2.0, "in": 12, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert set(turns) == {"main_0", "main_1"}
+        assert [parent.parent_node_id for parent in turns["main_1"].parents] == [
+            "main_0"
+        ]
+
+    @pytest.mark.sanity
+    @patch("guidellm.data.deserializers.trace_weka.logger")
+    def test_subagent_without_preceding_parent_is_independent_root(
+        self, mock_logger, tmp_path: Path, deserializer
+    ):
+        """A leading subagent is replayed as a root and the next parent joins it.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {
+                            "t": 1.0,
+                            "type": "subagent",
+                            "agent_id": "explore",
+                            "requests": [
+                                {"t": 0.0, "in": 8, "out": 2, "hash_ids": []},
+                            ],
+                        },
+                        {"t": 10.0, "in": 12, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert turns["sa_0_0"].parents == []
+        main_parents = {
+            parent.parent_node_id: parent.history_context
+            for parent in turns["main_0"].parents
+        }
+        assert main_parents == {"sa_0_0": "last"}
+        messages = [
+            call.args[0].format(*call.args[1:]) if call.args else ""
+            for call in mock_logger.warning.call_args_list
+        ]
+        assert any("no preceding parent turn" in message for message in messages)
+
+    @pytest.mark.sanity
     def test_inner_timestamps_relative_to_spawn(self, tmp_path: Path, deserializer):
         """Inner t smaller than spawn t is treated as relative to spawn.
 
@@ -844,3 +984,517 @@ class TestWEKATraceFormat:
             for call in mock_logger.debug.call_args_list
         ]
         assert not any("overlapping requests" in message for message in messages)
+
+    @pytest.mark.smoke
+    def test_tool_use_then_tool_result_maps_to_call_and_injection(
+        self, tmp_path: Path, deserializer
+    ):
+        """stop=tool_use then input_types=tool_result become call then injection.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {
+                            "t": 0.0,
+                            "in": 10,
+                            "out": 5,
+                            "hash_ids": [],
+                            "stop": "tool_use",
+                            "input_types": ["text"],
+                        },
+                        {
+                            "t": 1.0,
+                            "in": 12,
+                            "out": 8,
+                            "hash_ids": [],
+                            "stop": "end_turn",
+                            "input_types": ["tool_result"],
+                        },
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert set(turns) == {"main_0", "main_1"}
+        assert turns["main_0"].columns["turn_type_column"] == ["client_tool_call"]
+        assert json.loads(turns["main_0"].columns["tools_column"][0]) == (
+            DEFAULT_SYNTHETIC_TOOLS
+        )
+        assert "tool_response_column" not in turns["main_0"].columns
+        assert turns["main_1"].columns["turn_type_column"] == [
+            "tool_response_injection"
+        ]
+        assert turns["main_1"].columns["tool_response_column"] == [
+            settings.default_synthetic_tool_response
+        ]
+        assert "tools_column" not in turns["main_1"].columns
+
+    @pytest.mark.smoke
+    def test_tool_result_with_tool_use_stop_keeps_tools_on_injection(
+        self, tmp_path: Path, deserializer
+    ):
+        """tool_result + stop=tool_use is an injection that still carries tools.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {
+                            "t": 0.0,
+                            "in": 10,
+                            "out": 5,
+                            "hash_ids": [],
+                            "stop": "tool_use",
+                            "input_types": ["text"],
+                        },
+                        {
+                            "t": 1.0,
+                            "in": 12,
+                            "out": 5,
+                            "hash_ids": [],
+                            "stop": "tool_use",
+                            "input_types": ["tool_result"],
+                        },
+                        {
+                            "t": 2.0,
+                            "in": 14,
+                            "out": 5,
+                            "hash_ids": [],
+                            "stop": "end_turn",
+                            "input_types": ["tool_result"],
+                        },
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert set(turns) == {"main_0", "main_1", "main_2"}
+        assert turns["main_0"].columns["turn_type_column"] == ["client_tool_call"]
+        assert turns["main_1"].columns["turn_type_column"] == [
+            "tool_response_injection"
+        ]
+        assert "tools_column" in turns["main_1"].columns
+        assert turns["main_1"].columns["tool_response_column"] == [
+            settings.default_synthetic_tool_response
+        ]
+        assert turns["main_2"].columns["turn_type_column"] == [
+            "tool_response_injection"
+        ]
+        assert "tools_column" not in turns["main_2"].columns
+
+    @pytest.mark.sanity
+    def test_tool_result_fallback_from_previous_stop(
+        self, tmp_path: Path, deserializer
+    ):
+        """After stop=tool_use, a row without input_types is treated as injection.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {
+                            "t": 0.0,
+                            "in": 10,
+                            "out": 5,
+                            "hash_ids": [],
+                            "stop": "tool_use",
+                        },
+                        {
+                            "t": 1.0,
+                            "in": 12,
+                            "out": 5,
+                            "hash_ids": [],
+                            "stop": "end_turn",
+                        },
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert turns["main_0"].columns["turn_type_column"] == ["client_tool_call"]
+        assert turns["main_1"].columns["turn_type_column"] == [
+            "tool_response_injection"
+        ]
+
+    @pytest.mark.sanity
+    def test_trailing_unpaired_tool_use_does_not_invent_injection(
+        self, tmp_path: Path, deserializer
+    ):
+        """A last-row tool_use stays a single client_tool_call with no extra node.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {
+                            "t": 0.0,
+                            "in": 10,
+                            "out": 5,
+                            "hash_ids": [],
+                            "stop": "end_turn",
+                            "input_types": ["text"],
+                        },
+                        {
+                            "t": 1.0,
+                            "in": 12,
+                            "out": 5,
+                            "hash_ids": [],
+                            "stop": "tool_use",
+                            "input_types": ["text"],
+                        },
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert set(turns) == {"main_0", "main_1"}
+        assert "turn_type_column" not in turns["main_0"].columns
+        assert turns["main_1"].columns["turn_type_column"] == ["client_tool_call"]
+        assert "tool_response_column" not in turns["main_1"].columns
+
+    @pytest.mark.sanity
+    def test_end_turn_stays_standard(self, tmp_path: Path, deserializer):
+        """stop=end_turn with text input does not set a tool-call turn type.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {
+                            "t": 0.0,
+                            "in": 10,
+                            "out": 5,
+                            "hash_ids": [],
+                            "stop": "end_turn",
+                            "input_types": ["text"],
+                        },
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert "turn_type_column" not in turns["main_0"].columns
+        assert "tools_column" not in turns["main_0"].columns
+
+    @pytest.mark.sanity
+    def test_subagent_inner_tool_use_is_classified(self, tmp_path: Path, deserializer):
+        """Subagent inner stop=tool_use maps onto client_tool_call + injection.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {"t": 0.0, "in": 10, "out": 5, "hash_ids": []},
+                        {
+                            "t": 1.0,
+                            "type": "subagent",
+                            "agent_id": "explore",
+                            "requests": [
+                                {
+                                    "t": 0.0,
+                                    "in": 8,
+                                    "out": 2,
+                                    "hash_ids": [],
+                                    "stop": "tool_use",
+                                    "input_types": ["text"],
+                                },
+                                {
+                                    "t": 0.5,
+                                    "in": 8,
+                                    "out": 2,
+                                    "hash_ids": [],
+                                    "stop": "end_turn",
+                                    "input_types": ["tool_result"],
+                                },
+                            ],
+                        },
+                        {"t": 10.0, "in": 12, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert turns["sa_0_0"].columns["turn_type_column"] == ["client_tool_call"]
+        assert turns["sa_0_1"].columns["turn_type_column"] == [
+            "tool_response_injection"
+        ]
+        assert "turn_type_column" not in turns["main_0"].columns
+        assert "turn_type_column" not in turns["main_1"].columns
+
+    @pytest.mark.sanity
+    def test_legacy_rows_without_stop_or_input_types_unchanged(
+        self, tmp_path: Path, deserializer
+    ):
+        """Rows missing stop and input_types stay standard text turns.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {"t": 0.0, "in": 10, "out": 5, "hash_ids": []},
+                        {"t": 1.0, "in": 12, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = load_graph_turns(next(iter(ds)))
+        assert len(turns) == 2
+        for turn in turns:
+            assert "turn_type_column" not in turn.columns
+            assert "tools_column" not in turn.columns
+            assert "tool_response_column" not in turn.columns
+
+    @pytest.mark.sanity
+    def test_custom_tools_used_instead_of_default(self, tmp_path: Path, deserializer):
+        """User-provided tools are attached instead of the placeholder schema.
+
+        ## WRITTEN BY AI ##
+        """
+        custom_tools = [{"type": "function", "function": {"name": "custom_fn"}}]
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {
+                            "t": 0.0,
+                            "in": 10,
+                            "out": 5,
+                            "hash_ids": [],
+                            "stop": "tool_use",
+                            "input_types": ["text"],
+                        },
+                        {
+                            "t": 1.0,
+                            "in": 12,
+                            "out": 8,
+                            "hash_ids": [],
+                            "stop": "end_turn",
+                            "input_types": ["tool_result"],
+                        },
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace, tools=custom_tools)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert json.loads(turns["main_0"].columns["tools_column"][0]) == custom_tools
+        assert turns["main_1"].columns["tool_response_column"] == [
+            settings.default_synthetic_tool_response
+        ]
+
+    @pytest.mark.sanity
+    def test_tool_response_tokens_sizes_injection(self, tmp_path: Path, deserializer):
+        """tool_response_tokens generates a sized mock result like synthetic data.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {
+                            "t": 0.0,
+                            "in": 10,
+                            "out": 5,
+                            "hash_ids": [],
+                            "stop": "tool_use",
+                            "input_types": ["text"],
+                        },
+                        {
+                            "t": 1.0,
+                            "in": 12,
+                            "out": 8,
+                            "hash_ids": [],
+                            "stop": "end_turn",
+                            "input_types": ["tool_result"],
+                        },
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace, tool_response_tokens=8)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        raw = turns["main_1"].columns["tool_response_column"][0]
+        assert raw != settings.default_synthetic_tool_response
+        payload = json.loads(raw)
+        assert "result" in payload
+        assert payload["result"]
+
+    @pytest.mark.regression
+    def test_optional_nested_request_fields_do_not_fail_load(
+        self, tmp_path: Path, deserializer
+    ):
+        """Conversations whose requests add optional fields still deserialize.
+
+        Published WEKA dumps mix API and subagent objects in ``requests``
+        and only some API rows include ``ttft``. HuggingFace's json loader
+        infers schema from the first chunk and then fails to cast.
+
+        ## WRITTEN BY AI ##
+        """
+        conv_without_ttft = {
+            "id": "conv0",
+            "requests": [
+                {
+                    "t": 0.0,
+                    "type": "api",
+                    "model": "m",
+                    "in": 10,
+                    "out": 5,
+                    "hash_ids": [],
+                    "input_types": ["text"],
+                    "stop": "end_turn",
+                    "api_time": 0.1,
+                    "think_time": 0.0,
+                },
+                {
+                    "t": 1.0,
+                    "type": "subagent",
+                    "agent_id": "explore",
+                    "subagent_type": "explore",
+                    "duration_ms": 10,
+                    "total_tokens": 3,
+                    "tool_use_count": 0,
+                    "status": "ok",
+                    "requests": [
+                        {
+                            "t": 0.0,
+                            "type": "api",
+                            "in": 8,
+                            "out": 2,
+                            "hash_ids": [],
+                            "stop": "end_turn",
+                        }
+                    ],
+                    "models": ["m"],
+                    "tool_tokens": 1,
+                    "system_tokens": 2,
+                },
+                {"t": 2.0, "in": 12, "out": 5, "hash_ids": []},
+            ],
+        }
+        conv_with_ttft = {
+            "id": "conv1",
+            "requests": [
+                {
+                    "t": 3.0,
+                    "type": "api",
+                    "model": "m",
+                    "in": 10,
+                    "out": 5,
+                    "hash_ids": [],
+                    "input_types": ["text"],
+                    "stop": "end_turn",
+                    "api_time": 0.1,
+                    "think_time": 0.0,
+                    "ttft": 0.05,
+                }
+            ],
+        }
+        trace = write_trace(
+            tmp_path,
+            "\n".join(json.dumps(row) for row in (conv_without_ttft, conv_with_ttft))
+            + "\n",
+        )
+        ds = self.deserialize(deserializer, trace)
+        rows = list(ds)
+        assert len(rows) == 2
+        assert len(load_graph_turns(rows[0])) == 3
+        assert len(load_graph_turns(rows[1])) == 1
+
+
+class TestWEKATraceFormatArgsTools:
+    """Validate WEKA tools and tool_response_tokens fields.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_defaults_use_placeholder_tools(self, tmp_path: Path):
+        """Unset tools falls back to the synthetic placeholder at replay time.
+
+        ## WRITTEN BY AI ##
+        """
+        config = WEKATraceFormatArgs(path=tmp_path)
+        assert config.tools is None
+        assert config.tool_response_tokens is None
+
+    @pytest.mark.sanity
+    def test_custom_tools_accepted(self, tmp_path: Path):
+        """Custom OpenAI-format tools are stored on the config.
+
+        ## WRITTEN BY AI ##
+        """
+        custom_tools = [{"type": "function", "function": {"name": "my_func"}}]
+        config = WEKATraceFormatArgs(path=tmp_path, tools=custom_tools)
+        assert config.tools == custom_tools
+
+    @pytest.mark.sanity
+    def test_tools_json_string_coerced(self, tmp_path: Path):
+        """CLI JSON strings coerce to a list of tool dicts.
+
+        ## WRITTEN BY AI ##
+        """
+        config = WEKATraceFormatArgs(
+            path=tmp_path,
+            tools='[{"type":"function","function":{"name":"from_json"}}]',
+        )
+        assert config.tools == [{"type": "function", "function": {"name": "from_json"}}]
+
+    @pytest.mark.sanity
+    def test_tools_rejects_non_list(self, tmp_path: Path):
+        """Non-list tools values are rejected.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError, match="tools must be a list"):
+            WEKATraceFormatArgs(path=tmp_path, tools={"name": "bad"})  # type: ignore[arg-type]
+
+    @pytest.mark.sanity
+    def test_tool_response_tokens_require_mean(self, tmp_path: Path):
+        """Distribution knobs require tool_response_tokens.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError, match="tool_response_tokens must be set"):
+            WEKATraceFormatArgs(path=tmp_path, tool_response_tokens_stdev=1)

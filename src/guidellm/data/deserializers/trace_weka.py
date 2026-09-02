@@ -11,13 +11,15 @@ When the conversation ends, the next conversation will be used.
 
 Declared ``type: "subagent"`` groups are replayed as isolated child
 chains that spawn from the preceding parent turn and join the following
-parent turn. Tool call events (``stop: tool_use``) are still missing.
+parent turn. ``stop: tool_use`` and ``input_types: tool_result`` map
+onto the existing client tool-call columns (``turn_type``, ``tools``,
+``tool_response``).
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -33,8 +35,7 @@ from guidellm.data.deserializers.trace_common import (
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
-    _raise_if_incorrect_types,
-    _raise_if_nonetype_found,
+    _validate_api_conversation,
     create_distinct_token_block,
     create_prompt_from_hash_ids,
     decode_prompt,
@@ -48,7 +49,14 @@ from guidellm.data.schemas.conversation_graph_data import (
 )
 from guidellm.logger import logger
 from guidellm.scheduler.schemas import HistoryContext
-from guidellm.schemas.data.deserializers import WEKATraceFormatArgs
+from guidellm.schemas import TurnType
+from guidellm.schemas.data.deserializers import (
+    DEFAULT_SYNTHETIC_TOOLS,
+    WEKATraceFormatArgs,
+)
+from guidellm.settings import settings
+from guidellm.utils.imports import json
+from guidellm.utils.random import IntegerRangeSampler
 
 __all__ = ["WEKATraceFormat"]
 
@@ -131,6 +139,53 @@ def _copy_api_row(row: dict[str, Any], hash_ids_column: str) -> dict[str, Any]:
     return copied
 
 
+def _weka_stop_reason(row: dict[str, Any]) -> str:
+    stop = row.get("stop")
+    return stop if isinstance(stop, str) else ""
+
+
+def _weka_input_types(row: dict[str, Any]) -> list[Any]:
+    raw = row.get("input_types")
+    return list(raw) if isinstance(raw, list) else []
+
+
+def _serialized_tools(tools: list[dict[str, Any]] | None) -> str:
+    raw = json.dumps(tools or DEFAULT_SYNTHETIC_TOOLS)
+    return raw.decode() if isinstance(raw, bytes) else raw
+
+
+def _classify_weka_tool_turn(
+    row: dict[str, Any], prev_stop: str | None
+) -> tuple[TurnType | None, bool, bool]:
+    """Map a WEKA API row onto GuideLLM tool-call columns.
+
+    Each row is one HTTP request. ``stop`` is the model output; ``input_types``
+    is what the client added. A ``tool_result`` row is therefore an injection
+    for the previous row's tool calls, even when that same row also has
+    ``stop: tool_use`` (Claude Code multi-step loop). ``tools_column`` on an
+    injection only changes the expected output (``tool_choice=required``).
+
+    When ``input_types`` is absent, a row after ``stop: tool_use`` on the same
+    agent chain is treated as ``tool_result``. Explicit ``input_types: ["text"]``
+    is not.
+
+    :return: ``(turn_type, include_tools, include_tool_response)``. ``turn_type``
+        is ``None`` for ordinary text turns.
+    """
+    input_types = _weka_input_types(row)
+    stop = _weka_stop_reason(row)
+    is_tool_call = stop == "tool_use"
+    is_tool_result = "tool_result" in input_types
+    if not is_tool_result and not input_types and prev_stop == "tool_use":
+        is_tool_result = True
+
+    if is_tool_result:
+        return "tool_response_injection", is_tool_call, True
+    if is_tool_call:
+        return "client_tool_call", True, False
+    return None, False, False
+
+
 @dataclass
 class _TurnSpec:
     node_id: str
@@ -138,6 +193,9 @@ class _TurnSpec:
     parents: list[ConversationParentRef]
     row: dict[str, Any]
     absolute_t: float
+    turn_type: TurnType | None = None
+    include_tools: bool = False
+    include_tool_response: bool = False
 
 
 DatasetDeserializerFactory.register_decorator(TraceDatasetDeserializer, "weka")
@@ -160,6 +218,14 @@ class WEKATraceFormat(TraceFormatBase):
     subagents between the same parent turns run in parallel; the following
     parent waits for all of them.
 
+    ``stop: "tool_use"`` and ``input_types: ["tool_result"]`` map onto the
+    existing client tool-call pipeline. Tool schemas and results are not in
+    the trace (anonymized); pass ``tools`` / ``tool_response_tokens`` like
+    synthetic data, or the default placeholder schema and response are used.
+    A ``tool_result`` row that also has ``stop: "tool_use"`` is still an
+    injection on the input side and carries ``tools_column`` so the model
+    may emit further tool calls.
+
     For more details, see [the WEKA trace format specification][trace-spec].
 
     [trace-spec]: https://github.com/callanjfox/agentic-coding-analysis/blob/master/docs/TRACE_FORMAT.md
@@ -175,6 +241,8 @@ class WEKATraceFormat(TraceFormatBase):
         # Filled by each ``__iter__`` pass so mixed subagent/API schemas are
         # not forced through a single HuggingFace Arrow table.
         self._conversation_queue: list[tuple[str, list[dict[str, Any]]]] = []
+        self._tools_json = _serialized_tools(config.tools)
+        self._tool_response_sampler: Iterator[int] | None = None
         self.requests_col = _find_requests_column(dataset)
         if self.requests_col is None:
             raise DataNotSupportedError(
@@ -185,8 +253,8 @@ class WEKATraceFormat(TraceFormatBase):
         self._conversation_queue = []
         for row in self.dataset:
             conv_id = str(row[self.config.conversation_id_column])
-            # Preserve file order: outer request order is the spawn/join
-            # topology. Do not sort by timestamp.
+            # File order is spawn/join topology for every request list,
+            # including nested subagent groups. Do not sort by timestamp.
             requests = [dict(item) for item in row[self.requests_col]]
             index = len(self._conversation_queue)
             self._conversation_queue.append((conv_id, requests))
@@ -205,7 +273,8 @@ class WEKATraceFormat(TraceFormatBase):
         )
 
     def find_required_columns(self, columns: list[str]) -> list[str]:
-        """TODO: Handle edge cases"""
+        # Only the first API row is searchable here. Missing fields on later
+        # conversations are rejected in validate_conversation.
         conv_col = self.config.conversation_id_column
         if conv_col not in self.dataset.column_names:
             return [self.config.conversation_id_column]
@@ -242,26 +311,12 @@ class WEKATraceFormat(TraceFormatBase):
             raise DataNotSupportedError(
                 "WEKA format: conversation has no API requests to replay"
             )
-        features = Features(
-            {
-                self.config.timestamp_column: Value("float"),
-                self.config.prompt_tokens_column: Value("int32"),
-                self.config.output_tokens_column: Value("int32"),
-                self.config.hash_ids_column: List(Value("int32")),
-            }
+        _validate_api_conversation(
+            Dataset.from_list(api_rows),
+            self.config,
+            self.required_columns(),
+            self.validate_row,
         )
-        api_dataset = Dataset.from_list(api_rows)
-        _raise_if_nonetype_found(api_dataset, features)
-        _raise_if_incorrect_types(api_dataset, features)
-        for row in api_rows:
-            n_in = row[self.config.prompt_tokens_column]
-            n_out = row[self.config.output_tokens_column]
-            if n_in < 0 or n_out < 0:
-                raise DataNotSupportedError(
-                    f"Trace token counts must be non-negative, got "
-                    f"input_length={n_in}, output_length={n_out}"
-                )
-            self.validate_row(row)
 
     def create_prompt(
         self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
@@ -322,7 +377,7 @@ class WEKATraceFormat(TraceFormatBase):
         turns: list[ConversationTurnData] = []
         for spec in specs:
             prompt = self.create_prompt(spec.row, processor, faker)
-            columns = {
+            columns: dict[str, Any] = {
                 "text_column": [prompt],
                 "prompt_tokens_count_column": [
                     spec.row[self.config.prompt_tokens_column]
@@ -332,6 +387,14 @@ class WEKATraceFormat(TraceFormatBase):
                 ],
                 "relative_timestamp_column": [spec.absolute_t - min_t],
             }
+            if spec.turn_type is not None:
+                columns["turn_type_column"] = [spec.turn_type]
+            if spec.include_tools:
+                columns["tools_column"] = [self._tools_json]
+            if spec.include_tool_response:
+                columns["tool_response_column"] = [
+                    self._tool_response_text(processor, faker)
+                ]
             turns.append(
                 ConversationTurnData(
                     node_id=spec.node_id,
@@ -341,6 +404,32 @@ class WEKATraceFormat(TraceFormatBase):
                 )
             )
         return ConversationGraphData(turns=turns)
+
+    def _tool_response_text(
+        self, processor: PreTrainedTokenizerBase, faker: Faker
+    ) -> str:
+        """Build the mocked tool result for an injection turn.
+
+        Matches synthetic data: ``tool_response_tokens`` sizes a ``{"result": ...}``
+        payload; otherwise the global placeholder is used.
+        """
+        if self.config.tool_response_tokens is None:
+            return settings.default_synthetic_tool_response
+        if self._tool_response_sampler is None:
+            self._tool_response_sampler = iter(
+                IntegerRangeSampler(
+                    average=self.config.tool_response_tokens,
+                    variance=self.config.tool_response_tokens_stdev,
+                    min_value=self.config.tool_response_tokens_min,
+                    max_value=self.config.tool_response_tokens_max,
+                    random_seed=faker.random.getrandbits(32),
+                )
+            )
+        body = _generate_remaining_prompt(
+            next(self._tool_response_sampler), processor, faker
+        )
+        raw = json.dumps({"result": body})
+        return raw.decode() if isinstance(raw, bytes) else raw
 
     def _unpack_conversation(
         self, conversation: Dataset
@@ -376,11 +465,13 @@ class WEKATraceFormat(TraceFormatBase):
     ) -> tuple[list[_TurnSpec], str | None]:
         """Walk a request list into turn specs for one agent plus its children.
 
-        API rows continue this agent's chain. ``type: "subagent"`` groups
-        spawn a sibling chain from the latest API turn of this agent
-        (``history_context="new"``). The next API turn of this agent joins
-        every pending sibling (``history_context="last"``), so multiple
-        subagents between the same parent turns run in parallel.
+        File order is spawn/join topology. API rows continue this agent's
+        chain. ``type: "subagent"`` groups spawn a sibling chain from the
+        latest API turn of this agent (``history_context="new"``). The next
+        API turn of this agent joins every pending sibling
+        (``history_context="last"``), so multiple subagents between the same
+        parent turns run in parallel. Nested subagent groups keep the same
+        rule against the inner list.
         """
         ts_col = self.config.timestamp_column
         specs: list[_TurnSpec] = []
@@ -388,13 +479,16 @@ class WEKATraceFormat(TraceFormatBase):
         last_chain_id: str | None = None
         chain_idx = 0
         chain_events: list[tuple[float, float | None]] = []
+        # Previous API row's stop on this chain only. Subagent children are
+        # interleaved in the flattened spec list, so classification cannot
+        # use that list's adjacency.
+        prev_stop: str | None = None
 
         for item in requests:
             if _is_subagent_entry(item):
                 inner = [dict(row) for row in (item.get("requests") or [])]
                 if not inner:
                     continue
-                inner.sort(key=lambda row: float(row[ts_col]))
                 spawn_id = spawn_seq[0]
                 spawn_seq[0] += 1
                 child_agent = str(item.get("agent_id") or f"sa_{spawn_id}")
@@ -446,6 +540,9 @@ class WEKATraceFormat(TraceFormatBase):
 
             abs_t = t_transform(float(item[ts_col]))
             node_id = f"{node_prefix}_{chain_idx}"
+            turn_type, include_tools, include_tool_response = _classify_weka_tool_turn(
+                item, prev_stop
+            )
             specs.append(
                 _TurnSpec(
                     node_id=node_id,
@@ -453,11 +550,15 @@ class WEKATraceFormat(TraceFormatBase):
                     parents=parents,
                     row=_copy_api_row(item, self.config.hash_ids_column),
                     absolute_t=abs_t,
+                    turn_type=turn_type,
+                    include_tools=include_tools,
+                    include_tool_response=include_tool_response,
                 )
             )
             last_chain_id = node_id
             chain_idx += 1
             chain_events.append((abs_t, _optional_float(item.get("api_time"))))
+            prev_stop = _weka_stop_reason(item)
 
         if pending_join_ids:
             logger.debug(

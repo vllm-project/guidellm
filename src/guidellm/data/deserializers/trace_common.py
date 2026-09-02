@@ -153,21 +153,12 @@ class TraceFormatBase(Protocol):
         token-count columns. Formats with mixed row types (for example WEKA
         subagent groups) should override this.
         """
-        features = Features(
-            {
-                self.config.timestamp_column: Value("float"),
-                self.config.prompt_tokens_column: Value("int32"),
-                self.config.output_tokens_column: Value("int32"),
-                **dict(self.required_columns()),
-            }
+        _validate_api_conversation(
+            conversation,
+            self.config,
+            self.required_columns(),
+            self.validate_row,
         )
-        if self.config.conversation_id_column in features:
-            features.pop(self.config.conversation_id_column)
-        _raise_if_nonetype_found(conversation, features)
-        _raise_if_incorrect_types(conversation, features)
-        for row in conversation:
-            _validate_row(row, self.config)
-            self.validate_row(row)
 
     def create_prompt(
         self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
@@ -348,6 +339,35 @@ def _validate_path(path: Path) -> None:
         raise DataNotSupportedError(f"Trace path is not a file: {path}")
     if path.stat().st_size == 0:
         raise DataNotSupportedError(f"Trace file is empty: {path}")
+
+
+def _validate_api_conversation(
+    conversation: Dataset,
+    config: TraceDataArgs,
+    extra_features: Features,
+    validate_row: Callable[[dict], None],
+) -> None:
+    """Null-check and cast required API columns, then run per-row validators.
+
+    Extra columns are ignored. ``extra_features`` are format-specific required
+    fields such as hash IDs. Conversation id is dropped; it lives on the outer
+    record, not on API rows.
+    """
+    features = Features(
+        {
+            config.timestamp_column: Value("float"),
+            config.prompt_tokens_column: Value("int32"),
+            config.output_tokens_column: Value("int32"),
+            **dict(extra_features),
+        }
+    )
+    if config.conversation_id_column in features:
+        features.pop(config.conversation_id_column)
+    _raise_if_nonetype_found(conversation, features)
+    _raise_if_incorrect_types(conversation, features)
+    for row in conversation:
+        _validate_row(row, config)
+        validate_row(row)
 
 
 def _validate_row(row: dict, config: TraceDataArgs) -> None:
