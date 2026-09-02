@@ -5,7 +5,7 @@ import random
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -557,3 +557,290 @@ class TestWEKATraceFormat:
         turns = list(conv)
         assert turns[0].columns["prompt_tokens_count_column"][0] == 0
         assert turns[0].columns["output_tokens_count_column"][0] == 5
+        assert turns[0].node_id == "main_0"
+        assert turns[0].agent_id == "default"
+
+    @pytest.mark.smoke
+    def test_subagent_spawns_and_joins_parent(self, tmp_path: Path, deserializer):
+        """A declared subagent chain spawns from the preceding parent and
+        joins the following parent turn.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {"t": 0.0, "in": 10, "out": 5, "hash_ids": []},
+                        {
+                            "t": 1.0,
+                            "type": "subagent",
+                            "agent_id": "explore",
+                            "requests": [
+                                {"t": 0.0, "in": 8, "out": 2, "hash_ids": []},
+                                {"t": 0.5, "in": 8, "out": 2, "hash_ids": []},
+                            ],
+                        },
+                        {"t": 10.0, "in": 12, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert set(turns) == {"main_0", "sa_0_0", "sa_0_1", "main_1"}
+        assert turns["main_0"].agent_id == "default"
+        assert turns["sa_0_0"].agent_id == "explore"
+        assert turns["sa_0_1"].agent_id == "explore"
+        assert turns["sa_0_0"].parents[0].parent_node_id == "main_0"
+        assert turns["sa_0_0"].parents[0].history_context == "new"
+        assert turns["sa_0_1"].parents[0].parent_node_id == "sa_0_0"
+        assert turns["sa_0_1"].parents[0].history_context == "full"
+        main_1_parents = {
+            parent.parent_node_id: parent.history_context
+            for parent in turns["main_1"].parents
+        }
+        assert main_1_parents == {"main_0": "full", "sa_0_1": "last"}
+
+    @pytest.mark.smoke
+    def test_parallel_subagents_share_spawn_and_join(
+        self, tmp_path: Path, deserializer
+    ):
+        """Adjacent subagents between the same parent turns run in parallel.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {"t": 0.0, "in": 10, "out": 5, "hash_ids": []},
+                        {
+                            "t": 1.0,
+                            "type": "subagent",
+                            "agent_id": "agentA",
+                            "requests": [
+                                {"t": 0.0, "in": 8, "out": 2, "hash_ids": []},
+                                {"t": 0.4, "in": 8, "out": 2, "hash_ids": []},
+                            ],
+                        },
+                        {
+                            "t": 1.0,
+                            "type": "subagent",
+                            "agent_id": "agentB",
+                            "requests": [
+                                {"t": 0.0, "in": 8, "out": 2, "hash_ids": []},
+                            ],
+                        },
+                        {"t": 10.0, "in": 12, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert turns["sa_0_0"].agent_id == "agentA"
+        assert turns["sa_1_0"].agent_id == "agentB"
+        assert turns["sa_0_0"].parents[0].parent_node_id == "main_0"
+        assert turns["sa_0_0"].parents[0].history_context == "new"
+        assert turns["sa_1_0"].parents[0].parent_node_id == "main_0"
+        assert turns["sa_1_0"].parents[0].history_context == "new"
+        sa_parent_ids = {
+            parent.parent_node_id for parent in turns["sa_0_0"].parents
+        } | {parent.parent_node_id for parent in turns["sa_1_0"].parents}
+        assert "sa_0_0" not in {
+            parent.parent_node_id for parent in turns["sa_1_0"].parents
+        }
+        assert "sa_1_0" not in {
+            parent.parent_node_id for parent in turns["sa_0_0"].parents
+        }
+        assert sa_parent_ids == {"main_0"}
+        main_1_parents = {
+            parent.parent_node_id: parent.history_context
+            for parent in turns["main_1"].parents
+        }
+        assert main_1_parents == {
+            "main_0": "full",
+            "sa_0_1": "last",
+            "sa_1_0": "last",
+        }
+
+    @pytest.mark.sanity
+    def test_inner_timestamps_relative_to_spawn(self, tmp_path: Path, deserializer):
+        """Inner t smaller than spawn t is treated as relative to spawn.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {"t": 0.0, "in": 10, "out": 5, "hash_ids": []},
+                        {
+                            "t": 100.0,
+                            "type": "subagent",
+                            "agent_id": "explore",
+                            "requests": [
+                                {"t": 0.0, "in": 8, "out": 2, "hash_ids": []},
+                                {"t": 3.0, "in": 8, "out": 2, "hash_ids": []},
+                            ],
+                        },
+                        {"t": 200.0, "in": 12, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert turns["main_0"].columns["relative_timestamp_column"][0] == 0.0
+        assert turns["sa_0_0"].columns["relative_timestamp_column"][0] == 100.0
+        assert turns["sa_0_1"].columns["relative_timestamp_column"][0] == 103.0
+        assert turns["main_1"].columns["relative_timestamp_column"][0] == 200.0
+
+    @pytest.mark.sanity
+    def test_inner_timestamps_absolute_when_not_before_spawn(
+        self, tmp_path: Path, deserializer
+    ):
+        """Inner t on the parent timeline is left as absolute.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {"t": 0.0, "in": 10, "out": 5, "hash_ids": []},
+                        {
+                            "t": 100.0,
+                            "type": "subagent",
+                            "agent_id": "explore",
+                            "requests": [
+                                {"t": 100.0, "in": 8, "out": 2, "hash_ids": []},
+                                {"t": 103.0, "in": 8, "out": 2, "hash_ids": []},
+                            ],
+                        },
+                        {"t": 200.0, "in": 12, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = {turn.node_id: turn for turn in load_graph_turns(next(iter(ds)))}
+        assert turns["sa_0_0"].columns["relative_timestamp_column"][0] == 100.0
+        assert turns["sa_0_1"].columns["relative_timestamp_column"][0] == 103.0
+
+    @pytest.mark.sanity
+    def test_subagent_entries_do_not_fail_validation(
+        self, tmp_path: Path, deserializer
+    ):
+        """Subagent marker rows lack in/out/hash_ids and must still load.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {"t": 0.0, "in": 10, "out": 5, "hash_ids": []},
+                        {
+                            "t": 1.0,
+                            "type": "subagent",
+                            "agent_id": "explore",
+                            "requests": [{"t": 0.0, "in": 8, "out": 2, "hash_ids": []}],
+                        },
+                        {"t": 2.0, "in": 12, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = load_graph_turns(next(iter(ds)))
+        assert len(turns) == 3
+
+    @pytest.mark.sanity
+    @patch("guidellm.data.deserializers.trace_weka.logger")
+    def test_overlap_warns_on_same_chain(
+        self, mock_logger, tmp_path: Path, deserializer
+    ):
+        """Consecutive turns of one agent that overlap in time are logged at debug.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {
+                            "t": 0.0,
+                            "in": 10,
+                            "out": 5,
+                            "hash_ids": [],
+                            "api_time": 5.0,
+                        },
+                        {"t": 1.0, "in": 10, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        load_graph_turns(next(iter(ds)))
+        messages = [
+            call.args[0].format(*call.args[1:]) if call.args else ""
+            for call in mock_logger.debug.call_args_list
+        ]
+        assert any("overlapping requests" in message for message in messages)
+        assert any("will run until t=" in message for message in messages)
+        assert any("default" in message for message in messages)
+
+    @pytest.mark.sanity
+    @patch("guidellm.data.deserializers.trace_weka.logger")
+    def test_overlap_does_not_warn_for_parallel_subagents(
+        self, mock_logger, tmp_path: Path, deserializer
+    ):
+        """Parallel subagents may share timestamps without an overlap debug log.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "conv0",
+                    "requests": [
+                        {"t": 0.0, "in": 10, "out": 5, "hash_ids": []},
+                        {
+                            "t": 1.0,
+                            "type": "subagent",
+                            "agent_id": "agentA",
+                            "requests": [{"t": 0.0, "in": 8, "out": 2, "hash_ids": []}],
+                        },
+                        {
+                            "t": 1.0,
+                            "type": "subagent",
+                            "agent_id": "agentB",
+                            "requests": [{"t": 0.0, "in": 8, "out": 2, "hash_ids": []}],
+                        },
+                        {"t": 10.0, "in": 12, "out": 5, "hash_ids": []},
+                    ],
+                }
+            ),
+        )
+        ds = self.deserialize(deserializer, trace)
+        load_graph_turns(next(iter(ds)))
+        messages = [
+            call.args[0].format(*call.args[1:]) if call.args else ""
+            for call in mock_logger.debug.call_args_list
+        ]
+        assert not any("overlapping requests" in message for message in messages)

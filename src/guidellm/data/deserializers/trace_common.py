@@ -126,6 +126,8 @@ def create_distinct_token_block(
 
 
 class TraceFormatBase(Protocol):
+    config: TraceDataArgs
+
     def __init__(self, config, dataset: Dataset) -> None: ...
 
     def __iter__(self) -> Iterable[Dataset]:
@@ -144,11 +146,73 @@ class TraceFormatBase(Protocol):
         """Called during initialization, immediately after doing
         format-agnostic validation."""
 
+    def validate_conversation(self, conversation: Dataset) -> None:
+        """Validate one conversation yielded by ``__iter__``.
+
+        The default treats every row as an API request with timestamp and
+        token-count columns. Formats with mixed row types (for example WEKA
+        subagent groups) should override this.
+        """
+        features = Features(
+            {
+                self.config.timestamp_column: Value("float"),
+                self.config.prompt_tokens_column: Value("int32"),
+                self.config.output_tokens_column: Value("int32"),
+                **dict(self.required_columns()),
+            }
+        )
+        if self.config.conversation_id_column in features:
+            features.pop(self.config.conversation_id_column)
+        _raise_if_nonetype_found(conversation, features)
+        _raise_if_incorrect_types(conversation, features)
+        for row in conversation:
+            _validate_row(row, self.config)
+            self.validate_row(row)
+
     def create_prompt(
         self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
     ) -> str:
         """Called within `trace_common.TraceExamplesIterable` on each iteration.
         Returns a generated synthetic prompt."""
+
+    def build_conversation_graph(
+        self,
+        conversation: Dataset,
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
+    ) -> ConversationGraphData:
+        """Build a conversation graph from one ``__iter__`` conversation.
+
+        The default emits a linear ``main_*`` chain. Formats with branches
+        or subagents should override this rather than branching in the
+        shared iterable.
+        """
+        start_ts = conversation[0][self.config.timestamp_column]
+        turns = []
+        for turn_idx, turn in enumerate(conversation):
+            parents = []
+            if turn_idx > 0:
+                parents.append(
+                    ConversationParentRef(parent_node_id=f"main_{turn_idx - 1}")
+                )
+
+            prompt = self.create_prompt(turn, processor, faker)
+            relative_timestamp = turn[self.config.timestamp_column] - start_ts
+            columns = {
+                "text_column": [prompt],
+                "prompt_tokens_count_column": [turn[self.config.prompt_tokens_column]],
+                "output_tokens_count_column": [turn[self.config.output_tokens_column]],
+                "relative_timestamp_column": [relative_timestamp],
+            }
+            turns.append(
+                ConversationTurnData(
+                    node_id=f"main_{turn_idx}",
+                    agent_id="default",
+                    parents=parents,
+                    columns=columns,
+                )
+            )
+        return ConversationGraphData(turns=turns)
 
 
 class TraceFormatRegistry(RegistryMixin[type[TraceFormatBase]]):
@@ -192,53 +256,21 @@ class TraceExamplesIterable(_BaseExamplesIterable):
             time_scale=self.config.time_scale,
         )
         for conv in self.format:  # type: ignore[attr-defined]
-            start_ts = conv[0][self.config.timestamp_column]
-            row = self._create_conversation_row(conv, start_ts, timing)
-            samples_count += len(conv)
-            yield samples_count, row
+            graph_data = self.format.build_conversation_graph(
+                conv, self.processor, self.faker
+            )
+            timing.apply(graph_data)
+            samples_count += len(graph_data.turns)
+            payload = json.dumps(graph_data.model_dump(mode="json"))
+            yield (
+                samples_count,
+                {
+                    "conversation_turns": (
+                        payload.decode() if isinstance(payload, bytes) else payload
+                    )
+                },
+            )
             self.format.reset()
-
-    def _create_conversation_row(
-        self,
-        conversation: Dataset,
-        start_ts: float,
-        timing: TraceSessionTiming,
-    ) -> dict[str, Any]:
-        """Build a ``conversation_turns`` payload for linear or branched graphs."""
-        turns = []
-        for turn_idx, turn in enumerate(conversation):
-            parents = []
-            if turn_idx > 0:
-                parents.append(
-                    ConversationParentRef(parent_node_id=f"main_{turn_idx - 1}")
-                )
-
-            # TODO: Branches & subagents
-
-            prompt = self.format.create_prompt(turn, self.processor, self.faker)
-            relative_timestamp = turn[self.config.timestamp_column] - start_ts
-            columns = {
-                "text_column": [prompt],
-                "prompt_tokens_count_column": [turn[self.config.prompt_tokens_column]],
-                "output_tokens_count_column": [turn[self.config.output_tokens_column]],
-                "relative_timestamp_column": [relative_timestamp],
-            }
-            turns.append(
-                ConversationTurnData(
-                    node_id=f"main_{turn_idx}",
-                    agent_id="default",
-                    parents=parents,
-                    columns=columns,
-                )
-            )
-        graph_data = ConversationGraphData(turns=turns)
-        timing.apply(graph_data)
-        payload = json.dumps(graph_data.model_dump(mode="json"))
-        return {
-            "conversation_turns": (
-                payload.decode() if isinstance(payload, bytes) else payload
-            )
-        }
 
     @property
     def is_typed(self) -> bool:
@@ -341,25 +373,11 @@ def _raise_if_incorrect_types(dataset: Dataset, features: Features) -> None:
         raise DataNotSupportedError(str(e)) from e
 
 
-def _validate_dataset(config: TraceDataArgs, trace_format: TraceFormatBase) -> None:
-    features = Features(
-        {
-            config.timestamp_column: Value("float"),
-            config.prompt_tokens_column: Value("int32"),
-            config.output_tokens_column: Value("int32"),
-            **dict(trace_format.required_columns()),
-        }
-    )
+def _validate_dataset(trace_format: TraceFormatBase) -> None:
     for conv in trace_format:  # type: ignore[attr-defined]
         if len(conv) == 0:
             raise DataNotSupportedError("Trace conversation is empty")
-        if config.conversation_id_column in features:
-            features.pop(config.conversation_id_column)
-        _raise_if_nonetype_found(conv, features)
-        _raise_if_incorrect_types(conv, features)
-        for row in conv:
-            _validate_row(row, config)
-            trace_format.validate_row(row)
+        trace_format.validate_conversation(conv)
 
 
 def _handle_column_search(config: TraceDataArgs, trace_format: TraceFormatBase) -> None:
@@ -423,5 +441,5 @@ class TraceDatasetDeserializer(DatasetDeserializer):
         dataset = dataset.map(_deserialize_nested_data, batched=True)
         trace_format = TraceFormatRegistry.dispatch(config, dataset)
         _handle_column_search(config, trace_format)
-        _validate_dataset(config, trace_format)
+        _validate_dataset(trace_format)
         return TraceDataset(config, trace_format, processor_factory(), random_seed)
