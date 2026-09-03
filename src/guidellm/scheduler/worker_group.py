@@ -467,8 +467,9 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         self.error_event = None
         if self.mp_manager is not None:
             try:
-                # Bound this: a live worker holding a Manager connection
-                # can otherwise block here until the process is killed externally.
+                # Enforce a time limit because a live worker holding a Manager
+                # connection can otherwise block here until the process is
+                # killed externally.
                 await asyncio.wait_for(
                     asyncio.to_thread(self.mp_manager.shutdown),
                     timeout=5.0,
