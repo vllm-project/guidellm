@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import io
 import multiprocessing
 import os
 import sys
+import time
 
 import pytest
+from rich.console import Console
+from rich.live import Live
 
 from guidellm.utils.pipe_stdout import PipeReaderThread
 
@@ -18,6 +22,13 @@ def _child_print(write_conn_stdout, write_conn_stderr):
 
     print("hello from stdout", flush=True)  # noqa: T201
     print("hello from stderr", file=sys.stderr, flush=True)  # noqa: T201
+
+
+def _pipe_raw_stderr_worker(stderr_conn) -> None:
+    os.dup2(stderr_conn.fileno(), 2)
+    stderr_conn.close()
+    sys.stderr.write("pipe-raw-stderr-msg\n")
+    sys.stderr.flush()
 
 
 class TestPipeReaderThread:
@@ -106,3 +117,65 @@ class TestPipeReaderThread:
 
         reader.stop(timeout=5.0)
         reader.stop(timeout=5.0)
+
+
+class TestPipeReaderThreadRichLive:
+    """Rich Live integration tests for pipe reader output routing.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.sanity
+    def test_rich_live_routes_raw_stderr(self):
+        """
+        Raw worker stderr through PipeReaderThread reaches Rich FileProxy.
+
+        ## WRITTEN BY AI ##
+        """
+        ctx = multiprocessing.get_context("spawn")
+        stdout_reader, stdout_writer = ctx.Pipe(duplex=False)
+        stderr_reader, stderr_writer = ctx.Pipe(duplex=False)
+        proc = ctx.Process(target=_pipe_raw_stderr_worker, args=(stderr_writer,))
+        console = Console(file=io.StringIO())
+        reader = PipeReaderThread(stdout_reader, stderr_reader)
+        reader.start()
+        try:
+
+            def run_worker() -> None:
+                proc.start()
+                stdout_writer.close()
+                stderr_writer.close()
+                proc.join(timeout=10)
+
+            with Live("", console=console, redirect_stderr=True):
+                run_worker()
+                time.sleep(0.2)
+            assert proc.exitcode == 0
+            assert "pipe-raw-stderr-msg" in console.file.getvalue()
+        finally:
+            reader.stop()
+
+    @pytest.mark.sanity
+    def test_routes_raw_stderr_without_live(self, capsys):
+        """
+        Raw worker stderr still reaches the parent when Live is not active.
+
+        ## WRITTEN BY AI ##
+        """
+        ctx = multiprocessing.get_context("spawn")
+        stdout_reader, stdout_writer = ctx.Pipe(duplex=False)
+        stderr_reader, stderr_writer = ctx.Pipe(duplex=False)
+        proc = ctx.Process(target=_pipe_raw_stderr_worker, args=(stderr_writer,))
+        reader = PipeReaderThread(stdout_reader, stderr_reader)
+        reader.start()
+        try:
+            proc.start()
+            stdout_writer.close()
+            stderr_writer.close()
+            proc.join(timeout=10)
+            time.sleep(0.2)
+            assert proc.exitcode == 0
+            captured = capsys.readouterr()
+            assert "pipe-raw-stderr-msg" in captured.err
+        finally:
+            reader.stop()

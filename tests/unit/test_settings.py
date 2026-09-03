@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 
@@ -59,7 +60,7 @@ def test_logging_settings_defaults():
     )
     assert logging_settings.console_log_level == "DEBUG"
     assert logging_settings.console_colorize is True
-    assert logging_settings.log_file == "app.log"
+    assert logging_settings.log_file == Path("app.log")
     assert logging_settings.log_file_level == "ERROR"
 
 
