@@ -1,14 +1,22 @@
+import importlib
+import io
 import multiprocessing as mp
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from loguru import logger as loguru_logger
+from rich.console import Console
+from rich.live import Live
 
 from guidellm import configure_logger, logger, reinstall_inherited_logger
 from guidellm.settings import LoggingSettings
+
+_logger_module = importlib.import_module("guidellm.logger")
 
 
 def _child_reinstall_for_test(parent_logger, q) -> None:
@@ -18,14 +26,22 @@ def _child_reinstall_for_test(parent_logger, q) -> None:
     logger.complete()
 
 
+def _inherited_log_child(parent_logger, message: str) -> None:
+    reinstall_inherited_logger(parent_logger)
+    logger.info(message)
+    logger.complete()
+
+
 @pytest.fixture(autouse=True)
 def reset_logger():  # noqa: PT004
-    # Ensure logger is reset before each test
     logger.remove()
+    _logger_module._console_handler._sink_id = 0
+    _logger_module._file_handler._sink_id = None
     yield
+    logger.complete()
     logger.remove()
-
-    return logger
+    _logger_module._console_handler._sink_id = 0
+    _logger_module._file_handler._sink_id = None
 
 
 def test_default_logger_settings(capsys):
@@ -239,3 +255,130 @@ def test_reinstall_inherited_logger(capsys):
     logger.complete()
     captured = capsys.readouterr()
     assert "reinstalled child message" in captured.err
+
+
+class TestInheritedLoggerMultiprocessing:
+    """Multiprocessing tests for inherited loguru handler configuration.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @staticmethod
+    def _configure_test_logger() -> None:
+        configure_logger(
+            config=LoggingSettings(
+                console_log_level="INFO",
+                console_colorize=False,
+            )
+        )
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("ctx_name", ["spawn", "forkserver"])
+    def test_inherited_worker_logging_custom_format(self, ctx_name, capsys):
+        """
+        Worker logs use inherited parent handlers with GuideLLM console format.
+
+        ## WRITTEN BY AI ##
+        """
+        ctx = mp.get_context(ctx_name)
+        self._configure_test_logger()
+        message = f"worker-log-{ctx_name}"
+        p = ctx.Process(target=_inherited_log_child, args=(logger, message))
+        p.start()
+        p.join(timeout=10)
+        assert p.exitcode == 0
+
+        logger.complete()
+        captured = capsys.readouterr()
+        assert message in captured.err
+        assert "|INFO     |" in captured.err
+        assert " | INFO     | " not in captured.err
+
+
+class TestLoggerRichLive:
+    """Rich Live integration tests for console logging sinks.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @staticmethod
+    def _configure_test_logger() -> None:
+        configure_logger(
+            config=LoggingSettings(
+                console_log_level="INFO",
+                console_colorize=False,
+            )
+        )
+
+    @pytest.mark.sanity
+    def test_logger_with_rich_live_redirect_stderr(self):
+        """
+        Console logs resolve sys.stderr at write time and work with Rich Live.
+
+        ## WRITTEN BY AI ##
+        """
+        self._configure_test_logger()
+        console = Console(file=io.StringIO())
+
+        with Live("", console=console, redirect_stderr=True):
+            logger.info("Live test message")
+            logger.complete()
+
+        assert "Live test message" in console.file.getvalue()
+
+    @pytest.mark.sanity
+    def test_rich_live_inherited_worker_log(self):
+        """
+        Inherited worker logs render through Rich FileProxy in the parent process.
+
+        ## WRITTEN BY AI ##
+        """
+        ctx = mp.get_context("spawn")
+        self._configure_test_logger()
+        console = Console(file=io.StringIO())
+        message = "rich-inherited-worker-msg"
+        p = ctx.Process(target=_inherited_log_child, args=(logger, message))
+        with Live("", console=console, redirect_stderr=True):
+            p.start()
+            p.join(timeout=10)
+            logger.complete()
+            time.sleep(0.2)
+        assert p.exitcode == 0
+        out = console.file.getvalue()
+        assert message in out
+        assert "INFO" in out
+
+    @pytest.mark.regression
+    def test_stderr_sink_works_under_rich_live(self):
+        """
+        Callable sink resolving sys.stderr at write time works with Rich FileProxy.
+
+        ## WRITTEN BY AI ##
+        """
+        self._configure_test_logger()
+        console = Console(file=io.StringIO())
+        with Live("", console=console, redirect_stderr=True):
+            logger.info("stderr-sink-live-msg")
+            logger.complete()
+            time.sleep(0.1)
+        assert "stderr-sink-live-msg" in console.file.getvalue()
+
+    @pytest.mark.regression
+    def test_bound_stderr_write_fails_under_rich_live(self):
+        """
+        Bound sys.stderr.write bypasses Rich FileProxy and must not be used.
+
+        ## WRITTEN BY AI ##
+        """
+        loguru_logger.remove()
+        loguru_logger.add(
+            sys.stderr.write,
+            format="{message}\n",
+            enqueue=True,
+        )
+        console = Console(file=io.StringIO())
+        with Live("", console=console, redirect_stderr=True):
+            loguru_logger.info("bound-write-live-msg")
+            loguru_logger.complete()
+            time.sleep(0.1)
+        assert "bound-write-live-msg" not in console.file.getvalue()

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import multiprocessing as mp
 import random
 import time
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from typing import Any, Generic, Literal
 import pytest
 import pytest_asyncio
 
+from guidellm import configure_logger, logger
 from guidellm.scheduler import (
     BackendInterface,
     SynchronousStrategy,
@@ -26,7 +28,9 @@ from guidellm.scheduler.schemas import (
     ConversationNode,
 )
 from guidellm.schemas import RequestInfo, RequestSettings, RequestTimings
+from guidellm.settings import LoggingSettings
 from guidellm.utils.messaging import InterProcessMessagingQueue
+from guidellm.utils.pipe_stdout import PipeReaderThread
 from tests.unit.testing_utils import async_timeout
 
 STANDARD_NUM_REQUESTS: int = 200
@@ -157,6 +161,9 @@ class TestWorkerProcess:
                 constraint_reached_event=Event(),
                 shutdown_event=Event(),
                 error_event=Event(),
+                stdout_conn=None,
+                stderr_conn=None,
+                parent_logger=None,
             )
             yield instance, main_messaging, constructor_args
         finally:
@@ -273,6 +280,9 @@ class TestWorkerProcess:
             "constraint_reached_event",
             "shutdown_event",
             "error_event",
+            "stdout_conn",
+            "stderr_conn",
+            "parent_logger",
         ]
 
         for param_to_remove in required_params:
@@ -285,6 +295,9 @@ class TestWorkerProcess:
                 "constraint_reached_event": constraint_reached_event,
                 "shutdown_event": shutdown_event,
                 "error_event": error_event,
+                "stdout_conn": None,
+                "stderr_conn": None,
+                "parent_logger": None,
             }
 
             del kwargs[param_to_remove]
@@ -787,6 +800,9 @@ class TestWorkerProcessMultiturn:
             constraint_reached_event=Event(),
             shutdown_event=Event(),
             error_event=Event(),
+            stdout_conn=None,
+            stderr_conn=None,
+            parent_logger=None,
         )
 
     @pytest.mark.smoke
@@ -935,6 +951,9 @@ class TestWorkerProcessMultiturn:
             constraint_reached_event=Event(),
             shutdown_event=Event(),
             error_event=Event(),
+            stdout_conn=None,
+            stderr_conn=None,
+            parent_logger=None,
         )
         graph = ConversationGraph(
             graph_id="cancel_partial",
@@ -1097,6 +1116,9 @@ class TestWorkerProcessMultiturn:
             constraint_reached_event=Event(),
             shutdown_event=Event(),
             error_event=Event(),
+            stdout_conn=None,
+            stderr_conn=None,
+            parent_logger=None,
         )
         graph = ConversationGraph(
             graph_id="worker_zero",
@@ -1131,3 +1153,226 @@ class TestWorkerProcessMultiturn:
         ]
         assert cancelled
         assert all(info.scheduler_node_id == 0 for info in cancelled)
+
+
+class _ChildMockMessaging:
+    """Picklable messaging stub for subprocess WorkerProcess.run() tests."""
+
+    def __init__(self, worker_index: int = 0) -> None:
+        self.worker_index = worker_index
+        self.poll_interval = 0.01
+
+    async def get(self, timeout=None):
+        raise asyncio.TimeoutError
+
+    def put_sync(self, item, timeout=-1):
+        pass
+
+    async def start(self, receive_stop_criteria=None):
+        pass
+
+    async def stop(self):
+        pass
+
+
+class _LoggingWorkerProcess(WorkerProcess):
+    """WorkerProcess stub that logs once from run_async."""
+
+    log_message: str = "worker-run-log-msg"
+
+    async def run_async(self):
+        logger.info(self.log_message)
+
+
+def _child_worker_process_run(
+    parent_logger,
+    stdout_conn,
+    stderr_conn,
+    log_message: str,
+) -> None:
+    worker = _LoggingWorkerProcess(
+        worker_index=0,
+        messaging=_ChildMockMessaging(),
+        backend=MockBackend(lifecycle_delay=0.0, resolve_delay=0.0),
+        strategy=SynchronousStrategy(),
+        async_limit=1,
+        fut_scheduling_time_limit=10.0,
+        startup_barrier=Barrier(1),
+        requests_generated_event=Event(),
+        constraint_reached_event=Event(),
+        shutdown_event=Event(),
+        error_event=Event(),
+        stdout_conn=stdout_conn,
+        stderr_conn=stderr_conn,
+        parent_logger=parent_logger,
+    )
+    worker.log_message = log_message
+    worker.run()
+
+
+class TestWorkerProcessRun:
+    """Tests for WorkerProcess.run() process entrypoint behavior.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @staticmethod
+    def _mock_asyncio_run(mocker):
+        def _consume_coro(coro):
+            coro.close()
+
+        return mocker.patch(
+            "guidellm.scheduler.worker.asyncio.run",
+            side_effect=_consume_coro,
+        )
+
+    @staticmethod
+    def _build_worker(
+        *,
+        stdout_conn=None,
+        stderr_conn=None,
+        parent_logger=None,
+    ) -> WorkerProcess:
+        return WorkerProcess(
+            worker_index=0,
+            messaging=MockMessaging(),
+            backend=MockBackend(lifecycle_delay=0.0, resolve_delay=0.0),
+            strategy=SynchronousStrategy(),
+            async_limit=1,
+            fut_scheduling_time_limit=10.0,
+            startup_barrier=Barrier(1),
+            requests_generated_event=Event(),
+            constraint_reached_event=Event(),
+            shutdown_event=Event(),
+            error_event=Event(),
+            stdout_conn=stdout_conn,
+            stderr_conn=stderr_conn,
+            parent_logger=parent_logger,
+        )
+
+    @pytest.mark.sanity
+    def test_run_skips_stdio_redirect_when_pipes_are_none(self, mocker):
+        """
+        run() leaves stdio untouched when pipe connections are not provided.
+
+        ## WRITTEN BY AI ##
+        """
+        mock_dup2 = mocker.patch("guidellm.scheduler.worker.os.dup2")
+        self._mock_asyncio_run(mocker)
+        self._build_worker().run()
+        mock_dup2.assert_not_called()
+
+    @pytest.mark.sanity
+    def test_run_redirects_stdio_when_pipes_are_set(self, mocker):
+        """
+        run() redirects stdout/stderr before executing worker logic.
+
+        ## WRITTEN BY AI ##
+        """
+        mock_dup2 = mocker.patch("guidellm.scheduler.worker.os.dup2")
+        self._mock_asyncio_run(mocker)
+        stdout_conn = mocker.MagicMock()
+        stderr_conn = mocker.MagicMock()
+        self._build_worker(
+            stdout_conn=stdout_conn,
+            stderr_conn=stderr_conn,
+        ).run()
+        assert mock_dup2.call_count == 2
+        stdout_conn.close.assert_called_once()
+        stderr_conn.close.assert_called_once()
+
+    @pytest.mark.sanity
+    def test_run_reinstalls_logger_when_parent_logger_is_set(self, mocker):
+        """
+        run() reinstalls the parent logger before asyncio startup.
+
+        ## WRITTEN BY AI ##
+        """
+        mock_reinstall = mocker.patch(
+            "guidellm.scheduler.worker.reinstall_inherited_logger"
+        )
+        self._mock_asyncio_run(mocker)
+        parent = mocker.MagicMock()
+        self._build_worker(parent_logger=parent).run()
+        mock_reinstall.assert_called_once_with(parent)
+
+    @pytest.mark.sanity
+    def test_run_skips_logger_reinstall_when_parent_logger_is_none(self, mocker):
+        """
+        run() skips logger reinstall when no parent logger is provided.
+
+        ## WRITTEN BY AI ##
+        """
+        mock_reinstall = mocker.patch(
+            "guidellm.scheduler.worker.reinstall_inherited_logger"
+        )
+        self._mock_asyncio_run(mocker)
+        self._build_worker().run()
+        mock_reinstall.assert_not_called()
+
+    @pytest.mark.sanity
+    def test_run_calls_logger_complete(self, mocker):
+        """
+        run() always drains enqueued log records on exit.
+
+        ## WRITTEN BY AI ##
+        """
+        mock_complete = mocker.patch("guidellm.scheduler.worker.logger.complete")
+        self._mock_asyncio_run(mocker)
+        self._build_worker().run()
+        mock_complete.assert_called_once()
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("ctx_name", ["spawn", "forkserver"])
+    def test_run_entrypoint_inherits_parent_logger(self, ctx_name, capsys):
+        """
+        WorkerProcess.run() emits logs through inherited parent handlers.
+
+        ## WRITTEN BY AI ##
+        """
+        ctx = mp.get_context(ctx_name)
+        configure_logger(config=LoggingSettings(console_log_level="INFO"))
+        message = f"worker-run-{ctx_name}"
+        p = ctx.Process(
+            target=_child_worker_process_run,
+            args=(logger, None, None, message),
+        )
+        p.start()
+        p.join(timeout=10)
+        assert p.exitcode == 0
+
+        logger.complete()
+        captured = capsys.readouterr()
+        assert message in captured.err
+        assert "|INFO     |" in captured.err
+
+    @pytest.mark.sanity
+    def test_run_entrypoint_routes_stdio_through_pipes(self, capsys):
+        """
+        WorkerProcess.run() redirects stdio through pipes for parent capture.
+
+        ## WRITTEN BY AI ##
+        """
+        ctx = mp.get_context("spawn")
+        configure_logger(config=LoggingSettings(console_log_level="INFO"))
+        stdout_reader, stdout_writer = ctx.Pipe(duplex=False)
+        stderr_reader, stderr_writer = ctx.Pipe(duplex=False)
+        message = "worker-run-pipe-msg"
+        reader = PipeReaderThread(stdout_reader, stderr_reader)
+        reader.start()
+        try:
+            p = ctx.Process(
+                target=_child_worker_process_run,
+                args=(logger, stdout_writer, stderr_writer, message),
+            )
+            p.start()
+            stdout_writer.close()
+            stderr_writer.close()
+            p.join(timeout=10)
+            time.sleep(0.2)
+            assert p.exitcode == 0
+            logger.complete()
+            captured = capsys.readouterr()
+            assert message in captured.err
+        finally:
+            reader.stop()
