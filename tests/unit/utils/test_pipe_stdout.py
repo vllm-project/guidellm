@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import io
 import multiprocessing
 import os
 import sys
 import time
 
 import pytest
-from rich.console import Console
 from rich.live import Live
 
 from guidellm.utils.pipe_stdout import PipeReaderThread
+from tests.unit.testing_utils import drain_logger, rich_console, rich_console_output
 
 
 def _child_print(write_conn_stdout, write_conn_stderr):
@@ -69,6 +68,7 @@ class TestPipeReaderThread:
         # Give reader thread time to drain remaining data
         reader.stop(timeout=5.0)
 
+        drain_logger()
         captured = capsys.readouterr()
         assert "hello from stdout" in captured.out
         assert "hello from stderr" in captured.err
@@ -136,7 +136,7 @@ class TestPipeReaderThreadRichLive:
         stdout_reader, stdout_writer = ctx.Pipe(duplex=False)
         stderr_reader, stderr_writer = ctx.Pipe(duplex=False)
         proc = ctx.Process(target=_pipe_raw_stderr_worker, args=(stderr_writer,))
-        console = Console(file=io.StringIO())
+        console = rich_console()
         reader = PipeReaderThread(stdout_reader, stderr_reader)
         reader.start()
         try:
@@ -151,7 +151,7 @@ class TestPipeReaderThreadRichLive:
                 run_worker()
                 time.sleep(0.2)
             assert proc.exitcode == 0
-            assert "pipe-raw-stderr-msg" in console.file.getvalue()
+            assert "pipe-raw-stderr-msg" in rich_console_output(console)
         finally:
             reader.stop()
 
@@ -175,6 +175,7 @@ class TestPipeReaderThreadRichLive:
             proc.join(timeout=10)
             time.sleep(0.2)
             assert proc.exitcode == 0
+            drain_logger()
             captured = capsys.readouterr()
             assert "pipe-raw-stderr-msg" in captured.err
         finally:

@@ -1,5 +1,3 @@
-import importlib
-import io
 import multiprocessing as mp
 import os
 import subprocess
@@ -9,14 +7,18 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from logot import Logot
+from logot.logged import debug, error, info, warning
 from loguru import logger as loguru_logger
-from rich.console import Console
 from rich.live import Live
 
 from guidellm import configure_logger, logger, reinstall_inherited_logger
 from guidellm.settings import LoggingSettings
-
-_logger_module = importlib.import_module("guidellm.logger")
+from tests.unit.testing_utils import (
+    drain_logger,
+    rich_console,
+    rich_console_output,
+)
 
 
 def _child_reinstall_for_test(parent_logger, q) -> None:
@@ -32,64 +34,50 @@ def _inherited_log_child(parent_logger, message: str) -> None:
     logger.complete()
 
 
-@pytest.fixture(autouse=True)
-def reset_logger():  # noqa: PT004
-    logger.remove()
-    _logger_module._console_handler._sink_id = 0
-    _logger_module._file_handler._sink_id = None
-    yield
-    logger.complete()
-    logger.remove()
-    _logger_module._console_handler._sink_id = 0
-    _logger_module._file_handler._sink_id = None
-
-
-def test_default_logger_settings(capsys):
+def test_default_logger_settings(logot: Logot):
     configure_logger(config=LoggingSettings())
 
-    # Default settings should log to console with INFO level and no file logging
     logger.info("Info message")
     logger.debug("Debug message")
     logger.warning("Warning message")
     logger.error("Error message")
 
-    logger.complete()
-    captured = capsys.readouterr()
-    assert captured.err.count("Warning message") == 1
-    assert captured.err.count("Error message") == 1
-    assert "Debug message" not in captured.err
+    drain_logger()
+    logot.assert_logged(info("Info message"))
+    logot.assert_logged(warning("Warning message"))
+    logot.assert_logged(error("Error message"))
+    logot.assert_not_logged(debug("Debug message"))
 
 
-def test_configure_logger_console_settings(capsys):
-    # Test configuring the logger to change console log level
+def test_configure_logger_console_settings(logot: Logot):
     config = LoggingSettings(console_log_level="DEBUG")
     configure_logger(config=config)
     logger.info("Info message")
     logger.debug("Debug message")
 
-    logger.complete()
-    captured = capsys.readouterr()
-    assert captured.err.count("Info message") == 1
-    assert captured.err.count("Debug message") == 1
+    drain_logger()
+    logot.assert_logged(info("Info message"))
+    logot.assert_logged(debug("Debug message"))
 
 
-def test_configure_logger_file_settings(tmp_path):
-    # Test configuring the logger to log to a file
+def test_configure_logger_file_settings(tmp_path, logot: Logot):
     log_file = tmp_path / "test.log"
     config = LoggingSettings(log_file=str(log_file), log_file_level="DEBUG")
     configure_logger(config=config)
     logger.info("Info message")
     logger.debug("Debug message")
 
-    logger.complete()
+    drain_logger()
+    logot.assert_logged(info("Info message"))
+    logot.assert_logged(debug("Debug message"))
+
     with Path(log_file).open() as f:
         log_contents = f.read()
     assert log_contents.count('"message": "Info message"') == 1
     assert log_contents.count('"message": "Debug message"') == 1
 
 
-def test_configure_logger_console_and_file(capsys, tmp_path):
-    # Test configuring the logger to change both console and file settings
+def test_configure_logger_console_and_file(logot: Logot, tmp_path):
     log_file = tmp_path / "test.log"
     config = LoggingSettings(
         console_log_level="ERROR",
@@ -100,10 +88,9 @@ def test_configure_logger_console_and_file(capsys, tmp_path):
     logger.info("Info message")
     logger.error("Error message")
 
-    logger.complete()
-    captured = capsys.readouterr()
-    assert "Info message" not in captured.err
-    assert captured.err.count("Error message") == 1
+    drain_logger()
+    logot.assert_logged(error("Error message"))
+    logot.assert_not_logged(info("Info message"))
 
     with Path(log_file).open() as f:
         log_contents = f.read()
@@ -123,7 +110,7 @@ def test_environment_variable_override(capsys, tmp_path):
     logger.error("Error message")
     logger.debug("Debug message")
 
-    logger.complete()
+    drain_logger()
     captured = capsys.readouterr()
     assert "Info message" not in captured.err
     assert captured.err.count("Error message") == 1
@@ -141,12 +128,12 @@ def test_console_logging_disabled(capsys):
     logger.info("Info message")
     logger.error("Error message")
 
-    logger.complete()
+    drain_logger()
     captured = capsys.readouterr()
     assert not captured.err
 
 
-def test_configure_logger_idempotent(capsys, tmp_path):
+def test_configure_logger_idempotent(logot: Logot, tmp_path):
     log_file = tmp_path / "test.log"
     config = LoggingSettings(
         console_log_level="INFO",
@@ -157,9 +144,8 @@ def test_configure_logger_idempotent(capsys, tmp_path):
     configure_logger(config=config)
 
     logger.info("once")
-    logger.complete()
-    captured = capsys.readouterr()
-    assert captured.err.count("once") == 1
+    drain_logger()
+    logot.assert_logged(info("once"))
 
 
 @pytest.mark.parametrize(
@@ -181,7 +167,7 @@ def test_console_colorize(capsys, monkeypatch, colorize, isatty, expect_ansi):
     )
     logger.info("colorize test")
 
-    logger.complete()
+    drain_logger()
     captured = capsys.readouterr()
     has_ansi = "\x1b[" in captured.err
     assert has_ansi == expect_ansi
@@ -252,7 +238,7 @@ def test_reinstall_inherited_logger(capsys):
     assert p.exitcode == 0
     assert set(q.get(timeout=5)) == parent_handler_ids
 
-    logger.complete()
+    drain_logger()
     captured = capsys.readouterr()
     assert "reinstalled child message" in captured.err
 
@@ -288,7 +274,7 @@ class TestInheritedLoggerMultiprocessing:
         p.join(timeout=10)
         assert p.exitcode == 0
 
-        logger.complete()
+        drain_logger()
         captured = capsys.readouterr()
         assert message in captured.err
         assert "|INFO     |" in captured.err
@@ -318,13 +304,13 @@ class TestLoggerRichLive:
         ## WRITTEN BY AI ##
         """
         self._configure_test_logger()
-        console = Console(file=io.StringIO())
+        console = rich_console()
 
         with Live("", console=console, redirect_stderr=True):
             logger.info("Live test message")
-            logger.complete()
+            drain_logger()
 
-        assert "Live test message" in console.file.getvalue()
+        assert "Live test message" in rich_console_output(console)
 
     @pytest.mark.sanity
     def test_rich_live_inherited_worker_log(self):
@@ -335,16 +321,16 @@ class TestLoggerRichLive:
         """
         ctx = mp.get_context("spawn")
         self._configure_test_logger()
-        console = Console(file=io.StringIO())
+        console = rich_console()
         message = "rich-inherited-worker-msg"
         p = ctx.Process(target=_inherited_log_child, args=(logger, message))
         with Live("", console=console, redirect_stderr=True):
             p.start()
             p.join(timeout=10)
-            logger.complete()
+            drain_logger()
             time.sleep(0.2)
         assert p.exitcode == 0
-        out = console.file.getvalue()
+        out = rich_console_output(console)
         assert message in out
         assert "INFO" in out
 
@@ -356,12 +342,12 @@ class TestLoggerRichLive:
         ## WRITTEN BY AI ##
         """
         self._configure_test_logger()
-        console = Console(file=io.StringIO())
+        console = rich_console()
         with Live("", console=console, redirect_stderr=True):
             logger.info("stderr-sink-live-msg")
-            logger.complete()
+            drain_logger()
             time.sleep(0.1)
-        assert "stderr-sink-live-msg" in console.file.getvalue()
+        assert "stderr-sink-live-msg" in rich_console_output(console)
 
     @pytest.mark.regression
     def test_bound_stderr_write_fails_under_rich_live(self):
@@ -376,9 +362,9 @@ class TestLoggerRichLive:
             format="{message}\n",
             enqueue=True,
         )
-        console = Console(file=io.StringIO())
+        console = rich_console()
         with Live("", console=console, redirect_stderr=True):
             loguru_logger.info("bound-write-live-msg")
             loguru_logger.complete()
             time.sleep(0.1)
-        assert "bound-write-live-msg" not in console.file.getvalue()
+        assert "bound-write-live-msg" not in rich_console_output(console)
