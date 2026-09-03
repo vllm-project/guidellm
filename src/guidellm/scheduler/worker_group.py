@@ -416,7 +416,6 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                     if (
                         state_update.stop_processing
                         and self.constraint_reached_event is not None
-                        and not self.constraint_reached_event.is_set()
                     ):
                         self.constraint_reached_event.set()
                     if state_update.stop_queueing:
@@ -807,9 +806,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         if info.timings.request_start is not None:
             self._state.start_requests_time = min(
                 info.timings.request_start,
-                self._state.start_requests_time
-                if self._state.start_requests_time is not None
-                else info.timings.request_start,
+                self._state.start_requests_time or float("inf"),
             )
         self._state.end_requests_time = max(
             info.timings.request_end or float("-inf"),
