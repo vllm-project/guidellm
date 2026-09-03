@@ -21,19 +21,30 @@ from guidellm.data.finalizers.generative import GenerativeRequestFinalizer
 from guidellm.data.preprocessors.mappers import GenerativeColumnMapper
 from guidellm.scheduler import (
     BackendInterface,
+    MaxDurationConstraint,
     MaxNumberConstraint,
     TraceReplayStrategy,
     WorkerProcessGroup,
 )
-from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
-from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
+from guidellm.scheduler.schemas import (
+    ConversationGraph,
+    ConversationNode,
+    HistoryContext,
+)
+from guidellm.scheduler.schemas.conversation_graph import (
+    GenerativeConversationGraph,
+    GenerativeConversationNode,
+)
 from guidellm.schemas import GenerationRequest, RequestSettings
 from guidellm.schemas.data import (
     GenerativeColumnMapperArgs,
     GenerativeRequestFinalizerArgs,
     MinimalTraceFormatArgs,
 )
-from guidellm.schemas.scheduler import MaxRequestsConstraintArgs
+from guidellm.schemas.scheduler import (
+    MaxDurationConstraintArgs,
+    MaxRequestsConstraintArgs,
+)
 from tests.unit.testing_utils import async_timeout
 
 TIME_SCALE = 2.0
@@ -129,7 +140,9 @@ class FastMockBackend(BackendInterface):
         pass
 
     async def resolve(self, request, request_info, history=None):
+        request_info.timings.request_start = time.time()
         await asyncio.sleep(self._resolve_delay)
+        request_info.timings.request_end = time.time()
         rid = (
             request.request_id
             if hasattr(request, "request_id")
@@ -236,3 +249,68 @@ async def test_trace_replay_multiprocess_from_trace_file(tmp_path: Path):
             expected_target,
             abs=0.05,
         )
+
+
+def _linear_replay_graph(
+    timestamps: list[float],
+    *,
+    graph_id: str = "linear_replay",
+    request_prefix: str = "req",
+) -> GenerativeConversationGraph:
+    nodes: dict[str, GenerativeConversationNode] = {}
+    parents_by_node: dict[str, list[tuple[str, HistoryContext]]] = {}
+    prev: str | None = None
+    for index, relative_timestamp in enumerate(timestamps):
+        node_id = f"n{index}"
+        nodes[node_id] = GenerativeConversationNode(
+            node_id=node_id,
+            agent_id="default",
+            request=GenerationRequest(request_id=f"{request_prefix}_{index}"),
+            settings=RequestSettings(relative_timestamp=relative_timestamp),
+        )
+        parents_by_node[node_id] = [(prev, "full")] if prev is not None else []
+        prev = node_id
+    return GenerativeConversationGraph.from_nodes_with_parents(
+        nodes=nodes,
+        parents_by_node=parents_by_node,
+        graph_id=graph_id,
+    )
+
+
+@pytest.mark.smoke
+@pytest.mark.regression
+@pytest.mark.asyncio
+@async_timeout(60.0)
+async def test_max_duration_cancels_long_replay_sleep():
+    """max_duration stops workers sleeping on a future relative_timestamp.
+
+    ## WRITTEN BY AI ##
+    """
+    graph = _linear_replay_graph([0.0, 5.0])
+    strategy = TraceReplayStrategy(time_scale=1.0)
+    group = WorkerProcessGroup(
+        backend=FastMockBackend(resolve_delay=RESOLVE_DELAY),
+        requests=[graph],
+        strategy=strategy,
+        max_duration=MaxDurationConstraint(args=MaxDurationConstraintArgs(seconds=0.4)),
+    )
+    statuses: set[str] = set()
+    try:
+        await group.create_processes()
+        await group.start(time.time() + 0.05)
+        run_started = time.time()
+        async for _, _, request_info, _state in group.request_updates():
+            statuses.add(request_info.status)
+            if (
+                request_info.status in ("cancelled", "completed", "errored")
+                and _state.end_processing_time is not None
+                and _state.processed_requests >= _state.created_requests
+            ):
+                break
+        elapsed = time.time() - run_started
+    finally:
+        exceptions = await group.shutdown()
+        assert exceptions == []
+
+    assert "cancelled" in statuses
+    assert elapsed < 2.5

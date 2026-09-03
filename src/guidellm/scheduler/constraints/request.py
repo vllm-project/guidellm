@@ -16,6 +16,7 @@ from pydantic import Field
 from guidellm.scheduler.constraints.constraint import (
     Constraint,
     PydanticConstraintInitializer,
+    constraint_stop_time,
 )
 from guidellm.scheduler.constraints.factory import ConstraintsInitializerFactory
 from guidellm.scheduler.schemas import (
@@ -67,16 +68,15 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         return cast("Constraint", self.model_copy())
 
     def __call__(
-        self, state: SchedulerState, request_info: RequestInfo
+        self, state: SchedulerState, request_info: RequestInfo | None
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against current scheduler state and request count.
 
         :param state: Current scheduler state with request counts
-        :param request_info: Individual request information (unused)
+        :param request_info: Individual request information, or ``None`` on poll
         :return: Action indicating whether to continue or stop operations
         """
-        _ = request_info  # Unused parameters
         current_index = max(0, self.current_index)
         max_num = (
             self.args.count
@@ -87,9 +87,7 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
         create_exceeded = state.created_requests >= max_num
         processed_exceeded = state.processed_requests >= max_num
         remaining_requests = min(max(0, max_num - state.processed_requests), max_num)
-        stop_time = (
-            None if remaining_requests > 0 else request_info.completed_at or time.time()
-        )
+        stop_time = constraint_stop_time(request_info, stopped=remaining_requests <= 0)
 
         return SchedulerUpdateAction(
             request_queuing="stop" if create_exceeded else "continue",
@@ -140,7 +138,7 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         return cast("Constraint", self.model_copy())
 
     def __call__(
-        self, state: SchedulerState, request_info: RequestInfo
+        self, state: SchedulerState, request_info: RequestInfo | None
     ) -> SchedulerUpdateAction:
         """
         Evaluate constraint against current scheduler state and elapsed time.
@@ -198,15 +196,12 @@ class RequestsExhaustedConstraint(StandardBaseModel, InfoMixin):
         return self.model_dump()
 
     def __call__(
-        self, state: SchedulerState, request: RequestInfo
+        self, state: SchedulerState, request: RequestInfo | None
     ) -> SchedulerUpdateAction:
-        _ = request  # Unused parameter
         create_exceeded = state.created_requests >= self.num_requests
         processed_exceeded = state.processed_requests >= self.num_requests
         remaining_requests = max(0, self.num_requests - state.processed_requests)
-        stop_time = (
-            None if remaining_requests > 0 else request.completed_at or time.time()
-        )
+        stop_time = constraint_stop_time(request, stopped=remaining_requests <= 0)
 
         return SchedulerUpdateAction(
             request_queuing="stop" if create_exceeded else "continue",
