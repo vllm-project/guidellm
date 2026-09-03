@@ -719,14 +719,19 @@ class TraceReplayStrategy(SchedulingStrategy):
     Each request carries a ``relative_timestamp`` in ``RequestSettings`` from the
     dataset finalizer. ``next_request_time`` schedules dequeue immediately at
     benchmark start; ``resolve_dequeued_target_start`` applies the trace offset via
-    ``start_time + relative_timestamp``, reproducing inter-arrival timing under
-    multiprocessing.
+    ``start_time + time_scale * relative_timestamp``, reproducing inter-arrival
+    timing under multiprocessing.
     """
 
     type_: Literal["trace"] = "trace"  # type: ignore[assignment]
+    time_scale: float = Field(
+        default=1.0,
+        gt=0,
+        description="Scale factor applied to relative timestamps from the dataset",
+    )
 
     def __str__(self) -> str:
-        return "trace"
+        return f"trace@{self.time_scale:.2f}"
 
     @property
     def defines_arrival_schedule(self) -> bool:
@@ -757,7 +762,7 @@ class TraceReplayStrategy(SchedulingStrategy):
         if settings.relative_timestamp is None:
             return await self.get_processes_start_time()
         start_time = await self.get_processes_start_time()
-        return start_time + settings.relative_timestamp
+        return start_time + self.time_scale * settings.relative_timestamp
 
     def request_completed(self, request_info: RequestInfo):
         _ = request_info

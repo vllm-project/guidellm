@@ -210,10 +210,14 @@ guidellm run --profile kind=sweep,sweep_size=10,rampup_duration=10,strategy_type
 Replays trace events using timestamps from a trace file dataset. See [Trace Replay Benchmarking](#trace-replay-benchmarking) below for data setup.
 
 ```bash
-guidellm run --profile kind=replay
+guidellm run --profile kind=replay,time_scale=1.0
 ```
 
-Timeline options such as `time_scale` and wait caps belong on `--data`, not the profile.
+| Profile parameter | Description                                   | Example                                |
+| ----------------- | --------------------------------------------- | -------------------------------------- |
+| `time_scale`      | Time scale for intervals between trace events | `--profile kind=replay,time_scale=2.0` |
+
+Wait caps and a data-side `time_scale` are set on `--data`. The profile `time_scale` is applied by the scheduler after those dataset timestamps are built, allowing multiple runs with different time scales.
 
 ## Data Options
 

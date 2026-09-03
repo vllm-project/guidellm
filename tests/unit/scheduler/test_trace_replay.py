@@ -14,14 +14,15 @@ TRACE_TIMESTAMPS = [0.0, 0.0, 0.0, 0.1, 0.1, 1.5, 2.0, 2.0, 3.5, 7.0]
 class TestTraceReplayStrategy:
     @pytest.mark.smoke
     def test_initialization_and_serialization(self):
-        strategy = TraceReplayStrategy()
+        strategy = TraceReplayStrategy(time_scale=2.0)
 
         assert strategy.type_ == "trace"
-        assert str(strategy) == "trace"
+        assert str(strategy) == "trace@2.00"
         assert strategy.processes_limit is None
         assert strategy.requests_limit is None
         restored = SchedulingStrategy.model_validate(strategy.model_dump())
         assert isinstance(restored, TraceReplayStrategy)
+        assert restored.time_scale == 2.0
 
     @pytest.mark.smoke
     def test_resolve_dequeued_target_start_applies_trace_offset(self):
@@ -29,7 +30,7 @@ class TestTraceReplayStrategy:
 
         ### WRITTEN BY AI ###
         """
-        strategy = TraceReplayStrategy()
+        strategy = TraceReplayStrategy(time_scale=2.0)
         strategy.init_processes_timings(
             worker_count=2,
             max_concurrency=10,
@@ -48,7 +49,7 @@ class TestTraceReplayStrategy:
             return resolved, provisional
 
         resolved, provisional = asyncio.run(run())
-        assert resolved == pytest.approx(1000.0 + 1.5, abs=1e-6)
+        assert resolved == pytest.approx(1000.0 + 2.0 * 1.5, abs=1e-6)
         assert resolved != pytest.approx(provisional, abs=1e-6)
 
     @pytest.mark.smoke
@@ -57,7 +58,7 @@ class TestTraceReplayStrategy:
 
         ### WRITTEN BY AI ###
         """
-        strategy = TraceReplayStrategy()
+        strategy = TraceReplayStrategy(time_scale=2.0)
         strategy.init_processes_timings(
             worker_count=1,
             max_concurrency=10,
@@ -71,12 +72,12 @@ class TestTraceReplayStrategy:
         assert asyncio.run(run()) == pytest.approx(1000.0, abs=1e-6)
 
     @pytest.mark.smoke
-    def test_resolve_dequeued_target_start_adds_relative_timestamp(self):
-        """Dequeue start is start_time plus the already-scaled relative timestamp.
+    def test_resolve_dequeued_target_start_scales_timestamps(self):
+        """Dequeue start is start_time plus time_scale times relative timestamp.
 
         ## WRITTEN BY AI ##
         """
-        strategy = TraceReplayStrategy()
+        strategy = TraceReplayStrategy(time_scale=2.0)
         strategy.init_processes_timings(
             worker_count=1,
             max_concurrency=10,
@@ -95,7 +96,7 @@ class TestTraceReplayStrategy:
             ]
 
         assert asyncio.run(run()) == pytest.approx(
-            [1000.0 + ts for ts in TRACE_TIMESTAMPS],
+            [1000.0 + 2.0 * ts for ts in TRACE_TIMESTAMPS],
             abs=1e-6,
         )
 
@@ -105,7 +106,7 @@ class TestTraceReplayStrategy:
 
         ### WRITTEN BY AI ###
         """
-        strategy = TraceReplayStrategy()
+        strategy = TraceReplayStrategy(time_scale=2.0)
         strategy.init_processes_timings(
             worker_count=1,
             max_concurrency=10,
@@ -124,7 +125,7 @@ class TestTraceReplayStrategy:
 
     @pytest.mark.smoke
     def test_request_completed_no_op(self):
-        strategy = TraceReplayStrategy()
+        strategy = TraceReplayStrategy(time_scale=1.0)
         info = RequestInfo(
             request_id="x",
             status="completed",
