@@ -62,24 +62,37 @@ This is the most critical section for performance analysis. It displays detailed
 
 The p99 (99th percentile) values are particularly important for SLO analysis, as they represent the worst-case performance for 99% of requests.
 
-## Analyzing the Results File
+## Analyzing Saved Results
 
-For deeper analysis, GuideLLM saves these detailed results by default in your current directory:
+For deeper analysis, GuideLLM saves detailed results to these files by default:
 
 - `benchmarks.json`: Complete benchmark data in JSON format
 - `benchmarks.csv`: Summary of key metrics in CSV format
 
-To also generate a self-contained HTML report, add `--output kind=html,path=benchmarks.html` to the benchmark command.
+The files are written to the directory configured by `GUIDELLM__DEFAULT_RESULTS_DIR`, or to the current directory when the variable is not set.
+
+Additional formats must be requested with `--output`. Specifying any `--output` replaces the default JSON and CSV outputs, so repeat the option for every format you want. For example, to keep the default files and add a self-contained HTML report:
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --output kind=json \
+  --output kind=csv \
+  --output kind=html
+```
+
+Each file output has a default filename. Add `path=` only when you want to change its name or destination.
 
 ### File Formats
 
-GuideLLM supports multiple output formats that can be customized:
+GuideLLM supports multiple file output formats that can be customized:
 
 - **JSON**: Complete benchmark data in JSON format with full request samples
 - **YAML**: Complete benchmark data in YAML format with full request samples
 - **CSV**: Summary of key metrics in CSV format suitable for spreadsheets
 - **HTML**: Self-contained HTML report with charts and tables
-- **Console**: Terminal output displayed during execution
+- **PLOT**: Static performance graphs in PNG, JPG/JPEG, SVG, or PDF format
 
 To specify which formats to generate, and where to save them, use the `--output` option, which can be repeated for multiple formats:
 
@@ -90,6 +103,8 @@ guidellm run \
   --output kind=json,path=results/benchmarks.json \
   --output kind=csv,path=results/summary.csv
 ```
+
+Console output is an independent implicit default. Selecting file outputs does not disable it, and specifying `--output kind=console` does not customize it. Use `--disable-console` to suppress all console output or `--disable-console-interactive` to suppress only interactive progress updates.
 
 ### Programmatic Analysis
 
