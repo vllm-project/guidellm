@@ -294,7 +294,7 @@ guidellm run \
 
 ## Output Options
 
-By default, complete results are saved to `benchmarks.json` and `benchmarks.csv` in your current directory. Specify outputs explicitly with the `--output` option, which can be repeated for multiple formats:
+By default, complete results are saved to `benchmarks.json` and `benchmarks.csv`. The files use `GUIDELLM__DEFAULT_RESULTS_DIR` when set and the current directory otherwise. Specifying any `--output` replaces both defaults, so repeat the option for every format you want:
 
 ```bash
 guidellm run \
