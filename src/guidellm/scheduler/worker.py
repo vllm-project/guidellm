@@ -100,9 +100,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         constraint_reached_event: ProcessingEvent,
         shutdown_event: ProcessingEvent,
         error_event: ProcessingEvent,
-        stdout_conn: Connection,
-        stderr_conn: Connection,
-        parent_logger: Logger,
+        stdout_conn: Connection | None,
+        stderr_conn: Connection | None,
+        parent_logger: Logger | None,
     ):
         """
         Initialize worker process instance.
@@ -156,13 +156,15 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :raises RuntimeError: If worker encounters unrecoverable error during execution
         """
         # Redirect stdout/stderr to the provided pipe connections
-        os.dup2(self.stdout_conn.fileno(), sys.stdout.fileno())
-        os.dup2(self.stderr_conn.fileno(), sys.stderr.fileno())
-        self.stdout_conn.close()
-        self.stderr_conn.close()
+        if self.stdout_conn is not None and self.stderr_conn is not None:
+            os.dup2(self.stdout_conn.fileno(), sys.stdout.fileno())
+            os.dup2(self.stderr_conn.fileno(), sys.stderr.fileno())
+            self.stdout_conn.close()
+            self.stderr_conn.close()
 
         # Reinstall the logger to inherit the parent's logging configuration
-        reinstall_inherited_logger(self.parent_logger)
+        if self.parent_logger is not None:
+            reinstall_inherited_logger(self.parent_logger)
 
         try:
             if HAS_UVLOOP:
