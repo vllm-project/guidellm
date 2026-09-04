@@ -26,6 +26,7 @@ from guidellm.schemas import (
     StatusDistributionSummary,
     UsageMetrics,
 )
+from guidellm.schemas.benchmark import GoodputSLO
 
 
 def _make_errored_tool_call_stats(request_id: str) -> GenerativeRequestStats:
@@ -488,3 +489,444 @@ class TestScheduleRelativeMetrics:
         assert metrics.request_dispatch_delay is not None
         assert metrics.request_dispatch_delay.successful.count == 1
         assert metrics.request_dispatch_delay.successful.mean == pytest.approx(4.0)
+
+
+def _make_latency_stats(
+    request_id: str,
+    request_start: float,
+    first_token: float,
+    request_end: float,
+    output_tokens: int = 9,
+) -> GenerativeRequestStats:
+    """Build a completed streaming request with explicit token timings.
+
+    ## WRITTEN BY AI ##
+    """
+    timings = RequestTimings(
+        resolve_start=request_start,
+        resolve_end=request_end,
+        request_start=request_start,
+        request_end=request_end,
+        first_token_iteration=first_token,
+        last_token_iteration=request_end,
+        token_iterations=output_tokens,
+    )
+    return GenerativeRequestStats(
+        request_id=request_id,
+        info=RequestInfo(request_id=request_id, status="completed", timings=timings),
+        input_metrics=UsageMetrics(text_tokens=8),
+        output_metrics=UsageMetrics(text_tokens=output_tokens),
+    )
+
+
+def _make_errored_stats(request_id: str, start: float) -> GenerativeRequestStats:
+    """
+    Build an errored request with no usable output metrics.
+
+    ## WRITTEN BY AI ##
+    """
+    timings = RequestTimings(
+        resolve_start=start,
+        resolve_end=start + 1.0,
+        request_start=start,
+        request_end=start + 1.0,
+    )
+    return GenerativeRequestStats(
+        request_id=request_id,
+        info=RequestInfo(request_id=request_id, status="errored", timings=timings),
+        input_metrics=UsageMetrics(text_tokens=8),
+        output_metrics=UsageMetrics(),
+    )
+
+
+def _make_goodput_accumulator(
+    successful: list[GenerativeRequestStats],
+    start_time: float,
+    end_time: float,
+    slo: GoodputSLO | None,
+) -> GenerativeBenchmarkAccumulator:
+    """Build an accumulator carrying latency objectives on its config.
+
+    ## WRITTEN BY AI ##
+    """
+    accumulator = _make_accumulator(successful, start_time, end_time)
+    accumulator.config.slo = slo
+
+    return accumulator
+
+
+class TestGoodputMetrics:
+    """
+    Verify goodput attainment and rate compiled against latency objectives.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_no_objectives_reports_nothing(self):
+        """
+        Leave goodput unset when no objectives were configured.
+
+        ## WRITTEN BY AI ##
+        """
+        successful = [
+            _make_latency_stats(
+                "a",
+                SCHEDULE_BASE_TIME,
+                SCHEDULE_BASE_TIME + 0.1,
+                SCHEDULE_BASE_TIME + 1.0,
+            )
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_goodput_accumulator(
+                successful, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10.0, None
+            )
+        )
+
+        assert metrics.slo_attainment is None
+        assert metrics.request_goodput is None
+        assert metrics.slo_determined_requests == 0
+
+    @pytest.mark.sanity
+    def test_attainment_is_the_conforming_fraction(self):
+        """
+        Report attainment as the share of requests meeting every objective.
+
+        Three of four requests finish within a 2s end-to-end objective.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        successful = [
+            _make_latency_stats("a", base, base + 0.1, base + 1.0),
+            _make_latency_stats("b", base, base + 0.1, base + 1.5),
+            _make_latency_stats("c", base, base + 0.1, base + 1.9),
+            _make_latency_stats("d", base, base + 0.1, base + 5.0),
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_goodput_accumulator(
+                successful, base, base + 10.0, GoodputSLO(e2el_ms=2000)
+            )
+        )
+
+        assert metrics.slo_attainment == pytest.approx(0.75)
+        assert metrics.slo_determined_requests == 4
+
+    @pytest.mark.sanity
+    def test_goodput_never_exceeds_throughput(self):
+        """
+        Report a conforming-request rate at or below the overall request rate.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        successful = [
+            _make_latency_stats("a", base, base + 0.1, base + 1.0),
+            _make_latency_stats("b", base, base + 0.1, base + 5.0),
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_goodput_accumulator(
+                successful, base, base + 10.0, GoodputSLO(e2el_ms=2000)
+            )
+        )
+
+        assert metrics.request_goodput is not None
+        # One of two requests conforms over a 10s window. The ordering check
+        # alone is a tautology: conforming is a subset of successful over the
+        # same window, so it holds for any subset selection, right or wrong.
+        assert metrics.request_goodput.successful.mean == pytest.approx(0.1)
+        assert metrics.requests_per_second.successful.mean == pytest.approx(0.2)
+
+    @pytest.mark.regression
+    def test_unmeasurable_objective_reports_none_not_zero(self):
+        """
+        Report None when no request can be evaluated, rather than zero.
+
+        A non-streaming workload has no first-token timing, so a ttft objective
+        leaves every request undetermined. Reporting 0.0 would read as "nothing
+        met the objectives" instead of "the objectives do not apply here".
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        successful = [
+            _make_scheduled_stats("a", base, base, base + 1.0),
+            _make_scheduled_stats("b", base, base, base + 9.0),
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_goodput_accumulator(
+                successful, base, base + 10.0, GoodputSLO(ttft_ms=500, e2el_ms=2000)
+            )
+        )
+
+        assert metrics.slo_attainment is None
+        assert metrics.request_goodput is None
+        assert metrics.slo_determined_requests == 0
+
+    @pytest.mark.smoke
+    def test_goodput_fields_are_optional_for_existing_reports(self):
+        """
+        Carry defaults so reports written before goodput existed still validate.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        metrics = GenerativeMetrics.compile(
+            _make_goodput_accumulator(
+                [_make_latency_stats("a", base, base + 0.1, base + 1.0)],
+                base,
+                base + 10.0,
+                GoodputSLO(e2el_ms=2000),
+            )
+        )
+
+        payload = metrics.model_dump()
+        for name in ("slo_attainment", "slo_determined_requests", "request_goodput"):
+            del payload[name]
+
+        restored = GenerativeMetrics.model_validate(payload)
+
+        assert restored.slo_attainment is None
+        assert restored.request_goodput is None
+        assert restored.slo_determined_requests == 0
+
+
+class TestGoodputObjectiveMapping:
+    """
+    Verify which measured latency each objective is compared against.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.regression
+    def test_tpot_uses_inter_token_latency_not_time_per_output_token(self):
+        """
+        Compare tpot against inter-token latency, which excludes the first
+        token, rather than against time per output token, which includes it.
+
+        The two differ whenever time to first token differs from the steady
+        inter-token interval, and the documented objective mapping depends on
+        this choice.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        # 9 output tokens: slow first token at 0.5s, then 1.0s of generation.
+        # inter-token latency = 1000 * 1.0 / 8 = 125ms
+        # time per output token = 1000 * 1.5 / 9 = 166.7ms
+        stats = _make_latency_stats("a", base, base + 0.5, base + 1.5, output_tokens=9)
+        assert stats.inter_token_latency_ms == pytest.approx(125.0, abs=0.1)
+        assert stats.time_per_output_token_ms == pytest.approx(166.7, abs=0.1)
+
+        # A threshold between the two must accept the request.
+        conforming = GenerativeMetrics.compile(
+            _make_goodput_accumulator(
+                [stats], base, base + 10.0, GoodputSLO(tpot_ms=150)
+            )
+        )
+
+        assert conforming.slo_attainment == pytest.approx(1.0)
+
+    @pytest.mark.regression
+    def test_ttft_and_tpot_objectives_are_not_swapped(self):
+        """
+        Compare each objective against its own measurement.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        # ttft = 500ms, inter-token latency = 125ms.
+        stats = _make_latency_stats("a", base, base + 0.5, base + 1.5, output_tokens=9)
+
+        # Thresholds that pass only when each is matched to its own metric.
+        matched = GenerativeMetrics.compile(
+            _make_goodput_accumulator(
+                [stats], base, base + 10.0, GoodputSLO(ttft_ms=600, tpot_ms=150)
+            )
+        )
+        # Swapping the thresholds must fail: ttft 500 > 150, tpot 125 <= 600.
+        swapped = GenerativeMetrics.compile(
+            _make_goodput_accumulator(
+                [stats], base, base + 10.0, GoodputSLO(ttft_ms=150, tpot_ms=600)
+            )
+        )
+
+        assert matched.slo_attainment == pytest.approx(1.0)
+        assert swapped.slo_attainment == pytest.approx(0.0)
+
+    @pytest.mark.regression
+    def test_single_token_requests_are_undetermined_under_tpot(self):
+        """
+        Leave requests with one output token undetermined when tpot is set.
+
+        Inter-token latency needs two tokens, so such requests are excluded
+        from the population rather than counted either way.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        stats = _make_latency_stats("a", base, base + 0.1, base + 0.2, output_tokens=1)
+        metrics = GenerativeMetrics.compile(
+            _make_goodput_accumulator(
+                [stats], base, base + 10.0, GoodputSLO(tpot_ms=1000)
+            )
+        )
+
+        assert metrics.slo_determined_requests == 0
+        assert metrics.slo_attainment is None
+
+
+class TestGoodputPopulation:
+    """
+    Verify which requests the attainment fraction is averaged over.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.regression
+    def test_denominator_counts_only_determined_requests(self):
+        """
+        Divide by the requests that could be evaluated, not by every
+        successful request.
+
+        A mixed population is the only case that separates the two, and it is
+        reachable whenever some requests carry token timings and others do not.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        # Two streaming requests that conform, two without token timings.
+        successful = [
+            _make_latency_stats("s1", base, base + 0.1, base + 1.0),
+            _make_latency_stats("s2", base, base + 0.1, base + 1.0),
+            _make_scheduled_stats("n1", base, base, base + 1.0),
+            _make_scheduled_stats("n2", base, base, base + 1.0),
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_goodput_accumulator(
+                successful, base, base + 10.0, GoodputSLO(ttft_ms=500)
+            )
+        )
+
+        assert metrics.slo_determined_requests == 2
+        assert metrics.slo_attainment == pytest.approx(1.0)
+
+    @pytest.mark.regression
+    def test_errored_requests_count_against_attainment(self):
+        """
+        Score errored requests as non-conforming.
+
+        On a saturated server overload surfaces as errors rather than slow
+        successes. Averaging over successful requests alone reports a level
+        that is mostly failing as fully conforming, which would make a search
+        driven by attainment climb straight past the knee.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        successful = [_make_latency_stats("ok", base, base + 0.1, base + 1.0)]
+        errored = [_make_errored_stats(f"err-{i}", base) for i in range(9)]
+        accumulator = _make_goodput_accumulator(
+            successful, base, base + 10.0, GoodputSLO(e2el_ms=5000)
+        )
+        accumulator.errored.requests_stats = errored
+        metrics = GenerativeMetrics.compile(accumulator)
+
+        assert metrics.slo_determined_requests == 10
+        assert metrics.slo_attainment == pytest.approx(0.1)
+
+    @pytest.mark.regression
+    def test_incomplete_requests_are_excluded(self):
+        """
+        Ignore requests cancelled at the measurement boundary.
+
+        Those were truncated by the run's own duration limit rather than by
+        the server, so counting them would penalise every duration-limited run.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        successful = [_make_latency_stats("ok", base, base + 0.1, base + 1.0)]
+        accumulator = _make_goodput_accumulator(
+            successful, base, base + 10.0, GoodputSLO(e2el_ms=5000)
+        )
+        accumulator.incomplete.requests_stats = [
+            _make_errored_stats(f"cancelled-{i}", base) for i in range(9)
+        ]
+        metrics = GenerativeMetrics.compile(accumulator)
+
+        assert metrics.slo_determined_requests == 1
+        assert metrics.slo_attainment == pytest.approx(1.0)
+
+
+class TestGoodputConfigWiring:
+    """
+    Verify latency objectives reach the accumulator from configuration.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.regression
+    def test_objectives_reach_benchmark_config(self):
+        """
+        Carry the configured objectives onto BenchmarkConfig so metric
+        compilation can read them.
+
+        Without this the plumbing between the metrics arguments and the
+        accumulator can be severed and every goodput metric silently becomes
+        None while the run still reports success.
+
+        ## WRITTEN BY AI ##
+        """
+        slo = GoodputSLO(ttft_ms=2000)
+        accumulator = _make_goodput_accumulator(
+            [], SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 1.0, slo
+        )
+
+        assert accumulator.config.slo == slo
+
+    @pytest.mark.regression
+    def test_config_round_trips_objectives(self):
+        """
+        Serialize and restore objectives on BenchmarkConfig.
+
+        ## WRITTEN BY AI ##
+        """
+        config = BenchmarkConfig(
+            run_id="goodput",
+            run_index=0,
+            strategy=AsyncConstantStrategy(rate=10.0),
+            constraints={},
+            profile={},
+            requests={},
+            backend={},
+            environment={},
+            slo=GoodputSLO(ttft_ms=2000, tpot_ms=100),
+        )
+        restored = BenchmarkConfig.model_validate(config.model_dump())
+
+        assert restored.slo is not None
+        assert restored.slo.ttft_ms == 2000
+        assert restored.slo.tpot_ms == 100
+
+    @pytest.mark.regression
+    def test_config_without_objectives_still_validates(self):
+        """
+        Restore a config written before the objectives field existed.
+
+        ## WRITTEN BY AI ##
+        """
+        config = BenchmarkConfig(
+            run_id="goodput",
+            run_index=0,
+            strategy=AsyncConstantStrategy(rate=10.0),
+            constraints={},
+            profile={},
+            requests={},
+            backend={},
+            environment={},
+        )
+        payload = config.model_dump()
+        del payload["slo"]
+
+        assert BenchmarkConfig.model_validate(payload).slo is None

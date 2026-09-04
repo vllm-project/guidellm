@@ -25,6 +25,7 @@ from guidellm.schemas import (
     StatusBreakdown,
     StatusDistributionSummary,
 )
+from guidellm.schemas.benchmark import GoodputSLO
 
 __all__ = [
     "GenerativeAudioMetricsSummary",
@@ -879,6 +880,111 @@ class GenerativeMetrics(StandardBaseDict):
         description="Tool call metrics for tokens and call counts"
     )
 
+    # Goodput stats, populated only when latency objectives are configured
+    slo_attainment: float | None = Field(
+        default=None,
+        description=(
+            "Fraction of successful requests meeting every configured latency "
+            "objective, between 0.0 and 1.0. Requests whose objectives cannot "
+            "be evaluated are excluded from both numerator and denominator. "
+            "None when no objectives are configured"
+        ),
+    )
+    slo_determined_requests: int = Field(
+        default=0,
+        description=(
+            "Number of successful requests whose objectives could all be "
+            "evaluated, forming the population slo_attainment averages over"
+        ),
+    )
+    request_goodput: StatusDistributionSummary | None = Field(
+        default=None,
+        description=(
+            "Distribution of objective-conforming requests per second, computed "
+            "over the same measurement window as requests_per_second so the two "
+            "are directly comparable. None when no objectives are configured"
+        ),
+    )
+
+    @classmethod
+    def _compile_goodput(
+        cls,
+        slo: GoodputSLO | None,
+        successful: list[GenerativeRequestStats],
+        errored: list[GenerativeRequestStats],
+        start_time: float,
+        end_time: float,
+    ) -> tuple[float | None, int, StatusDistributionSummary | None]:
+        """
+        Compile goodput attainment and rate against configured latency objectives.
+
+        Errored requests count against attainment. A request that failed did not
+        deliver a response within its latency objective, and on a saturated
+        server overload usually surfaces as timeouts and errors rather than as
+        slow successes; scoring only successful requests would report a level
+        that is mostly failing as fully conforming. Incomplete requests are
+        excluded instead, because they were cancelled at the measurement
+        boundary by the run's own duration limit rather than by the server.
+
+        Attainment is a ratio over the measured request population and so is not
+        affected by how much of the measurement window the server spent filling
+        its pipeline. The rate shares the window convention of
+        ``requests_per_second`` and therefore shares its sensitivity to that
+        ramp, which is why callers comparing load levels should prefer
+        attainment.
+
+        :param slo: Configured latency objectives, or None to skip goodput
+        :param successful: Successful request statistics within the window
+        :param errored: Errored request statistics within the window
+        :param start_time: Measurement window start timestamp
+        :param end_time: Measurement window end timestamp
+        :return: Tuple of (attainment ratio, determined request count,
+            conforming request rate). The ratio and rate are None when no
+            objectives are configured or none could be evaluated
+        """
+        if slo is None:
+            return None, 0, None
+
+        conforming: list[GenerativeRequestStats] = []
+        determined = 0
+        for stats in successful:
+            verdict = slo.is_conforming(
+                ttft_ms=stats.time_to_first_token_ms,
+                tpot_ms=stats.inter_token_latency_ms,
+                e2el_ms=(
+                    stats.request_latency * 1000.0
+                    if stats.request_latency is not None
+                    else None
+                ),
+            )
+            if verdict is None:
+                continue
+            determined += 1
+            if verdict:
+                conforming.append(stats)
+
+        # An errored request produced no conforming response, so it lowers
+        # attainment without needing its latencies to be measurable.
+        determined += len(errored)
+
+        if determined == 0:
+            # Every request lacked a measurement for at least one objective, so
+            # there is no population to average over. Reporting 0.0 here would
+            # read as "nothing met the objectives" rather than "the objectives
+            # do not apply to this workload".
+            return None, 0, None
+
+        goodput = StatusDistributionSummary.rate_distribution_from_timings_function(
+            function=lambda req: req.request_end_time,
+            successful=conforming,
+            incomplete=[],
+            errored=[],
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        return len(conforming) / determined, determined, goodput
+
     @classmethod
     def compile(cls, accumulator: GenerativeBenchmarkAccumulator) -> GenerativeMetrics:
         """
@@ -921,7 +1027,18 @@ class GenerativeMetrics(StandardBaseDict):
                 errored=errored,
             )
 
+        slo_attainment, slo_determined, request_goodput = cls._compile_goodput(
+            slo=accumulator.config.slo,
+            successful=successful,
+            errored=errored,
+            start_time=start_time,
+            end_time=end_time,
+        )
+
         return GenerativeMetrics(
+            slo_attainment=slo_attainment,
+            slo_determined_requests=slo_determined,
+            request_goodput=request_goodput,
             # Request stats
             request_totals=StatusBreakdown(
                 successful=len(successful),
