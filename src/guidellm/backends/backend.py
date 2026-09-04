@@ -110,6 +110,21 @@ class Backend(
         """
         return None
 
+    @property
+    def requires_startup_for_resolution(self) -> bool:
+        """
+        Whether ``resolve_backend`` must start the backend up in the main process
+        to validate it and resolve its default model.
+
+        In-process backends that initialize heavyweight resources on
+        ``process_startup`` (e.g. an inference engine) return ``False`` so the
+        resources are only initialized once, in the worker process; their
+        ``default_model`` must be resolvable without a startup.
+
+        :return: True to start up during resolution (default), False to skip it.
+        """
+        return True
+
     @abstractmethod
     async def default_model(self) -> str:
         """

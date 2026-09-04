@@ -98,18 +98,30 @@ async def resolve_backend(
             f"{backend_instance.__class__.__name__} backend initialized"
         )
 
-    await backend_instance.process_startup()
-    try:
-        await backend_instance.validate()
+    if backend_instance.requires_startup_for_resolution:
+        await backend_instance.process_startup()
+        try:
+            await backend_instance.validate()
 
+            if console_step:
+                console_step.update(
+                    title="Resolving default model from backend.default_model",
+                    status_level="info",
+                )
+            model = await backend_instance.default_model()
+        finally:
+            await backend_instance.process_shutdown()
+    else:
+        # In-process backends (e.g. vllm_python) initialize heavyweight resources
+        # on startup and must only do so in the worker process. Resolve the model
+        # from configuration without starting the backend here; validation runs in
+        # the worker.
         if console_step:
             console_step.update(
                 title="Resolving default model from backend.default_model",
                 status_level="info",
             )
         model = await backend_instance.default_model()
-    finally:
-        await backend_instance.process_shutdown()
 
     if console_step:
         console_step.finish(
