@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
@@ -29,6 +30,7 @@ from guidellm.mock_server.handlers import (
     ResponsesHandler,
     TokenizerHandler,
 )
+from guidellm.mock_server.multimodal import estimate_audio_seconds
 from guidellm.schemas.mock_server import MockServerConfig
 
 __all__ = ["MockServer"]
@@ -145,6 +147,28 @@ class MockServer:
         async with semaphore:
             return await handler(request)
 
+    def _audio_usage(self, file: File, text: str) -> dict[str, int | float]:
+        """
+        Build usage statistics for an audio endpoint response.
+
+        Charges prompt tokens for the uploaded audio using the configured
+        per-second rate applied to the duration estimated from the payload
+        size, and counts completion tokens from the generated text.
+
+        :param file: Uploaded audio file from the multipart form
+        :param text: Text returned in the response body
+        :return: Usage dict with prompt, completion, and total token counts
+        """
+        audio_seconds = estimate_audio_seconds(len(file.body), file.type or file.name)
+        prompt_tokens = math.ceil(audio_seconds * self.config.audio_tokens_per_second)
+        completion_tokens = len(self.tokenizer_handler.tokenizer.tokenize(text))
+        return {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+            "seconds": round(audio_seconds, 3),
+        }
+
     def _setup_middleware(self):
         """Setup middleware for CORS, logging, etc."""
 
@@ -236,13 +260,15 @@ class MockServer:
 
             file = cast("File", file)
             model = request.form.get("model", "mock-model")
+            text = f"Mock transcription for {file.name}"
 
             return response.json(
                 {
-                    "text": f"Mock transcription for {file.name}",
+                    "text": text,
                     "file_size": len(file.body),
                     "model_used": model,
                     "transcription": f"Transcribed({file.name}) using {model}",
+                    "usage": self._audio_usage(file, text),
                 }
             )
 
@@ -274,9 +300,10 @@ class MockServer:
                 {
                     "text": decoded_text,
                     "file_size": len(file.body),
-                    "filename": {file.name},
+                    "filename": file.name,
                     "model_used": request.form.get("model", "mock-model"),
                     "mimetype": file.type,
+                    "usage": self._audio_usage(file, decoded_text),
                 }
             )
 

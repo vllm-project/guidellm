@@ -94,6 +94,24 @@ __all__ = ["mock_server"]
     help="Output tokens standard deviation (normal distribution).",
 )
 @click.option(
+    "--image-tokens",
+    default=576,
+    type=int,
+    help="Prompt tokens charged per image content part in multimodal requests.",
+)
+@click.option(
+    "--video-tokens",
+    default=1024,
+    type=int,
+    help="Prompt tokens charged per video content part in multimodal requests.",
+)
+@click.option(
+    "--audio-tokens-per-second",
+    default=25.0,
+    type=float,
+    help="Prompt tokens charged per estimated second of audio input.",
+)
+@click.option(
     "--fail-after-requests",
     default=None,
     type=int,
@@ -125,6 +143,9 @@ def mock_server(
     itl_ms_std: float,
     output_tokens: int,
     output_tokens_std: float,
+    image_tokens: int,
+    video_tokens: int,
+    audio_tokens_per_second: float,
     fail_after_requests: int | None,
     max_concurrent_requests: int | None,
 ):
@@ -142,6 +163,9 @@ def mock_server(
         itl_ms_std=itl_ms_std,
         output_tokens=output_tokens,
         output_tokens_std=output_tokens_std,
+        image_tokens=image_tokens,
+        video_tokens=video_tokens,
+        audio_tokens_per_second=audio_tokens_per_second,
         fail_after_requests=fail_after_requests,
         max_concurrent_requests=max_concurrent_requests,
     )

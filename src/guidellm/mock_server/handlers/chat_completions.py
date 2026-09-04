@@ -32,6 +32,11 @@ from guidellm.mock_server.models import (
     ErrorResponse,
     Usage,
 )
+from guidellm.mock_server.multimodal import (
+    InvalidContentPartError,
+    MultimodalPromptStats,
+    accumulate_multimodal_content,
+)
 from guidellm.mock_server.utils import (
     MockTokenizer,
     create_fake_text,
@@ -113,11 +118,28 @@ class ChatCompletionsHandler:
                 status=400,
             )
 
+        # Validate multimodal content parts and accumulate their token charges
+        try:
+            multimodal_stats = accumulate_multimodal_content(
+                req_data.messages, self.config
+            )
+        except InvalidContentPartError as exc:
+            return response.json(
+                ErrorResponse(
+                    error=ErrorDetail(
+                        message=f"Invalid request: {exc}",
+                        type="invalid_request_error",
+                        code="invalid_request",
+                    )
+                ).model_dump(),
+                status=400,
+            )
+
         # Handle streaming vs non-streaming
         if req_data.stream:
-            return await self._handle_stream(req_data)
+            return await self._handle_stream(req_data, multimodal_stats)
         else:
-            return await self._handle_non_stream(req_data)
+            return await self._handle_non_stream(req_data, multimodal_stats)
 
     def _should_return_tool_calls(self, req: ChatCompletionsRequest) -> bool:
         """Check if this request expects a tool call response.
@@ -146,7 +168,9 @@ class ChatCompletionsHandler:
             }
         ]
 
-    async def _handle_non_stream(self, req: ChatCompletionsRequest) -> HTTPResponse:
+    async def _handle_non_stream(
+        self, req: ChatCompletionsRequest, multimodal_stats: MultimodalPromptStats
+    ) -> HTTPResponse:
         """
         Generate complete non-streaming chat completion response.
 
@@ -156,6 +180,7 @@ class ChatCompletionsHandler:
         returns tool_calls instead of text content.
 
         :param req: Validated chat completion request parameters
+        :param multimodal_stats: Accumulated multimodal prompt token charges
         :return: Complete HTTP response with generated completion data
         """
         # TTFT delay
@@ -165,7 +190,8 @@ class ChatCompletionsHandler:
 
         # Token counts
         prompt_text = self.tokenizer.apply_chat_template(req.messages)
-        prompt_tokens = len(self.tokenizer(prompt_text))  # type: ignore[arg-type]
+        text_tokens = len(self.tokenizer(prompt_text))  # type: ignore[arg-type]
+        prompt_tokens = text_tokens + multimodal_stats.total_tokens
         max_tokens = req.max_completion_tokens or req.max_tokens or math.inf
         completion_tokens_count = min(
             sample_number(self.config.output_tokens, self.config.output_tokens_std),
@@ -209,13 +235,18 @@ class ChatCompletionsHandler:
             usage=Usage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=int(completion_tokens_count),
+                prompt_tokens_details=multimodal_stats.prompt_tokens_details(
+                    text_tokens
+                ),
             ),
             system_fingerprint=f"fp_{uuid.uuid4().hex[:10]}",
         )
 
         return response.json(chat_response.model_dump())
 
-    async def _handle_stream(self, req: ChatCompletionsRequest) -> HTTPResponse:
+    async def _handle_stream(
+        self, req: ChatCompletionsRequest, multimodal_stats: MultimodalPromptStats
+    ) -> HTTPResponse:
         """
         Generate streaming chat completion response with real-time token delivery.
 
@@ -225,6 +256,7 @@ class ChatCompletionsHandler:
         "required", streams tool call deltas instead of content.
 
         :param req: Validated chat completion request with streaming enabled
+        :param multimodal_stats: Accumulated multimodal prompt token charges
         :return: Streaming HTTP response delivering tokens with proper timing
         """
         is_tool_call = self._should_return_tool_calls(req)
@@ -239,7 +271,9 @@ class ChatCompletionsHandler:
 
             # Token counts
             prompt_text = self.tokenizer.apply_chat_template(req.messages)
-            prompt_tokens = len(self.tokenizer(prompt_text))  # type: ignore[arg-type]
+            text_tokens = len(self.tokenizer(prompt_text))  # type: ignore[arg-type]
+            prompt_tokens = text_tokens + multimodal_stats.total_tokens
+            prompt_tokens_details = multimodal_stats.prompt_tokens_details(text_tokens)
             max_tokens = req.max_completion_tokens or req.max_tokens or math.inf
             completion_tokens_count = int(
                 min(
@@ -257,6 +291,7 @@ class ChatCompletionsHandler:
                     completion_id,
                     prompt_tokens,
                     completion_tokens_count,
+                    prompt_tokens_details,
                 )
             else:
                 await self._stream_content(
@@ -265,6 +300,7 @@ class ChatCompletionsHandler:
                     completion_id,
                     prompt_tokens,
                     completion_tokens_count,
+                    prompt_tokens_details,
                 )
 
             # End stream
@@ -287,6 +323,7 @@ class ChatCompletionsHandler:
         completion_id,
         prompt_tokens,
         completion_tokens_count,
+        prompt_tokens_details=None,
     ):
         """Stream text content tokens with ITL delays."""
         tokens = create_fake_tokens_str(completion_tokens_count, self.tokenizer)
@@ -330,17 +367,20 @@ class ChatCompletionsHandler:
 
         # Send usage if requested
         if req.stream_options and req.stream_options.include_usage:
+            usage_data: dict[str, Any] = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens_count,
+                "total_tokens": prompt_tokens + completion_tokens_count,
+            }
+            if prompt_tokens_details is not None:
+                usage_data["prompt_tokens_details"] = prompt_tokens_details
             usage_chunk = {
                 "id": completion_id,
                 "object": "chat.completion.chunk",
                 "created": int(time.time()),
                 "model": req.model,
                 "choices": [],
-                "usage": {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens_count,
-                    "total_tokens": prompt_tokens + completion_tokens_count,
-                },
+                "usage": usage_data,
             }
             await stream_response.write(f"data: {json.dumps(usage_chunk)}\n\n")
 
@@ -351,6 +391,7 @@ class ChatCompletionsHandler:
         completion_id,
         prompt_tokens,
         completion_tokens_count,
+        prompt_tokens_details=None,
     ):
         """Stream tool call deltas matching the OpenAI streaming tool call format.
 
@@ -441,16 +482,19 @@ class ChatCompletionsHandler:
 
         # Send usage if requested
         if req.stream_options and req.stream_options.include_usage:
+            usage_data: dict[str, Any] = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens_count,
+                "total_tokens": prompt_tokens + completion_tokens_count,
+            }
+            if prompt_tokens_details is not None:
+                usage_data["prompt_tokens_details"] = prompt_tokens_details
             usage_chunk = {
                 "id": completion_id,
                 "object": "chat.completion.chunk",
                 "created": int(time.time()),
                 "model": req.model,
                 "choices": [],
-                "usage": {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens_count,
-                    "total_tokens": prompt_tokens + completion_tokens_count,
-                },
+                "usage": usage_data,
             }
             await stream_response.write(f"data: {json.dumps(usage_chunk)}\n\n")
