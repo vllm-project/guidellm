@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from datasets import Dataset, IterableDataset, load_dataset
+from datasets import Dataset, load_dataset
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
@@ -13,7 +13,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.data.utils import resolve_dataset_split
+from guidellm.data.schemas import DatasetDictType
 from guidellm.schemas.data.deserializers import FileDataArgs
 
 __all__ = [
@@ -28,9 +28,7 @@ __all__ = [
 ]
 
 
-def _load_file_dataset(
-    loader: str, path: Path, **load_kwargs: Any
-) -> Dataset | IterableDataset:
+def _load_file_dataset(loader: str, path: Path, **load_kwargs: Any) -> DatasetDictType:
     """
     Load a local data file and return a single dataset split.
 
@@ -41,10 +39,9 @@ def _load_file_dataset(
     :param loader: The ``datasets`` loader name (e.g. ``"json"``, ``"csv"``).
     :param path: Path to the local data file.
     :param load_kwargs: Additional keyword arguments forwarded to ``load_dataset``.
-    :return: The resolved dataset split.
+    :return: The resolved dataset.
     """
-    dataset = load_dataset(loader, data_files=str(path), **load_kwargs)
-    return resolve_dataset_split(dataset)
+    return load_dataset(loader, data_files=str(path), **load_kwargs)
 
 
 @DatasetDeserializerFactory.register("text_file")
@@ -54,7 +51,7 @@ class TextFileDatasetDeserializer(DatasetDeserializer):
         config: FileDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> Dataset:
+    ) -> DatasetDictType:
         _ = (processor_factory, random_seed)  # Ignore unused args format errors
 
         if (
@@ -80,7 +77,7 @@ class CSVFileDatasetDeserializer(DatasetDeserializer):
         config: FileDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> Dataset | IterableDataset:
+    ) -> DatasetDictType:
         _ = (processor_factory, random_seed)
 
         if (
@@ -103,7 +100,7 @@ class JSONFileDatasetDeserializer(DatasetDeserializer):
         config: FileDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> Dataset | IterableDataset:
+    ) -> DatasetDictType:
         _ = (processor_factory, random_seed)
         if (
             not (path := config.path).exists()
@@ -125,7 +122,7 @@ class ParquetFileDatasetDeserializer(DatasetDeserializer):
         config: FileDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> Dataset | IterableDataset:
+    ) -> DatasetDictType:
         _ = (processor_factory, random_seed)
         if (
             not (path := config.path).exists()
@@ -147,7 +144,7 @@ class ArrowFileDatasetDeserializer(DatasetDeserializer):
         config: FileDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> Dataset | IterableDataset:
+    ) -> DatasetDictType:
         _ = (processor_factory, random_seed)
         if (
             not (path := config.path).exists()
@@ -169,7 +166,7 @@ class HDF5FileDatasetDeserializer(DatasetDeserializer):
         config: FileDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> Dataset:
+    ) -> DatasetDictType:
         _ = (processor_factory, random_seed)
         if (
             not (path := config.path).exists()
@@ -191,7 +188,7 @@ class DBFileDatasetDeserializer(DatasetDeserializer):
         config: FileDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> dict[str, list]:
+    ) -> DatasetDictType:
         _ = (processor_factory, random_seed)
         if (
             not (path := config.path).exists()
@@ -213,7 +210,7 @@ class TarFileDatasetDeserializer(DatasetDeserializer):
         config: FileDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> Dataset | IterableDataset:
+    ) -> DatasetDictType:
         _ = (processor_factory, random_seed)
         if (
             not (path := config.path).exists()
