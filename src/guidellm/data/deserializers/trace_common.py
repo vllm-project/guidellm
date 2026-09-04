@@ -9,7 +9,6 @@ from __future__ import annotations
 import dataclasses
 import json
 from collections.abc import Callable, Iterable
-from pathlib import Path
 from typing import Any, Protocol
 
 import numpy as np
@@ -36,7 +35,6 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationTurnData,
 )
 from guidellm.schemas.data.deserializers import TraceDataArgs
-from guidellm.utils.hf_datasets import load_dataset_from_file
 from guidellm.utils.json_unwrap import try_json_load
 from guidellm.utils.registry import RegistryMixin
 
@@ -332,15 +330,6 @@ class MissingColumnsLocation:
     columns: list[str]
 
 
-def _validate_path(path: Path) -> None:
-    if not path.exists():
-        raise DataNotSupportedError(f"Trace file not found: {path}")
-    if not path.is_file():
-        raise DataNotSupportedError(f"Trace path is not a file: {path}")
-    if path.stat().st_size == 0:
-        raise DataNotSupportedError(f"Trace file is empty: {path}")
-
-
 def _validate_api_conversation(
     conversation: Dataset,
     config: TraceDataArgs,
@@ -451,13 +440,18 @@ class TraceDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int = 42,
     ) -> IterableDataset:
-        _validate_path(config.path)
         try:
-            dataset = load_dataset_from_file(config.path, **config.load_kwargs)
+            dataset = DatasetDeserializerFactory.deserialize(
+                config=config.source,
+                processor_factory=processor_factory,
+                random_seed=random_seed,
+            )
         except ValueError as e:
             raise DataNotSupportedError(str(e)) from e
         if not dataset:
-            raise DataNotSupportedError(f"Trace file has no valid rows: {config.path}")
+            raise DataNotSupportedError(
+                f"Trace file has no valid rows: {config.source}"
+            )
         dataset = dataset.map(_deserialize_nested_data, batched=True)
         trace_format = TraceFormatRegistry.dispatch(config, dataset)
         _handle_column_search(config, trace_format)

@@ -7,10 +7,14 @@ from unittest.mock import Mock
 
 import pytest
 from datasets import IterableDataset
+from datasets.exceptions import DatasetGenerationError
 from faker import Faker
 from pydantic import ValidationError
 
-from guidellm.data.deserializers import DataNotSupportedError
+from guidellm.data.deserializers import (
+    DataNotSupportedError,
+    DatasetDeserializerFactory,
+)
 from guidellm.data.deserializers.trace_common import (
     TraceDatasetDeserializer,
     TraceFormatRegistry,
@@ -21,8 +25,8 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
 )
-from guidellm.schemas.data import MinimalTraceFormatArgs, TraceDataArgs
-from guidellm.utils.hf_datasets import load_dataset_from_file
+from guidellm.schemas.data import FileDataArgs, MinimalTraceFormatArgs, TraceDataArgs
+from tests.unit.data.deserializers.trace_test_utils import trace_file_source
 
 
 def mock_processor() -> Mock:
@@ -72,8 +76,13 @@ class TestTraceFormatRegistry:
             tmp_path,
             '{"timestamp": 1, "input_length": 10, "output_length": 1}\n',
         )
-        config = TraceDataArgs(kind="unknown_kind", path=tmp_path)
-        dataset = load_dataset_from_file(trace)
+        source = FileDataArgs(kind="json_file", path=trace)
+        config = TraceDataArgs(kind="unknown_kind", source=source)
+        dataset = DatasetDeserializerFactory.deserialize(
+            config=source,
+            processor_factory=mock_processor,
+            random_seed=42,
+        )
         with pytest.raises(DataNotSupportedError, match="not registered"):
             TraceFormatRegistry.dispatch(config, dataset)
 
@@ -90,7 +99,7 @@ class TestTraceDataArgsSessionDuration:
             '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
         )
         args = MinimalTraceFormatArgs(
-            path=path,
+            source=trace_file_source(path),
             max_wait=30.0,
             max_session_wait=60.0,
             min_concurrent_sessions=8,
@@ -111,7 +120,7 @@ class TestTraceDataArgsSessionDuration:
             tmp_path,
             '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
         )
-        args = MinimalTraceFormatArgs(path=path)
+        args = MinimalTraceFormatArgs(source=trace_file_source(path))
         assert args.max_wait is None
         assert args.max_session_wait is None
         assert args.min_concurrent_sessions is None
@@ -173,7 +182,7 @@ class TestTraceDatasetDeserializer:
             ),
             kwargs,
         )
-        config = MinimalTraceFormatArgs(path=data, **col_kwargs)
+        config = MinimalTraceFormatArgs(source=trace_file_source(data), **col_kwargs)
         return deserializer(
             config=config,
             processor_factory=mock_processor,
@@ -347,26 +356,36 @@ class TestTraceDatasetDeserializer:
     @pytest.mark.smoke
     def test_rejects_invalid_path(self, deserializer):
         with pytest.raises(ValidationError, match="not a valid path"):
-            self.deserialize(deserializer, 123)
-        with pytest.raises(DataNotSupportedError, match="file not found"):
+            MinimalTraceFormatArgs(
+                source=FileDataArgs(kind="json_file", path=123),
+            )
+        with pytest.raises(
+            DataNotSupportedError,
+            match=r"expected str or Path to a local \.json or \.jsonl file",
+        ):
             self.deserialize(deserializer, "bad_path.jsonl")
-        with pytest.raises(DataNotSupportedError, match="not a file"):
+        with pytest.raises(
+            DataNotSupportedError,
+            match=r"expected str or Path to a local \.json or \.jsonl file",
+        ):
             self.deserialize(deserializer, Path.cwd())
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
-        ("content", "kwargs", "match"),
+        ("content", "kwargs", "match", "error_type"),
         [
-            ("", {}, "empty"),
+            ("", {}, None, DatasetGenerationError),
             (
                 '{"ts": 0, "input_length": 10, "output_length": 5}\n',
                 {},
                 "timestamp",
+                DataNotSupportedError,
             ),
             (
                 '{"timestamp": 0, "input_length": 10}\n',
                 {},
                 "output_length",
+                DataNotSupportedError,
             ),
             (
                 '{"timestamp": 0, "prompt_tokens": 10, "output_length": 5}\n',
@@ -375,50 +394,58 @@ class TestTraceDatasetDeserializer:
                     "output_tokens_column": "out",
                 },
                 "out",
+                DataNotSupportedError,
             ),
             (
                 '{"timestamp": 0, "input_length": -1, "output_length": 5}\n',
                 {},
                 "non-negative",
+                DataNotSupportedError,
             ),
             (
                 '{"timestamp": 0, "input_length": 10, "output_length": -1}\n',
                 {},
                 "non-negative",
+                DataNotSupportedError,
             ),
             (
                 '{"timestamp": "bad", "input_length": 10, "output_length": 5}\n',
                 {},
                 "scalar of type float",
+                DataNotSupportedError,
             ),
             (
                 '{"timestamp": 0, "input_length": "bad", "output_length": 5}\n',
                 {},
                 "scalar of type int32",
+                DataNotSupportedError,
             ),
             (
                 '{"timestamp": 0, "input_length": 10, "output_length": null}\n',
                 {},
                 "Missing column values",
+                DataNotSupportedError,
             ),
             (
                 '{"timestamp": "bad", "input_length": 10, "output_length": 5, '
                 '"model": "a"}\n',
                 {},
                 "scalar of type float",
+                DataNotSupportedError,
             ),
             (
                 '{"timestamp": 0, "input_length": [1, 2], "output_length": 5}\n',
                 {},
                 "Couldn't cast",
+                DataNotSupportedError,
             ),
         ],
     )
     def test_trace_validation_raises(
-        self, tmp_path: Path, deserializer, content, kwargs, match
+        self, tmp_path: Path, deserializer, content, kwargs, match, error_type
     ):
         trace = write_trace(tmp_path, content)
-        with pytest.raises(DataNotSupportedError, match=match):
+        with pytest.raises(error_type, match=match):
             self.deserialize(deserializer, trace, **kwargs)
 
     @pytest.mark.sanity
@@ -429,5 +456,8 @@ class TestTraceDatasetDeserializer:
             '"hash_ids": [0]}\n',
             suffix=".txt",
         )
-        with pytest.raises(DataNotSupportedError, match=r"Unsupported.*\.txt"):
+        with pytest.raises(
+            DataNotSupportedError,
+            match=r"expected str or Path to a local \.json or \.jsonl file",
+        ):
             self.deserialize(deserializer, trace)

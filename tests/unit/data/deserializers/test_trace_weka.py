@@ -19,6 +19,7 @@ from guidellm.data.schemas.conversation_graph_data import (
 )
 from guidellm.schemas.data import DEFAULT_SYNTHETIC_TOOLS, WEKATraceFormatArgs
 from guidellm.settings import settings
+from tests.unit.data.deserializers.trace_test_utils import trace_file_source
 
 
 def ascending_processor() -> Mock:
@@ -124,14 +125,16 @@ class TestWEKATraceFormat:
             '"out": 5, "hash_ids": []}]}\n',
         )
         DatasetDeserializerFactory.deserialize(
-            config=WEKATraceFormatArgs(path=trace),
+            config=WEKATraceFormatArgs(source=trace_file_source(trace)),
             processor_factory=ascending_processor,
             random_seed=42,
         )
 
     @pytest.fixture
     def default_block_size(self, tmp_path: Path) -> int:
-        return WEKATraceFormatArgs(path=tmp_path).hash_id_block_size
+        return WEKATraceFormatArgs(
+            source=trace_file_source(tmp_path)
+        ).hash_id_block_size
 
     @pytest.fixture
     def deserializer(self) -> TraceDatasetDeserializer:
@@ -154,7 +157,7 @@ class TestWEKATraceFormat:
             ),
             kwargs,
         )
-        config = WEKATraceFormatArgs(path=data, **col_kwargs)
+        config = WEKATraceFormatArgs(source=trace_file_source(data), **col_kwargs)
         return deserializer(
             config=config,
             processor_factory=ascending_processor,
@@ -433,7 +436,7 @@ class TestWEKATraceFormat:
             ),
         )
         ds = deserializer(
-            config=WEKATraceFormatArgs(path=trace),
+            config=WEKATraceFormatArgs(source=trace_file_source(trace)),
             processor_factory=ascending_processor,
             random_seed=42,
         )
@@ -462,7 +465,7 @@ class TestWEKATraceFormat:
             ),
         )
         ds = deserializer(
-            config=WEKATraceFormatArgs(path=trace),
+            config=WEKATraceFormatArgs(source=trace_file_source(trace)),
             processor_factory=compatible_processor,
             random_seed=42,
         )
@@ -532,7 +535,7 @@ class TestWEKATraceFormat:
             ),
         )
         ds = deserializer(
-            config=WEKATraceFormatArgs(path=trace),
+            config=WEKATraceFormatArgs(source=trace_file_source(trace)),
             processor_factory=compatible_processor,
             random_seed=42,
         )
@@ -1455,7 +1458,7 @@ class TestWEKATraceFormatArgsTools:
 
         ## WRITTEN BY AI ##
         """
-        config = WEKATraceFormatArgs(path=tmp_path)
+        config = WEKATraceFormatArgs(source=trace_file_source(tmp_path))
         assert config.tools is None
         assert config.tool_response_tokens is None
 
@@ -1466,7 +1469,9 @@ class TestWEKATraceFormatArgsTools:
         ## WRITTEN BY AI ##
         """
         custom_tools = [{"type": "function", "function": {"name": "my_func"}}]
-        config = WEKATraceFormatArgs(path=tmp_path, tools=custom_tools)
+        config = WEKATraceFormatArgs(
+            source=trace_file_source(tmp_path), tools=custom_tools
+        )
         assert config.tools == custom_tools
 
     @pytest.mark.sanity
@@ -1476,7 +1481,7 @@ class TestWEKATraceFormatArgsTools:
         ## WRITTEN BY AI ##
         """
         config = WEKATraceFormatArgs(
-            path=tmp_path,
+            source=trace_file_source(tmp_path),
             tools='[{"type":"function","function":{"name":"from_json"}}]',
         )
         assert config.tools == [{"type": "function", "function": {"name": "from_json"}}]
@@ -1488,7 +1493,10 @@ class TestWEKATraceFormatArgsTools:
         ## WRITTEN BY AI ##
         """
         with pytest.raises(ValidationError, match="tools must be a list"):
-            WEKATraceFormatArgs(path=tmp_path, tools={"name": "bad"})  # type: ignore[arg-type]
+            WEKATraceFormatArgs(
+                source=trace_file_source(tmp_path),
+                tools={"name": "bad"},
+            )  # type: ignore[arg-type]
 
     @pytest.mark.sanity
     def test_tool_response_tokens_require_mean(self, tmp_path: Path):
@@ -1497,4 +1505,7 @@ class TestWEKATraceFormatArgsTools:
         ## WRITTEN BY AI ##
         """
         with pytest.raises(ValidationError, match="tool_response_tokens must be set"):
-            WEKATraceFormatArgs(path=tmp_path, tool_response_tokens_stdev=1)
+            WEKATraceFormatArgs(
+                source=trace_file_source(tmp_path),
+                tool_response_tokens_stdev=1,
+            )
