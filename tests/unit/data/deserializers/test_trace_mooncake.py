@@ -12,12 +12,13 @@ import pytest
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
-from guidellm.data.schemas import DataNotSupportedError
+from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
 )
 from guidellm.schemas.data import MooncakeTraceFormatArgs
+from tests.unit.data.deserializers.trace_test_utils import trace_file_source
 
 
 def ascending_processor() -> Mock:
@@ -120,14 +121,16 @@ class TestMooncakeTraceFormat:
             '"hash_ids": [0]}\n',
         )
         DatasetDeserializerFactory.deserialize(
-            config=MooncakeTraceFormatArgs(path=trace),
+            config=MooncakeTraceFormatArgs(source=trace_file_source(trace)),
             processor_factory=ascending_processor,
             random_seed=42,
         )
 
     @pytest.fixture
     def default_block_size(self, tmp_path: Path) -> int:
-        return MooncakeTraceFormatArgs(path=tmp_path).hash_id_block_size
+        return MooncakeTraceFormatArgs(
+            source=trace_file_source(tmp_path)
+        ).hash_id_block_size
 
     @pytest.fixture
     def deserializer(self) -> TraceDatasetDeserializer:
@@ -144,7 +147,7 @@ class TestMooncakeTraceFormat:
             ),
             kwargs,
         )
-        config = MooncakeTraceFormatArgs(path=data, **col_kwargs)
+        config = MooncakeTraceFormatArgs(source=trace_file_source(data), **col_kwargs)
         return deserializer(
             config=config,
             processor_factory=ascending_processor,
@@ -251,7 +254,7 @@ class TestMooncakeTraceFormat:
         )
         processor = compatible_processor()
         ds = deserializer(
-            config=MooncakeTraceFormatArgs(path=trace),
+            config=MooncakeTraceFormatArgs(source=trace_file_source(trace)),
             processor_factory=lambda: processor,
             random_seed=42,
         )
@@ -278,12 +281,17 @@ class TestMooncakeTraceFormat:
             ),
         ],
     )
-    def test_trace_validation_raises(
+    def test_trace_row_validation_raises(
         self, tmp_path: Path, deserializer, content, match
     ):
+        """Row-level validation runs during iteration, not at deserialize.
+
+        ## WRITTEN BY AI ##
+        """
         trace = write_trace(tmp_path, content)
-        with pytest.raises(DataNotSupportedError, match=match):
-            self.deserialize(deserializer, trace)
+        ds = self.deserialize(deserializer, trace)
+        with pytest.raises(InvalidRowError, match=match):
+            next(iter(ds))
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(
@@ -303,7 +311,7 @@ class TestMooncakeTraceFormat:
                 ],
             ),
         )
-        config = MooncakeTraceFormatArgs(path=trace)
+        config = MooncakeTraceFormatArgs(source=trace_file_source(trace))
         ds = deserializer(
             config=config,
             processor_factory=ascending_processor,
@@ -329,7 +337,7 @@ class TestMooncakeTraceFormat:
             ),
         )
         ds = deserializer(
-            config=MooncakeTraceFormatArgs(path=trace),
+            config=MooncakeTraceFormatArgs(source=trace_file_source(trace)),
             processor_factory=compatible_processor,
             random_seed=42,
         )

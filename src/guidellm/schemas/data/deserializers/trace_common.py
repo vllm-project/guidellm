@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from pydantic import Field
 
 from guidellm.schemas.data.entrypoints import DataArgs
@@ -16,7 +14,9 @@ class TraceDataArgs(DataArgs):
     kind: str = Field(
         description="Type identifier for the trace dataset deserializer.",
     )
-    path: Path = Field(description="Path to the trace file.")
+    source: DataArgs = Field(
+        description="Source dataset to read trace data from.",
+    )
     timestamp_column: str = Field(
         default="timestamp",
         description="Column name for timestamps in the trace file.",

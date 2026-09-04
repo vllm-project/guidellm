@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from functools import wraps
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -37,6 +38,7 @@ from guidellm.scheduler.schemas.conversation_graph import (
 )
 from guidellm.schemas import GenerationRequest, RequestSettings
 from guidellm.schemas.data import (
+    FileDataArgs,
     GenerativeColumnMapperArgs,
     GenerativeRequestFinalizerArgs,
     MinimalTraceFormatArgs,
@@ -45,13 +47,38 @@ from guidellm.schemas.scheduler import (
     MaxDurationConstraintArgs,
     MaxRequestsConstraintArgs,
 )
-from tests.unit.testing_utils import async_timeout
 
 TIME_SCALE = 2.0
 RESOLVE_DELAY = 0.03
 # Sorted trace: earliest ts=2 -> 0.0, ts=5 -> 3.0, ts=8 -> 6.0 (duplicates below)
 EXPECTED_RELATIVE = [0.0, 0.0, 0.0, 0.1, 0.1, 1.5, 2.0, 2.0, 3.5, 7.0]
 NUM_REQUESTS = len(EXPECTED_RELATIVE)
+
+
+def async_timeout(delay: float):
+    """Decorator to add timeout to async test functions."""
+
+    def decorator(func):
+        @wraps(func)
+        async def new_func(*args, **kwargs):
+            return await asyncio.wait_for(func(*args, **kwargs), timeout=delay)
+
+        return new_func
+
+    return decorator
+
+
+def _trace_file_source(trace_path: Path) -> FileDataArgs:
+    suffix = trace_path.suffix.lower()
+    if suffix in {".json", ".jsonl"}:
+        kind = "json_file"
+    elif suffix == ".csv":
+        kind = "csv_file"
+    elif suffix == ".parquet":
+        kind = "parquet_file"
+    else:
+        kind = "json_file"
+    return FileDataArgs(kind=kind, path=trace_path)
 
 
 def _mock_processor() -> Mock:
@@ -75,7 +102,10 @@ def _requests_from_trace(
 ) -> tuple[list[ConversationGraph[GenerationRequest]], list[float]]:
     deserializer = TraceDatasetDeserializer()
     dataset = deserializer(
-        config=MinimalTraceFormatArgs(path=trace_path, time_scale=time_scale),
+        config=MinimalTraceFormatArgs(
+            source=_trace_file_source(trace_path),
+            time_scale=time_scale,
+        ),
         processor_factory=_mock_processor,
         random_seed=42,
     )
