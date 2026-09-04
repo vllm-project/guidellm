@@ -12,7 +12,7 @@ import pytest
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
-from guidellm.data.schemas import DataNotSupportedError
+from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
@@ -281,12 +281,17 @@ class TestMooncakeTraceFormat:
             ),
         ],
     )
-    def test_trace_validation_raises(
+    def test_trace_row_validation_raises(
         self, tmp_path: Path, deserializer, content, match
     ):
+        """Row-level validation runs during iteration, not at deserialize.
+
+        ## WRITTEN BY AI ##
+        """
         trace = write_trace(tmp_path, content)
-        with pytest.raises(DataNotSupportedError, match=match):
-            self.deserialize(deserializer, trace)
+        ds = self.deserialize(deserializer, trace)
+        with pytest.raises(InvalidRowError, match=match):
+            next(iter(ds))
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(

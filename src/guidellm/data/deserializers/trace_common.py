@@ -6,7 +6,6 @@ requested input_length for replay benchmarks."""
 
 from __future__ import annotations
 
-import dataclasses
 import json
 from collections.abc import Callable, Iterable
 from typing import Any, Protocol
@@ -29,17 +28,16 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.deserializers.trace_session_timing import TraceSessionTiming
+from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationParentRef,
     ConversationTurnData,
 )
 from guidellm.schemas.data.deserializers import TraceDataArgs
-from guidellm.utils.json_unwrap import try_json_load
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
-    "MissingColumnsLocation",
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
@@ -141,22 +139,7 @@ class TraceFormatBase(Protocol):
         and are located in the expected place."""
 
     def validate_row(self, row: dict) -> None:
-        """Called during initialization, immediately after doing
-        format-agnostic validation."""
-
-    def validate_conversation(self, conversation: Dataset) -> None:
-        """Validate one conversation yielded by ``__iter__``.
-
-        The default treats every row as an API request with timestamp and
-        token-count columns. Formats with mixed row types (for example WEKA
-        subagent groups) should override this.
-        """
-        _validate_api_conversation(
-            conversation,
-            self.config,
-            self.required_columns(),
-            self.validate_row,
-        )
+        """Called during iteration via ``_validate_api_row``."""
 
     def create_prompt(
         self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
@@ -185,6 +168,7 @@ class TraceFormatBase(Protocol):
                     ConversationParentRef(parent_node_id=f"main_{turn_idx - 1}")
                 )
 
+            _validate_api_row(turn, self.config, self.validate_row)
             prompt = self.create_prompt(turn, processor, faker)
             relative_timestamp = turn[self.config.timestamp_column] - start_ts
             columns = {
@@ -324,69 +308,24 @@ class TraceDataset(IterableDataset):
             self._ex_iterable.iteration_count = epoch
 
 
-@dataclasses.dataclass
-class MissingColumnsLocation:
-    conversation_location: list[int]
-    columns: list[str]
-
-
-def _validate_api_conversation(
-    conversation: Dataset,
+def _validate_api_row(
+    row: dict,
     config: TraceDataArgs,
-    extra_features: Features,
     validate_row: Callable[[dict], None],
 ) -> None:
-    """Null-check and cast required API columns, then run per-row validators.
-
-    Extra columns are ignored. ``extra_features`` are format-specific required
-    fields such as hash IDs. Conversation id is dropped; it lives on the outer
-    record, not on API rows.
-    """
-    features = Features(
-        {
-            config.timestamp_column: Value("float"),
-            config.prompt_tokens_column: Value("int32"),
-            config.output_tokens_column: Value("int32"),
-            **dict(extra_features),
-        }
-    )
-    if config.conversation_id_column in features:
-        features.pop(config.conversation_id_column)
-    _raise_if_nonetype_found(conversation, features)
-    _raise_if_incorrect_types(conversation, features)
-    for row in conversation:
-        _validate_row(row, config)
-        validate_row(row)
+    """Validate one API request row during iteration."""
+    _validate_row(row, config)
+    validate_row(row)
 
 
 def _validate_row(row: dict, config: TraceDataArgs) -> None:
     n_in = row[config.prompt_tokens_column]
     n_out = row[config.output_tokens_column]
     if n_in < 0 or n_out < 0:
-        raise DataNotSupportedError(
+        raise InvalidRowError(
             f"Trace token counts must be non-negative, got "
             f"input_length={n_in}, output_length={n_out}"
         )
-
-
-def _raise_if_nonetype_found(dataset: Dataset, features: Features) -> None:
-    for col in features:
-        if dataset.data[col].null_count != 0:
-            raise DataNotSupportedError(f"Missing column values in {col}")
-
-
-def _raise_if_incorrect_types(dataset: Dataset, features: Features) -> None:
-    try:
-        dataset.select_columns(list(features)).cast(features)
-    except (TypeError, ValueError) as e:
-        raise DataNotSupportedError(str(e)) from e
-
-
-def _validate_dataset(trace_format: TraceFormatBase) -> None:
-    for conv in trace_format:  # type: ignore[attr-defined]
-        if len(conv) == 0:
-            raise DataNotSupportedError("Trace conversation is empty")
-        trace_format.validate_conversation(conv)
 
 
 def _handle_column_search(config: TraceDataArgs, trace_format: TraceFormatBase) -> None:
@@ -401,33 +340,6 @@ def _handle_column_search(config: TraceDataArgs, trace_format: TraceFormatBase) 
     missing = trace_format.find_required_columns(list(features.keys()))
     if missing:
         raise DataNotSupportedError(f"Trace missing required columns: {missing}")
-
-
-def _load_all_json_strings(data: list | dict) -> list | dict:
-    iterable = enumerate(data) if isinstance(data, list) else data.items()
-    for k, v in iterable:
-        if isinstance(v, str):
-            res = try_json_load(v)
-            if isinstance(res, (list, dict)):
-                data[k] = res
-        if isinstance(v, (list, dict)):
-            data[k] = _load_all_json_strings(data[k])
-    return data
-
-
-def _deserialize_nested_data(batch: dict[str, list]) -> dict[str, list]:
-    """Intended to be used with `datasets.Dataset.map()`."""
-    sample = {k: v[0] for k, v in batch.items()}
-    for col, val in sample.items():
-        if isinstance(val, str) and isinstance(try_json_load(val), (list, dict)):
-            batch[col] = list(map(try_json_load, batch[col]))
-        if isinstance(val, dict) or (
-            isinstance(val, list)
-            and len(val) > 0
-            and isinstance(val[0], (str, list, dict))
-        ):
-            batch[col] = list(map(_load_all_json_strings, batch[col]))
-    return batch
 
 
 @DatasetDeserializerFactory.register(["trace_synthetic"])
@@ -452,8 +364,6 @@ class TraceDatasetDeserializer(DatasetDeserializer):
             raise DataNotSupportedError(
                 f"Trace file has no valid rows: {config.source}"
             )
-        dataset = dataset.map(_deserialize_nested_data, batched=True)
         trace_format = TraceFormatRegistry.dispatch(config, dataset)
         _handle_column_search(config, trace_format)
-        _validate_dataset(trace_format)
         return TraceDataset(config, trace_format, processor_factory(), random_seed)

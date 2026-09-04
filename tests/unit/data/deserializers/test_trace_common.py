@@ -7,7 +7,6 @@ from unittest.mock import Mock
 
 import pytest
 from datasets import IterableDataset
-from datasets.exceptions import DatasetGenerationError
 from faker import Faker
 from pydantic import ValidationError
 
@@ -21,6 +20,7 @@ from guidellm.data.deserializers.trace_common import (
     decode_prompt,
     generate_token_ids,
 )
+from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
@@ -374,7 +374,6 @@ class TestTraceDatasetDeserializer:
     @pytest.mark.parametrize(
         ("content", "kwargs", "match", "error_type"),
         [
-            ("", {}, None, DatasetGenerationError),
             (
                 '{"ts": 0, "input_length": 10, "output_length": 5}\n',
                 {},
@@ -396,49 +395,6 @@ class TestTraceDatasetDeserializer:
                 "out",
                 DataNotSupportedError,
             ),
-            (
-                '{"timestamp": 0, "input_length": -1, "output_length": 5}\n',
-                {},
-                "non-negative",
-                DataNotSupportedError,
-            ),
-            (
-                '{"timestamp": 0, "input_length": 10, "output_length": -1}\n',
-                {},
-                "non-negative",
-                DataNotSupportedError,
-            ),
-            (
-                '{"timestamp": "bad", "input_length": 10, "output_length": 5}\n',
-                {},
-                "scalar of type float",
-                DataNotSupportedError,
-            ),
-            (
-                '{"timestamp": 0, "input_length": "bad", "output_length": 5}\n',
-                {},
-                "scalar of type int32",
-                DataNotSupportedError,
-            ),
-            (
-                '{"timestamp": 0, "input_length": 10, "output_length": null}\n',
-                {},
-                "Missing column values",
-                DataNotSupportedError,
-            ),
-            (
-                '{"timestamp": "bad", "input_length": 10, "output_length": 5, '
-                '"model": "a"}\n',
-                {},
-                "scalar of type float",
-                DataNotSupportedError,
-            ),
-            (
-                '{"timestamp": 0, "input_length": [1, 2], "output_length": 5}\n',
-                {},
-                "Couldn't cast",
-                DataNotSupportedError,
-            ),
         ],
     )
     def test_trace_validation_raises(
@@ -447,6 +403,34 @@ class TestTraceDatasetDeserializer:
         trace = write_trace(tmp_path, content)
         with pytest.raises(error_type, match=match):
             self.deserialize(deserializer, trace, **kwargs)
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("content", "kwargs", "match"),
+        [
+            (
+                '{"timestamp": 0, "input_length": -1, "output_length": 5}\n',
+                {},
+                "non-negative",
+            ),
+            (
+                '{"timestamp": 0, "input_length": 10, "output_length": -1}\n',
+                {},
+                "non-negative",
+            ),
+        ],
+    )
+    def test_trace_row_validation_raises(
+        self, tmp_path: Path, deserializer, content, kwargs, match
+    ):
+        """Row-level validation runs during iteration, not at deserialize.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(tmp_path, content)
+        ds = self.deserialize(deserializer, trace, **kwargs)
+        with pytest.raises(InvalidRowError, match=match):
+            next(iter(ds))
 
     @pytest.mark.sanity
     def test_unsupported_file_suffix_raises(self, tmp_path: Path, deserializer):

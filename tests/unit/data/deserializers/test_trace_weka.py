@@ -12,7 +12,7 @@ from pydantic import ValidationError
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
-from guidellm.data.schemas import DataNotSupportedError
+from guidellm.data.schemas import DataNotSupportedError, InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
@@ -322,16 +322,6 @@ class TestWEKATraceFormat:
         ("content", "match"),
         [
             (
-                '{"id": "conv0", "requests": [{"t": 0, "in": 10,'
-                '"out": 5, "hash_ids": [-1]}]}\n',
-                "non-negative",
-            ),
-            (
-                '{"id": "conv0", "requests": [{"t": 0, "in": 1024,'
-                '"out": 5, "hash_ids": [1]}]}\n',
-                "given 1 blocks",
-            ),
-            (
                 '{"id": "conv0", "requests": [[{"t": 0, "in": 10,'
                 '"out": 5, "hash_ids": []}]]}\n',
                 "Failed to find requests",
@@ -339,13 +329,6 @@ class TestWEKATraceFormat:
             (
                 '{"id": "conv0", "requests": []}\n',
                 "requests was empty",
-            ),
-            (
-                '{"id": "conv0", "requests": [{"t": 0, "in": 10, "out": 5,'
-                '"hash_ids": [], "model": "a", "ttft": 0.5}]}\n'
-                '{"id": "conv1", "requests": [{"t": 0, "in": 10, "out": 5,'
-                '"model": "a"}]}\n',
-                "Missing column values in hash_ids",
             ),
         ],
     )
@@ -356,11 +339,60 @@ class TestWEKATraceFormat:
         with pytest.raises(DataNotSupportedError, match=match):
             self.deserialize(deserializer, trace)
 
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("content", "match"),
+        [
+            (
+                '{"id": "conv0", "requests": [{"t": 0, "in": 10,'
+                '"out": 5, "hash_ids": [-1]}]}\n',
+                "non-negative",
+            ),
+            (
+                '{"id": "conv0", "requests": [{"t": 0, "in": 1024,'
+                '"out": 5, "hash_ids": [1]}]}\n',
+                "given 1 blocks",
+            ),
+        ],
+    )
+    def test_trace_row_validation_raises(
+        self, tmp_path: Path, deserializer, content, match
+    ):
+        """Row-level validation runs during iteration, not at deserialize.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(tmp_path, content)
+        ds = self.deserialize(deserializer, trace)
+        with pytest.raises(InvalidRowError, match=match):
+            next(iter(ds))
+
+    @pytest.mark.sanity
+    def test_trace_row_validation_raises_on_later_conversation(
+        self, tmp_path: Path, deserializer
+    ):
+        """Missing columns on a later conversation fail when that row is iterated.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"id": "conv0", "requests": [{"t": 0, "in": 10, "out": 5,'
+            '"hash_ids": [], "model": "a", "ttft": 0.5}]}\n'
+            '{"id": "conv1", "requests": [{"t": 0, "in": 10, "out": 5,'
+            '"model": "a"}]}\n',
+        )
+        ds = self.deserialize(deserializer, trace)
+        row_iter = iter(ds)
+        next(row_iter)
+        with pytest.raises(KeyError, match="hash_ids"):
+            next(row_iter)
+
     @pytest.mark.regression
     def test_rejects_empty_conversation_after_first_row(
         self, tmp_path: Path, deserializer
     ):
-        """Reject an empty nested conversation during deserialization.
+        """Skip an empty nested conversation when iterating after the first row.
 
         ## WRITTEN BY AI ##
         """
@@ -370,8 +402,11 @@ class TestWEKATraceFormat:
             '"out": 5, "hash_ids": []}]}\n'
             '{"id": "conv1", "requests": []}\n',
         )
-        with pytest.raises(DataNotSupportedError, match="conversation is empty"):
-            self.deserialize(deserializer, trace)
+        ds = self.deserialize(deserializer, trace)
+        row_iter = iter(ds)
+        next(row_iter)
+        with pytest.raises(InvalidRowError, match="no API requests to replay"):
+            next(row_iter)
 
     @pytest.mark.regression
     def test_accepts_spec_metadata_on_request_records(
