@@ -1442,3 +1442,16 @@ class TestVLLMResolveAudioFromColumns:
             assert seen_prompt_arg[0]["multi_modal_data"]["audio"] is mock_audio_array
             prompt_str = seen_prompt_arg[0]["prompt"]
             assert "<|audio|>" in prompt_str
+
+
+@pytest.mark.sanity
+def test_requires_startup_for_resolution_is_false():
+    """
+    VLLM Python opts out of main-process startup during backend resolution so its
+    engine is only initialized once, in the worker process (#1083).
+
+    ## WRITTEN BY AI ##
+    """
+    backend = _make_vllm_backend(model="Qwen/Qwen3-0.6B")
+
+    assert backend.requires_startup_for_resolution is False

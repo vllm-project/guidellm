@@ -109,6 +109,15 @@ class VLLMPythonAsyncBackend(Backend):
         """
         return 1
 
+    @property
+    def requires_startup_for_resolution(self) -> bool:
+        """
+        VLLM Python loads an entire engine on ``process_startup``, so it must only
+        be initialized in the worker process. ``resolve_backend`` resolves the
+        model from configuration without starting the engine in the main process.
+        """
+        return False
+
     async def process_startup(self):
         """
         Initialize VLLM AsyncLLMEngine instance with configured parameters.
