@@ -5,7 +5,8 @@ from typing import Protocol, runtime_checkable
 
 from transformers import PreTrainedTokenizerBase
 
-from guidellm.data.schemas import DataNotSupportedError, DatasetType
+from guidellm.data.schemas import DataNotSupportedError, DatasetDictType, DatasetType
+from guidellm.data.utils import resolve_dataset_split
 from guidellm.schemas.data import DataArgs
 from guidellm.utils.registry import RegistryMixin
 
@@ -22,7 +23,7 @@ class DatasetDeserializer(Protocol):
         config,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
-    ) -> DatasetType: ...
+    ) -> DatasetDictType: ...
 
 
 class DatasetDeserializerFactory(RegistryMixin["type[DatasetDeserializer]"]):
@@ -40,10 +41,10 @@ class DatasetDeserializerFactory(RegistryMixin["type[DatasetDeserializer]"]):
             )
 
         deserializer_fn = deserializer_from_type()
-        dataset: DatasetType = deserializer_fn(
+        raw_dataset: DatasetDictType = deserializer_fn(
             config=config,
             processor_factory=processor_factory,
             random_seed=random_seed,
         )
 
-        return dataset
+        return resolve_dataset_split(raw_dataset)
