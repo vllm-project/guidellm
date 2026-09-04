@@ -50,7 +50,7 @@ The Mooncake format expects an additional column for prefix-based cache hash IDs
 
 ### `weka`
 
-**NOTE:** :construction: While the format is accepted, some features such as subagent conversations, tool call events and non-linear histories are still in active development. The results from datasets including these features will be unreliable.
+**NOTE:** Warm `tool_tokens`/`system_tokens` prefixes and hash-id LCP splitting of flattened agents are not implemented. Declared `type: "subagent"` groups and tool-call events (`stop: tool_use`, `input_types: ["tool_result"]`) are replayed.
 
 The WEKA format expects a column with conversation UUIDs that is not wrapped within another column. The timestamp, input token length, output token length and hash IDs columns must all be wrapped inside one JSON column (ex. "requests"), in the form of a list of JSON objects.
 
@@ -58,11 +58,24 @@ Similar to Mooncake, WEKA uses prefix-based cache hash IDs. The original [specif
 
 GuideLLM will generate prompts starting from the first conversation. When the conversation ends, the next conversation will be used. Hash IDs and relative timestamps are local to the conversation. After a conversation ends, the hash ID tree is reset and the relative timestamp returns to 0.0.
 
-| Argument                 | Default    | Description                                          |
-| ------------------------ | ---------- | ---------------------------------------------------- |
-| `conversation_id_column` | "id"       | Column name for conversation UUIDs in the trace file |
-| `hash_ids_column`        | "hash_ids" | Column name for lists of hash IDs in the trace file  |
-| `hash_id_block_size`     | 64         | Amount of tokens represented by one hash ID          |
+Declared `type: "subagent"` entries become isolated child chains. Each child spawns from the preceding parent API turn with a fresh history (`history_context="new"`) and the following parent turn waits for every sibling spawned since that turn (`history_context="last"`). Multiple subagents listed between the same parent turns therefore run in parallel; the parent resumes only after all of them complete. Request-list order is preserved at every nesting level (it is the spawn/join topology) and is not sorted by timestamp.
+
+Inner request timestamps follow the spec when they are relative to spawn, and published Hugging Face corpora when they are already absolute: if the first inner `t` is less than the subagent entry's spawn `t`, inner times are treated as `spawn_t + inner_t`; otherwise they are left as-is. Conversation-relative timestamps are then `absolute_t - min_t` across all API requests in that conversation.
+
+A single agent's consecutive turns are still serialized. If those turns overlap in time (`t[i] + api_time[i] > t[i+1]`, or `t[i+1] <= t[i]` when `api_time` is absent), GuideLLM logs a debug message. Overlap between different subagents is intended parallelism and is not warned.
+
+Tool-call events map onto GuideLLM's existing client tool-call pipeline. A request with `stop: "tool_use"` and user text input becomes a `client_tool_call` turn. The following request with `input_types: ["tool_result"]` (or, if `input_types` is absent, the next request after `stop: "tool_use"` on the same agent chain) becomes a `tool_response_injection`. When that injection row also has `stop: "tool_use"`, it still sends tool results and keeps `tools` so the model may emit further tool calls. Traces do not contain real tool schemas or results. Pass `tools` and optionally `tool_response_tokens` the same way as [synthetic data](tool_calling.md#providing-tool-definitions); otherwise GuideLLM uses the default synthetic tool definition and placeholder tool response. Chat handlers do not send the hash-id prompt as a user message on injection turns.
+
+| Argument                     | Default    | Description                                                                                           |
+| ---------------------------- | ---------- | ----------------------------------------------------------------------------------------------------- |
+| `conversation_id_column`     | "id"       | Column name for conversation UUIDs in the trace file                                                  |
+| `hash_ids_column`            | "hash_ids" | Column name for lists of hash IDs in the trace file                                                   |
+| `hash_id_block_size`         | 64         | Amount of tokens represented by one hash ID                                                           |
+| `tools`                      | `None`     | OpenAI-format tool definitions for tool-call turns. When unset, the built-in placeholder tool is used |
+| `tool_response_tokens`       | `None`     | Average tokens for mocked tool results. When unset, a short placeholder (`{"status": "ok"}`) is used  |
+| `tool_response_tokens_stdev` | `None`     | Standard deviation for tool response token count                                                      |
+| `tool_response_tokens_min`   | `None`     | Minimum number of tokens for tool response                                                            |
+| `tool_response_tokens_max`   | `None`     | Maximum number of tokens for tool response                                                            |
 
 Modified defaults:
 

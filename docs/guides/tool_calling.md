@@ -144,7 +144,19 @@ guidellm run \
 
 The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response_tokens_max` fields work identically to the corresponding `prompt_tokens_*` / `output_tokens_*` variance parameters.
 
-**2. Datasets with a tools column** -- datasets that already contain tool definitions (e.g. `madroid/glaive-function-calling-openai`) work directly. The column mapper auto-detects columns named `tools`, `functions`, or `tool_definitions`:
+**2. WEKA traces** -- tool-call turns come from the file (`stop` / `input_types`), but schemas do not. Pass `tools` and optionally `tool_response_tokens` on `--data kind=weka` the same way as synthetic data. Which turns call tools is not configurable; `tool_call_turns` does not apply.
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=replay \
+  --data '{"kind":"weka","path":"trace.jsonl","tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}],"tool_response_tokens":50}' \
+  --constraint kind=max_requests,count=30
+```
+
+When `tools` is omitted, the same built-in placeholder tool as synthetic data is used.
+
+**3. Datasets with a tools column** -- datasets that already contain tool definitions (e.g. `madroid/glaive-function-calling-openai`) work directly. The column mapper auto-detects columns named `tools`, `functions`, or `tool_definitions`:
 
 ```bash
 guidellm run \
