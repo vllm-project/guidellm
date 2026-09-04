@@ -4704,6 +4704,56 @@ class TestResponsesRequestHandler:
         assert result.body["tools"] == tools
         assert result.body["tool_choice"] == "none"
 
+    @pytest.mark.smoke
+    def test_format_injection_with_tools_keeps_tool_choice_required(
+        self, valid_instances
+    ):
+        """Injection plus tools_column keeps tool_choice=required and drops ignore_eos.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        tools = [{"type": "function", "function": {"name": "fn", "parameters": {}}}]
+        data = GenerationRequest(
+            columns={
+                "tools_column": [stdlib_json.dumps(tools)],
+                "tool_response_column": ['{"status": "ok"}'],
+            },
+            turn_type="tool_response_injection",
+            output_metrics=UsageMetrics(text_tokens=50),
+        )
+
+        result = instance.format(data)
+
+        assert result.body["tool_choice"] == "required"
+        assert "ignore_eos" not in result.body
+        assert "stop" not in result.body
+        assert "max_output_tokens" not in result.body
+
+    @pytest.mark.smoke
+    def test_format_injection_without_tools_forces_tool_choice_none(
+        self, valid_instances
+    ):
+        """Injection without tools_column still forces tool_choice=none.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        tools = [{"type": "function", "function": {"name": "fn", "parameters": {}}}]
+        data = GenerationRequest(
+            columns={"tool_response_column": ['{"status": "ok"}']},
+            turn_type="tool_response_injection",
+            output_metrics=UsageMetrics(text_tokens=50),
+        )
+
+        result = instance.format(
+            data,
+            extras=GenerationRequestArguments(body={"tools": tools}),
+        )
+
+        assert result.body["tool_choice"] == "none"
+        assert result.body["ignore_eos"] is True
+
     @pytest.mark.sanity
     def test_format_strips_tool_choice_without_tools(self, valid_instances):
         """
@@ -5417,6 +5467,7 @@ class TestChatCompletionsToolChoiceOverride:
                 "tools_column": [json.dumps(tools)],
             },
             turn_type="client_tool_call",
+            output_metrics=UsageMetrics(text_tokens=50),
         )
         result = handler.format(data)
 
@@ -5491,6 +5542,48 @@ class TestChatCompletionsToolChoiceOverride:
         result = handler.format(data)
 
         assert result.body["max_completion_tokens"] == 100
+
+    @pytest.mark.smoke
+    def test_injection_with_tools_keeps_tool_choice_required(self, handler):
+        """Injection plus tools_column keeps tool_choice=required and drops ignore_eos.
+
+        ## WRITTEN BY AI ##
+        """
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        data = GenerationRequest(
+            columns={
+                "tools_column": [json.dumps(tools)],
+                "tool_response_column": ['{"status": "ok"}'],
+            },
+            turn_type="tool_response_injection",
+            output_metrics=UsageMetrics(text_tokens=50),
+        )
+        result = handler.format(data)
+
+        assert result.body["tool_choice"] == "required"
+        assert "ignore_eos" not in result.body
+        assert "stop" not in result.body
+        assert "max_completion_tokens" not in result.body
+
+    @pytest.mark.smoke
+    def test_injection_without_tools_forces_tool_choice_none(self, handler):
+        """Injection without tools_column still forces tool_choice=none.
+
+        ## WRITTEN BY AI ##
+        """
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        data = GenerationRequest(
+            columns={"tool_response_column": ['{"status": "ok"}']},
+            turn_type="tool_response_injection",
+            output_metrics=UsageMetrics(text_tokens=50),
+        )
+        result = handler.format(
+            data,
+            extras=GenerationRequestArguments(body={"tools": tools}),
+        )
+
+        assert result.body["tool_choice"] == "none"
+        assert result.body["ignore_eos"] is True
 
 
 class TestChatCompletionsToolResponseColumn:
