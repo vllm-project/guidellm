@@ -19,6 +19,7 @@ from .openai import (
     OpenAIWebSocketBackend,
     TextCompletionsRequestHandler,
 )
+from .orcarouter import OrcaRouterHTTPBackend
 from .vllm_python import (
     VLLMPythonAsyncBackend,
     VLLMPythonBatchBackend,
@@ -33,6 +34,7 @@ __all__ = [
     "OpenAIRequestHandler",
     "OpenAIRequestHandlerFactory",
     "OpenAIWebSocketBackend",
+    "OrcaRouterHTTPBackend",
     "TextCompletionsRequestHandler",
     "VLLMPythonAsyncBackend",
     "VLLMPythonBatchBackend",
