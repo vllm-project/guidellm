@@ -499,6 +499,22 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
             "Server Throughput",
             "Concurrency",
         )
+        # Emitted whenever objectives were configured, so a workload that
+        # cannot evaluate them still reports attainment as empty rather than
+        # dropping the columns and reading as though none were set. Every
+        # benchmark in a run shares one objective set, so the columns stay
+        # aligned across rows.
+        if benchmark.config.slo is not None:
+            # Written directly rather than through _add_stats_for_metric,
+            # which drops any status whose total is 0.0. A run that conforms to
+            # nothing would otherwise lose these columns from the CSV while the
+            # console and JSON still report 0.0.
+            goodput = benchmark.metrics.request_goodput
+            headers.append(["Server Throughput", "Successful Goodput/Sec", "mean"])
+            values.append("" if goodput is None else goodput.successful.mean)
+            headers.append(["Server Throughput", "SLO Attainment", ""])
+            attainment = benchmark.metrics.slo_attainment
+            values.append("" if attainment is None else attainment)
         self._add_stats_for_metric(
             headers,
             values,
