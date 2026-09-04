@@ -238,6 +238,33 @@ class BenchmarkArgs(ReloadableBaseModel):
         json_schema_extra={"argument_alias": "metrics"},
     )
 
+    @model_validator(mode="after")
+    def _check_goodput_has_objectives(self) -> BenchmarkArgs:
+        """
+        Validate that a goodput search has objectives to search against.
+
+        Without this the run fails only once the first probe has finished and
+        its attainment turns out to be unmeasurable, wasting a full probe
+        duration on a configuration error.
+
+        :return: The validated instance
+        :raises ValueError: If the goodput profile is used without an slo
+        """
+        if self.profile.kind != "goodput":
+            return self
+
+        if not isinstance(self.metrics, GenerativeMetricsArgs) or (
+            self.metrics.slo is None
+        ):
+            raise ValueError(
+                "The goodput profile searches for the highest load meeting "
+                "latency objectives, so it requires objectives to be set, for "
+                'example --metrics \'{"kind":"generative","slo":'
+                '{"ttft_ms":2000}}\''
+            )
+
+        return self
+
 
 class BenchmarkMetadata(StandardBaseModel):
     """

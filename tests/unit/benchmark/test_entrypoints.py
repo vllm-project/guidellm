@@ -74,6 +74,55 @@ async def test_resolve_backend_shuts_down_after_validation_error():
     backend.process_shutdown.assert_awaited_once_with()
 
 
+@pytest.mark.regression
+def test_goodput_profile_requires_objectives():
+    """
+    Reject a goodput search configured without latency objectives.
+
+    The search has nothing to search against, and without this check the run
+    fails only after its first probe has already spent a full probe duration.
+
+    ## WRITTEN BY AI ##
+    """
+    base = {
+        "backend": {"kind": "openai_http", "target": "http://localhost:8000"},
+        "data": [{"kind": "synthetic_text", "prompt_tokens": 8, "output_tokens": 8}],
+    }
+
+    with pytest.raises(ValueError, match="goodput profile"):
+        BenchmarkArgs.model_validate({**base, "profile": {"kind": "goodput"}})
+
+    configured = BenchmarkArgs.model_validate(
+        {
+            **base,
+            "profile": {"kind": "goodput"},
+            "metrics": {"kind": "generative", "slo": {"ttft_ms": 2000}},
+        }
+    )
+    assert configured.metrics.slo == GoodputSLO(ttft_ms=2000)
+
+
+@pytest.mark.regression
+def test_other_profiles_do_not_require_objectives():
+    """
+    Leave profiles other than goodput unaffected by the objectives check.
+
+    ## WRITTEN BY AI ##
+    """
+    args = BenchmarkArgs.model_validate(
+        {
+            "backend": {"kind": "openai_http", "target": "http://localhost:8000"},
+            "data": [
+                {"kind": "synthetic_text", "prompt_tokens": 8, "output_tokens": 8}
+            ],
+            "profile": {"kind": "sweep"},
+        }
+    )
+
+    assert args.profile.kind == "sweep"
+    assert args.metrics.slo is None
+
+
 class _RecordingAccumulator:
     """Accumulator stub that records the config the benchmarker builds."""
 
