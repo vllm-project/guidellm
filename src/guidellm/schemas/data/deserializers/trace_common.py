@@ -36,3 +36,40 @@ class TraceDataArgs(DataArgs):
             "with conversation-scoped trace data such as hash IDs."
         ),
     )
+    max_wait: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Maximum wait in original trace seconds between consecutive requests "
+            "within one session. Applied independently per conversation. "
+            "Larger gaps are shortened to this value; later requests in that session "
+            "shift earlier by the trimmed amount."
+        ),
+    )
+    max_session_wait: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Maximum wait in original trace seconds between consecutive sessions. "
+            "If the next session starts more than this many seconds after "
+            "the previous session's last request, that session is shifted earlier."
+        ),
+    )
+    min_concurrent_sessions: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Pack sessions so at least this many overlap during steady state. "
+            "The first N sessions start together; each later session starts as soon "
+            "as session i-N ends, but never later than its original start."
+        ),
+    )
+    time_scale: float = Field(
+        default=1.0,
+        gt=0,
+        description=(
+            "Scale factor applied to relative timestamps after wait and pack caps. "
+            "1.0 preserves original timing; values above 1.0 stretch intervals; "
+            "values below 1.0 compress them."
+        ),
+    )

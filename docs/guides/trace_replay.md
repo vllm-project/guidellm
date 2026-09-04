@@ -16,11 +16,15 @@ These are passed to the `--data` argument as `kind=format`:
 
 All trace formats can accept the following optional data arguments:
 
-| Argument               | Default         | Description                                           |
-| ---------------------- | --------------- | ----------------------------------------------------- |
-| `timestamp_column`     | "timestamp"     | Column name for timestamps in the trace file          |
-| `prompt_tokens_column` | "input_length"  | Column name for prompt token counts in the trace file |
-| `output_tokens_column` | "output_length" | Column name for output token counts in the trace file |
+| Argument                  | Default         | Description                                                                                     |
+| ------------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
+| `timestamp_column`        | "timestamp"     | Column name for timestamps in the trace file                                                    |
+| `prompt_tokens_column`    | "input_length"  | Column name for prompt token counts in the trace file                                           |
+| `output_tokens_column`    | "output_length" | Column name for output token counts in the trace file                                           |
+| `time_scale`              | 1.0             | Scale remaining relative timestamps after wait and pack caps                                    |
+| `max_wait`                | unset           | Maximum gap in original trace seconds between consecutive requests in one session               |
+| `max_session_wait`        | unset           | Maximum idle in original trace seconds from the previous session's last request to this session |
+| `min_concurrent_sessions` | unset           | Pack sessions so at least this many overlap during steady state                                 |
 
 These are passed through the `--data` argument like below:
 
@@ -28,7 +32,7 @@ These are passed through the `--data` argument like below:
 guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
-    --data "kind=trace_synthetic,path=replay.jsonl,timestamp_column=ts,prompt_tokens_column=input_tokens,output_tokens_column=generated_tokens"
+    --data "kind=trace_synthetic,path=replay.jsonl,timestamp_column=ts,prompt_tokens_column=input_tokens,output_tokens_column=generated_tokens,time_scale=1.0,max_wait=30"
 ```
 
 `trace_synthetic` can be thought of as the format-agnostic option, only looking for the timestamp, prompt token count and output token count columns and ignoring all other features contained in a dataset. While primarily used for testing, `trace_synthetic` may be used as a fallback for trace formats not currently supported by GuideLLM.

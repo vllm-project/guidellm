@@ -27,8 +27,8 @@ class ReplayProfile(Profile):
 
     Each request is scheduled at
     ``start_time + time_scale * relative_timestamp`` via ``RequestSettings`` on
-    the dataset finalizer output. For this profile, ``rate`` is interpreted as
-    ``time_scale`` (not requests per second).
+    the dataset finalizer output. Dataset-side ``time_scale`` and wait caps are
+    applied by the trace dataset before this scheduler scale.
 
     When ``data_samples`` is set, the default ``max_requests`` constraint matches
     the truncated dataset size.

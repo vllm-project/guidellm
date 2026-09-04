@@ -20,5 +20,5 @@ class ReplayProfileArgs(ProfileArgs):
     time_scale: float = Field(
         default=1.0,
         gt=0,
-        description="Scale factor applied to relative timestamps",
+        description="Scheduler scale factor applied to relative timestamps",
     )
