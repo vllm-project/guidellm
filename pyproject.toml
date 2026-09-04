@@ -144,6 +144,7 @@ test = [
     "pytest-httpx~=0.36.2",
     "respx~=0.23.1",
     "trio~=0.33.0",
+    "logot~=1.7.0",
 ]
 env = [
     "pre-commit",
@@ -373,6 +374,7 @@ allowed_importers = [
 
 [tool.pytest.ini_options]
 addopts = '-s -vvv --cache-clear'
+logot_capturer = "logot.loguru.LoguruCapturer"
 markers = [
     "smoke: quick tests to check basic functionality",
     "sanity: detailed tests to ensure major functions work correctly",

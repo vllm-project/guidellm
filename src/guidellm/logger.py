@@ -1,87 +1,176 @@
 """
 Logger configuration for GuideLLM.
 
-This module provides a flexible logging configuration using the loguru library.
-It supports console and file logging with options to configure via environment
-variables or direct function calls.
+This module provides logging configuration using the loguru library.
+Console and file handlers are configured via :func:`configure_logger`, which
+is the primary runtime API. Environment variables populate fallback defaults
+in :class:`~guidellm.settings.LoggingSettings` at import time only.
 
-Environment Variables:
-    - GUIDELLM__LOGGING__DISABLED: Disable logging (default: false).
-    - GUIDELLM__LOGGING__CLEAR_LOGGERS: Clear existing loggers
-        from loguru (default: true).
-    - GUIDELLM__LOGGING__CONSOLE_LOG_LEVEL: Log level for console logging
-        (default: none, options: DEBUG, INFO, WARNING, ERROR, CRITICAL).
-    - GUIDELLM__LOGGING__LOG_FILE: Path to the log file for file logging
-        (default: guidellm.log if log file level set else none)
-    - GUIDELLM__LOGGING__LOG_FILE_LEVEL: Log level for file logging
-        (default: INFO if log file set else none).
-
-If logging isn't responding to the environment variables, run the `guidellm env`
-command to validate that the environment variables match and are being set correctly.
+Environment Variables (import-time fallback defaults):
+    - GUIDELLM__LOGGING__CONSOLE_LOG_LEVEL: Console log level
+        (default: INFO; set empty to disable).
+    - GUIDELLM__LOGGING__CONSOLE_COLORIZE: Console ANSI colorization
+        (default: auto; options: auto, true, false).
+    - GUIDELLM__LOGGING__LOG_FILE: Path to the log file for file logging.
+    - GUIDELLM__LOGGING__LOG_FILE_LEVEL: Log level for file logging.
 
 Usage:
-    from guidellm import logger, configure_logger, LoggerConfig
+    from guidellm import logger, configure_logger
+    from guidellm.settings import LoggingSettings
 
-    # Configure metrics with default settings
     configure_logger(
-        config=LoggingConfig
-            disabled=False,
-            clear_loggers=True,
+        config=LoggingSettings(
             console_log_level="DEBUG",
-            log_file=None,
-            log_file_level=None,
+            console_colorize="auto",
         )
     )
 
-    logger.debug("This is a debug message")
     logger.info("This is an info message")
 """
 
+from __future__ import annotations
+
+import contextlib
+import multiprocessing as mp
 import sys
+from multiprocessing.context import BaseContext
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
 
 from guidellm.settings import LoggingSettings, settings
 
-__all__ = ["configure_logger", "logger"]
+if TYPE_CHECKING:
+    from loguru import Logger
+
+__all__ = [
+    "configure_logger",
+    "logger",
+    "reinstall_inherited_logger",
+]
+
+CONSOLE_FORMAT = (
+    "<green>{time:YY-MM-DD HH:mm:ss}</green>|<level>{level: <8}</level> "
+    "|<cyan>{name}:{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+)
 
 
-def configure_logger(config: LoggingSettings = settings.logging):
+def _stderr_sink(message: str) -> None:
+    sys.stderr.write(message)
+
+
+def reinstall_inherited_logger(parent_logger: Logger) -> None:
     """
-    Configure the metrics for LLM Compressor.
-    This function sets up the console and file logging
-    as per the specified or default parameters.
+    Replace the child-process module logger core with the parent's inherited core.
 
-    Note: Environment variables take precedence over the function parameters.
+    Loguru's public ``reinstall()`` is not yet available in all releases; this
+    helper mirrors that behavior and delegates when present.
 
-    :param config: The configuration for the logger to use.
-    :type config: LoggerConfig
+    # TODO: Remove this shim when loguru > 0.7.3 is the minimum supported version.
+
+    :param parent_logger: Logger instance passed from the parent process.
     """
-
-    if config.disabled:
-        logger.disable("guidellm")
+    if hasattr(parent_logger, "reinstall"):
+        parent_logger.reinstall()
         return
 
-    logger.enable("guidellm")
+    logger._core = parent_logger._core  # type: ignore[attr-defined]  # noqa: SLF001
 
-    if config.clear_loggers:
-        logger.remove()
 
-    # log as a human readable string with the time, function, level, and message
-    logger.add(
-        sys.stdout,
-        level=config.console_log_level.upper(),
-        format="<green>{time:YY-MM-DD HH:mm:ss}</green>|<level>{level: <8}</level> \
-        |<cyan>{name}:{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+class ConsoleLogHandler:
+    """Owns the console sink; removes and replaces on each configure call."""
+
+    # loguru's preinstalled stderr handler is always id 0; claim it on first configure.
+    _sink_id: int | None = 0
+
+    def configure(
+        self,
+        level: str | None,
+        colorize: Literal["auto"] | bool = "auto",
+        *,
+        mp_context: BaseContext,
+    ) -> int | None:
+        if self._sink_id is not None:
+            with contextlib.suppress(ValueError):
+                logger.remove(self._sink_id)
+            self._sink_id = None
+        if level is None:
+            return None
+
+        should_colorize = sys.stderr.isatty() if colorize == "auto" else colorize
+
+        self._sink_id = logger.add(
+            _stderr_sink,
+            level=level.upper(),
+            format=CONSOLE_FORMAT,
+            colorize=should_colorize,
+            enqueue=True,
+            context=mp_context,
+        )
+        return self._sink_id
+
+
+class FileLogHandler:
+    """Owns the file sink; removes and replaces on each configure call."""
+
+    _sink_id: int | None = None
+
+    def configure(
+        self,
+        level: str | None,
+        path: Path,
+        *,
+        mp_context: BaseContext,
+    ) -> int | None:
+        if self._sink_id is not None:
+            with contextlib.suppress(ValueError):
+                logger.remove(self._sink_id)
+            self._sink_id = None
+        if level is None:
+            return None
+        self._sink_id = logger.add(
+            path,
+            level=level.upper(),
+            serialize=True,
+            enqueue=True,
+            context=mp_context,
+        )
+        return self._sink_id
+
+
+_console_handler = ConsoleLogHandler()
+_file_handler = FileLogHandler()
+
+
+def configure_logger(config: LoggingSettings | None = None) -> None:
+    """
+    Configure console and file logging handlers.
+
+    Idempotent: calling twice replaces existing sinks rather than stacking them.
+    When ``config`` is ``None``, uses :data:`~guidellm.settings.settings.logging`
+    as fallback defaults (import-time bootstrap only).
+
+    :param config: Explicit logging configuration.
+    """
+    if config is None:
+        config = settings.logging
+
+    mp_context = mp.get_context(settings.mp_context_type)
+
+    _console_handler.configure(
+        level=config.console_log_level,
+        colorize=config.console_colorize,
+        mp_context=mp_context,
     )
 
-    if config.log_file or config.log_file_level:
-        log_file = config.log_file or "guidellm.log"
-        log_file_level = config.log_file_level or "INFO"
-        # log as json to the file for easier parsing
-        logger.add(log_file, level=log_file_level.upper(), serialize=True)
+    _file_handler.configure(
+        level=config.log_file_level,
+        path=config.log_file,
+        mp_context=mp_context,
+    )
 
 
-# invoke logger setup on import with default values
-# enabling console logging with INFO and disabling file logging
-configure_logger()
+# Logger should be configured in the main process only
+if mp.parent_process() is None:
+    configure_logger()

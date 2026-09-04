@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
+import sys
 import time
 import traceback
 from collections.abc import AsyncIterator
+from multiprocessing.connection import Connection
 from multiprocessing.synchronize import Barrier as ProcessingBarrier
 from multiprocessing.synchronize import Event as ProcessingEvent
-from typing import Annotated, Generic, Literal
+from typing import TYPE_CHECKING, Annotated, Generic, Literal
 
 try:
     import uvloop
@@ -31,7 +34,7 @@ except ImportError:
     HAS_UVLOOP = False
 
 
-from guidellm.logger import logger
+from guidellm.logger import logger, reinstall_inherited_logger
 from guidellm.scheduler.dag import DAGExecutionState
 from guidellm.scheduler.schemas import (
     BackendInterface,
@@ -47,6 +50,9 @@ from guidellm.utils.synchronous import (
     wait_for_sync_event,
     wait_for_sync_objects,
 )
+
+if TYPE_CHECKING:
+    from loguru import Logger
 
 __all__ = ["WorkerProcess"]
 
@@ -94,6 +100,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         constraint_reached_event: ProcessingEvent,
         shutdown_event: ProcessingEvent,
         error_event: ProcessingEvent,
+        stdout_conn: Connection | None,
+        stderr_conn: Connection | None,
+        parent_logger: Logger | None,
     ):
         """
         Initialize worker process instance.
@@ -110,6 +119,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :param constraint_reached_event: Event signaling processing constraint reached
         :param shutdown_event: Event signaling graceful shutdown request
         :param error_event: Event signaling error conditions across processes
+        :param stdout_conn: Write-end pipe connection for stdout redirect
+        :param stderr_conn: Write-end pipe connection for stderr redirect
+        :param parent_logger: Logger instance inherited from the parent process
         """
         self.worker_index = worker_index
         self.messaging = messaging
@@ -122,6 +134,11 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.constraint_reached_event = constraint_reached_event
         self.shutdown_event = shutdown_event
         self.error_event = error_event
+
+        # Logging and output redirection
+        self.stdout_conn = stdout_conn
+        self.stderr_conn = stderr_conn
+        self.parent_logger = parent_logger
 
         # Internal states
         self.startup_completed = False
@@ -138,6 +155,17 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
         :raises RuntimeError: If worker encounters unrecoverable error during execution
         """
+        # Redirect stdout/stderr to the provided pipe connections
+        if self.stdout_conn is not None and self.stderr_conn is not None:
+            os.dup2(self.stdout_conn.fileno(), sys.stdout.fileno())
+            os.dup2(self.stderr_conn.fileno(), sys.stderr.fileno())
+            self.stdout_conn.close()
+            self.stderr_conn.close()
+
+        # Reinstall the logger to inherit the parent's logging configuration
+        if self.parent_logger is not None:
+            reinstall_inherited_logger(self.parent_logger)
+
         try:
             if HAS_UVLOOP:
                 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -148,6 +176,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 f"Worker process {self.messaging.worker_index} encountered an "
                 f"error: {err}"
             ) from err
+        finally:
+            logger.complete()
 
     async def run_async(self):
         """

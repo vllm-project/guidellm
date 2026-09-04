@@ -1299,6 +1299,7 @@ dev = [
     { name = "build" },
     { name = "guidellm", extra = ["all"] },
     { name = "import-linter" },
+    { name = "logot" },
     { name = "mdformat" },
     { name = "mdformat-footnote" },
     { name = "mdformat-frontmatter" },
@@ -1342,6 +1343,7 @@ quality = [
 ]
 test = [
     { name = "guidellm", extra = ["all"] },
+    { name = "logot" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -1407,6 +1409,7 @@ dev = [
     { name = "build", specifier = ">=1.0.0" },
     { name = "guidellm", extras = ["all"] },
     { name = "import-linter", specifier = "~=2.13.0" },
+    { name = "logot", specifier = "~=1.7.0" },
     { name = "mdformat", specifier = "~=1.0.0" },
     { name = "mdformat-footnote", specifier = "~=0.1.3" },
     { name = "mdformat-frontmatter", specifier = "~=2.0.10" },
@@ -1450,6 +1453,7 @@ quality = [
 ]
 test = [
     { name = "guidellm", extras = ["all"] },
+    { name = "logot", specifier = "~=1.7.0" },
     { name = "pytest", specifier = "~=9.1.1" },
     { name = "pytest-asyncio", specifier = "~=1.4.0" },
     { name = "pytest-cov", specifier = "~=7.1.0" },
@@ -1967,6 +1971,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8b/78/f0bb41a6f2bbd3c77bdcc66980dc0d69ca1192a0ecec25377afcc5e6db73/librt-0.12.0-cp314-cp314t-win32.whl", hash = "sha256:8d73191883553ee0739741544bf3b00aba2a1224e45d9580b30cbc29e21dc03b", size = 97752, upload-time = "2026-06-30T16:14:06.555Z" },
     { url = "https://files.pythonhosted.org/packages/92/24/e279c27972ab051a070237cfa45728fa51670c3f22f1a4d391711e9f4c31/librt-0.12.0-cp314-cp314t-win_amd64.whl", hash = "sha256:e1cbb037324e759f0afa270229731ff0047772667f3cb38ef5df2cabf0175ede", size = 119562, upload-time = "2026-06-30T16:14:07.908Z" },
     { url = "https://files.pythonhosted.org/packages/06/e6/42a475bfca683b0cd5366f6dd06580062b7e567bb8534d225c877c2f14f3/librt-0.12.0-cp314-cp314t-win_arm64.whl", hash = "sha256:bca1472acbd473eff61059b4409f802c5a1bcb4cd0344d06f939df9c4c125d40", size = 104282, upload-time = "2026-06-30T16:14:09.29Z" },
+]
+
+[[package]]
+name = "logot"
+version = "1.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7b/55/f0080f7c1b997166244833dac8d293d2b66e68aa250c242010b67db8f096/logot-1.7.0.tar.gz", hash = "sha256:b917189ebe1fb2ba298014f886fa72ff85f75be8d5a48d94c138e14b4f31fbb8", size = 15012, upload-time = "2026-03-31T13:33:12.097Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/16/ec/c20720e6d4055dd59a37ff84ed204870e07e042cd24d97736ac6910dd190/logot-1.7.0-py3-none-any.whl", hash = "sha256:5c7a8b561d22f0d08dcf3524359507d61400cb9ee61dc921b73b965c60fbab0c", size = 23399, upload-time = "2026-03-31T13:33:13.516Z" },
 ]
 
 [[package]]

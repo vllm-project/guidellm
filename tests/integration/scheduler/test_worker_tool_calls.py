@@ -189,6 +189,9 @@ class TestWorkerMissingToolCallBehavior:
                 constraint_reached_event=Event(),
                 shutdown_event=Event(),
                 error_event=Event(),
+                stdout_conn=None,
+                stderr_conn=None,
+                parent_logger=None,
             )
             workers.append((worker, messaging))
             return worker, messaging

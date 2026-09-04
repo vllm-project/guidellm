@@ -47,6 +47,7 @@ from guidellm.utils.messaging import (
     InterProcessMessagingPipe,
     InterProcessMessagingQueue,
 )
+from guidellm.utils.pipe_stdout import PipeReaderThread
 from guidellm.utils.synchronous import wait_for_sync_objects
 
 __all__ = ["WorkerGroupState", "WorkerProcessGroup"]
@@ -134,6 +135,9 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         # Background health monitor, created in create_processes
         self._health_monitor_task: asyncio.Task | None = None
         self._worker_error_details: str | None = None
+
+        # Pipe-based stdout/stderr capture, created in create_processes
+        self._pipe_reader_thread: PipeReaderThread | None = None
 
         # Scheduler and messaging state, created in start
         self.state: WorkerGroupState[RequestT, ResponseT] | None = None
@@ -223,6 +227,10 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 poll_interval=settings.mp_poll_interval,
             )
 
+        # Create shared pipes for capturing worker stdout/stderr
+        stdout_reader, stdout_writer = self.mp_context.Pipe(duplex=False)
+        stderr_reader, stderr_writer = self.mp_context.Pipe(duplex=False)
+
         # Initialize worker processes
         self.processes = []
         self.strategy.init_processes_timings(
@@ -252,10 +260,21 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 constraint_reached_event=self.constraint_reached_event,
                 shutdown_event=self.shutdown_event,
                 error_event=self.error_event,
+                stdout_conn=stdout_writer,
+                stderr_conn=stderr_writer,
+                parent_logger=logger,
             )
             proc = self.mp_context.Process(target=worker.run, daemon=False)
             proc.start()
             self.processes.append(proc)
+
+        # Close write-ends in parent so EOF fires when last worker exits
+        stdout_writer.close()
+        stderr_writer.close()
+
+        # Start reader thread to route worker output through main sys.stdout/stderr
+        self._pipe_reader_thread = PipeReaderThread(stdout_reader, stderr_reader)
+        self._pipe_reader_thread.start()
 
         self._health_monitor_task = asyncio.create_task(self._process_health_monitor())
 
@@ -460,6 +479,11 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             )
             exceptions.extend(err for err in join_errors if err is not None)
         self.processes = None
+
+        if self._pipe_reader_thread is not None:
+            self._pipe_reader_thread.stop()
+            self._pipe_reader_thread = None
+
         self.startup_barrier = None
         self.requests_generated_event = None
         self.constraint_reached_event = None
