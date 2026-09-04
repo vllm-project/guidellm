@@ -14,7 +14,7 @@ import json
 import platform
 from importlib.metadata import version
 from pathlib import Path
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 
 import yaml
 from pydantic import Field
@@ -76,6 +76,14 @@ class GenerativeBenchmarksReport(StandardBaseModel):
     benchmarks: list[GenerativeBenchmark] = Field(
         description="List of completed benchmarks in the report",
         default_factory=list,
+    )
+    profile_result: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Outcome computed by the profile once every strategy has run, for "
+            "profiles that answer a question rather than execute a fixed "
+            "sequence. None for profiles that do not compute one"
+        ),
     )
 
     def save_file(
