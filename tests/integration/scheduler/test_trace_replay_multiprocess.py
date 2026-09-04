@@ -290,13 +290,18 @@ def _linear_replay_graph(
 async def test_max_duration_cancels_long_replay_sleep():
     """max_duration stops workers sleeping on a future relative_timestamp.
 
+    Use two independent graphs so the delayed request is sleeping from t=0.
+    A linear parent-child graph only starts that sleep after the first request
+    finishes, which on a loaded runner can let both complete before cancel.
+
     ## WRITTEN BY AI ##
     """
-    graph = _linear_replay_graph([0.0, 5.0])
+    immediate = _linear_replay_graph([0.0], graph_id="immediate", request_prefix="imm")
+    delayed = _linear_replay_graph([5.0], graph_id="delayed", request_prefix="del")
     strategy = TraceReplayStrategy(time_scale=1.0)
     group = WorkerProcessGroup(
         backend=FastMockBackend(resolve_delay=RESOLVE_DELAY),
-        requests=[graph],
+        requests=[immediate, delayed],
         strategy=strategy,
         max_duration=MaxDurationConstraint(args=MaxDurationConstraintArgs(seconds=0.4)),
     )
@@ -307,11 +312,7 @@ async def test_max_duration_cancels_long_replay_sleep():
         run_started = time.time()
         async for _, _, request_info, _state in group.request_updates():
             statuses.add(request_info.status)
-            if (
-                request_info.status in ("cancelled", "completed", "errored")
-                and _state.end_processing_time is not None
-                and _state.processed_requests >= _state.created_requests
-            ):
+            if "cancelled" in statuses:
                 break
         elapsed = time.time() - run_started
     finally:
