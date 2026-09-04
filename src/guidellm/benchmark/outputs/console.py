@@ -485,6 +485,13 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         :param report: The benchmark report containing throughput metrics
         """
         columns = ConsoleTableColumnsCollection()
+        # Widen the table whenever objectives were configured, not only when
+        # they could be evaluated. A workload that cannot measure an objective,
+        # such as time to first token without streaming, then shows empty cells
+        # instead of the table silently looking as though none were set.
+        report_has_goodput = any(
+            benchmark.config.slo is not None for benchmark in report.benchmarks
+        )
 
         for benchmark in report.benchmarks:
             columns.add_value(
@@ -528,6 +535,22 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 name="Per Sec",
                 types=("mean",),
             )
+            if report_has_goodput:
+                attainment = benchmark.metrics.slo_attainment
+                columns.add_value(
+                    None if attainment is None else attainment * 100.0,
+                    group="Goodput",
+                    name="Attainment",
+                    units="%",
+                    precision=1,
+                )
+                columns.add_stats(
+                    benchmark.metrics.request_goodput,
+                    status="total",
+                    group="Goodput",
+                    name="Per Sec",
+                    types=("mean",),
+                )
 
         headers, values = columns.get_table_data()
         self.console.print("\n")

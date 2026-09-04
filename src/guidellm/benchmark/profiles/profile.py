@@ -117,6 +117,22 @@ class Profile(ABC):
         """
         return [strat.type_ for strat in self.completed_strategies]
 
+    @property
+    def result(self) -> dict[str, Any] | None:
+        """
+        Computed outcome of the profile, available once its run has finished.
+
+        Profiles that answer a question rather than execute a fixed sequence
+        override this. It is read after the final strategy completes, which is
+        the only point at which such an answer exists: ``info`` is captured
+        into each benchmark's config before that benchmark runs, so it can
+        never carry the last strategy's contribution.
+
+        :return: Serializable result mapping, or None for profiles that only
+            execute a planned sequence
+        """
+        return None
+
     @staticmethod
     def _should_stop_escalating(prev_benchmark: Benchmark) -> bool:
         """

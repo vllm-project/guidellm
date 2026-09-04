@@ -540,9 +540,14 @@ async def benchmark_generative_text(
         warmup=warmup,
         cooldown=cooldown,
         prefer_response_metrics=metrics_args.prefer_response_metrics,
+        slo=metrics_args.slo,
     ):
         if benchmark:
             report.benchmarks.append(benchmark)
+
+    # Read after the final strategy so the result reflects every benchmark,
+    # including the last, whose config was captured before it ran.
+    report.profile_result = profile.result
 
     output_format_results: list[tuple[str, Any]] = []
     for output_arg, output in zip(benchmark_args.outputs, output_formats, strict=True):
