@@ -1,7 +1,8 @@
-import json
 from typing import Any
 
 from datasets import Dataset, IterableDataset
+
+from guidellm.utils.imports import json
 
 
 def try_json_load(json_string: str) -> Any:
