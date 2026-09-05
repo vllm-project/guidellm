@@ -90,7 +90,10 @@ def _first_api_request(requests: list[Any]) -> dict[str, Any] | None:
         if not isinstance(row, dict):
             continue
         if _is_subagent_entry(row):
-            found = _first_api_request(list(row.get("requests") or []))
+            inner = list(row.get("requests") or [])
+            if not inner:
+                continue
+            found = _first_api_request(inner)
             if found is not None:
                 return found
             continue
@@ -434,6 +437,18 @@ class WEKATraceFormat(TraceFormatBase):
     def _unpack_conversation(
         self, conversation: Dataset
     ) -> tuple[str, list[dict[str, Any]]]:
+        """Resolve a stub Dataset yielded by ``__iter__`` to the nested request list.
+
+        HuggingFace Arrow cannot store mixed API rows and ``type: "subagent"``
+        groups in one table, so ``__iter__`` queues
+        ``(conversation_id, requests)`` in ``self._conversation_queue`` and
+        yields a one-row Dataset whose only column is ``_weka_index``.
+        ``conversation[0]`` is that stub row (not request index 0);
+        ``_weka_index`` is the queue position of the original conversation.
+
+        :param conversation: One-row stub Dataset from ``__iter__``.
+        :return: ``(conversation_id, requests)`` from the queue.
+        """
         index = int(conversation[0]["_weka_index"])
         return self._conversation_queue[index]
 
@@ -478,11 +493,11 @@ class WEKATraceFormat(TraceFormatBase):
         pending_join_ids: list[str] = []
         last_chain_id: str | None = None
         chain_idx = 0
-        chain_events: list[tuple[float, float | None]] = []
         # Previous API row's stop on this chain only. Subagent children are
         # interleaved in the flattened spec list, so classification cannot
         # use that list's adjacency.
         prev_stop: str | None = None
+        prev_event: tuple[float, float | None] | None = None
 
         for item in requests:
             if _is_subagent_entry(item):
@@ -557,7 +572,9 @@ class WEKATraceFormat(TraceFormatBase):
             )
             last_chain_id = node_id
             chain_idx += 1
-            chain_events.append((abs_t, _optional_float(item.get("api_time"))))
+            event = (abs_t, _optional_float(item.get("api_time")))
+            self._warn_chain_overlap(conversation_id, agent_id, prev_event, event)
+            prev_event = event
             prev_stop = _weka_stop_reason(item)
 
         if pending_join_ids:
@@ -568,14 +585,14 @@ class WEKATraceFormat(TraceFormatBase):
                 agent_id,
             )
 
-        self._warn_chain_overlap(conversation_id, agent_id, chain_events)
         return specs, last_chain_id
 
     def _warn_chain_overlap(
         self,
         conversation_id: str,
         agent_id: str,
-        events: list[tuple[float, float | None]],
+        prev_event: tuple[float, float | None] | None,
+        event: tuple[float, float | None],
     ) -> None:
         """Warn when consecutive turns of one agent overlap in time.
 
@@ -584,35 +601,33 @@ class WEKATraceFormat(TraceFormatBase):
         times. Parallel subagents overlapping each other is intended and
         is not warned here; each agent chain is checked separately.
         """
-        for idx in range(len(events) - 1):
-            t_i, api_time = events[idx]
-            t_next, _ = events[idx + 1]
-            if api_time is not None:
-                overlapped = t_i + api_time > t_next
-            else:
-                overlapped = t_next <= t_i
-            if not overlapped:
-                continue
-            if api_time is not None:
-                logger.debug(
-                    "WEKA conversation '{}' agent '{}' has overlapping requests: "
-                    "the request at t={} will run until t={}, which is after "
-                    "the next request at t={}; they will be serialized on "
-                    "this chain",
-                    conversation_id,
-                    agent_id,
-                    t_i,
-                    t_i + api_time,
-                    t_next,
-                )
-            else:
-                logger.debug(
-                    "WEKA conversation '{}' agent '{}' has overlapping requests: "
-                    "the request at t={} is followed by a request at t={} "
-                    "that does not start later; they will be serialized on "
-                    "this chain",
-                    conversation_id,
-                    agent_id,
-                    t_i,
-                    t_next,
-                )
+        if prev_event is None:
+            return
+        t_i, api_time = prev_event
+        t_next, _ = event
+        overlapped = t_i + api_time > t_next if api_time is not None else t_next <= t_i
+        if not overlapped:
+            return
+        if api_time is not None:
+            logger.debug(
+                "WEKA conversation '{}' agent '{}' has overlapping requests: "
+                "the request at t={} will run until t={}, which is after "
+                "the next request at t={}; they will be serialized on "
+                "this chain",
+                conversation_id,
+                agent_id,
+                t_i,
+                t_i + api_time,
+                t_next,
+            )
+        else:
+            logger.debug(
+                "WEKA conversation '{}' agent '{}' has overlapping requests: "
+                "the request at t={} is followed by a request at t={} "
+                "that does not start later; they will be serialized on "
+                "this chain",
+                conversation_id,
+                agent_id,
+                t_i,
+                t_next,
+            )
