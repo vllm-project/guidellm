@@ -345,10 +345,10 @@ def test_hdf5_file_deserializer_success(tmp_path):
 
 
 @pytest.mark.sanity
-def test_db_file_deserializer_success(monkeypatch, tmp_path):
+def test_db_file_deserializer_success(tmp_path):
     """DBFileDatasetDeserializer reads .db file into Dataset.
 
-    ### WRITTEN BY AI ###
+    ## WRITTEN BY AI ##
     """
 
     def create_sqlite_db(path: Path):
@@ -362,15 +362,6 @@ def test_db_file_deserializer_success(monkeypatch, tmp_path):
 
     db_path = tmp_path / "sample.db"
     create_sqlite_db(db_path)
-
-    mocked_ds = Dataset.from_dict({"text": ["hello", "world"]})
-
-    def mock_from_sql(sql, con, **kwargs):
-        assert sql == "SELECT * FROM samples"
-        assert con == (str(db_path))
-        return mocked_ds
-
-    monkeypatch.setattr("datasets.Dataset.from_sql", mock_from_sql)
 
     deserializer = DBFileDatasetDeserializer()
     config = FileDataArgs(
