@@ -27,6 +27,8 @@ In addition, you can specify additional arguments to the dataset loading with th
 
 - load_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}'`.
 
+For SQLite `.db` files, provide the query through `load_kwargs.sql`, for example `--data '{"kind":"db_file","path":"prompts.db","load_kwargs":{"sql":"SELECT text FROM samples"}}'`.
+
 ### Data Loader
 
 You can specify the data loader with `--data-loader` and a configuration string. The only current type is `pytorch`:
