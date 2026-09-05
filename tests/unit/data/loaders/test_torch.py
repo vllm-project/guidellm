@@ -7,10 +7,46 @@ Unit tests for guidellm.data.loaders.torch module.
 from __future__ import annotations
 
 import pytest
+from datasets import Dataset
 
 from guidellm.data.loaders.loader import DataLoaderRegistry
 from guidellm.data.loaders.torch import TorchDataLoader
 from guidellm.schemas.data import TorchDataLoaderArgs
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("num_workers", [0, 1, 2])
+@pytest.mark.parametrize("samples", [-1, 0, 1])
+def test_loader_allows_workers_without_assigned_rows(num_workers, samples):
+    """A small dataset must load even when some workers receive no rows.
+
+    ## WRITTEN BY AI ##
+    """
+    loader = TorchDataLoader(
+        config=TorchDataLoaderArgs(samples=samples, num_workers=num_workers),
+        datasets=[Dataset.from_dict({"text": ["hello"]})],
+        preprocessors=[],
+        finalizer=list,
+    )
+
+    assert list(loader) == [[{"dataset": {"text": "hello"}}]]
+
+
+@pytest.mark.regression
+def test_loader_rejects_rows_with_only_empty_results():
+    """Rows assigned to a worker must still produce usable results.
+
+    ## WRITTEN BY AI ##
+    """
+    loader = TorchDataLoader(
+        config=TorchDataLoaderArgs(samples=0, num_workers=0),
+        datasets=[Dataset.from_dict({"text": ["hello"]})],
+        preprocessors=[],
+        finalizer=lambda _: [],
+    )
+
+    with pytest.raises(ValueError, match="processed 1 rows but yielded zero results"):
+        list(loader)
 
 
 class TestTorchDataLoaderArgs:
