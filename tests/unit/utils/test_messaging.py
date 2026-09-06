@@ -25,6 +25,32 @@ from guidellm.utils.messaging import (
 )
 from tests.unit.testing_utils import async_timeout
 
+# Stop threads poll an empty queue several times before exiting; a short sleep
+# is not a reliable bound under CI load.
+_LIFECYCLE_STOP_TIMEOUT = 2.0
+
+
+async def _await_lifecycle_stop(instance: InterProcessMessaging) -> None:
+    """Wait until send/receive threads have stopped after stop criteria fire."""
+    send_event = instance.send_stopped_event
+    receive_event = instance.receive_stopped_event
+    send_task = instance.send_task
+    receive_task = instance.receive_task
+    assert send_event is not None
+    assert receive_event is not None
+    assert send_task is not None
+    assert receive_task is not None
+
+    send_stopped, receive_stopped = await asyncio.gather(
+        asyncio.to_thread(send_event.wait, _LIFECYCLE_STOP_TIMEOUT),
+        asyncio.to_thread(receive_event.wait, _LIFECYCLE_STOP_TIMEOUT),
+    )
+    assert send_stopped
+    assert receive_stopped
+    await asyncio.wait_for(
+        asyncio.gather(send_task, receive_task), timeout=_LIFECYCLE_STOP_TIMEOUT
+    )
+
 
 class MockMessage(BaseModel):
     content: str
@@ -271,11 +297,7 @@ class TestInterProcessMessagingQueue:
             for event in stop_events:
                 event.set()
 
-            await asyncio.sleep(0.1)
-            assert instance.send_stopped_event.is_set()
-            assert instance.receive_stopped_event.is_set()
-            assert instance.send_task.done()
-            assert instance.receive_task.done()
+            await _await_lifecycle_stop(instance)
 
         await instance.stop()
         assert instance.running is False
@@ -636,11 +658,7 @@ class TestInterProcessMessagingManagerQueue:
             for event in stop_events:
                 event.set()
 
-            await asyncio.sleep(0.1)
-            assert instance.send_stopped_event.is_set()
-            assert instance.receive_stopped_event.is_set()
-            assert instance.send_task.done()
-            assert instance.receive_task.done()
+            await _await_lifecycle_stop(instance)
 
         await instance.stop()
         assert instance.running is False

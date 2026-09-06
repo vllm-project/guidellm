@@ -51,7 +51,9 @@ def test_text_file_deserializer_success(tmp_path):
     file_path.write_text("".join(file_content))
 
     deserializer = TextFileDatasetDeserializer()
-    config = FileDataArgs(kind="text_file", path=file_path)
+    config = FileDataArgs(
+        kind="text_file", path=file_path, load_kwargs={"split": "train"}
+    )
 
     dataset = deserializer(
         config=config, processor_factory=processor_factory(), random_seed=123
@@ -69,7 +71,9 @@ def test_text_file_deserializer_file_not_exists(tmp_path):
     ### WRITTEN BY AI ###
     """
     deserializer = TextFileDatasetDeserializer()
-    config = FileDataArgs(kind="text_file", path=tmp_path / "missing.txt")
+    config = FileDataArgs(
+        kind="text_file", path=tmp_path / "missing.txt", load_kwargs={"split": "train"}
+    )
 
     with pytest.raises(DataNotSupportedError):
         deserializer(
@@ -86,7 +90,9 @@ def test_text_file_deserializer_not_a_file(tmp_path):
     directory = tmp_path / "folder"
     directory.mkdir()
     deserializer = TextFileDatasetDeserializer()
-    config = FileDataArgs(kind="text_file", path=directory)
+    config = FileDataArgs(
+        kind="text_file", path=directory, load_kwargs={"split": "train"}
+    )
 
     with pytest.raises(DataNotSupportedError):
         deserializer(
@@ -103,7 +109,9 @@ def test_text_file_deserializer_invalid_file_extension(tmp_path):
     file_path = tmp_path / "data.ttl"
     file_path.write_text("hello")
     deserializer = TextFileDatasetDeserializer()
-    config = FileDataArgs(kind="text_file", path=file_path)
+    config = FileDataArgs(
+        kind="text_file", path=file_path, load_kwargs={"split": "train"}
+    )
 
     with pytest.raises(DataNotSupportedError):
         deserializer(
@@ -131,7 +139,9 @@ def test_parquet_file_deserializer_success(tmp_path):
     create_parquet_file(file_path)
 
     deserializer = ParquetFileDatasetDeserializer()
-    config = FileDataArgs(kind="parquet_file", path=file_path)
+    config = FileDataArgs(
+        kind="parquet_file", path=file_path, load_kwargs={"split": "train"}
+    )
 
     dataset = deserializer(
         config=config, processor_factory=processor_factory(), random_seed=42
@@ -150,7 +160,11 @@ def test_parquet_file_deserializer_file_not_exists(tmp_path):
     ### WRITTEN BY AI ###
     """
     deserializer = ParquetFileDatasetDeserializer()
-    config = FileDataArgs(kind="parquet_file", path=tmp_path / "missing.parquet")
+    config = FileDataArgs(
+        kind="parquet_file",
+        path=tmp_path / "missing.parquet",
+        load_kwargs={"split": "train"},
+    )
 
     with pytest.raises(DataNotSupportedError):
         deserializer(
@@ -182,7 +196,11 @@ def test_csv_file_deserializer_success(tmp_path):
     create_csv_file(file_path)
 
     deserializer = CSVFileDatasetDeserializer()
-    config = FileDataArgs(kind="csv_file", path=file_path)
+    config = FileDataArgs(
+        kind="csv_file",
+        path=file_path,
+        load_kwargs={"split": "train"},
+    )
 
     dataset = deserializer(
         config=config, processor_factory=processor_factory(), random_seed=43
@@ -209,7 +227,11 @@ def test_json_file_deserializer_success(tmp_path):
     file_path.write_text("".join(file_content))
 
     deserializer = JSONFileDatasetDeserializer()
-    config = FileDataArgs(kind="json_file", path=file_path)
+    config = FileDataArgs(
+        kind="json_file",
+        path=file_path,
+        load_kwargs={"split": "train"},
+    )
 
     dataset = deserializer(
         config=config, processor_factory=processor_factory(), random_seed=123
@@ -241,7 +263,7 @@ def test_file_deserializers_return_dataset_with_info(tmp_path, kind, suffix, con
         "json_file": JSONFileDatasetDeserializer,
         "csv_file": CSVFileDatasetDeserializer,
     }[kind]
-    config = FileDataArgs(kind=kind, path=file_path)
+    config = FileDataArgs(kind=kind, path=file_path, load_kwargs={"split": "train"})
 
     dataset = deserializer_cls()(
         config=config, processor_factory=processor_factory(), random_seed=7
@@ -273,7 +295,9 @@ def test_arrow_file_deserializer_success(monkeypatch, tmp_path):
         writer.write_table(table)
 
     deserializer = ArrowFileDatasetDeserializer()
-    config = FileDataArgs(kind="arrow_file", path=file_path)
+    config = FileDataArgs(
+        kind="arrow_file", path=file_path, load_kwargs={"split": "train"}
+    )
 
     dataset = deserializer(
         config=config, processor_factory=processor_factory(), random_seed=42
@@ -302,7 +326,9 @@ def test_hdf5_file_deserializer_success(tmp_path):
     df_sample.to_hdf(str(file_path), key="data", mode="w", format="fixed")
 
     deserializer = HDF5FileDatasetDeserializer()
-    config = FileDataArgs(kind="hdf5_file", path=file_path)
+    config = FileDataArgs(
+        kind="hdf5_file", path=file_path, load_kwargs={"split": "train"}
+    )
 
     dataset = deserializer(
         config=config, processor_factory=processor_factory(), random_seed=1
@@ -386,7 +412,9 @@ def test_tar_file_deserializer_success(tmp_path):
     create_simple_tar(str(file_path))
 
     deserializer = TarFileDatasetDeserializer()
-    config = FileDataArgs(kind="tar_file", path=file_path)
+    config = FileDataArgs(
+        kind="tar_file", path=file_path, load_kwargs={"split": "train"}
+    )
 
     dataset = deserializer(
         config=config, processor_factory=processor_factory(), random_seed=43

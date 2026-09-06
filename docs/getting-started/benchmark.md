@@ -217,6 +217,8 @@ guidellm run --profile kind=replay,time_scale=1.0
 | ----------------- | --------------------------------------------- | -------------------------------------- |
 | `time_scale`      | Time scale for intervals between trace events | `--profile kind=replay,time_scale=2.0` |
 
+Wait caps and a data-side `time_scale` are set on `--data`. The profile `time_scale` is applied by the scheduler after those dataset timestamps are built, allowing multiple runs with different time scales.
+
 ## Data Options
 
 ### Synthetic Data Options
@@ -253,15 +255,15 @@ Run with the `replay` profile:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=trace_synthetic,path=path/to/trace.jsonl \
-  --profile kind=replay,time_scale=1.0
+  --data kind=trace_synthetic,path=path/to/trace.jsonl,time_scale=1.0 \
+  --profile kind=replay,time_scale=0.5
 ```
 
-The replay profile parameter `time_scale` acts as a scaling factor for the intervals between trace events: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast.
+The data parameter `time_scale` acts as a scaling factor for the intervals between trace events after wait and pack caps: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast. Wait caps (`max_wait`, `max_session_wait`, `min_concurrent_sessions`) are applied in original trace seconds before `time_scale`.
 
 `--constraint kind=max_duration,seconds=<n>` stops in-flight waits as well as new request starts. Workers sleeping until a future replay timestamp are cancelled when the duration elapses.
 
-GuideLLM orders trace rows by timestamp before scheduling and payload generation, so each scheduled event uses the token lengths from the same sorted row. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. `--constraint kind=max_requests,count=1000` remains a runtime completion constraint; it does not truncate the trace dataset.
+GuideLLM schedules trace rows in timestamp order. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. `--constraint kind=max_requests,count=1000` remains a runtime completion constraint; it does not truncate the trace dataset.
 
 Every format by default looks for the columns "timestamp", "input_length", and "output_length". If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
 
@@ -269,7 +271,7 @@ Every format by default looks for the columns "timestamp", "input_length", and "
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --data kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length \
-  --profile kind=replay,time_scale=1.0
+  --profile kind=replay
 ```
 
 This functionality extends to columns required by specific formats. These additional columns and other format-specific arguments are described in the [Trace File Formats documentation](../guides/trace_replay.md)

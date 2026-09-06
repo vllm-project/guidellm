@@ -70,10 +70,12 @@ def _write_trace(path: Path, lines: list[str]) -> Path:
 
 def _requests_from_trace(
     trace_path: Path,
+    *,
+    time_scale: float = 1.0,
 ) -> tuple[list[ConversationGraph[GenerationRequest]], list[float]]:
     deserializer = TraceDatasetDeserializer()
     dataset = deserializer(
-        config=MinimalTraceFormatArgs(path=trace_path),
+        config=MinimalTraceFormatArgs(path=trace_path, time_scale=time_scale),
         processor_factory=_mock_processor,
         random_seed=42,
     )
@@ -184,11 +186,14 @@ async def test_trace_replay_multiprocess_from_trace_file(tmp_path: Path):
         ],
     )
 
-    requests, relative_timestamps = _requests_from_trace(trace)
-    assert relative_timestamps == pytest.approx(EXPECTED_RELATIVE, abs=1e-9)
+    requests, relative_timestamps = _requests_from_trace(trace, time_scale=TIME_SCALE)
+    assert relative_timestamps == pytest.approx(
+        [TIME_SCALE * timestamp for timestamp in EXPECTED_RELATIVE],
+        abs=1e-9,
+    )
     assert len(requests) == NUM_REQUESTS
 
-    strategy = TraceReplayStrategy(time_scale=TIME_SCALE)
+    strategy = TraceReplayStrategy()
     group = WorkerProcessGroup(
         backend=FastMockBackend(resolve_delay=RESOLVE_DELAY),
         requests=requests,
@@ -240,11 +245,12 @@ async def test_trace_replay_multiprocess_from_trace_file(tmp_path: Path):
     assert len(worker_nodes) >= 2
 
     for index, relative_timestamp in enumerate(EXPECTED_RELATIVE):
+        scaled_timestamp = TIME_SCALE * relative_timestamp
         assert settings_by_index[index].relative_timestamp == pytest.approx(
-            relative_timestamp,
+            scaled_timestamp,
             abs=1e-9,
         )
-        expected_target = start_time + TIME_SCALE * relative_timestamp
+        expected_target = start_time + scaled_timestamp
         assert targeted_start_by_index[index] == pytest.approx(
             expected_target,
             abs=0.05,
@@ -284,13 +290,18 @@ def _linear_replay_graph(
 async def test_max_duration_cancels_long_replay_sleep():
     """max_duration stops workers sleeping on a future relative_timestamp.
 
+    Use two independent graphs so the delayed request is sleeping from t=0.
+    A linear parent-child graph only starts that sleep after the first request
+    finishes, which on a loaded runner can let both complete before cancel.
+
     ## WRITTEN BY AI ##
     """
-    graph = _linear_replay_graph([0.0, 5.0])
+    immediate = _linear_replay_graph([0.0], graph_id="immediate", request_prefix="imm")
+    delayed = _linear_replay_graph([5.0], graph_id="delayed", request_prefix="del")
     strategy = TraceReplayStrategy(time_scale=1.0)
     group = WorkerProcessGroup(
         backend=FastMockBackend(resolve_delay=RESOLVE_DELAY),
-        requests=[graph],
+        requests=[immediate, delayed],
         strategy=strategy,
         max_duration=MaxDurationConstraint(args=MaxDurationConstraintArgs(seconds=0.4)),
     )
@@ -301,11 +312,7 @@ async def test_max_duration_cancels_long_replay_sleep():
         run_started = time.time()
         async for _, _, request_info, _state in group.request_updates():
             statuses.add(request_info.status)
-            if (
-                request_info.status in ("cancelled", "completed", "errored")
-                and _state.end_processing_time is not None
-                and _state.processed_requests >= _state.created_requests
-            ):
+            if "cancelled" in statuses:
                 break
         elapsed = time.time() - run_started
     finally:

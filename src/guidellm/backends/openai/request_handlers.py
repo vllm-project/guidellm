@@ -440,6 +440,37 @@ def _compile_streaming_response(
 _FUNCTION_DETAIL_KEYS = ("name", "description", "parameters", "strict")
 
 
+def _constrain_tool_call_body(
+    body: dict[str, Any],
+    data: GenerationRequest,
+    *token_limit_keys: str,
+) -> None:
+    """Set tool_choice and drop sampling keys that break constrained tool decoding.
+
+    Tools must already be present in ``body``. An injection that also carries
+    ``tools_column`` is a multi-step loop: keep ``tool_choice=required`` and
+    drop the same sampling keys as ``client_tool_call``. ``token_limit_keys``
+    are API-specific caps such as ``max_completion_tokens``.
+    """
+    if "tools" not in body:
+        body.pop("tool_choice", None)
+        return
+
+    injection_requests_tools = data.turn_type == "tool_response_injection" and bool(
+        data.columns.get("tools_column")
+    )
+    if data.turn_type == "standard" or (
+        data.turn_type == "tool_response_injection" and not injection_requests_tools
+    ):
+        body["tool_choice"] = "none"
+
+    if data.turn_type == "client_tool_call" or injection_requests_tools:
+        body.pop("ignore_eos", None)
+        body.pop("stop", None)
+        for key in token_limit_keys:
+            body.pop(key, None)
+
+
 @OpenAIRequestHandlerFactory.register("/v1/completions")
 class TextCompletionsRequestHandler(OpenAIRequestHandler):
     """
@@ -880,23 +911,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 ]
                 body.setdefault("tool_choice", "required")
 
-        if "tools" not in body:
-            body.pop("tool_choice", None)
-            return
-
-        # Standard and injection turns should not produce tool calls even
-        # when tool definitions are in the body (e.g. from extras).
-        if data.turn_type in ("standard", "tool_response_injection"):
-            body["tool_choice"] = "none"
-
-        # Tool calling requires the model to stop naturally after producing
-        # valid JSON; ignore_eos would force generation past that point and
-        # break the server's constrained decoding grammar.
-        # max_completion_tokens would truncate output mid-JSON and corrupt
-        # the arguments sent in conversation history on follow-up turns.
-        if data.turn_type == "client_tool_call":
-            body.pop("ignore_eos", None)
-            body.pop("stop", None)
+        _constrain_tool_call_body(body, data, "max_completion_tokens")
 
     def _build_history_messages(
         self,
@@ -1800,21 +1815,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 ]
                 body.setdefault("tool_choice", "required")
 
-        if "tools" not in body:
-            body.pop("tool_choice", None)
-            return
-
-        if data.turn_type in ("standard", "tool_response_injection"):
-            body["tool_choice"] = "none"
-
-        # Tool calling requires the model to stop naturally after producing
-        # valid JSON; ignore_eos would force generation past that point.
-        # max_output_tokens would truncate output mid-JSON and corrupt
-        # the arguments sent in conversation history on follow-up turns.
-        if data.turn_type == "client_tool_call":
-            body.pop("ignore_eos", None)
-            body.pop("stop", None)
-            body.pop("max_output_tokens", None)
+        _constrain_tool_call_body(body, data, "max_output_tokens")
 
     def format(  # noqa: C901
         self,

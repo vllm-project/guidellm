@@ -1,5 +1,6 @@
 from .base import (
     DataNotSupportedError,
+    DatasetDictType,
     DatasetType,
     GenerativeDatasetColumnType,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "ConversationParentRef",
     "ConversationTurnData",
     "DataNotSupportedError",
+    "DatasetDictType",
     "DatasetType",
     "GenerativeDatasetColumnType",
 ]

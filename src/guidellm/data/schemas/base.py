@@ -6,6 +6,7 @@ from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 
 __all__ = [
     "DataNotSupportedError",
+    "DatasetDictType",
     "DatasetType",
     "GenerativeDatasetColumnType",
 ]
@@ -27,7 +28,10 @@ GenerativeDatasetColumnType = Literal[
     "conversation_turns_column",
 ]
 
-DatasetType: TypeAlias = Dataset | DatasetDict | IterableDataset | IterableDatasetDict
+DatasetType: TypeAlias = Dataset | IterableDataset
+
+
+DatasetDictType: TypeAlias = DatasetType | DatasetDict | IterableDatasetDict
 
 
 class DataNotSupportedError(Exception):

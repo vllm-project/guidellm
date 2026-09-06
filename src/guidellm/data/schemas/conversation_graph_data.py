@@ -2,7 +2,7 @@
 Data-layer conversation graph interchange with inline parent dependencies.
 
 Turns declare their parents explicitly so branched / multi-agent datasets
-(and future WEKA traces) can describe a DAG without a separate edges list.
+(including WEKA traces) can describe a DAG without a separate edges list.
 The finalizer derives :class:`~guidellm.scheduler.schemas.ConversationEdge`
 values from these parent refs when building a runtime graph.
 """

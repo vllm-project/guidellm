@@ -116,7 +116,12 @@ def _should_expand_client_tool_turn(
     tool_call_mode: Literal["client", "server"],
     existing_ids: set[str],
 ) -> bool:
-    """Return True when this logical turn should become tool-call + injection."""
+    """Return True when this logical turn should become tool-call + injection.
+
+    Explicit ``client_tool_call`` without ``tool_response_column`` is already
+    split (the injection is a later node). Only expand when the mocked
+    response is on this same turn, matching synthetic data.
+    """
     injection_id = f"{turn.node_id}_injection"
     if injection_id in existing_ids:
         return False
@@ -129,8 +134,11 @@ def _should_expand_client_tool_turn(
         return False
     if explicit_type == "server_tool_call":
         return False
+    # Pre-split graphs (WEKA) already emit a separate injection node and put
+    # tool_response_column there. Expand explicit client_tool_call only for
+    # the synthetic pattern where the mocked response lives on this turn.
     if explicit_type == "client_tool_call":
-        return True
+        return bool(turn.columns.get("tool_response_column"))
     if not turn.columns.get("tools_column"):
         return False
     return tool_call_mode == "client"

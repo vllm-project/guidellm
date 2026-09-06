@@ -73,6 +73,10 @@ class TestTraceReplayStrategy:
 
     @pytest.mark.smoke
     def test_resolve_dequeued_target_start_scales_timestamps(self):
+        """Dequeue start is start_time plus time_scale times relative timestamp.
+
+        ## WRITTEN BY AI ##
+        """
         strategy = TraceReplayStrategy(time_scale=2.0)
         strategy.init_processes_timings(
             worker_count=1,

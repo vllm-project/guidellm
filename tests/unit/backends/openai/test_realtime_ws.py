@@ -19,6 +19,7 @@ from guidellm.backends.backend import Backend
 from guidellm.backends.openai.websocket import OpenAIWebSocketBackend
 from guidellm.schemas import GenerationRequest, RequestInfo, RequestTimings
 from guidellm.schemas.backends import OpenAIWebSocketBackendArgs
+from tests.unit.testing_utils import wait_until
 
 
 @pytest.fixture(autouse=True)
@@ -440,7 +441,7 @@ async def test_resolve_cancelled_after_delta_yields_partial_then_reraises() -> N
 
         task = asyncio.create_task(collect())
         await asyncio.wait_for(delta_seen.wait(), timeout=5.0)
-        await asyncio.sleep(0.05)
+        await wait_until(lambda: len(results) >= 1, timeout=5.0)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task

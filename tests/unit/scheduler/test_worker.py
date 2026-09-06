@@ -27,7 +27,7 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.schemas import RequestInfo, RequestSettings, RequestTimings
 from guidellm.utils.messaging import InterProcessMessagingQueue
-from tests.unit.testing_utils import async_timeout
+from tests.unit.testing_utils import async_timeout, wait_until
 
 STANDARD_NUM_REQUESTS: int = 200
 
@@ -672,11 +672,13 @@ class TestWorkerProcess:
         """
         instance, _main_messaging, _constructor_args = valid_instances
         events: list[str] = []
+        loop_started = asyncio.Event()
 
         async def fake_processing_startup():
             events.append("startup")
 
         async def fake_process_requests_loop():
+            loop_started.set()
             try:
                 await asyncio.sleep(1000)
             except asyncio.CancelledError:
@@ -699,11 +701,11 @@ class TestWorkerProcess:
         instance._processing_shutdown = fake_processing_shutdown
 
         process_requests_task = asyncio.create_task(instance._process_requests())
-        # Give the inner processing loop task a chance to actually start and
-        # suspend on its (mocked) long-running work before triggering the
-        # constraint, so cancellation exercises its except-CancelledError
-        # handling rather than short-circuiting a task that never ran.
-        await asyncio.sleep(0.01)
+        # Wait until the inner loop is actually suspended on its mock work
+        # before triggering the constraint, so cancellation exercises its
+        # except-CancelledError handling rather than cancelling a task that
+        # never ran.
+        await asyncio.wait_for(loop_started.wait(), timeout=2.0)
         instance.constraint_reached_event.set()
         await process_requests_task
 
@@ -885,7 +887,7 @@ class TestWorkerProcessMultiturn:
         assert nxt[1] > time.time()
 
         cancel_task = asyncio.create_task(worker_instance._cancel_requests_loop())
-        await asyncio.sleep(0.05)
+        await wait_until(lambda: not worker_instance.turns_queue)
         cancel_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await cancel_task
@@ -954,7 +956,7 @@ class TestWorkerProcessMultiturn:
             worker._process_next_graph_node(target_start=time.time())
         )
         await backend.entered_resolve.wait()
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0)
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
@@ -1119,7 +1121,12 @@ class TestWorkerProcessMultiturn:
         # Cancel path for graphs still queued on the worker
         worker.turns_queue.append(state)
         cancel_task = asyncio.create_task(worker._cancel_requests_loop())
-        await asyncio.sleep(0.05)
+        await wait_until(
+            lambda: any(
+                info.status == "cancelled"
+                for _, _, info in worker.messaging._sent_items
+            )
+        )
         cancel_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await cancel_task

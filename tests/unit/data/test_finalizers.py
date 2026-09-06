@@ -678,6 +678,7 @@ class TestFinalizerToolCallMode:
             {
                 "text_column": ["hello"],
                 "tools_column": ['[{"type": "function"}]'],
+                "tool_response_column": ['{"status": "ok"}'],
                 "turn_type_column": ["client_tool_call"],
             },
         ]
@@ -685,11 +686,51 @@ class TestFinalizerToolCallMode:
         assert isinstance(graph, GenerativeConversationGraph)
         results = _ordered_requests(graph)
 
-        # turn_type_column says client_tool_call, so it should create
-        # a client_tool_call + injection pair despite server mode
+        # turn_type_column says client_tool_call with a same-turn response, so
+        # it should create a client_tool_call + injection pair despite server mode
         assert len(results) == 2
         assert results[0].turn_type == "client_tool_call"
         assert results[1].turn_type == "tool_response_injection"
+
+    @pytest.mark.sanity
+    def test_presplit_client_tool_call_without_response_is_not_expanded(self):
+        """Explicit client_tool_call without tool_response_column is not split.
+
+        ## WRITTEN BY AI ##
+        """
+        graph_data = ConversationGraphData(
+            turns=[
+                ConversationTurnData(
+                    node_id="main_0",
+                    columns={
+                        "text_column": ["hello"],
+                        "tools_column": ['[{"type": "function"}]'],
+                        "turn_type_column": ["client_tool_call"],
+                    },
+                ),
+                ConversationTurnData(
+                    node_id="main_1",
+                    parents=[
+                        ConversationParentRef(
+                            parent_node_id="main_0",
+                            history_context="full",
+                        )
+                    ],
+                    columns={
+                        "turn_type_column": ["tool_response_injection"],
+                        "tool_response_column": ['{"status": "ok"}'],
+                    },
+                ),
+            ]
+        )
+        finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
+        graph = finalizer(
+            [{"conversation_turns_column": [graph_data.model_dump(mode="json")]}]
+        )
+        assert isinstance(graph, GenerativeConversationGraph)
+        assert set(graph.nodes) == {"main_0", "main_1"}
+        assert graph.nodes["main_0"].request.turn_type == "client_tool_call"
+        assert graph.nodes["main_1"].request.turn_type == "tool_response_injection"
 
 
 class TestGenerativeRequestFinalizerRequestSettings:

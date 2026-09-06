@@ -4,6 +4,8 @@ from typing import Literal
 
 from datasets import Dataset, DatasetDict, IterableDataset, IterableDatasetDict
 
+from guidellm.data.schemas import DatasetDictType, DatasetType
+
 __all__ = ["DEFAULT_SPLITS", "resolve_dataset_split"]
 
 
@@ -70,9 +72,12 @@ DEFAULT_SPLITS: dict[Literal["train", "calib", "val", "test"], list[str]] = {
 
 
 def resolve_dataset_split(
-    dataset: Dataset | IterableDataset | DatasetDict | IterableDatasetDict,
+    dataset: DatasetDictType,
     split: str | None = None,
-) -> Dataset | IterableDataset:
+) -> DatasetType:
+    """
+    Filter dataset to a specific split or return the first available split.
+    """
     if split is not None and isinstance(dataset, DatasetDict | IterableDatasetDict):
         if split in dataset:
             return dataset[split]
