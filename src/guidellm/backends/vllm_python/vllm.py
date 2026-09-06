@@ -14,7 +14,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 import jinja2
 from more_itertools import roundrobin
@@ -109,14 +109,10 @@ class VLLMPythonAsyncBackend(Backend):
         """
         return 1
 
-    @property
-    def requires_startup_for_resolution(self) -> bool:
-        """
-        VLLM Python loads an entire engine on ``process_startup``, so it must only
-        be initialized in the worker process. ``resolve_backend`` resolves the
-        model from configuration without starting the engine in the main process.
-        """
-        return False
+    #: GuideLLM knows the model from configuration (VLLM Python serves a single
+    #: model per engine), so ``resolve_backend`` reads it directly instead of
+    #: starting the engine in the main process just to query it.
+    backend_defines_model: ClassVar[bool] = True
 
     async def process_startup(self):
         """

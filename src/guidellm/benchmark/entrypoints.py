@@ -98,7 +98,17 @@ async def resolve_backend(
             f"{backend_instance.__class__.__name__} backend initialized"
         )
 
-    if backend_instance.requires_startup_for_resolution:
+    if backend_instance.backend_defines_model:
+        # GuideLLM already knows the model from configuration, so there is no need
+        # to start the backend in the main process just to query it. Workers always
+        # start and validate the engine before making requests.
+        if console_step:
+            console_step.update(
+                title="Resolving default model from backend.default_model",
+                status_level="info",
+            )
+        model = await backend_instance.default_model()
+    else:
         await backend_instance.process_startup()
         try:
             await backend_instance.validate()
@@ -111,17 +121,6 @@ async def resolve_backend(
             model = await backend_instance.default_model()
         finally:
             await backend_instance.process_shutdown()
-    else:
-        # In-process backends (e.g. vllm_python) initialize heavyweight resources
-        # on startup and must only do so in the worker process. Resolve the model
-        # from configuration without starting the backend here; validation runs in
-        # the worker.
-        if console_step:
-            console_step.update(
-                title="Resolving default model from backend.default_model",
-                status_level="info",
-            )
-        model = await backend_instance.default_model()
 
     if console_step:
         console_step.finish(
