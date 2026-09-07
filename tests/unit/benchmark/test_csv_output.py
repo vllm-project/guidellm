@@ -5,7 +5,13 @@ from types import SimpleNamespace
 import pytest
 
 from guidellm.benchmark.outputs.csv import GenerativeBenchmarkerCSV
+from guidellm.scheduler import ThroughputStrategy
 from guidellm.schemas import StatusDistributionSummary
+from tests.unit.benchmark.html_report_fixtures import (
+    make_benchmark,
+    metric_summary,
+    report,
+)
 
 
 class TestAlignColumns:
@@ -270,6 +276,42 @@ async def test_finalize_aligns_columns_in_written_csv(tmp_path: Path):
     data_rows = rows[3:]
     assert data_rows[0] == ["a1", ""]
     assert data_rows[1] == ["a2", "b2"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+async def test_finalize_exports_tool_call_metrics(tmp_path: Path):
+    """Tool call token and count metrics are included in the CSV output.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = make_benchmark(
+        strategy=ThroughputStrategy(),
+        rps=1.0,
+        tps=10.0,
+    )
+    benchmark.metrics.tool_call.tokens = metric_summary(32.0, count=2)
+    benchmark.metrics.tool_call.mixed_tokens = metric_summary(8.0, count=2)
+    benchmark.metrics.tool_call.count = metric_summary(2.0, count=2)
+
+    output = GenerativeBenchmarkerCSV(output_path=tmp_path / "tool_calls.csv")
+    path = await output.finalize(report(benchmark))
+    rows = list(csv.reader(path.open()))
+
+    expected_means = {
+        "Tool Call Tokens": "32.0",
+        "Tool Call Mixed Tokens": "8.0",
+        "Tool Call Count": "2.0",
+    }
+    for group, expected_mean in expected_means.items():
+        column_index = next(
+            index
+            for index, header in enumerate(rows[0])
+            if header == group
+            and rows[1][index] == "Successful Output"
+            and rows[2][index] == "Mean"
+        )
+        assert rows[3][column_index] == expected_mean
 
 
 # Metrics read by GenerativeBenchmarkerCSV._add_request_latency_metrics.
