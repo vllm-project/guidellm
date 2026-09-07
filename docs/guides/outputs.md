@@ -4,7 +4,7 @@ GuideLLM provides flexible options for outputting benchmark results, catering to
 
 ## CLI Output Configuration
 
-Without any `--output` options, GuideLLM writes `benchmarks.json` and `benchmarks.csv`. These files use the directory configured by `GUIDELLM__DEFAULT_RESULTS_DIR`, or the current directory when the variable is not set.
+Without any `--output` options, `guidellm run` writes `benchmarks.json` and `benchmarks.csv` to the [default results directory](#configuring-file-outputs).
 
 Output configuration follows the typed registry-backed CLI pattern. Specifying any `--output` replaces the default JSON and CSV outputs, so repeat the option for every file format you want. This example keeps both default formats and adds HTML:
 
@@ -17,7 +17,7 @@ guidellm run \
   --output kind=html
 ```
 
-Supported file output types are `json`, `yaml`, `csv`, `html`, and `plot`. Each supplies a default filename, so `path` is only needed to change the name or destination. Console output is configured separately as described below.
+Choose from the [supported file formats](#supported-file-formats) and see [configuring file outputs](#configuring-file-outputs) to set paths. Console output is controlled separately as described below.
 
 ## Console Output
 
@@ -60,36 +60,21 @@ GuideLLM supports saving benchmark results to files in various formats, includin
 
 ### Supported File Formats
 
-1. **JSON**: Contains all benchmark results, including full statistics and request data. This format is ideal for reloading into Python for in-depth analysis.
-2. **YAML**: Contains all benchmark results, including full statistics and request data, in YAML format which is human-readable and easy to work with in various tools.
-3. **CSV**: Provides a summary of the benchmark data, focusing on key metrics and statistics. Note that CSV does not include detailed request-level data.
-4. **HTML**: Self-contained static HTML report with throughput/latency charts and tables (no CDN or external assets).
-5. **PLOT**: Static image chart of benchmark metrics. The image format is selected from the `path` file extension — supported formats are PNG, JPG/JPEG, SVG, and PDF. A path with no extension defaults to `.png`, and an unsupported extension raises an error. The `dpi` parameter (default `100`) sets the output image resolution in dots per inch — for example, `--output kind=plot,path=plot.png,dpi=72`.
+| Format (`kind`) | Default filename  | Contents                                                                                                                                          |
+| --------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `json`          | `benchmarks.json` | Configuration, metadata, benchmark statistics, and retained request data for debugging or reloading into Python.                                  |
+| `yaml`          | `benchmarks.yaml` | The same detailed benchmark data as JSON in a human-readable YAML representation.                                                                 |
+| `csv`           | `benchmarks.csv`  | A tabular summary of throughput, latency, token counts, and rates for spreadsheets and comparisons. Does not include detailed request-level data. |
+| `html`          | `benchmarks.html` | A self-contained report with throughput and latency charts and tables. CSS and JavaScript are embedded for offline sharing.                       |
+| `plot`          | `benchmarks.png`  | Static benchmark performance graphs.                                                                                                              |
+
+For PLOT, the `path` extension selects the image format: PNG, JPG/JPEG, SVG, or PDF. For example, `--output kind=plot,path=benchmarks.pdf` creates a PDF. A path without an extension defaults to `.png`; unsupported extensions raise an error. The `dpi` parameter (default `100`) controls image resolution, for example `--output kind=plot,path=benchmarks.jpg,dpi=72`.
 
 ### Configuring File Outputs
 
-- **Default destination**: File outputs use `GUIDELLM__DEFAULT_RESULTS_DIR` when set and the current directory otherwise.
-- **Output path**: Each file type has a default filename. Pass `path=` to control the name or destination.
-- **Multiple formats**: Repeat `--output` with different types.
-- **Explicit selection**: Any `--output` replaces the default JSON and CSV selection. Include `--output kind=json` and `--output kind=csv` explicitly when you want to preserve them.
+Omit `path` to use the format's default filename in the directory configured by `GUIDELLM__DEFAULT_RESULTS_DIR`, or in the current directory when the variable is not set. Specify `path=` to set the filename or destination.
 
-#### Example commands to save results in specific formats:
-
-```bash
-# JSON, CSV, and HTML to a results directory
-guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=sweep \
-  --constraint kind=max_duration,seconds=30 \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --output kind=json,path=results/benchmark.json \
-  --output kind=csv,path=results/benchmark.csv \
-  --output kind=html,path=results/benchmark.html
-```
-
-**Example: Single output format**
-
-This command writes only JSON (in addition to the independent console output):
+For example, this command writes JSON to a custom path, in addition to the independent console output:
 
 ```bash
 guidellm run \

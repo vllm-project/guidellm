@@ -69,42 +69,11 @@ For deeper analysis, GuideLLM saves detailed results to these files by default:
 - `benchmarks.json`: Complete benchmark data in JSON format
 - `benchmarks.csv`: Summary of key metrics in CSV format
 
-The files are written to the directory configured by `GUIDELLM__DEFAULT_RESULTS_DIR`, or to the current directory when the variable is not set.
-
-Additional formats must be requested with `--output`. Specifying any `--output` replaces the default JSON and CSV outputs, so repeat the option for every format you want. For example, to keep the default files and add a self-contained HTML report:
-
-```bash
-guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --output kind=json \
-  --output kind=csv \
-  --output kind=html
-```
-
-Each file output has a default filename. Add `path=` only when you want to change its name or destination.
+The files are written to the directory configured by `GUIDELLM__DEFAULT_RESULTS_DIR`, or to the current directory when the variable is not set. See [configuring file outputs](../guides/outputs.md#configuring-file-outputs) to choose filenames and destinations.
 
 ### File Formats
 
-GuideLLM supports multiple file output formats that can be customized:
-
-- **JSON**: Complete benchmark data in JSON format with full request samples
-- **YAML**: Complete benchmark data in YAML format with full request samples
-- **CSV**: Summary of key metrics in CSV format suitable for spreadsheets
-- **HTML**: Self-contained HTML report with charts and tables
-- **PLOT**: Static performance graphs in PNG, JPG/JPEG, SVG, or PDF format
-
-To specify which formats to generate, and where to save them, use the `--output` option, which can be repeated for multiple formats:
-
-```bash
-guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --output kind=json,path=results/benchmarks.json \
-  --output kind=csv,path=results/summary.csv
-```
-
-Console output is an independent implicit default. Selecting file outputs does not disable it, and specifying `--output kind=console` does not customize it. Use `--disable-console` to suppress all console output or `--disable-console-interactive` to suppress only interactive progress updates.
+See [supported file formats](../guides/outputs.md#supported-file-formats) for the available reports and [output configuration](../guides/outputs.md#cli-output-configuration) for examples of selecting them. Explicit `--output` options replace the default JSON and CSV selection. Console display controls are described in [console output](../guides/outputs.md#console-output).
 
 ### Programmatic Analysis
 

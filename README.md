@@ -144,52 +144,15 @@ You will see progress updates and per-benchmark summaries during the run, as giv
 
 After the benchmark completes, GuideLLM writes `benchmarks.json` and `benchmarks.csv` by default. The files are saved in the directory configured by `GUIDELLM__DEFAULT_RESULTS_DIR`, or in the current directory when the variable is not set. GuideLLM also prints a summary and the generated file locations to the console.
 
-Additional file formats, such as HTML, YAML, and PLOT, must be requested with `--output`. Specifying any `--output` replaces the default JSON and CSV outputs, so repeat the option for every format you want. For example, to keep both defaults and add an HTML report:
-
-```bash
-guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=sweep \
-  --constraint kind=max_duration,seconds=30 \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --output kind=json \
-  --output kind=csv \
-  --output kind=html
-```
-
-Each output type supplies a default filename, so `path` is only needed to change the name or destination.
-
-The following section, **Output Files and Reports**, explains what each file contains and how to use them for analysis, visualization, or automation.
+Specifying `--output` replaces the default JSON and CSV outputs. See [output configuration](docs/guides/outputs.md#cli-output-configuration) for examples of selecting formats, including generating HTML alongside JSON and CSV.
 
 ## Output Files and Reports
 
-The Quick Start benchmark produces console, JSON, and CSV output. Other formats can be selected explicitly. Each format focuses on a different layer of analysis, ranging from a quick on-screen summary to fully structured data for dashboards and regression pipelines.
+Use JSON or YAML for detailed analysis, CSV for spreadsheet comparisons, HTML for self-contained visual reports, and PLOT for static performance graphs. See [supported file formats](docs/guides/outputs.md#supported-file-formats) for their contents and default filenames, and [configuring file outputs](docs/guides/outputs.md#configuring-file-outputs) to choose output paths.
 
-**Console output**
-
-The console provides a lightweight summary with high-level statistics for each benchmark in the run. It's useful for quick checks to confirm that the server responded correctly, the load sweep completed, and the system behaved as expected. Additionally, the output tables can be copied and pasted into spreadsheet software using `|` as the delimiter. Console output is independent of the file formats selected with `--output`; disable it with `--disable-console`. The sections will look similar to the following:
+The console provides a summary of each benchmark. Its tables can be copied into spreadsheet software using `|` as the delimiter. See [console output](docs/guides/outputs.md#console-output) for progress and display controls.
 
 <img alt="Sample GuideLLM benchmark output" src="https://raw.githubusercontent.com/vllm-project/guidellm/main/docs/assets/sample-output.png" />
-
-**JSON output (`benchmarks.json` by default)**
-
-This file is the authoritative record of the entire benchmark session. It includes configuration, metadata, per-benchmark statistics, and sample request entries with individual request timings. Use it for debugging, deeper analysis, or loading into Python with `GenerativeBenchmarksReport`.
-
-**CSV output (`benchmarks.csv` by default)**
-
-This file provides a compact tabular view of each benchmark with the fields most commonly used for reporting—throughput, latency percentiles, token counts, and rate information. It opens cleanly in spreadsheets and BI tools and is well-suited for comparisons across runs.
-
-**YAML output (`benchmarks.yaml` by default)**
-
-This file contains the same detailed benchmark data as the JSON output in a more human-readable format. Generate it with `--output kind=yaml`; it can be produced alongside any other format.
-
-**HTML output (`benchmarks.html` by default)**
-
-This self-contained report includes charts and tables for throughput and latency (emphasizing P95/P99). The file embeds its own CSS and JavaScript, so it can be shared without network access or a versioned UI dependency. Generate it with `--output kind=html`.
-
-**PLOT output (`benchmarks.png` by default)**
-
-This static image contains benchmark performance graphs. Generate it with `--output kind=plot`. The output format is selected by the `path` extension and can be PNG, JPG/JPEG, SVG, or PDF. For example, `--output kind=plot,path=benchmarks.pdf` creates a PDF, and the optional `dpi` parameter controls image resolution.
 
 ## Common Use Cases and Configurations
 
