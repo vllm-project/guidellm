@@ -138,7 +138,13 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 self._add_server_throughput_metrics(
                     benchmark, benchmark_headers, benchmark_values
                 )
-                for modality_name in ["text", "image", "video", "audio"]:
+                for modality_name in [
+                    "text",
+                    "image",
+                    "video",
+                    "audio",
+                    "tool_call",
+                ]:
                     self._add_modality_metrics(
                         benchmark,
                         modality_name,  # type: ignore[arg-type]
@@ -559,12 +565,12 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
     def _add_modality_metrics(
         self,
         benchmark: GenerativeBenchmark,
-        modality: Literal["text", "image", "video", "audio"],
+        modality: Literal["text", "image", "video", "audio", "tool_call"],
         headers: list[list[str]],
         values: list[str | int | float],
     ) -> None:
         """
-        Add modality-specific metrics for text, image, video, or audio data.
+        Add modality-specific metrics for text, image, video, audio, or tool calls.
 
         :param benchmark: Benchmark data to extract modality metrics from
         :param modality: Type of modality to extract metrics for
@@ -591,7 +597,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                     headers,
                     values,
                     dist_summary,
-                    f"{modality.capitalize()} {display_name}",
+                    f"{modality.replace('_', ' ').title()} {display_name}",
                     io_type.capitalize(),
                 )
 
