@@ -705,6 +705,8 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
             replace_index = random.randrange(len(self.samples))
             self.clear_stats_data(self.samples[replace_index])
             self.samples[replace_index] = current_index
+        else:
+            self.clear_stats_data(stats)
 
         return stats
 
