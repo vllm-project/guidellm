@@ -4,9 +4,17 @@ OpenAI HTTP backend Args schema.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
-from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    Field,
+    PrivateAttr,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 from guidellm.schemas import GenerationRequestArguments
 from guidellm.schemas.backends.backend import BackendArgs
@@ -61,6 +69,22 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         default=None,
         description="HTTP Bearer token API key for authentication to server",
         examples=["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"],
+    )
+    api_keys: list[SecretStr] | None = Field(
+        default=None,
+        description=(
+            "HTTP Bearer token API keys for round-robin authentication. "
+            "Mutually exclusive with api_key and api_key_file."
+        ),
+        examples=[["key-1", "key-2"]],
+    )
+    api_key_file: Path | None = Field(
+        default=None,
+        description=(
+            "Path to a UTF-8 file containing one HTTP Bearer token API key per "
+            "line. Mutually exclusive with api_key and api_keys."
+        ),
+        examples=["./api-keys.txt"],
     )
     api_routes: dict[str, str] = Field(
         default_factory=dict,
@@ -147,6 +171,12 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "format template and must contain the '{reasoning}' placeholder text."
         ),
     )
+    _resolved_api_keys: tuple[SecretStr, ...] = PrivateAttr(default=())
+
+    @property
+    def resolved_api_keys(self) -> tuple[SecretStr, ...]:
+        """Return the normalized API keys without serializing their values."""
+        return self._resolved_api_keys
 
     @field_validator("multiturn_reasoning", mode="after")
     @classmethod
@@ -173,11 +203,51 @@ class OpenAIHTTPBackendArgs(BackendArgs):
 
     @model_validator(mode="after")
     def validate_server_history(self):
-        """Validate that server_history is only True with supported endpoints."""
+        """Validate backend configuration combinations and normalize API keys."""
         if self.server_history and self.request_format != "/v1/responses":
             raise ValueError(
                 "server_history=True is only supported with the /v1/responses "
                 "request format. Current request_format: "
                 f"'{self.request_format}'"
             )
+
+        api_key_sources = sum(
+            source is not None
+            for source in (self.api_key, self.api_keys, self.api_key_file)
+        )
+        if api_key_sources > 1:
+            raise ValueError(
+                "Only one of api_key, api_keys, or api_key_file may be specified."
+            )
+
+        if self.api_keys is not None:
+            normalized_keys = tuple(
+                SecretStr(key.get_secret_value().strip()) for key in self.api_keys
+            )
+            if not normalized_keys or any(
+                not key.get_secret_value() for key in normalized_keys
+            ):
+                raise ValueError("api_keys must contain at least one non-empty key.")
+            self._resolved_api_keys = normalized_keys
+        elif self.api_key_file is not None:
+            try:
+                file_keys = tuple(
+                    SecretStr(line.strip())
+                    for line in self.api_key_file.read_text(
+                        encoding="utf-8"
+                    ).splitlines()
+                    if line.strip()
+                )
+            except (OSError, UnicodeDecodeError) as exc:
+                raise ValueError(
+                    f"Unable to read api_key_file '{self.api_key_file}'."
+                ) from exc
+            if not file_keys:
+                raise ValueError(
+                    "api_key_file must contain at least one non-empty key."
+                )
+            self._resolved_api_keys = file_keys
+        elif self.api_key is not None:
+            self._resolved_api_keys = (self.api_key,)
+
         return self

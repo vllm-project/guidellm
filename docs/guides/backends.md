@@ -16,7 +16,7 @@ For HTTP servers, pass `kind=openai_http` with the target URL and other connecti
 --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Meta-Llama-3.1-8B-Instruct
 ```
 
-Flat settings can be specified using comma-separated key=value pairs; for nested settings use serialized JSON or YAML. Common `openai_http` parameters include `target`, `model`, `request_format`, `api_key`, `stream`, `verify`, `timeout`, and nested `extras` for request body, headers, and query parameters:
+Flat settings can be specified using comma-separated key=value pairs; for nested settings use serialized JSON or YAML. Common `openai_http` parameters include `target`, `model`, `request_format`, `api_key`, `api_keys`, `api_key_file`, `stream`, `verify`, `timeout`, and nested `extras` for request body, headers, and query parameters:
 
 ```bash
 --backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"temperature":0.6,"top_p":0.95,"top_k":20}}}'
@@ -116,6 +116,24 @@ The API key is used to set the `Authorization: Bearer {api_key}` header in HTTP 
 
 > [!IMPORTANT]\
 > For security, avoid hardcoding API keys in scripts. Consider using environment variables or secure credential management tools when passing API keys via `--backend`.
+
+### Configuring Multiple API Keys
+
+To rotate credentials across generation requests, provide either `api_keys` as a JSON/YAML list or `api_key_file` as a path to a UTF-8 text file with one key per line. Blank lines are ignored. `api_key`, `api_keys`, and `api_key_file` are mutually exclusive.
+
+```bash
+guidellm run \
+  --backend '{"kind":"openai_http","target":"https://api.example.com/v1","model":"example-model","api_keys":["key-1","key-2"]}'
+```
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=https://api.example.com/v1,model=example-model,api_key_file=./api-keys.txt
+```
+
+GuideLLM assigns generation requests globally in round-robin order across worker processes. Health checks and model discovery use the first configured key and do not advance the rotation. An explicit `Authorization` value in `extras.headers` takes precedence and does not consume a rotating key.
+
+Keep key files out of source control, restrict their filesystem permissions, and avoid passing secrets through shell history or committed configuration files.
 
 ## Passing Sampling Parameters
 

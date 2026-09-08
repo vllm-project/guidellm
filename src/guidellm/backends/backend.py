@@ -88,6 +88,24 @@ class Backend(
         self.kind = args.kind
         self._args = args
 
+    def create_process_shared_state(self, mp_context: Any) -> Any:
+        """
+        Create runtime state shared by all worker-process copies of this backend.
+
+        :param mp_context: Multiprocessing context used to spawn worker processes
+        :return: Pickleable state to attach before worker processes are created
+        """
+        del mp_context
+        return None
+
+    def attach_process_shared_state(self, state: Any) -> None:
+        """
+        Attach shared runtime state created before worker processes are spawned.
+
+        :param state: State returned by :meth:`create_process_shared_state`
+        """
+        del state
+
     @property
     def info(self) -> dict[str, Any]:
         """

@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
+from pydantic import SecretStr
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.openai.common import FALLBACK_TIMEOUT
@@ -35,6 +36,8 @@ from guidellm.utils.dict import deep_filter
 __all__ = [
     "OpenAIHTTPBackend",
 ]
+
+MIN_API_KEYS_FOR_ROTATION = 2
 
 
 @Backend.register("openai_http")
@@ -76,6 +79,32 @@ class OpenAIHTTPBackend(Backend):
         # Runtime state
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
+        self._api_key_index = 0
+        self._api_key_shared_state: dict[str, Any] | None = None
+
+    def create_process_shared_state(self, mp_context: Any) -> dict[str, Any] | None:
+        """
+        Create a globally coordinated API-key allocator for worker processes.
+
+        :param mp_context: Multiprocessing context used to spawn worker processes
+        :return: Shared lock and counter when multiple API keys are configured
+        """
+        if len(self._args.resolved_api_keys) < MIN_API_KEYS_FOR_ROTATION:
+            return None
+        return {
+            "counter": mp_context.Value("Q", 0),
+            "lock": mp_context.Lock(),
+        }
+
+    def attach_process_shared_state(self, state: Any) -> None:
+        """
+        Attach the API-key allocator shared by all worker-process copies.
+
+        :param state: Shared state created by :meth:`create_process_shared_state`
+        """
+        if state is not None and not isinstance(state, dict):
+            raise TypeError("OpenAI HTTP backend shared state must be a dictionary.")
+        self._api_key_shared_state = state
 
     async def process_startup(self):
         """
@@ -276,7 +305,7 @@ class OpenAIHTTPBackend(Backend):
             "url": request_url,
             "method": arguments.method or "POST",
             "params": arguments.params,
-            "headers": self._build_headers(arguments.headers),
+            "headers": self._build_headers(arguments.headers, rotate_api_key=True),
             "json": request_json,
             "data": request_data,
             "files": request_files,
@@ -403,22 +432,30 @@ class OpenAIHTTPBackend(Backend):
             yield line
 
     def _build_headers(
-        self, existing_headers: dict[str, str] | None = None
+        self,
+        existing_headers: dict[str, str] | None = None,
+        rotate_api_key: bool = False,
     ) -> dict[str, str] | None:
         """
         Build headers dictionary with bearer token authentication.
 
-        Merges the Authorization bearer token header (if api_key is set) with any
-        existing headers. User-provided headers take precedence over the bearer token.
+        Merges the Authorization bearer token header with any existing headers.
+        User-provided Authorization headers take precedence over the selected API key.
 
         :param existing_headers: Optional existing headers to merge with
-        :return: Dictionary of headers with bearer token included if api_key is set
+        :param rotate_api_key: Select the next API key for a generation request
+        :return: Dictionary of headers with bearer token authentication when configured
         """
         headers: dict[str, str] = {}
 
-        # Add bearer token if api_key is set
-        if self._args.api_key:
-            token = self._args.api_key.get_secret_value()
+        has_authorization = existing_headers and any(
+            header.lower() == "authorization" for header in existing_headers
+        )
+        api_key = (
+            None if has_authorization else self._select_api_key(rotate=rotate_api_key)
+        )
+        if api_key is not None:
+            token = api_key.get_secret_value()
             headers["Authorization"] = f"Bearer {token}"
 
         # Merge with existing headers (user headers take precedence)
@@ -426,6 +463,31 @@ class OpenAIHTTPBackend(Backend):
             headers = {**headers, **existing_headers}
 
         return headers or None
+
+    def _select_api_key(self, rotate: bool) -> SecretStr | None:
+        """
+        Select a fixed or globally round-robin API key.
+
+        :param rotate: Whether to allocate the next key for a generation request
+        :return: Selected SecretStr API key, or None when authentication is disabled
+        """
+        api_keys = self._args.resolved_api_keys
+        if not api_keys:
+            return None
+        if not rotate or len(api_keys) == 1:
+            return api_keys[0]
+
+        if self._api_key_shared_state is not None:
+            lock = self._api_key_shared_state["lock"]
+            counter = self._api_key_shared_state["counter"]
+            with lock:
+                api_key = api_keys[counter.value % len(api_keys)]
+                counter.value += 1
+            return api_key
+
+        api_key = api_keys[self._api_key_index % len(api_keys)]
+        self._api_key_index += 1
+        return api_key
 
     def _check_tool_call_expectations(
         self,
