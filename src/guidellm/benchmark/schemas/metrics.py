@@ -295,10 +295,12 @@ class GenerativeMetricsSummary(StandardBaseDict):
                 status: [
                     (  # type: ignore[misc]
                         metric[_TIMED_METRIC_END_TIME_INDEX],
-                        float(metric[value_index] or 0.0),
+                        float(val),
                     )
                     for metric in metrics
                     if metric is not None
+                    for val in [metric[value_index]]
+                    if val is not None
                 ]
                 for status, metrics in metrics_by_status.items()
             }
@@ -313,10 +315,12 @@ class GenerativeMetricsSummary(StandardBaseDict):
                     (  # type: ignore[misc]
                         metric[_TIMED_METRIC_START_TIME_INDEX],
                         metric[_TIMED_METRIC_END_TIME_INDEX],
-                        float(metric[value_index] or 0.0),
+                        float(val),
                     )
                     for metric in metrics
                     if metric is not None
+                    for val in [metric[value_index]]
+                    if val is not None
                 ]
                 for status, metrics in metrics_by_status.items()
             }
