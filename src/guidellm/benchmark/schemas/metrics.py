@@ -84,7 +84,10 @@ class SchedulerMetrics(StandardBaseDict):
 
     # Request details tracked by the scheduler
     requests_made: StatusBreakdown[int, int, int, int] = Field(
-        description="Request counts by status: successful, incomplete, errored, total"
+        description=(
+            "Scheduler request counts: successful, cancelled (stored as incomplete), "
+            "errored, total. Includes requests cancelled before dispatch."
+        )
     )
 
     # Scheduler internal performance timings
@@ -138,15 +141,16 @@ class SchedulerMetrics(StandardBaseDict):
             measure_end_time=accumulator.timings.finalized_measure_end,
             request_end_time=accumulator.timings.finalized_request_end,
             end_time=scheduler_state.end_time or -1.0,
-            # Request details tracked by the scheduler
+            # A queued cancellation skips request accumulation, so cached scheduler
+            # counts may lag the final state when the last request never started.
             requests_made=StatusBreakdown(
-                successful=len(accumulator.completed.requests_stats),
-                incomplete=len(accumulator.incomplete.requests_stats),
-                errored=len(accumulator.errored.requests_stats),
+                successful=scheduler_state.successful_requests,
+                incomplete=scheduler_state.cancelled_requests,
+                errored=scheduler_state.errored_requests,
                 total=(
-                    len(accumulator.completed.requests_stats)
-                    + len(accumulator.incomplete.requests_stats)
-                    + len(accumulator.errored.requests_stats)
+                    scheduler_state.successful_requests
+                    + scheduler_state.cancelled_requests
+                    + scheduler_state.errored_requests
                 ),
             ),
             # Scheduler internal performance timings

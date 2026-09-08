@@ -5,6 +5,9 @@ tables appear when all expected tool call requests errored.
 
 from __future__ import annotations
 
+from itertools import permutations
+from typing import Literal
+
 import pytest
 
 from guidellm.benchmark.schemas.accumulator import GenerativeBenchmarkAccumulator
@@ -23,10 +26,10 @@ from guidellm.scheduler import (
 )
 from guidellm.schemas import (
     GenerationRequest,
-    GenerationResponse,
     GenerativeRequestStats,
     RequestInfo,
     RequestTimings,
+    StatusBreakdown,
     StatusDistributionSummary,
     UsageMetrics,
 )
@@ -284,73 +287,90 @@ def _make_accumulator(
 
 
 @pytest.mark.regression
-def test_scheduler_metrics_exclude_requests_cancelled_before_dispatch():
-    """
-    Compiled scheduler counts exclude requests cancelled while still queued.
+@pytest.mark.parametrize("order", list(permutations(("terminal", "started", "queued"))))
+@pytest.mark.parametrize("terminal_status", ["completed", "errored"])
+def test_scheduler_counts_all_cancellations_independent_of_event_order(
+    order: tuple[str, ...], terminal_status: Literal["completed", "errored"]
+):
+    """Keep all scheduler outcomes while filtering unstarted benchmark requests.
 
     ## WRITTEN BY AI ##
     """
     accumulator = _make_accumulator([], SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 1.0)
-    cancelled_state = SchedulerState(
+    state = SchedulerState(
+        start_time=SCHEDULE_BASE_TIME,
+        start_requests_time=SCHEDULE_BASE_TIME,
+        created_requests=3,
+        queued_requests=3,
+    )
+    for event in order:
+        status = terminal_status if event == "terminal" else "cancelled"
+        timings = RequestTimings(
+            queued=SCHEDULE_BASE_TIME,
+            dequeued=SCHEDULE_BASE_TIME + 0.1,
+            resolve_start=None if event == "queued" else SCHEDULE_BASE_TIME + 0.2,
+            request_start=None if event == "queued" else SCHEDULE_BASE_TIME + 0.3,
+            request_end=None if event == "queued" else SCHEDULE_BASE_TIME + 0.8,
+            resolve_end=SCHEDULE_BASE_TIME + 0.9,
+            finalized=SCHEDULE_BASE_TIME + 1.0,
+        )
+        state.processed_requests += 1
+        if status == "completed":
+            state.successful_requests += 1
+        elif status == "errored":
+            state.errored_requests += 1
+        else:
+            state.cancelled_requests += 1
+        accumulator.update_estimate(
+            response=None,
+            request=GenerationRequest(request_id=event),
+            info=RequestInfo(request_id=event, status=status, timings=timings),
+            scheduler_state=state,
+        )
+    state.end_processing_time = SCHEDULE_BASE_TIME + 1.0
+    state.end_time = SCHEDULE_BASE_TIME + 1.0
+
+    scheduler_metrics = SchedulerMetrics.compile(accumulator, state)
+    metrics = GenerativeMetrics.compile(accumulator)
+    successful = int(terminal_status == "completed")
+    errored = int(terminal_status == "errored")
+
+    assert scheduler_metrics.requests_made == StatusBreakdown(
+        successful=successful, incomplete=2, errored=errored, total=3
+    )
+    assert metrics.request_totals == StatusBreakdown(
+        successful=successful, incomplete=1, errored=errored, total=2
+    )
+
+
+@pytest.mark.regression
+def test_scheduler_counts_requests_when_all_are_cancelled_before_dispatch():
+    """Count scheduler cancellations even when no request statistics exist.
+
+    ## WRITTEN BY AI ##
+    """
+    accumulator = _make_accumulator([], SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 1.0)
+    state = SchedulerState(
         start_time=SCHEDULE_BASE_TIME,
         end_time=SCHEDULE_BASE_TIME + 1.0,
-        start_requests_time=SCHEDULE_BASE_TIME,
-        end_processing_time=SCHEDULE_BASE_TIME + 1.0,
         created_requests=1,
         queued_requests=1,
         processed_requests=1,
         cancelled_requests=1,
     )
-    info = RequestInfo(
-        request_id="cancelled-queued",
-        status="cancelled",
-        timings=RequestTimings(
-            queued=SCHEDULE_BASE_TIME,
-            dequeued=SCHEDULE_BASE_TIME + 0.5,
-            resolve_end=SCHEDULE_BASE_TIME + 1.0,
-            finalized=SCHEDULE_BASE_TIME + 1.0,
-        ),
-    )
-
     accumulator.update_estimate(
         response=None,
-        request=GenerationRequest(request_id=info.request_id),
-        info=info,
-        scheduler_state=cancelled_state,
-    )
-    completed_request = GenerationRequest(request_id="completed")
-    completed_info = RequestInfo(
-        request_id=completed_request.request_id,
-        status="completed",
-        timings=RequestTimings(
-            queued=SCHEDULE_BASE_TIME,
-            dequeued=SCHEDULE_BASE_TIME + 0.1,
-            resolve_start=SCHEDULE_BASE_TIME + 0.2,
-            request_start=SCHEDULE_BASE_TIME + 0.2,
-            request_end=SCHEDULE_BASE_TIME + 0.8,
-            resolve_end=SCHEDULE_BASE_TIME + 0.9,
-            finalized=SCHEDULE_BASE_TIME + 1.0,
-        ),
-    )
-    final_state = cancelled_state.model_copy(
-        update={"successful_requests": 1, "cancelled_requests": 1}
-    )
-    accumulator.update_estimate(
-        response=GenerationResponse(
-            request_id=completed_request.request_id,
-            request_args=None,
-        ),
-        request=completed_request,
-        info=completed_info,
-        scheduler_state=final_state,
+        request=GenerationRequest(request_id="queued"),
+        info=RequestInfo(request_id="queued", status="cancelled"),
+        scheduler_state=state,
     )
 
-    metrics = SchedulerMetrics.compile(accumulator, final_state)
+    metrics = SchedulerMetrics.compile(accumulator, state)
 
-    assert metrics.requests_made.successful == 1
-    assert metrics.requests_made.errored == 0
-    assert metrics.requests_made.incomplete == 0
-    assert metrics.requests_made.total == 1
+    assert metrics.requests_made == StatusBreakdown(
+        successful=0, incomplete=1, errored=0, total=1
+    )
+    assert accumulator.incomplete.requests_stats == []
 
 
 class TestScheduleRelativeMetrics:

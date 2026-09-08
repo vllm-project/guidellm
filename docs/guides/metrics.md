@@ -17,6 +17,11 @@ These metrics provide a breakdown of the overall request statuses, helping users
 - **Definition**: The total number of requests made during a benchmark run, broken down by status (successful, incomplete, error).
 - **Use Case**: Helps gauge the workload handled by the system and identify the proportion of requests that were successful versus those that failed or were incomplete.
 
+Exported results distinguish two sets of counts:
+
+- `scheduler_metrics.requests_made` counts all scheduler outcomes across the run, including requests cancelled before dispatch. Its `incomplete` field stores the cancellation count because it reuses the shared status breakdown schema.
+- `metrics.request_totals` counts requests retained in the measurement window after filtering. Requests cancelled before resolving begins are excluded; cancellations after resolving begins count as incomplete.
+
 ## Token Metrics
 
 ### Prompt Tokens and Counts
