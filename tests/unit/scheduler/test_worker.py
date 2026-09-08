@@ -899,24 +899,55 @@ class TestWorkerProcessMultiturn:
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(5.0)
-    async def test_schedule_request_aborts_sleep_on_constraint(self, worker_instance):
-        """Replay target waits must stop when max_duration fires.
+    async def test_constraint_cancels_in_flight_schedule_sleep(self, worker_instance):
+        """constraint_reached must cancel in-flight replay ``asyncio.sleep``.
+
+        ``_process_next_graph_node`` runs as a ``create_task`` child. The stop
+        event is observed by ``_process_requests``, which has to cancel those
+        children; cancelling only the processing loop leaves the sleep running.
 
         ## WRITTEN BY AI ##
         """
-        request_info = RequestInfo(request_id="delayed")
-        request_info.timings.dequeued = time.time()
-        target_start = time.time() + 5.0
+        entered_sleep = asyncio.Event()
 
-        async def trip_constraint() -> None:
-            await asyncio.sleep(0.05)
-            worker_instance.constraint_reached_event.set()
+        async def fake_startup() -> None:
+            return None
 
-        trip_task = asyncio.create_task(trip_constraint())
+        async def fake_cancel_loop() -> None:
+            return None
+
+        async def fake_shutdown() -> None:
+            return None
+
+        async def sleeping_node(target_start: float) -> None:
+            _ = target_start
+            request_info = RequestInfo(request_id="delayed")
+            request_info.timings.dequeued = time.time()
+            entered_sleep.set()
+            await worker_instance._schedule_request(
+                "r0", request_info, time.time() + 5.0
+            )
+
+        class ImmediateStartStrategy:
+            async def next_request_time(self, worker_index: int) -> float:
+                _ = worker_index
+                return time.time()
+
+            def request_completed(self, request_info: RequestInfo) -> None:
+                _ = request_info
+
+        worker_instance._processing_startup = fake_startup
+        worker_instance._cancel_requests_loop = fake_cancel_loop
+        worker_instance._processing_shutdown = fake_shutdown
+        worker_instance._process_next_graph_node = sleeping_node
+        worker_instance.strategy = ImmediateStartStrategy()
+        worker_instance.fut_scheduling_time_limit = 0.0
+
         started = time.time()
-        with pytest.raises(asyncio.CancelledError):
-            await worker_instance._schedule_request("r0", request_info, target_start)
-        await trip_task
+        process_task = asyncio.create_task(worker_instance._process_requests())
+        await asyncio.wait_for(entered_sleep.wait(), timeout=2.0)
+        worker_instance.constraint_reached_event.set()
+        await process_task
         assert time.time() - started < 2.0
         assert not any(
             item[2].status == "in_progress"

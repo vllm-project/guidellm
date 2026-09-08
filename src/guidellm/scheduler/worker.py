@@ -128,6 +128,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.backend_started = False
         self.messaging_started = False
         self.turns_queue: list[DAGExecutionState[RequestT, ResponseT]] = []
+        # In-flight ``_process_next_graph_node`` tasks. These are created with
+        # ``asyncio.create_task`` and are not cancelled merely by cancelling
+        # ``_process_requests_loop``; the stop-event handler must cancel them.
+        self._pending_request_tasks: set[asyncio.Task[None]] = set()
 
     def run(self):
         """
@@ -238,7 +242,13 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 self.constraint_reached_event,
                 poll_interval=self.messaging.poll_interval,
             )
+            # Request tasks are create_task children of the loop, so they keep
+            # running (including asyncio.sleep on a replay target) until they
+            # are cancelled. Cancel them here, when the stop event is observed,
+            # rather than waiting for the loop's CancelledError handler.
             processing_task.cancel()
+            for task in list(self._pending_request_tasks):
+                task.cancel()
             # Let in-flight nodes finish reporting their own terminal update
             # before the sweep below, so a node is never reported twice.
             with contextlib.suppress(asyncio.CancelledError):
@@ -290,13 +300,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         Schedules and processes requests according to the timing strategy while
         maintaining the configured concurrency limit through semaphore coordination.
         """
-        pending_tasks: set[asyncio.Task] = set()
         try:
             # Run request processing
             async_semaphore = asyncio.Semaphore(self.async_limit)
 
-            def _task_done(task: asyncio.Task):
-                pending_tasks.discard(task)
+            def _task_done(task: asyncio.Task[None]):
+                self._pending_request_tasks.discard(task)
                 async_semaphore.release()
 
                 if not task.cancelled() and (exception := task.exception()):
@@ -309,20 +318,21 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     worker_index=self.worker_index
                 )
 
-                if request_time - time.time() >= self.fut_scheduling_time_limit:
-                    await self._sleep_until_target(
-                        request_time - self.fut_scheduling_time_limit
-                    )
+                if (
+                    time_until := request_time - time.time()
+                ) >= self.fut_scheduling_time_limit:
+                    await asyncio.sleep(time_until - self.fut_scheduling_time_limit)
 
                 request_task = asyncio.create_task(
                     self._process_next_graph_node(target_start=request_time)
                 )
-                pending_tasks.add(request_task)
+                self._pending_request_tasks.add(request_task)
                 request_task.add_done_callback(_task_done)
         except asyncio.CancelledError as err:
-            for task in pending_tasks:
+            in_flight = list(self._pending_request_tasks)
+            for task in in_flight:
                 task.cancel()
-            await asyncio.gather(*pending_tasks, return_exceptions=True)
+            await asyncio.gather(*in_flight, return_exceptions=True)
 
             raise err
 
@@ -552,36 +562,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         if state in self.turns_queue:
             self.turns_queue.remove(state)
 
-    async def _sleep_until_target(self, target_time: float) -> None:
-        """Sleep until ``target_time``, aborting if the worker should stop.
-
-        A single ``asyncio.sleep`` for a far-future replay timestamp is only
-        interrupted if the parent task is cancelled. Under multiprocessing that
-        cancel can lag ``max_duration``, so poll stop events on the same
-        interval used elsewhere in the worker.
-
-        :param target_time: Unix timestamp to wait until
-        :raises asyncio.CancelledError: If a constraint, shutdown, or error
-            event is set before ``target_time``
-        """
-        while True:
-            if (
-                self.constraint_reached_event.is_set()
-                or self.shutdown_event.is_set()
-                or self.error_event.is_set()
-            ):
-                raise asyncio.CancelledError
-            remaining = target_time - time.time()
-            if remaining <= 0:
-                return
-            await asyncio.sleep(min(remaining, self.messaging.poll_interval))
-
     async def _schedule_request(
         self, request: RequestT, request_info: RequestInfo, target_start: float
     ):
         request_info.timings.scheduled_at = request_info.timings.dequeued
         if target_start > time.time():
-            await self._sleep_until_target(target_start)
+            await asyncio.sleep(target_start - time.time())
             # Adapt delay so that scheduled at reflects the sleep time
             request_info.timings.scheduled_at = target_start
 
