@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from guidellm.schemas.data.entrypoints import DataArgs
+from guidellm.utils.dict import deep_update
 
 __all__ = ["TraceDataArgs"]
 
@@ -73,3 +74,11 @@ class TraceDataArgs(DataArgs):
             "values below 1.0 compress them."
         ),
     )
+
+    @model_validator(mode="after")
+    def merge_kwargs(self):
+        """Merge load_kwargs from this object into the source DataArgs."""
+        if self.load_kwargs:
+            deep_update(self.source.load_kwargs, self.load_kwargs)
+
+        return self
