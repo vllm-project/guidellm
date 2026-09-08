@@ -98,18 +98,29 @@ async def resolve_backend(
             f"{backend_instance.__class__.__name__} backend initialized"
         )
 
-    await backend_instance.process_startup()
-    try:
-        await backend_instance.validate()
-
+    if backend_instance.backend_defines_model:
+        # GuideLLM already knows the model from configuration, so there is no need
+        # to start the backend in the main process just to query it. Workers always
+        # start and validate the engine before making requests.
         if console_step:
             console_step.update(
                 title="Resolving default model from backend.default_model",
                 status_level="info",
             )
         model = await backend_instance.default_model()
-    finally:
-        await backend_instance.process_shutdown()
+    else:
+        await backend_instance.process_startup()
+        try:
+            await backend_instance.validate()
+
+            if console_step:
+                console_step.update(
+                    title="Resolving default model from backend.default_model",
+                    status_level="info",
+                )
+            model = await backend_instance.default_model()
+        finally:
+            await backend_instance.process_shutdown()
 
     if console_step:
         console_step.finish(
