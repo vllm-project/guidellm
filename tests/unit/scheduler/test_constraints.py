@@ -1261,6 +1261,28 @@ class TestConstraintNoneRequest:
         assert action.request_queuing == "stop"
         assert action.request_processing == "stop_local"
 
+    @pytest.mark.regression
+    def test_max_duration_uses_scheduler_start_not_first_request(self):
+        """Replay waits count toward max_duration from scheduler start.
+
+        ``start_requests_time`` is first backend ``request_start``, which is
+        after a trace-replay sleep. Duration must use ``start_time``.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = MaxDurationConstraint(args=MaxDurationConstraintArgs(seconds=1.0))
+        now = time.time()
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=now - 5.0,
+            start_requests_time=now + 30.0,
+        )
+        action = constraint(state, None)
+        assert action.request_queuing == "stop"
+        assert action.request_processing == "stop_local"
+        assert action.metadata["start_time"] == pytest.approx(now - 5.0)
+
     @pytest.mark.smoke
     def test_max_requests_accepts_none_request(self):
         """max_requests evaluates counts with request=None.

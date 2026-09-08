@@ -123,11 +123,11 @@ class FastMockBackend(BackendInterface):
 
     @property
     def processes_limit(self) -> int | None:
-        return None
+        return 2
 
     @property
     def requests_limit(self) -> int | None:
-        return None
+        return 4
 
     def info(self) -> dict[str, Any]:
         return {"type": "fast_mock_trace_replay", "delay": self._resolve_delay}
@@ -306,13 +306,15 @@ async def test_max_duration_cancels_long_replay_sleep():
         max_duration=MaxDurationConstraint(args=MaxDurationConstraintArgs(seconds=0.4)),
     )
     statuses: set[str] = set()
+    cancelled_ids: set[str] = set()
     try:
         await group.create_processes()
         await group.start(time.time() + 0.05)
         run_started = time.time()
         async for _, _, request_info, _state in group.request_updates():
             statuses.add(request_info.status)
-            if "cancelled" in statuses:
+            if request_info.status == "cancelled":
+                cancelled_ids.add(request_info.request_id)
                 break
         elapsed = time.time() - run_started
     finally:
@@ -320,4 +322,5 @@ async def test_max_duration_cancels_long_replay_sleep():
         assert exceptions == []
 
     assert "cancelled" in statuses
+    assert any(request_id.startswith("del_") for request_id in cancelled_ids)
     assert elapsed < 2.5

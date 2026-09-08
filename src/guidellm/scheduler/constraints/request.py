@@ -137,6 +137,16 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
 
         return cast("Constraint", self.model_copy())
 
+    def resolved_seconds(self) -> float:
+        """Return the active duration limit in seconds.
+
+        :return: Scalar ``args.seconds``, or the list entry for ``current_index``
+        """
+        current_index = max(0, self.current_index)
+        if isinstance(self.args.seconds, int | float):
+            return float(self.args.seconds)
+        return float(self.args.seconds[min(current_index, len(self.args.seconds) - 1)])
+
     def __call__(
         self, state: SchedulerState, request_info: RequestInfo | None
     ) -> SchedulerUpdateAction:
@@ -148,14 +158,9 @@ class MaxDurationConstraint(PydanticConstraintInitializer):
         :return: Action indicating whether to continue or stop operations
         """
         _ = request_info  # Unused parameters
-        current_index = max(0, self.current_index)
-        max_duration = (
-            self.args.seconds
-            if isinstance(self.args.seconds, int | float)
-            else self.args.seconds[min(current_index, len(self.args.seconds) - 1)]
-        )
+        max_duration = self.resolved_seconds()
 
-        start_time = state.start_requests_time or state.start_time
+        start_time = state.start_time
         current_time = time.time()
         elapsed = current_time - start_time
         duration_exceeded = elapsed >= max_duration

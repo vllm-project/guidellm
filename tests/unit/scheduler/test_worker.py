@@ -900,11 +900,11 @@ class TestWorkerProcessMultiturn:
     @pytest.mark.asyncio
     @async_timeout(5.0)
     async def test_constraint_cancels_in_flight_schedule_sleep(self, worker_instance):
-        """constraint_reached must cancel in-flight replay ``asyncio.sleep``.
+        """constraint_reached cancels the processing loop, which aborts replay sleeps.
 
-        ``_process_next_graph_node`` runs as a ``create_task`` child. The stop
-        event is observed by ``_process_requests``, which has to cancel those
-        children; cancelling only the processing loop leaves the sleep running.
+        Setting the stop event must cancel ``_process_requests_loop``. That
+        handler cancels in-flight ``create_task`` children, so a 5s
+        ``_schedule_request`` sleep ends well before it completes.
 
         ## WRITTEN BY AI ##
         """

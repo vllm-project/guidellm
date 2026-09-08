@@ -26,7 +26,11 @@ from typing import Generic, NamedTuple
 from typing_extensions import TypeAliasType
 
 from guidellm.logger import logger
-from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
+from guidellm.scheduler.constraints import (
+    Constraint,
+    MaxDurationConstraint,
+    RequestsExhaustedConstraint,
+)
 from guidellm.scheduler.dag import DAGExecutionState
 from guidellm.scheduler.schemas import (
     BackendInterface,
@@ -134,6 +138,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         # Background health monitor, created in create_processes
         self._health_monitor_task: asyncio.Task | None = None
         self._worker_error_details: str | None = None
+        self._max_duration_deadline_task: asyncio.Task | None = None
 
         # Scheduler and messaging state, created in start
         self.state: WorkerGroupState[RequestT, ResponseT] | None = None
@@ -354,6 +359,11 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             receive_stop_criteria=[self.shutdown_event],
         )
 
+        if self._max_duration_constraint() is not None:
+            self._max_duration_deadline_task = asyncio.create_task(
+                self._run_max_duration_deadline()
+            )
+
         if (wait_time := start_time - time.time()) > 0:
             await asyncio.sleep(wait_time)
         if self.error_event.is_set():
@@ -362,6 +372,36 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 or "an error occurred in one of the worker processes"
             )
             raise RuntimeError(f"error_event is set in WorkerProcessGroup: {detail}")
+
+    def _max_duration_constraint(self) -> MaxDurationConstraint | None:
+        for constraint in self.constraints.values():
+            if isinstance(constraint, MaxDurationConstraint):
+                return constraint
+        return None
+
+    def _apply_time_constraint_update(self) -> None:
+        if self.state is None:
+            return
+        state_update = self.state.update_state()
+        if state_update.stop_processing and self.constraint_reached_event is not None:
+            self.constraint_reached_event.set()
+        if state_update.stop_queueing:
+            self.state.stop_send_requests_event.set()
+
+    async def _run_max_duration_deadline(self) -> None:
+        """Wait until the max_duration deadline, then signal workers to stop.
+
+        One ``asyncio.sleep`` until ``start_time + seconds``, not a poll loop.
+
+        :raises asyncio.CancelledError: If shutdown cancels this wait
+        """
+        constraint = self._max_duration_constraint()
+        if constraint is None or self.state is None:
+            return
+        remaining = self.state.start_time + constraint.resolved_seconds() - time.time()
+        if remaining > 0:
+            await asyncio.sleep(remaining)
+        self._apply_time_constraint_update()
 
     async def request_updates(
         self,
@@ -411,15 +451,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 # Time-based constraints (max_duration) must be evaluated even when
                 # workers are sleeping until a future target start, because no
                 # request updates arrive during that wait.
-                if self.state is not None:
-                    state_update = self.state.update_state()
-                    if (
-                        state_update.stop_processing
-                        and self.constraint_reached_event is not None
-                    ):
-                        self.constraint_reached_event.set()
-                    if state_update.stop_queueing:
-                        self.state.stop_send_requests_event.set()
+                self._apply_time_constraint_update()
 
     async def shutdown(self) -> list[Exception]:
         """
@@ -434,6 +466,12 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         :return: List of exceptions encountered during shutdown; empty if no errors
         """
         exceptions: list[Exception] = []
+
+        if self._max_duration_deadline_task is not None:
+            self._max_duration_deadline_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._max_duration_deadline_task
+            self._max_duration_deadline_task = None
 
         if self._health_monitor_task is not None:
             self._health_monitor_task.cancel()

@@ -128,10 +128,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.backend_started = False
         self.messaging_started = False
         self.turns_queue: list[DAGExecutionState[RequestT, ResponseT]] = []
-        # In-flight ``_process_next_graph_node`` tasks. These are created with
-        # ``asyncio.create_task`` and are not cancelled merely by cancelling
-        # ``_process_requests_loop``; the stop-event handler must cancel them.
-        self._pending_request_tasks: set[asyncio.Task[None]] = set()
 
     def run(self):
         """
@@ -242,13 +238,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 self.constraint_reached_event,
                 poll_interval=self.messaging.poll_interval,
             )
-            # Request tasks are create_task children of the loop, so they keep
-            # running (including asyncio.sleep on a replay target) until they
-            # are cancelled. Cancel them here, when the stop event is observed,
-            # rather than waiting for the loop's CancelledError handler.
             processing_task.cancel()
-            for task in list(self._pending_request_tasks):
-                task.cancel()
             # Let in-flight nodes finish reporting their own terminal update
             # before the sweep below, so a node is never reported twice.
             with contextlib.suppress(asyncio.CancelledError):
@@ -300,12 +290,13 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         Schedules and processes requests according to the timing strategy while
         maintaining the configured concurrency limit through semaphore coordination.
         """
+        pending_tasks: set[asyncio.Task] = set()
         try:
             # Run request processing
             async_semaphore = asyncio.Semaphore(self.async_limit)
 
-            def _task_done(task: asyncio.Task[None]):
-                self._pending_request_tasks.discard(task)
+            def _task_done(task: asyncio.Task):
+                pending_tasks.discard(task)
                 async_semaphore.release()
 
                 if not task.cancelled() and (exception := task.exception()):
@@ -326,13 +317,12 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 request_task = asyncio.create_task(
                     self._process_next_graph_node(target_start=request_time)
                 )
-                self._pending_request_tasks.add(request_task)
+                pending_tasks.add(request_task)
                 request_task.add_done_callback(_task_done)
         except asyncio.CancelledError as err:
-            in_flight = list(self._pending_request_tasks)
-            for task in in_flight:
+            for task in pending_tasks:
                 task.cancel()
-            await asyncio.gather(*in_flight, return_exceptions=True)
+            await asyncio.gather(*pending_tasks, return_exceptions=True)
 
             raise err
 
@@ -566,8 +556,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self, request: RequestT, request_info: RequestInfo, target_start: float
     ):
         request_info.timings.scheduled_at = request_info.timings.dequeued
-        if target_start > time.time():
-            await asyncio.sleep(target_start - time.time())
+        if target_start > (current_time := time.time()):
+            await asyncio.sleep(target_start - current_time)
             # Adapt delay so that scheduled at reflects the sleep time
             request_info.timings.scheduled_at = target_start
 
