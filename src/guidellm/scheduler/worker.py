@@ -309,10 +309,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     worker_index=self.worker_index
                 )
 
-                if (
-                    time_until := request_time - time.time()
-                ) >= self.fut_scheduling_time_limit:
-                    await asyncio.sleep(time_until - self.fut_scheduling_time_limit)
+                if request_time - time.time() >= self.fut_scheduling_time_limit:
+                    await self._sleep_until_target(
+                        request_time - self.fut_scheduling_time_limit
+                    )
 
                 request_task = asyncio.create_task(
                     self._process_next_graph_node(target_start=request_time)
@@ -552,12 +552,36 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         if state in self.turns_queue:
             self.turns_queue.remove(state)
 
+    async def _sleep_until_target(self, target_time: float) -> None:
+        """Sleep until ``target_time``, aborting if the worker should stop.
+
+        A single ``asyncio.sleep`` for a far-future replay timestamp is only
+        interrupted if the parent task is cancelled. Under multiprocessing that
+        cancel can lag ``max_duration``, so poll stop events on the same
+        interval used elsewhere in the worker.
+
+        :param target_time: Unix timestamp to wait until
+        :raises asyncio.CancelledError: If a constraint, shutdown, or error
+            event is set before ``target_time``
+        """
+        while True:
+            if (
+                self.constraint_reached_event.is_set()
+                or self.shutdown_event.is_set()
+                or self.error_event.is_set()
+            ):
+                raise asyncio.CancelledError
+            remaining = target_time - time.time()
+            if remaining <= 0:
+                return
+            await asyncio.sleep(min(remaining, self.messaging.poll_interval))
+
     async def _schedule_request(
         self, request: RequestT, request_info: RequestInfo, target_start: float
     ):
         request_info.timings.scheduled_at = request_info.timings.dequeued
-        if target_start > (current_time := time.time()):
-            await asyncio.sleep(target_start - current_time)
+        if target_start > time.time():
+            await self._sleep_until_target(target_start)
             # Adapt delay so that scheduled at reflects the sleep time
             request_info.timings.scheduled_at = target_start
 

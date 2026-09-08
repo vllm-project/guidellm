@@ -898,6 +898,33 @@ class TestWorkerProcessMultiturn:
 
     @pytest.mark.regression
     @pytest.mark.asyncio
+    @async_timeout(5.0)
+    async def test_schedule_request_aborts_sleep_on_constraint(self, worker_instance):
+        """Replay target waits must stop when max_duration fires.
+
+        ## WRITTEN BY AI ##
+        """
+        request_info = RequestInfo(request_id="delayed")
+        request_info.timings.dequeued = time.time()
+        target_start = time.time() + 5.0
+
+        async def trip_constraint() -> None:
+            await asyncio.sleep(0.05)
+            worker_instance.constraint_reached_event.set()
+
+        trip_task = asyncio.create_task(trip_constraint())
+        started = time.time()
+        with pytest.raises(asyncio.CancelledError):
+            await worker_instance._schedule_request("r0", request_info, target_start)
+        await trip_task
+        assert time.time() - started < 2.0
+        assert not any(
+            item[2].status == "in_progress"
+            for item in worker_instance.messaging._sent_items
+        )
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
     async def test_cancel_preserves_partial_backend_response(self):
         """Cancelled node update keeps the final partial response from the backend.
 
