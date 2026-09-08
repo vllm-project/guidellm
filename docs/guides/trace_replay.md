@@ -12,6 +12,36 @@ These are passed to the `--data` argument as `kind=format`:
 - `mooncake`: The trace format used by the serving platform *Mooncake*, as defined in [https://doi.org/10.48550/arXiv.2407.00079](https://doi.org/10.48550/arXiv.2407.00079)
 - `weka`: The trace format used by WEKA's *Augmented Memory Grid*, as specified [in the original research repository](https://github.com/callanjfox/agentic-coding-analysis/blob/master/docs/TRACE_FORMAT.md)
 
+## Loading Trace Data
+
+Trace replay always uses `--profile kind=replay`. Choose a **format** (`trace_synthetic`, `mooncake`, or `weka`) and a **source** type from one of the other deserializer kinds (`json_file`, `huggingface`, etc). For example:
+
+**`trace_synthetic` with local `json_file`:**
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=replay \
+  --data kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,time_scale=1.0
+```
+
+**WEKA dataset from `huggingface`:**
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=replay \
+  --data kind=weka,source.kind=huggingface,source.source=semianalysisai/cc-traces-weka-no-subagents-051226,load_kwargs.split=train
+```
+
+**Mooncake dataset from `huggingface`**
+
+```bash
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=replay \
+  --data kind=weka,source.kind=hf,source.src=valeriol29/mooncake-traces,load_kwargs.name=mooncake
+```
+
 ## Format-Agnostic Data Arguments
 
 All trace formats can accept the following optional data arguments:
@@ -32,7 +62,7 @@ These are passed through the `--data` argument like below:
 guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
-    --data "kind=trace_synthetic,path=replay.jsonl,timestamp_column=ts,prompt_tokens_column=input_tokens,output_tokens_column=generated_tokens,time_scale=1.0,max_wait=30"
+    --data "kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,timestamp_column=ts,prompt_tokens_column=input_tokens,output_tokens_column=generated_tokens,time_scale=1.0,max_wait=30"
 ```
 
 `trace_synthetic` can be thought of as the format-agnostic option, only looking for the timestamp, prompt token count and output token count columns and ignoring all other features contained in a dataset. While primarily used for testing, `trace_synthetic` may be used as a fallback for trace formats not currently supported by GuideLLM.
