@@ -139,7 +139,16 @@ class SchedulerMetrics(StandardBaseDict):
             request_end_time=accumulator.timings.finalized_request_end,
             end_time=scheduler_state.end_time or -1.0,
             # Request details tracked by the scheduler
-            requests_made=accumulator.scheduler_metrics.requests_made,
+            requests_made=StatusBreakdown(
+                successful=len(accumulator.completed.requests_stats),
+                incomplete=len(accumulator.incomplete.requests_stats),
+                errored=len(accumulator.errored.requests_stats),
+                total=(
+                    len(accumulator.completed.requests_stats)
+                    + len(accumulator.incomplete.requests_stats)
+                    + len(accumulator.errored.requests_stats)
+                ),
+            ),
             # Scheduler internal performance timings
             queued_time_avg=accumulator.scheduler_metrics.queued_time.mean or -1.0,
             resolve_start_delay_avg=(
