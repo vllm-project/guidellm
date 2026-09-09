@@ -255,6 +255,7 @@ class TestOpenAIHTTPBackend:
             {"Authorization": "Bearer key-2"},
             {"Authorization": "Bearer key-1"},
         ]
+        assert backend._api_key_index == 1
 
     @pytest.mark.sanity
     def test_api_key_file_is_loaded_by_http_backend(self, tmp_path):

@@ -482,8 +482,8 @@ class OpenAIHTTPBackend(Backend):
         if not rotate or len(api_keys) == 1:
             return api_keys[0]
 
-        api_key = api_keys[self._api_key_index % len(api_keys)]
-        self._api_key_index += 1
+        api_key = api_keys[self._api_key_index]
+        self._api_key_index = (self._api_key_index + 1) % len(api_keys)
         return api_key
 
     def _check_tool_call_expectations(
