@@ -1,3 +1,5 @@
+from guidellm.data.schemas import InvalidRowError
+
 from .deserializer import (
     DataNotSupportedError,
     DatasetDeserializer,
@@ -32,7 +34,6 @@ from .synthetic_video import (
     SyntheticVideoDatasetDeserializer,
 )
 from .trace_common import (
-    MissingColumnsLocation,
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
@@ -58,9 +59,9 @@ __all__ = [
     "InMemoryDictDatasetDeserializer",
     "InMemoryDictListDatasetDeserializer",
     "InMemoryItemListDatasetDeserializer",
+    "InvalidRowError",
     "JSONFileDatasetDeserializer",
     "MinimalTraceFormat",
-    "MissingColumnsLocation",
     "MooncakeTraceFormat",
     "ParquetFileDatasetDeserializer",
     "SyntheticImageDataset",
