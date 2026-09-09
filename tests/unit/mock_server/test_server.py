@@ -195,6 +195,30 @@ class TestMockServerEndpoints:
             assert model["owned_by"] == "guidellm-mock"
             assert model["id"] == "test-model"
 
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_audio_translations_returns_filename_string(
+        self, mock_server_instance
+    ):
+        """Test audio translations serialize the uploaded filename as a string.
+
+        ## WRITTEN BY AI ##
+        """
+        server_url, config = mock_server_instance
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{server_url}/v1/audio/translations",
+                files={"file": ("audio.wav", b"mock audio", "audio/wav")},
+                data={"model": config.model},
+                timeout=5.0,
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["filename"] == "audio.wav"
+        assert isinstance(data["filename"], str)
+
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
