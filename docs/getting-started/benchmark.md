@@ -298,18 +298,7 @@ guidellm run \
 
 ## Output Options
 
-By default, complete results are saved to `benchmarks.json` and `benchmarks.csv` in your current directory. Specify outputs explicitly with the `--output` option, which can be repeated for multiple formats:
-
-```bash
-guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --output kind=json,path=results/benchmark.json \
-  --output kind=csv,path=results/benchmark.csv \
-  --output kind=html,path=results/benchmark.html
-```
-
-Learn more about output options in the [Outputs documentation](../guides/outputs.md).
+By default, benchmark results are saved to `benchmarks.json` and `benchmarks.csv`. Specifying `--output` replaces this default selection. See [output configuration](../guides/outputs.md#cli-output-configuration) for examples of selecting formats and [configuring file outputs](../guides/outputs.md#configuring-file-outputs) for default directories and custom paths.
 
 ## Authentication
 
