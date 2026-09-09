@@ -2193,6 +2193,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             # with optional usage data. Returning None signals the streaming
             # loop in http.py to break out of the stream.
             resp = data.get("response") or {}
+            if event_type == "response.failed":
+                _check_streaming_error(resp)
             usage = resp.get("usage")
             if usage:
                 self.streaming_usage = usage
