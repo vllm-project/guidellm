@@ -94,7 +94,7 @@ def _first_api_request(requests: list[Any]) -> dict[str, Any] | None:
             inner = row.get("requests")
             if not inner:
                 continue
-            found = _first_api_request(list(inner))
+            found = _first_api_request(inner)
             if found is not None:
                 return found
             continue
@@ -437,8 +437,8 @@ class WEKATraceFormat(TraceFormatBase):
         and yields a Dataset with a single row and a single column,
         ``_weka_index``.
 
-        ``conversation[0]`` is HuggingFace row access for that only Dataset
-        row. ``_weka_index`` is the integer index of the matching entry in
+        ``conversation[0]`` is the only row in the yielded Dataset.
+        ``_weka_index`` is the integer index of the matching entry in
         ``self._conversations``.
 
         :param conversation: One-row Dataset yielded by ``__iter__``.
