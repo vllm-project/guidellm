@@ -387,9 +387,9 @@ class TestBackendArgsTransformation:
         assert args.model_dump()["api_keys"] != ["key-1", "key-2"]
 
     @pytest.mark.sanity
-    def test_api_key_file_is_loaded_and_not_serialized(self, tmp_path):
+    def test_api_key_file_is_not_loaded_during_schema_validation(self, tmp_path):
         """
-        API key files load non-empty lines without serializing their contents.
+        API key file values are not loaded during schema validation.
 
         ## WRITTEN BY AI ##
         """
@@ -401,10 +401,7 @@ class TestBackendArgsTransformation:
             api_key_file=key_file,
         )
 
-        assert [key.get_secret_value() for key in args.resolved_api_keys] == [
-            "key-1",
-            "key-2",
-        ]
+        assert args.resolved_api_keys == ()
         assert "key-1" not in str(args.model_dump())
 
     @pytest.mark.sanity
@@ -426,9 +423,9 @@ class TestBackendArgsTransformation:
             OpenAIHTTPBackendArgs(target="http://localhost:9000", **kwargs)
 
     @pytest.mark.sanity
-    def test_invalid_api_key_file_is_rejected(self, tmp_path):
+    def test_api_key_file_cannot_be_combined_with_api_key(self, tmp_path):
         """
-        Empty and missing API key files fail validation.
+        API key file configuration cannot be combined with a direct API key.
 
         ## WRITTEN BY AI ##
         """
@@ -437,9 +434,12 @@ class TestBackendArgsTransformation:
 
         for key_file in (empty_file, tmp_path / "missing-keys.txt"):
             with pytest.raises(ValidationError):
-                OpenAIHTTPBackendArgs(
-                    target="http://localhost:9000",
-                    api_key_file=key_file,
+                OpenAIHTTPBackendArgs.model_validate(
+                    {
+                        "target": "http://localhost:9000",
+                        "api_key": "key-1",
+                        "api_key_file": key_file,
+                    }
                 )
 
     def test_different_backend_types(self):

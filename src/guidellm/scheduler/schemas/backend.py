@@ -62,19 +62,11 @@ class BackendInterface(Protocol, Generic[RequestT, ResponseT]):
         :return: Backend metadata including model initialization and configuration
         """
 
-    def create_process_shared_state(self, mp_context: Any) -> Any:
+    def set_worker_index(self, worker_index: int) -> None:
         """
-        Create runtime state shared by all worker-process copies of this backend.
+        Set this backend copy's worker index before process startup.
 
-        :param mp_context: Multiprocessing context used to spawn worker processes
-        :return: Pickleable state to attach before worker processes are created
-        """
-
-    def attach_process_shared_state(self, state: Any) -> None:
-        """
-        Attach shared runtime state created before worker processes are spawned.
-
-        :param state: State returned by :meth:`create_process_shared_state`
+        :param worker_index: Zero-based index assigned to the worker process
         """
 
     async def process_startup(self) -> None:

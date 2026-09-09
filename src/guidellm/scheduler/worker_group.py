@@ -186,9 +186,6 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
         # Initialize multiprocessing components
         self.mp_context = get_context(settings.mp_context_type)
-        self.backend.attach_process_shared_state(
-            self.backend.create_process_shared_state(self.mp_context)
-        )
         self.mp_manager = self.mp_context.Manager()
         self.startup_barrier = self.mp_context.Barrier(num_processes + 1)
         self.requests_generated_event = self.mp_context.Event()

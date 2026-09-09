@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import multiprocessing
 from unittest.mock import MagicMock, Mock, patch
 
 import httpx
@@ -258,6 +257,44 @@ class TestOpenAIHTTPBackend:
         ]
 
     @pytest.mark.sanity
+    def test_api_key_file_is_loaded_by_http_backend(self, tmp_path):
+        """
+        The HTTP backend loads and normalizes non-empty API key file lines.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "api-keys.txt"
+        key_file.write_text("\n key-1\n\nkey-2 \n", encoding="utf-8")
+
+        backend = _make_backend(
+            target="http://localhost:8000",
+            api_key_file=key_file,
+        )
+
+        assert [key.get_secret_value() for key in backend._api_keys] == [
+            "key-1",
+            "key-2",
+        ]
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize("filename", ["empty-keys.txt", "missing-keys.txt"])
+    def test_invalid_api_key_file_is_rejected_by_http_backend(self, tmp_path, filename):
+        """
+        Empty and missing API key files fail when creating the HTTP backend.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / filename
+        if filename == "empty-keys.txt":
+            key_file.write_text("\n\n", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="api_key_file"):
+            _make_backend(
+                target="http://localhost:8000",
+                api_key_file=key_file,
+            )
+
+    @pytest.mark.sanity
     def test_auxiliary_headers_use_first_api_key(self):
         """
         Non-generation requests consistently use the first configured API key.
@@ -293,9 +330,9 @@ class TestOpenAIHTTPBackend:
         }
 
     @pytest.mark.sanity
-    def test_shared_api_key_allocator_coordinates_backend_copies(self):
+    def test_worker_index_offsets_api_key_rotation(self):
         """
-        Backend copies sharing allocator state select a single round-robin sequence.
+        Each worker starts rotating API keys from its own offset.
 
         ## WRITTEN BY AI ##
         """
@@ -303,20 +340,20 @@ class TestOpenAIHTTPBackend:
             target="http://localhost:8000",
             api_keys=["key-1", "key-2"],
         )
-        shared_state = backend_one.create_process_shared_state(
-            multiprocessing.get_context("spawn")
-        )
         backend_two = _make_backend(
             target="http://localhost:8000",
             api_keys=["key-1", "key-2"],
         )
-        backend_one.attach_process_shared_state(shared_state)
-        backend_two.attach_process_shared_state(shared_state)
+        backend_one.set_worker_index(0)
+        backend_two.set_worker_index(1)
 
         assert backend_one._build_headers(rotate_api_key=True) == {
             "Authorization": "Bearer key-1"
         }
         assert backend_two._build_headers(rotate_api_key=True) == {
+            "Authorization": "Bearer key-2"
+        }
+        assert backend_one._build_headers(rotate_api_key=True) == {
             "Authorization": "Bearer key-2"
         }
 

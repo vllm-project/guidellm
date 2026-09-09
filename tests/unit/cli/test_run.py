@@ -259,7 +259,4 @@ def test_run_accepts_api_key_file(monkeypatch, tmp_path):
 
     assert result.exit_code == 0, result.output
     backend = captured["args"].spec.backend
-    assert [key.get_secret_value() for key in backend.resolved_api_keys] == [
-        "key-1",
-        "key-2",
-    ]
+    assert backend.api_key_file == key_file

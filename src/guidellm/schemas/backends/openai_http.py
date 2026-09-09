@@ -10,7 +10,6 @@ from typing import Literal
 from pydantic import (
     AliasChoices,
     Field,
-    PrivateAttr,
     SecretStr,
     field_validator,
     model_validator,
@@ -171,12 +170,13 @@ class OpenAIHTTPBackendArgs(BackendArgs):
             "format template and must contain the '{reasoning}' placeholder text."
         ),
     )
-    _resolved_api_keys: tuple[SecretStr, ...] = PrivateAttr(default=())
 
     @property
     def resolved_api_keys(self) -> tuple[SecretStr, ...]:
-        """Return the normalized API keys without serializing their values."""
-        return self._resolved_api_keys
+        """Return inline or legacy API keys without serializing their values."""
+        if self.api_keys is not None:
+            return tuple(self.api_keys)
+        return (self.api_key,) if self.api_key is not None else ()
 
     @field_validator("multiturn_reasoning", mode="after")
     @classmethod
@@ -203,7 +203,7 @@ class OpenAIHTTPBackendArgs(BackendArgs):
 
     @model_validator(mode="after")
     def validate_server_history(self):
-        """Validate backend configuration combinations and normalize API keys."""
+        """Validate backend configuration combinations."""
         if self.server_history and self.request_format != "/v1/responses":
             raise ValueError(
                 "server_history=True is only supported with the /v1/responses "
@@ -228,26 +228,6 @@ class OpenAIHTTPBackendArgs(BackendArgs):
                 not key.get_secret_value() for key in normalized_keys
             ):
                 raise ValueError("api_keys must contain at least one non-empty key.")
-            self._resolved_api_keys = normalized_keys
-        elif self.api_key_file is not None:
-            try:
-                file_keys = tuple(
-                    SecretStr(line.strip())
-                    for line in self.api_key_file.read_text(
-                        encoding="utf-8"
-                    ).splitlines()
-                    if line.strip()
-                )
-            except (OSError, UnicodeDecodeError) as exc:
-                raise ValueError(
-                    f"Unable to read api_key_file '{self.api_key_file}'."
-                ) from exc
-            if not file_keys:
-                raise ValueError(
-                    "api_key_file must contain at least one non-empty key."
-                )
-            self._resolved_api_keys = file_keys
-        elif self.api_key is not None:
-            self._resolved_api_keys = (self.api_key,)
+            self.api_keys = list(normalized_keys)
 
         return self

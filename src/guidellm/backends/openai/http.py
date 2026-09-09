@@ -37,8 +37,6 @@ __all__ = [
     "OpenAIHTTPBackend",
 ]
 
-MIN_API_KEYS_FOR_ROTATION = 2
-
 
 @Backend.register("openai_http")
 class OpenAIHTTPBackend(Backend):
@@ -79,32 +77,39 @@ class OpenAIHTTPBackend(Backend):
         # Runtime state
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
+        self._api_keys = self._load_api_keys()
         self._api_key_index = 0
-        self._api_key_shared_state: dict[str, Any] | None = None
 
-    def create_process_shared_state(self, mp_context: Any) -> dict[str, Any] | None:
-        """
-        Create a globally coordinated API-key allocator for worker processes.
+    def _load_api_keys(self) -> tuple[SecretStr, ...]:
+        """Load and normalize API keys from the configured backend source."""
+        if self._args.api_key_file is None:
+            return self._args.resolved_api_keys
 
-        :param mp_context: Multiprocessing context used to spawn worker processes
-        :return: Shared lock and counter when multiple API keys are configured
-        """
-        if len(self._args.resolved_api_keys) < MIN_API_KEYS_FOR_ROTATION:
-            return None
-        return {
-            "counter": mp_context.Value("Q", 0),
-            "lock": mp_context.Lock(),
-        }
+        try:
+            api_keys = tuple(
+                SecretStr(line.strip())
+                for line in self._args.api_key_file.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+                if line.strip()
+            )
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ValueError(
+                f"Unable to read api_key_file '{self._args.api_key_file}'."
+            ) from exc
 
-    def attach_process_shared_state(self, state: Any) -> None:
-        """
-        Attach the API-key allocator shared by all worker-process copies.
+        if not api_keys:
+            raise ValueError("api_key_file must contain at least one non-empty key.")
+        return api_keys
 
-        :param state: Shared state created by :meth:`create_process_shared_state`
+    def set_worker_index(self, worker_index: int) -> None:
         """
-        if state is not None and not isinstance(state, dict):
-            raise TypeError("OpenAI HTTP backend shared state must be a dictionary.")
-        self._api_key_shared_state = state
+        Set this worker's initial offset into the API-key rotation.
+
+        :param worker_index: Zero-based index assigned to this worker process
+        """
+        if api_keys := self._api_keys:
+            self._api_key_index = worker_index % len(api_keys)
 
     async def process_startup(self):
         """
@@ -471,19 +476,11 @@ class OpenAIHTTPBackend(Backend):
         :param rotate: Whether to allocate the next key for a generation request
         :return: Selected SecretStr API key, or None when authentication is disabled
         """
-        api_keys = self._args.resolved_api_keys
+        api_keys = self._api_keys
         if not api_keys:
             return None
         if not rotate or len(api_keys) == 1:
             return api_keys[0]
-
-        if self._api_key_shared_state is not None:
-            lock = self._api_key_shared_state["lock"]
-            counter = self._api_key_shared_state["counter"]
-            with lock:
-                api_key = api_keys[counter.value % len(api_keys)]
-                counter.value += 1
-            return api_key
 
         api_key = api_keys[self._api_key_index % len(api_keys)]
         self._api_key_index += 1
