@@ -624,13 +624,12 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         :param line: Raw line from the streaming response
         :return: Parsed JSON data as dictionary, or None if line indicates completion
         """
-        if line == "data: [DONE]":
-            return None
-
         if not line or not (line := line.strip()) or not line.startswith("data:"):
             return {}
 
         line = line[len("data:") :].strip()
+        if line == "[DONE]":
+            return None
 
         data = json.loads(line)
         _check_streaming_error(data)
@@ -1989,10 +1988,11 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         if not line or not line.startswith("data:"):
             return {}
 
-        if line == "data: [DONE]":
+        line = line[len("data:") :].strip()
+        if line == "[DONE]":
             return None
 
-        data = json.loads(line[len("data:") :].strip())
+        data = json.loads(line)
         _check_streaming_error(data)
         return data
 
