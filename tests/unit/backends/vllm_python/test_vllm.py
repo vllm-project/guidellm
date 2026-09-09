@@ -1442,3 +1442,17 @@ class TestVLLMResolveAudioFromColumns:
             assert seen_prompt_arg[0]["multi_modal_data"]["audio"] is mock_audio_array
             prompt_str = seen_prompt_arg[0]["prompt"]
             assert "<|audio|>" in prompt_str
+
+
+@pytest.mark.sanity
+def test_backend_defines_model_is_true():
+    """
+    VLLM Python defines its model from configuration, so resolve_backend reads it
+    without starting the engine in the main process; the engine is only
+    initialized once, in the worker process (#1083).
+
+    ## WRITTEN BY AI ##
+    """
+    backend = _make_vllm_backend(model="Qwen/Qwen3-0.6B")
+
+    assert backend.backend_defines_model is True
