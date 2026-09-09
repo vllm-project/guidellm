@@ -91,10 +91,10 @@ def _first_api_request(requests: list[Any]) -> dict[str, Any] | None:
         if not isinstance(row, dict):
             continue
         if _is_subagent_entry(row):
-            inner = list(row.get("requests") or [])
+            inner = row.get("requests")
             if not inner:
                 continue
-            found = _first_api_request(inner)
+            found = _first_api_request(list(inner))
             if found is not None:
                 return found
             continue
@@ -244,7 +244,7 @@ class WEKATraceFormat(TraceFormatBase):
         self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
         # Filled by each ``__iter__`` pass so mixed subagent/API schemas are
         # not forced through a single HuggingFace Arrow table.
-        self._conversation_queue: list[tuple[str, list[dict[str, Any]]]] = []
+        self._conversations: list[tuple[str, list[dict[str, Any]]]] = []
         self._tools_json = _serialized_tools(config.tools)
         self._tool_response_sampler: Iterator[int] | None = None
         self.requests_col = _find_requests_column(dataset)
@@ -254,14 +254,14 @@ class WEKATraceFormat(TraceFormatBase):
             )
 
     def __iter__(self) -> Iterable[Dataset]:
-        self._conversation_queue = []
+        self._conversations = []
         for row in self.dataset:
             conv_id = str(row[self.config.conversation_id_column])
             # File order is spawn/join topology for every request list,
             # including nested subagent groups. Do not sort by timestamp.
             requests = [dict(item) for item in row[self.requests_col]]
-            index = len(self._conversation_queue)
-            self._conversation_queue.append((conv_id, requests))
+            index = len(self._conversations)
+            self._conversations.append((conv_id, requests))
             yield Dataset.from_dict({"_weka_index": [index]})
 
     def reset(self) -> None:
@@ -421,20 +421,24 @@ class WEKATraceFormat(TraceFormatBase):
     def _unpack_conversation(
         self, conversation: Dataset
     ) -> tuple[str, list[dict[str, Any]]]:
-        """Resolve a stub Dataset yielded by ``__iter__`` to the nested request list.
+        """Look up the nested request list for a conversation stub from ``__iter__``.
 
-        HuggingFace Arrow cannot store mixed API rows and ``type: "subagent"``
-        groups in one table, so ``__iter__`` queues
-        ``(conversation_id, requests)`` in ``self._conversation_queue`` and
-        yields a one-row Dataset whose only column is ``_weka_index``.
-        ``conversation[0]`` is that stub row (not request index 0);
-        ``_weka_index`` is the queue position of the original conversation.
+        The ``requests`` column mixes API request records with
+        ``type: "subagent"`` groups, which cannot share one Arrow schema, so
+        ``__iter__`` does not put that list into the yielded Dataset. It
+        appends ``(conversation_id, requests)`` to ``self._conversations``
+        and yields a Dataset with a single row and a single column,
+        ``_weka_index``.
 
-        :param conversation: One-row stub Dataset from ``__iter__``.
-        :return: ``(conversation_id, requests)`` from the queue.
+        ``conversation[0]`` is HuggingFace row access for that only Dataset
+        row. ``_weka_index`` is the integer index of the matching entry in
+        ``self._conversations``.
+
+        :param conversation: One-row Dataset yielded by ``__iter__``.
+        :return: ``(conversation_id, requests)`` for that conversation.
         """
         index = int(conversation[0]["_weka_index"])
-        return self._conversation_queue[index]
+        return self._conversations[index]
 
     def _emit_chain(
         self,
@@ -565,6 +569,8 @@ class WEKATraceFormat(TraceFormatBase):
     ) -> None:
         """Warn when consecutive turns of one agent overlap in time.
 
+        Published WEKA traces include consecutive same-agent turns whose
+        ``api_time`` windows overlap; those turns are serialized on one chain.
         Overlap uses recorded ``api_time`` when present
         (``t[i] + api_time[i] > t[i+1]``), otherwise non-increasing start
         times. Parallel subagents overlapping each other is intended and
