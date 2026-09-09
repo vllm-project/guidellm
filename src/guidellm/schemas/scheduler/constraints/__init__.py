@@ -17,6 +17,7 @@ from guidellm.schemas.scheduler.constraints.error import (
 from guidellm.schemas.scheduler.constraints.request import (
     MaxDurationConstraintArgs,
     MaxRequestsConstraintArgs,
+    MinRequestsConstraintArgs,
 )
 from guidellm.schemas.scheduler.constraints.saturation import (
     OverSaturationConstraintArgs,
@@ -31,6 +32,7 @@ __all__ = [
     "MaxErrorsConstraintArgs",
     "MaxGlobalErrorRateConstraintArgs",
     "MaxRequestsConstraintArgs",
+    "MinRequestsConstraintArgs",
     "OverSaturationConstraintArgs",
     "PositiveNum",
     "PositiveNumOrList",

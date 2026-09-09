@@ -28,12 +28,14 @@ from guidellm.schemas import RequestInfo, StandardBaseModel
 from guidellm.schemas.scheduler.constraints import (
     MaxDurationConstraintArgs,
     MaxRequestsConstraintArgs,
+    MinRequestsConstraintArgs,
 )
 from guidellm.utils.mixins import InfoMixin
 
 __all__ = [
     "MaxDurationConstraint",
     "MaxNumberConstraint",
+    "MinNumberConstraint",
     "RequestsExhaustedConstraint",
 ]
 
@@ -105,6 +107,79 @@ class MaxNumberConstraint(PydanticConstraintInitializer):
             progress=SchedulerProgress(
                 remaining_requests=remaining_requests,
                 total_requests=max_num,
+                stop_time=stop_time,
+            ),
+        )
+
+
+@ConstraintsInitializerFactory.register("min_requests")
+class MinNumberConstraint(PydanticConstraintInitializer):
+    """
+    Constraint that limits execution based on processed request counts.
+
+    Stops request queuing and local request processing when processed requests
+    reach the limit. Unlike ``MaxNumberConstraint``, queuing is not stopped
+    when created requests reach the limit, which keeps the request pipeline
+    full and avoids throughput tail-off at the end of a benchmark.
+    """
+
+    type_: Literal["min_requests"] = "min_requests"  # type: ignore[assignment]
+    args: MinRequestsConstraintArgs = Field(
+        description="Configuration arguments for min request count constraint",
+    )
+    current_index: int = Field(
+        default=-1, description="Current index for list-based count values"
+    )
+
+    def create_constraint(self, **_kwargs) -> Constraint:
+        """
+        Return self as the constraint instance.
+
+        :param kwargs: Additional keyword arguments (unused)
+        :return: Self instance as the constraint
+        """
+        self.current_index += 1
+
+        return cast("Constraint", self.model_copy())
+
+    def __call__(
+        self, state: SchedulerState, request_info: RequestInfo | None
+    ) -> SchedulerUpdateAction:
+        """
+        Evaluate constraint against current scheduler state and request count.
+
+        :param state: Current scheduler state with request counts
+        :param request_info: Individual request information, or ``None`` on poll
+        :return: Action indicating whether to continue or stop operations
+        """
+        current_index = max(0, self.current_index)
+        min_num = (
+            self.args.count
+            if isinstance(self.args.count, int | float)
+            else self.args.count[min(current_index, len(self.args.count) - 1)]
+        )
+
+        create_exceeded = state.created_requests >= min_num
+        processed_exceeded = state.processed_requests >= min_num
+        remaining_requests = min(max(0, min_num - state.processed_requests), min_num)
+        stop_time = constraint_stop_time(request_info, stopped=remaining_requests <= 0)
+
+        return SchedulerUpdateAction(
+            request_queuing="stop" if processed_exceeded else "continue",
+            request_processing="stop_local" if processed_exceeded else "continue",
+            stopping_scope=self.args.stopping_scope,
+            metadata={
+                "min_requests": min_num,
+                "create_exceeded": create_exceeded,
+                "processed_exceeded": processed_exceeded,
+                "created_requests": state.created_requests,
+                "processed_requests": state.processed_requests,
+                "remaining_requests": remaining_requests,
+                "stop_time": stop_time,
+            },
+            progress=SchedulerProgress(
+                remaining_requests=remaining_requests,
+                total_requests=min_num,
                 stop_time=stop_time,
             ),
         )
