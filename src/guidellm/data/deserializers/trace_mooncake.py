@@ -18,7 +18,6 @@ from faker import Faker
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.deserializer import (
-    DataNotSupportedError,
     DatasetDeserializerFactory,
 )
 from guidellm.data.deserializers.trace_common import (
@@ -29,6 +28,7 @@ from guidellm.data.deserializers.trace_common import (
     create_prompt_from_hash_ids,
     get_missing_columns,
 )
+from guidellm.data.schemas import InvalidRowError
 from guidellm.schemas.data.deserializers import MooncakeTraceFormatArgs
 
 __all__ = ["MooncakeTraceFormat"]
@@ -86,11 +86,9 @@ class MooncakeTraceFormat(TraceFormatBase):
         block_size = self.config.hash_id_block_size
         for hash_id in row[self.config.hash_ids_column]:
             if hash_id < 0:
-                raise DataNotSupportedError(
-                    f"Hash ID must be non-negative, got {hash_id}"
-                )
+                raise InvalidRowError(f"Hash ID must be non-negative, got {hash_id}")
         if math.ceil(n_in / block_size) != n_blocks:
-            raise DataNotSupportedError(
+            raise InvalidRowError(
                 f"Input token count of {n_in} split into blocks of size "
                 f"{block_size} does not match given {n_blocks} blocks"
             )
