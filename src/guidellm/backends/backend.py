@@ -9,7 +9,7 @@ provide a standard interface for distributed execution across worker processes.
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 from guidellm.scheduler import BackendInterface
 from guidellm.schemas import GenerationRequest, GenerationResponse
@@ -109,6 +109,14 @@ class Backend(
             None if unlimited
         """
         return None
+
+    #: Whether GuideLLM already knows this backend's default model from its
+    #: configuration, without querying a running engine. When ``True``,
+    #: ``resolve_backend`` reads the model directly and does not start the backend
+    #: in the main process. When ``False`` (the default), the backend must be
+    #: started to discover its model. This is independent of validation: workers
+    #: always start and validate the engine before making requests.
+    backend_defines_model: ClassVar[bool] = False
 
     @abstractmethod
     async def default_model(self) -> str:

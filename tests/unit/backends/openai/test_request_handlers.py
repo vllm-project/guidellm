@@ -725,6 +725,7 @@ class TestTextCompletionsRequestHandler:
         [
             ('data: {"choices": [{"text": "Test"}]}', {"choices": [{"text": "Test"}]}),
             ("data: [DONE]", None),
+            ("data:[DONE]", None),
             ("", {}),
             ("invalid line", {}),
             ('data: {"test": "value"}', {"test": "value"}),
@@ -3531,6 +3532,7 @@ class TestResponsesRequestHandler:
                 {"type": "response.output_text.delta", "delta": "Hi"},
             ),
             ("data: [DONE]", None),
+            ("data:[DONE]", None),
             ("", {}),
             ("event: response.created", {}),
             ("event: response.output_text.delta", {}),

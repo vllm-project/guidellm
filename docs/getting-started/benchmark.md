@@ -241,7 +241,7 @@ You can customize synthetic data generation with additional parameters such as s
 
 ### Trace Replay Benchmarking
 
-For realistic load testing, replay trace events using each row's timestamp and token lengths. Trace files must be JSONL, JSON, CSV, or Parquet and are loaded with a supported [trace file format](../guides/trace_replay.md#supported-formats). Timestamps may be absolute or monotonic values; GuideLLM sorts them and converts them to offsets from the first event before scheduling:
+For realistic load testing, replay trace events using each row's timestamp and token lengths. Trace data is loaded from a local file or HuggingFace dataset via a nested `source` config on `--data`, using a supported [trace file format](../guides/trace_replay.md#supported-formats). Timestamps may be absolute or monotonic values; GuideLLM sorts them and converts them to offsets from the first event before scheduling:
 
 ```json
 {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
@@ -255,7 +255,7 @@ Run with the `replay` profile:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=trace_synthetic,path=path/to/trace.jsonl,time_scale=1.0 \
+  --data kind=trace_synthetic,source.kind=json_file,source.path=path/to/trace.jsonl,time_scale=1.0 \
   --profile kind=replay,time_scale=0.5
 ```
 
@@ -270,7 +270,7 @@ Every format by default looks for the columns "timestamp", "input_length", and "
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length \
+  --data kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length \
   --profile kind=replay
 ```
 
@@ -298,18 +298,7 @@ guidellm run \
 
 ## Output Options
 
-By default, complete results are saved to `benchmarks.json` and `benchmarks.csv` in your current directory. Specify outputs explicitly with the `--output` option, which can be repeated for multiple formats:
-
-```bash
-guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --output kind=json,path=results/benchmark.json \
-  --output kind=csv,path=results/benchmark.csv \
-  --output kind=html,path=results/benchmark.html
-```
-
-Learn more about output options in the [Outputs documentation](../guides/outputs.md).
+By default, benchmark results are saved to `benchmarks.json` and `benchmarks.csv`. Specifying `--output` replaces this default selection. See [output configuration](../guides/outputs.md#cli-output-configuration) for examples of selecting formats and [configuring file outputs](../guides/outputs.md#configuring-file-outputs) for default directories and custom paths.
 
 ## Authentication
 

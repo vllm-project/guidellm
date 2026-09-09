@@ -20,12 +20,11 @@ The following arguments configure datasets and their processing:
   - `synthetic_text` — generates synthetic prompts on the fly. Required field: `prompt_tokens`. Optional: `output_tokens`, `turns`, `prefix_tokens`, `prefix_count`, `prefix_buckets`, and distribution controls (`prompt_tokens_stdev`, `output_tokens_stdev`, etc.).
   - `huggingface` (alias `hf`) — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (for example `split`, `name`) via `load_kwargs`.
   - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `db_file`, `tar_file` — loads from a local file. Required field: `path`.
-  - `trace_synthetic`, `mooncake` — loads a JSONL, JSON, CSV, or Parquet trace file for replay benchmarking. Required field: `path`. Optional: `timestamp_column` (default: `timestamp`), `prompt_tokens_column` (default: `input_length`), `output_tokens_column` (default: `output_length`).
-  - `weka` - Similar to `trace_synthetic`, but with the following changes to the optional field defaults: `timestamp_column` (default: `t`), `prompt_tokens_column` (default: `in`), `output_tokens_column` (default: `out`).
+  - `trace_synthetic`, `mooncake`, `weka` — replay trace data with `--profile kind=replay`. Required field: `source` (a nested dataset config such as `json_file` or `huggingface`), see other supported sources for details. Optional: `timestamp_column`, `prompt_tokens_column`, `output_tokens_column`, `time_scale`, and other format-specific options. `weka` uses different column defaults (`t`, `in`, `out`). See [Trace File Formats](./trace_replay.md).
 
 In addition, you can specify additional arguments to the dataset loading with the data argument `load_kwargs`:
 
-- load_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}'`.
+- load_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}'`. Trace kinds accept `load_kwargs` the same way and forward them to the source loader.
 
 ### Data Loader
 
@@ -206,7 +205,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
-    --data kind=trace_synthetic,path=path/to/trace.jsonl,time_scale=1.0
+    --data kind=trace_synthetic,source.kind=json_file,source.path=path/to/trace.jsonl,time_scale=1.0
   ```
 
   All trace formats by default look for the columns "timestamp", "input_length", and "output_length". If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
@@ -215,7 +214,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
-    --data kind=trace_synthetic,path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
+    --data kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
   ```
 
   For replay, `time_scale` on `--data` is a time scale for the intervals between trace events after wait and pack caps. Wait caps (`max_wait`, `max_session_wait`, `min_concurrent_sessions`) are applied in original trace seconds before `time_scale`. The replay profile also accepts a scheduler-side `time_scale` on `--profile kind=replay`. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. Use `--constraint kind=max_requests,count=<n>` only as a runtime completion constraint; it does not limit the trace rows loaded from the file. `--constraint kind=max_duration,seconds=<n>` also cancels in-flight waits, including replay sleeps.

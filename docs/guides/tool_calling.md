@@ -150,7 +150,7 @@ The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=replay \
-  --data '{"kind":"weka","path":"trace.jsonl","tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}],"tool_response_tokens":50}' \
+  --data '{"kind":"weka","source":{"kind":"json_file","path":"trace.jsonl"},"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}],"tool_response_tokens":50}' \
   --constraint kind=max_requests,count=30
 ```
 
