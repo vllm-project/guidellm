@@ -62,33 +62,18 @@ This is the most critical section for performance analysis. It displays detailed
 
 The p99 (99th percentile) values are particularly important for SLO analysis, as they represent the worst-case performance for 99% of requests.
 
-## Analyzing the Results File
+## Analyzing Saved Results
 
-For deeper analysis, GuideLLM saves detailed results to multiple files by default in your current directory:
+For deeper analysis, GuideLLM saves detailed results to these files by default:
 
 - `benchmarks.json`: Complete benchmark data in JSON format
 - `benchmarks.csv`: Summary of key metrics in CSV format
-- `benchmarks.html`: Self-contained HTML report with visualizations
+
+The files are written to the directory configured by `GUIDELLM__DEFAULT_RESULTS_DIR`, or to the current directory when the variable is not set. See [configuring file outputs](../guides/outputs.md#configuring-file-outputs) to choose filenames and destinations.
 
 ### File Formats
 
-GuideLLM supports multiple output formats that can be customized:
-
-- **JSON**: Complete benchmark data in JSON format with full request samples
-- **YAML**: Complete benchmark data in YAML format with full request samples
-- **CSV**: Summary of key metrics in CSV format suitable for spreadsheets
-- **HTML**: Self-contained HTML report with charts and tables
-- **Console**: Terminal output displayed during execution
-
-To specify which formats to generate, and where to save them, use the `--output` option, which can be repeated for multiple formats:
-
-```bash
-guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --output kind=json,path=results/benchmarks.json \
-  --output kind=csv,path=results/summary.csv
-```
+See [supported file formats](../guides/outputs.md#supported-file-formats) for the available reports and [output configuration](../guides/outputs.md#cli-output-configuration) for examples of selecting them. Explicit `--output` options replace the default JSON and CSV selection. Console display controls are described in [console output](../guides/outputs.md#console-output).
 
 ### Programmatic Analysis
 
