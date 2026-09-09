@@ -32,7 +32,12 @@ from .profiles import (
     SynchronousProfile,
     ThroughputProfile,
 )
-from .progress import BenchmarkerProgress, GenerativeConsoleBenchmarkerProgress
+from .progress import (
+    BenchmarkerProgress,
+    GenerativeBenchmarkerProgress,
+    GenerativeConsoleBenchmarkerProgress,
+    GenerativeSimpleBenchmarkerProgress,
+)
 from .schemas import (
     Benchmark,
     BenchmarkAccumulator,
@@ -81,6 +86,7 @@ __all__ = [
     "GenerativeBenchmarkerConsole",
     "GenerativeBenchmarkerHTML",
     "GenerativeBenchmarkerOutput",
+    "GenerativeBenchmarkerProgress",
     "GenerativeBenchmarksReport",
     "GenerativeConsoleBenchmarkerProgress",
     "GenerativeImageMetricsSummary",
@@ -88,6 +94,7 @@ __all__ = [
     "GenerativeMetricsAccumulator",
     "GenerativeMetricsSummary",
     "GenerativeRequestsAccumulator",
+    "GenerativeSimpleBenchmarkerProgress",
     "GenerativeTextMetricsSummary",
     "GenerativeVideoMetricsSummary",
     "Profile",

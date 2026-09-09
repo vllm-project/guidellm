@@ -13,10 +13,15 @@ from guidellm.schemas.benchmark import (
     BenchmarkScenario,
     get_builtin_scenarios,
 )
+from guidellm.schemas.benchmark.progress import (
+    BenchmarkProgressArgs,
+    RichBenchmarkProgressArgs,
+)
 from guidellm.settings import Settings
 from guidellm.utils.click_pydantic import (
     RegistryAwareCommand,
     format_validation_errors,
+    registry_option,
     registry_options_from_model,
 )
 from guidellm.utils.console import Console
@@ -91,6 +96,12 @@ __all__ = [
         "Disable all outputs to the console (updates, interactive progress, results)."
     ),
 )
+@registry_option(
+    "--console",
+    "console_progress",
+    registry=BenchmarkProgressArgs,
+    help="Progress display (default: kind=rich). For logs: kind=simple,interval=10.",
+)
 @click.option(
     "--disable-console-interactive",
     "--disable-progress",  # legacy alias
@@ -107,6 +118,12 @@ def run(**kwargs):  # noqa: C901, PLR0915
     disable_console_interactive = (
         kwargs.pop("disable_console_interactive", False) or disable_console
     )
+    try:
+        progress_config = BenchmarkProgressArgs.model_validate(
+            kwargs.pop("console_progress", None) or RichBenchmarkProgressArgs()
+        )
+    except ValidationError as err:
+        raise click.BadParameter(str(err), param_hint="--console") from err
     console = Console() if not disable_console else None
 
     if console:
@@ -145,14 +162,18 @@ def run(**kwargs):  # noqa: C901, PLR0915
         # Translate pydantic validation error to click argument error
         raise format_validation_errors(ctx, err, base_class=BenchmarkScenario) from err
 
+    progress = (
+        entry.GenerativeBenchmarkerProgress.resolve(progress_config)
+        if not disable_console
+        else None
+    )
+    if progress is not None and progress.interactive and disable_console_interactive:
+        progress = None
+
     asyncio.run(
         entry.benchmark_generative_text(
             args=args,
-            progress=(
-                entry.GenerativeConsoleBenchmarkerProgress()
-                if not disable_console_interactive
-                else None
-            ),
+            progress=progress,
             console=console,
         )
     )

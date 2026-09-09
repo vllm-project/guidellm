@@ -300,6 +300,23 @@ guidellm run \
 
 By default, benchmark results are saved to `benchmarks.json` and `benchmarks.csv`. Specifying `--output` replaces this default selection. See [output configuration](../guides/outputs.md#cli-output-configuration) for examples of selecting formats and [configuring file outputs](../guides/outputs.md#configuring-file-outputs) for default directories and custom paths.
 
+### Progress in containers and redirected logs
+
+Use `--console kind=simple,interval=10` to print plain text progress to standard output instead of the interactive Rich display:
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=synchronous \
+  --constraint kind=max_duration,seconds=60 \
+  --console kind=simple,interval=10
+```
+
+Each strategy prints a start line, periodic statistics, and a completion line. Lines include elapsed time, successful/errored/incomplete request counts, request throughput, and output token throughput. They are flushed immediately and contain no terminal cursor controls, so they can be read through `kubectl logs` or a pipe. Periodic lines are emitted on benchmark updates, at most once per `interval` seconds (default: 10); they are not an independent heartbeat if execution stalls. Completion is always printed, including for benchmarks shorter than the interval.
+
+The default remains `--console kind=rich`. `--disable-console-interactive` (legacy alias: `--disable-progress`) suppresses Rich progress but allows an explicitly selected simple display. `--disable-console` suppresses both modes as well as other console output. Console progress does not change the saved result files.
+
 ## Authentication
 
 When benchmarking against servers that require authentication (such as OpenAI's API), provide an API key in the backend configuration. See the [API Key Configuration](../guides/backends.md#api-key-configuration) section in the Backends documentation for details.

@@ -1,9 +1,15 @@
 """Tests for ``guidellm run`` CLI error translation."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 from click.testing import CliRunner
 
 from guidellm.__main__ import cli
+from guidellm.benchmark.progress import (
+    GenerativeConsoleBenchmarkerProgress,
+    GenerativeSimpleBenchmarkerProgress,
+)
 
 
 @pytest.mark.regression
@@ -183,3 +189,63 @@ def test_run_rejects_duplicate_backend_flags():
     assert result.exit_code != 0
     assert "cannot be specified multiple times" in result.output
     assert "--backend" in result.output
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("options", "expected_type"),
+    [
+        ([], GenerativeConsoleBenchmarkerProgress),
+        (["--console", "kind=rich"], GenerativeConsoleBenchmarkerProgress),
+        (["--console", "kind=simple,interval=2"], GenerativeSimpleBenchmarkerProgress),
+        (["--disable-console-interactive"], None),
+        (["--disable-progress"], None),
+        (
+            ["--console", "kind=simple,interval=2", "--disable-console-interactive"],
+            GenerativeSimpleBenchmarkerProgress,
+        ),
+        (["--console", "kind=simple", "--disable-console"], None),
+        (["--console", "kind=rich", "--disable-progress"], None),
+    ],
+)
+def test_console_progress_selection(monkeypatch, options, expected_type):
+    """Preserve default and disable flags while explicitly selecting simple output.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = AsyncMock()
+    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            "kind=openai_http,target=http://localhost:8000",
+            "--data",
+            "kind=synthetic_text,prompt_tokens=8",
+            *options,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    benchmark.assert_awaited_once()
+    progress = benchmark.call_args.kwargs["progress"]
+    if expected_type is None:
+        assert progress is None
+    else:
+        assert isinstance(progress, expected_type)
+        if isinstance(progress, GenerativeSimpleBenchmarkerProgress):
+            assert progress.interval == 2
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    "value", ["kind=simple,interval=0", "kind=simple,interval=nan", "kind=unknown"]
+)
+def test_console_invalid_configuration_reports_cli_error(value):
+    """Invalid console settings fail before starting a benchmark.
+
+    ## WRITTEN BY AI ##
+    """
+    result = CliRunner().invoke(cli, ["run", "--console", value])
+    assert result.exit_code == 2
+    assert "--console" in result.output

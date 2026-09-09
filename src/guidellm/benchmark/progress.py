@@ -12,9 +12,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Generic, Literal
+from time import monotonic
+from typing import Any, ClassVar, Generic, Literal
 
-from rich.console import Group
+from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress import (
@@ -36,11 +37,22 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmarkAccumulator,
 )
 from guidellm.scheduler import SchedulerState, SchedulingStrategy
+from guidellm.schemas.benchmark.progress import (
+    BenchmarkProgressArgs,
+    RichBenchmarkProgressArgs,
+    SimpleBenchmarkProgressArgs,
+)
 from guidellm.utils.console import Colors
 from guidellm.utils.functions import safe_format_timestamp
+from guidellm.utils.registry import RegistryMixin
 from guidellm.utils.text import format_value_display
 
-__all__ = ["BenchmarkerProgress", "GenerativeConsoleBenchmarkerProgress"]
+__all__ = [
+    "BenchmarkerProgress",
+    "GenerativeBenchmarkerProgress",
+    "GenerativeConsoleBenchmarkerProgress",
+    "GenerativeSimpleBenchmarkerProgress",
+]
 
 
 class BenchmarkerProgress(Generic[BenchmarkAccumulatorT, BenchmarkT], ABC):
@@ -98,9 +110,42 @@ class BenchmarkerProgress(Generic[BenchmarkAccumulatorT, BenchmarkT], ABC):
         """Finalize progress tracking and release associated resources."""
 
 
-class GenerativeConsoleBenchmarkerProgress(
-    BenchmarkerProgress[GenerativeBenchmarkAccumulator, GenerativeBenchmark], Live
+class GenerativeBenchmarkerProgress(
+    BenchmarkerProgress[GenerativeBenchmarkAccumulator, GenerativeBenchmark],
+    RegistryMixin[type["GenerativeBenchmarkerProgress"]],
+    ABC,
 ):
+    """Registry of generative benchmark progress implementations."""
+
+    interactive: ClassVar[bool] = False
+
+    @classmethod
+    def resolve(cls, args: BenchmarkProgressArgs) -> GenerativeBenchmarkerProgress:
+        """
+        Build the progress display selected by its configuration.
+
+        :param args: Validated console progress configuration
+        :return: Configured progress display
+        :raises ValueError: If no implementation is registered for the kind
+        """
+        implementation = cls.get_registered_object(args.kind)
+        if implementation is None:
+            raise ValueError(f"Progress kind '{args.kind}' is not registered")
+        return implementation.from_args(args)
+
+    @classmethod
+    @abstractmethod
+    def from_args(cls, args: BenchmarkProgressArgs) -> GenerativeBenchmarkerProgress:
+        """
+        Construct a progress display from its arguments.
+
+        :param args: Console progress configuration
+        :return: Configured progress display
+        """
+
+
+@GenerativeBenchmarkerProgress.register("rich")
+class GenerativeConsoleBenchmarkerProgress(GenerativeBenchmarkerProgress, Live):
     """
     Console-based real-time progress display for generative benchmarks.
 
@@ -110,6 +155,21 @@ class GenerativeConsoleBenchmarkerProgress(
 
     :cvar display_scheduler_stats: Whether to include scheduler statistics in display
     """
+
+    interactive: ClassVar[bool] = True
+
+    @classmethod
+    def from_args(
+        cls, args: BenchmarkProgressArgs
+    ) -> GenerativeConsoleBenchmarkerProgress:
+        """
+        Create the interactive display.
+
+        :param args: Rich progress configuration
+        :return: Configured interactive display
+        """
+        config = RichBenchmarkProgressArgs.model_validate(args.model_dump())
+        return cls(display_scheduler_stats=config.display_scheduler_stats)
 
     def __init__(self, display_scheduler_stats: bool = False):
         """
@@ -233,6 +293,111 @@ class GenerativeConsoleBenchmarkerProgress(
                 completed_benchmarks=self.tasks_progress.tasks_progress,
                 total_benchmarks=self.tasks_progress.tasks_total,
             )
+
+
+@GenerativeBenchmarkerProgress.register("simple")
+class GenerativeSimpleBenchmarkerProgress(GenerativeBenchmarkerProgress):
+    """Emit flushed, plain text progress lines from benchmark lifecycle callbacks."""
+
+    def __init__(self, interval: float = 10.0, console: Console | None = None):
+        """
+        Initialize plain text progress reporting.
+
+        :param interval: Minimum seconds between periodic updates; must be positive
+        :param console: Output console, defaulting to standard output
+        """
+        self.interval = SimpleBenchmarkProgressArgs(interval=interval).interval
+        self.console = console if console is not None else Console(color_system=None)
+        self._state: _GenerativeProgressTaskState | None = None
+        self._index = 0
+        self._started_at = 0.0
+        self._last_update = 0.0
+
+    @classmethod
+    def from_args(
+        cls, args: BenchmarkProgressArgs
+    ) -> GenerativeSimpleBenchmarkerProgress:
+        """
+        Create the plain text display.
+
+        :param args: Simple progress configuration
+        :return: Configured plain text display
+        """
+        config = SimpleBenchmarkProgressArgs.model_validate(args.model_dump())
+        return cls(interval=config.interval)
+
+    async def on_initialize(self, profile: Profile):
+        """
+        Reset progress for a new run.
+
+        :param profile: Profile defining the benchmark strategies
+        """
+        _ = profile  # Strategy counts may change as an adaptive profile runs.
+        self._state = None
+        self._index = 0
+
+    async def on_benchmark_start(self, strategy: SchedulingStrategy):
+        """
+        Print the start of a strategy immediately.
+
+        :param strategy: Strategy being executed
+        """
+        self._index += 1
+        self._state = _GenerativeProgressTaskState(strategy_type=strategy.type_)
+        self._state.start(strategy)
+        self._started_at = monotonic()
+        self._print_update("started")
+
+    async def on_benchmark_update(
+        self,
+        accumulator: GenerativeBenchmarkAccumulator,
+        scheduler_state: SchedulerState,
+    ):
+        """
+        Print the latest statistics once the update interval has elapsed.
+
+        :param accumulator: Current benchmark metrics
+        :param scheduler_state: Current scheduler counters and progress
+        """
+        if self._state is None:
+            return
+        self._state.update(accumulator, scheduler_state)
+        if monotonic() - self._last_update >= self.interval:
+            self._print_update(self._state.benchmark_status)
+
+    async def on_benchmark_complete(self, benchmark: GenerativeBenchmark):
+        """
+        Print final metrics regardless of the update interval.
+
+        :param benchmark: Completed benchmark results
+        """
+        if self._state is not None:
+            self._state.complete(benchmark)
+            self._print_update("completed")
+            self._state = None
+
+    async def on_finalize(self):
+        """Release the current progress state without duplicating final output."""
+        self._state = None
+
+    def _print_update(self, status: str):
+        if self._state is None:
+            return
+        state = self._state
+        now = monotonic()
+        self.console.print(
+            f"Benchmark {self._index} ({state.strategy}): {status} | "
+            f"elapsed={now - self._started_at:.1f}s | "
+            f"successful={state.successful_requests} "
+            f"errored={state.errored_requests} "
+            f"incomplete={state.cancelled_requests} | "
+            f"requests/s={state.requests_per_second:.2f} "
+            f"output_tokens/s={state.output_tokens_rate:.2f}",
+            markup=False,
+            highlight=False,
+            soft_wrap=True,
+        )
+        self._last_update = now
 
 
 # Scaling factor for progress calculations to provide granular progress updates

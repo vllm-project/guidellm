@@ -22,7 +22,7 @@ from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerOutput,
 )
 from guidellm.benchmark.profiles import Profile, ProfileFactory
-from guidellm.benchmark.progress import GenerativeConsoleBenchmarkerProgress
+from guidellm.benchmark.progress import GenerativeBenchmarkerProgress
 from guidellm.benchmark.schemas import (
     GenerativeBenchmark,
     GenerativeBenchmarkAccumulator,
@@ -471,7 +471,7 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
 
 async def benchmark_generative_text(
     args: BenchmarkScenario,
-    progress: GenerativeConsoleBenchmarkerProgress | None = None,
+    progress: GenerativeBenchmarkerProgress | None = None,
     console: Console | None = None,
     **constraints: str | ConstraintInitializer | Any,
 ) -> tuple[GenerativeBenchmarksReport, list[tuple[str, Any]]]:
