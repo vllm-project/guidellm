@@ -290,9 +290,16 @@ class WEKATraceFormat(TraceFormatBase):
 
     def validate_row(self, row: dict) -> None:
         n_in = row[self.config.prompt_tokens_column]
-        n_blocks = len(row[self.config.hash_ids_column])
+        hash_ids = row.get(self.config.hash_ids_column)
+        # Nested request schemas are unified across conversations, so a later
+        # record that omitted hash_ids arrives as None rather than a missing key.
+        if hash_ids is None:
+            raise InvalidRowError(
+                f"Missing column values in {self.config.hash_ids_column}"
+            )
+        n_blocks = len(hash_ids)
         block_size = self.config.hash_id_block_size
-        for hash_id in row[self.config.hash_ids_column]:
+        for hash_id in hash_ids:
             if hash_id < 0:
                 raise InvalidRowError(f"Hash ID must be non-negative, got {hash_id}")
         expected = n_in / block_size
