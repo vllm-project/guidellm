@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import nullcontext
 from unittest.mock import MagicMock, Mock, patch
 
 import httpx
@@ -1068,3 +1069,83 @@ class TestCheckToolCallExpectations:
         # Verify token counts
         assert final_info.timings.token_iterations > 0
         assert final_response.output_metrics.text_tokens == 10
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("event_type", "error", "include_delta", "expect_error"),
+    [
+        (
+            "response.failed",
+            {"code": "server_error", "message": "Generation failed"},
+            True,
+            True,
+        ),
+        (
+            "response.failed",
+            {"code": "server_error", "message": "Generation failed"},
+            False,
+            True,
+        ),
+        ("response.failed", None, True, False),
+        ("response.failed", {}, True, False),
+        ("response.completed", None, True, False),
+        ("response.incomplete", None, True, False),
+    ],
+)
+async def test_resolve_responses_terminal_error(
+    httpx_mock: HTTPXMock, event_type, error, include_delta, expect_error
+):
+    """Propagate explicit Responses failures even after receiving partial text.
+
+    ## WRITTEN BY AI ##
+    """
+    events = []
+    if include_delta:
+        events.append({"type": "response.output_text.delta", "delta": "Partial answer"})
+    events.append(
+        {
+            "type": event_type,
+            "response": {
+                "id": "resp-1",
+                "status": event_type.removeprefix("response."),
+                "error": error,
+            },
+        }
+    )
+    httpx_mock.add_response(
+        url="http://test/v1/responses",
+        headers={"Content-Type": "text/event-stream"},
+        stream=IteratorStream(
+            [("data: " + json.dumps(event) + "\n\n").encode() for event in events]
+        ),
+    )
+    backend = _make_backend(
+        target="http://test",
+        model="test-model",
+        stream=True,
+        request_format="/v1/responses",
+    )
+    request = GenerationRequest(columns={"text_column": ["Hello"]})
+    request_info = RequestInfo(request_id=request.request_id)
+    await backend.process_startup()
+    try:
+        expected = (
+            pytest.raises(
+                ValueError,
+                match="Streaming response returned an error: Generation failed",
+            )
+            if expect_error
+            else nullcontext()
+        )
+        with expected:
+            responses = [
+                response
+                async for response, _ in backend.resolve(request, request_info)
+                if response is not None
+            ]
+            if not expect_error:
+                assert responses[-1].text == "Partial answer"
+    finally:
+        await backend.process_shutdown()
