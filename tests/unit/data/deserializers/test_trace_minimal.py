@@ -17,6 +17,7 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationTurnData,
 )
 from guidellm.schemas.data import MinimalTraceFormatArgs
+from tests.unit.data.deserializers.trace_test_utils import trace_file_source
 
 
 def mock_processor() -> Mock:
@@ -68,7 +69,7 @@ class TestMinimalTraceFormat:
             '{"timestamp": 0.0, "input_length": 10, "output_length": 5}\n',
         )
         DatasetDeserializerFactory.deserialize(
-            config=MinimalTraceFormatArgs(path=trace),
+            config=MinimalTraceFormatArgs(source=trace_file_source(trace)),
             processor_factory=mock_processor,
             random_seed=42,
         )
@@ -86,7 +87,7 @@ class TestMinimalTraceFormat:
             ),
             kwargs,
         )
-        config = MinimalTraceFormatArgs(path=data, **col_kwargs)
+        config = MinimalTraceFormatArgs(source=trace_file_source(data), **col_kwargs)
         return deserializer(
             config=config,
             processor_factory=mock_processor,
@@ -138,7 +139,7 @@ class TestMinimalTraceFormat:
             ),
         )
         processor = mock_processor()
-        config = MinimalTraceFormatArgs(path=trace)
+        config = MinimalTraceFormatArgs(source=trace_file_source(trace))
         ds = deserializer(
             config=config,
             processor_factory=lambda: processor,

@@ -346,8 +346,12 @@ class OpenAIHTTPBackend(Backend):
         data = response.json()
         gen_response = request_handler.compile_non_streaming(request, arguments, data)
         request_handler.post_validation(gen_response)
+        try:
+            self._check_tool_call_expectations(request, gen_response)
+        except asyncio.CancelledError:
+            yield gen_response, request_info
+            raise
         yield gen_response, request_info
-        self._check_tool_call_expectations(request, gen_response)
 
     async def _resolve_streaming(
         self,

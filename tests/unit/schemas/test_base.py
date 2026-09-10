@@ -175,14 +175,29 @@ class TestReloadableBaseModel:
             mock_rebuild.assert_called_once_with(force=True)
             mock_parents.assert_not_called()
 
-        # Test parent reloading separately with mocked pathways
+        # Test parent reloading separately with mocked pathways.
+        # Limit subclass discovery to this test's models so collection of other
+        # test modules (which import recursive DataArgs schemas) does not
+        # pollute the global rebuild walk.
         class ParentModel(ReloadableBaseModel):
             child: TestModel
 
-        with mock.patch.object(ParentModel, "model_rebuild") as mock_parent_rebuild:
+        with (
+            mock.patch.object(
+                ReloadableBaseModel,
+                "__subclasses__",
+                return_value=[ParentModel],
+            ),
+            mock.patch.object(
+                StandardBaseModel,
+                "__subclasses__",
+                return_value=[],
+            ),
+            mock.patch.object(ParentModel, "model_rebuild") as mock_parent_rebuild,
+        ):
             TestModel.reload_parent_schemas()
-            # Schema rebuild may or may not be triggered depending on structure
-            assert mock_parent_rebuild.call_count >= 0
+            assert mock_parent_rebuild.call_count >= 1
+            mock_parent_rebuild.assert_called_with(force=True)
 
     @pytest.mark.sanity
     def test_marshalling(

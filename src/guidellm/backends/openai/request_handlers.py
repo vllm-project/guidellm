@@ -660,13 +660,12 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         :param line: Raw line from the streaming response
         :return: Parsed JSON data as dictionary, or None if line indicates completion
         """
-        if line == "data: [DONE]":
-            return None
-
         if not line or not (line := line.strip()) or not line.startswith("data:"):
             return {}
 
         line = line[len("data:") :].strip()
+        if line == "[DONE]":
+            return None
 
         data = json.loads(line)
         _check_streaming_error(data)
@@ -1996,10 +1995,11 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         if not line or not line.startswith("data:"):
             return {}
 
-        if line == "data: [DONE]":
+        line = line[len("data:") :].strip()
+        if line == "[DONE]":
             return None
 
-        data = json.loads(line[len("data:") :].strip())
+        data = json.loads(line)
         _check_streaming_error(data)
         return data
 
@@ -2193,6 +2193,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             # with optional usage data. Returning None signals the streaming
             # loop in http.py to break out of the stream.
             resp = data.get("response") or {}
+            if event_type == "response.failed":
+                _check_streaming_error(resp)
             usage = resp.get("usage")
             if usage:
                 self.streaming_usage = usage

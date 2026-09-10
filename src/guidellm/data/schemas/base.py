@@ -9,6 +9,7 @@ __all__ = [
     "DatasetDictType",
     "DatasetType",
     "GenerativeDatasetColumnType",
+    "InvalidRowError",
 ]
 
 
@@ -38,3 +39,7 @@ class DataNotSupportedError(Exception):
     """
     Exception raised when the data format is not supported by deserializer or config.
     """
+
+
+class InvalidRowError(Exception):
+    """A single dataset row failed validation and should be skipped."""
