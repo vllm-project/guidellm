@@ -9,10 +9,13 @@ consistent interaction with various AI generation APIs.
 
 from __future__ import annotations
 
+import re
 import uuid
+from collections.abc import Mapping
 from typing import Any, Literal
 
-from pydantic import Field, computed_field
+from pydantic import Field, ValidationError, computed_field
+from pydantic_core import to_json
 
 from guidellm.schemas.base.base import StandardBaseDict, StandardBaseModel
 from guidellm.utils.dict import deep_update
@@ -30,6 +33,115 @@ __all__ = [
     "TurnType",
     "UsageMetrics",
 ]
+
+_DEFAULT_BINARY_MIME_TYPE = "application/octet-stream"
+_MULTIPART_PAYLOAD_INDEX = 1
+_MULTIPART_MIME_INDEX = 2
+_BINARY_TYPES = (bytes, bytearray, memoryview)
+_MAX_BASE64_PADDING = 2
+_BASE64_BODY_PATTERN = re.compile(r"[A-Za-z0-9+/]*")
+
+
+def _binary_metadata(
+    value: bytes | bytearray | memoryview,
+    filename: str | None = None,
+    mime_type: str | None = None,
+) -> dict[str, int | str | None]:
+    """Describe binary persistence data without retaining its content."""
+    return {
+        "filename": filename,
+        "mime_type": mime_type or _DEFAULT_BINARY_MIME_TYPE,
+        "byte_count": value.nbytes if isinstance(value, memoryview) else len(value),
+    }
+
+
+def _multipart_metadata(value: tuple[Any, ...]) -> dict[str, int | str | None] | None:
+    """Return safe metadata for a standard multipart file tuple."""
+    if (
+        len(value) <= _MULTIPART_PAYLOAD_INDEX
+        or not isinstance(value[0], str)
+        or not isinstance(value[_MULTIPART_PAYLOAD_INDEX], _BINARY_TYPES)
+    ):
+        return None
+    mime_type = (
+        value[_MULTIPART_MIME_INDEX]
+        if len(value) > _MULTIPART_MIME_INDEX
+        and isinstance(value[_MULTIPART_MIME_INDEX], str)
+        else None
+    )
+    return _binary_metadata(value[_MULTIPART_PAYLOAD_INDEX], value[0], mime_type)
+
+
+def _base64_byte_count(value: str, start: int = 0) -> int | None:
+    """Validate Base64 and calculate decoded length without allocating payload bytes."""
+    payload_length = len(value) - start
+    if payload_length <= 0 or payload_length % 4:
+        return None
+    padding = 1 if value[-1] == "=" else 0
+    if payload_length > 1 and value[-2] == "=":
+        padding += 1
+    payload_end = len(value) - padding
+    # Match in place with pos/endpos: no slice of the payload is materialized, and
+    # the scan runs in C rather than as a per-character Python loop.
+    contains_only_base64 = (
+        _BASE64_BODY_PATTERN.fullmatch(value, start, payload_end) is not None
+    )
+    if padding > _MAX_BASE64_PADDING or not contains_only_base64:
+        return None
+    return 3 * (payload_length // 4) - padding
+
+
+def _data_url_metadata(value: str) -> dict[str, int | str | None] | None:
+    """Return safe metadata for a Base64 data URL, if applicable."""
+    if not value.startswith("data:"):
+        return None
+    comma_index = value.find(",")
+    if comma_index < 0:
+        return None
+    header = value[len("data:") : comma_index]
+    header_parts = header.split(";")
+    if not any(part.lower() == "base64" for part in header_parts[1:]):
+        return None
+    mime_type = header_parts[0] or _DEFAULT_BINARY_MIME_TYPE
+    byte_count = _base64_byte_count(value, comma_index + 1)
+    if byte_count is None:
+        return {"filename": None, "mime_type": mime_type, "byte_count": None}
+    return {"filename": None, "mime_type": mime_type, "byte_count": byte_count}
+
+
+def _sanitize_persistence_value(  # noqa: PLR0911
+    value: Any, known_inline_media: bool = False
+) -> Any:
+    """Replace persistence-only binary and inline media values recursively."""
+    if isinstance(value, _BINARY_TYPES):
+        return _binary_metadata(value)
+    if isinstance(value, tuple):
+        return _multipart_metadata(value) or [
+            _sanitize_persistence_value(item, known_inline_media) for item in value
+        ]
+    if isinstance(value, list):
+        return [_sanitize_persistence_value(item, known_inline_media) for item in value]
+    if isinstance(value, Mapping):
+        return {
+            str(item_key): _sanitize_persistence_value(
+                item,
+                known_inline_media=(
+                    item_key == "file_data"
+                    or (item_key == "data" and "format" in value)
+                ),
+            )
+            for item_key, item in value.items()
+        }
+    if isinstance(value, str):
+        if metadata := _data_url_metadata(value):
+            return metadata
+        if known_inline_media and (byte_count := _base64_byte_count(value)) is not None:
+            return {
+                "filename": None,
+                "mime_type": _DEFAULT_BINARY_MIME_TYPE,
+                "byte_count": byte_count,
+            }
+    return value
 
 
 class GenerationRequestArguments(StandardBaseDict):
@@ -108,6 +220,29 @@ class GenerationRequestArguments(StandardBaseDict):
                 setattr(self, combine, current)
 
         return self
+
+    def model_dump_persistence_json(self) -> str:
+        """Serialize request arguments safely for persisted benchmark responses.
+
+        The transport arguments remain untouched. Binary and inline media are
+        replaced only in the persisted representation so result files do not
+        unexpectedly contain request payloads.
+
+        :return: JSON with binary payloads represented by bounded metadata.
+        """
+        sanitized = _sanitize_persistence_value(self.model_dump(mode="python"))
+
+        try:
+            revalidated = GenerationRequestArguments.model_validate(sanitized)
+        except ValidationError:
+            # Sanitizing can replace a string with a metadata mapping, which a
+            # strictly typed field such as `headers: dict[str, str]` rejects.
+            # Serialize the sanitized structure directly rather than raising on
+            # the response-compile path; only the type-preserving round trip is
+            # lost, and the payload stays redacted.
+            return to_json(sanitized, fallback=str).decode()
+
+        return revalidated.model_dump_json()
 
 
 class UsageMetrics(StandardBaseDict):

@@ -2359,6 +2359,24 @@ class TestAudioRequestHandler:
         assert file_tuple[2] == "audio/wav"
 
     @pytest.mark.regression
+    def test_compile_non_streaming_persists_bounded_audio_metadata(
+        self, valid_instances
+    ):
+        """Persist audio upload metadata without its bytes. ## WRITTEN BY AI ##"""
+        request = GenerationRequest(columns={"audio_column": [{"audio": b"secret"}]})
+        arguments = valid_instances.format(request)
+
+        response = valid_instances.compile_non_streaming(
+            request,
+            arguments,
+            {"text": "transcript"},
+        )
+
+        assert "secret" not in response.request_args
+        assert '"byte_count":6' in response.request_args
+        assert '"filename":"audio_input"' in response.request_args
+
+    @pytest.mark.regression
     @pytest.mark.parametrize("file_name", [None, ""], ids=["missing", "empty"])
     def test_format_file_upload_defaults_nonempty_file_name(
         self,

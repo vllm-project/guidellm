@@ -427,7 +427,7 @@ def _compile_streaming_response(
 
     return GenerationResponse(
         request_id=request.request_id,
-        request_args=arguments.model_dump_json(),
+        request_args=arguments.model_dump_persistence_json(),
         response_id=streaming_response_id,
         text=text,
         reasoning_text=reasoning_text,
@@ -592,7 +592,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=arguments.model_dump_json(),
+            request_args=arguments.model_dump_persistence_json(),
             response_id=response.get("id"),  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
@@ -642,7 +642,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=arguments.model_dump_json(),
+            request_args=arguments.model_dump_persistence_json(),
             response_id=self.streaming_response_id,  # use vLLM ID if available
             text=text,
             input_metrics=input_metrics,
@@ -1160,7 +1160,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=arguments.model_dump_json(),
+            request_args=arguments.model_dump_persistence_json(),
             response_id=response.get("id"),  # use vLLM ID if available
             text=text,
             reasoning_text=reasoning_text,
@@ -1373,7 +1373,7 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=arguments.model_dump_json(),
+            request_args=arguments.model_dump_persistence_json(),
             response_id=response.get("id"),
             text=text,
             input_metrics=input_metrics,
@@ -1566,7 +1566,7 @@ class RealtimeTranscriptionWSRequestHandler(OpenAIWSRequestHandler):
         request_args = arguments.model_copy(update={"body": body or None})
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=request_args.model_dump_json(),
+            request_args=request_args.model_dump_persistence_json(),
             text=full_text,
             input_metrics=inp,
             output_metrics=outp,
@@ -1955,7 +1955,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=arguments.model_dump_json(),
+            request_args=arguments.model_dump_persistence_json(),
             response_id=response.get("id"),
             text=text,
             reasoning_text=reasoning_text,
@@ -2405,7 +2405,7 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
         # Build response (no text output for embeddings)
         return GenerationResponse(
             request_id=request.request_id,
-            request_args=arguments.model_dump_json(),
+            request_args=arguments.model_dump_persistence_json(),
             text="",  # Embeddings don't generate text
             input_metrics=UsageMetrics(
                 text_tokens=usage.get("prompt_tokens", 0),

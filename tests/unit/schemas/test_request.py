@@ -4,6 +4,7 @@ Unit tests for GenerationRequest, GenerationRequestArguments, and UsageMetrics.
 
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -20,6 +21,67 @@ from guidellm.schemas import (
 
 class TestGenerationRequestArguments:
     """Test cases for GenerationRequestArguments model."""
+
+    @pytest.mark.regression
+    def test_persistence_serialization_redacts_inline_payloads(self):
+        """Persist request metadata, not media bytes. ## WRITTEN BY AI ##"""
+        arguments = GenerationRequestArguments(
+            params={
+                "remote": "https://example.test/file.wav",
+                "ordinary": "value",
+                "identifier": uuid.UUID("12345678-1234-5678-1234-567812345678"),
+            },
+            files={"upload": ("sample.wav", b"abc", "audio/wav")},
+            body={
+                "image": "data:image/png;charset=utf-8;base64,YWJj",
+                "audio": "YWJj",
+                "input_audio": {"format": "wav", "data": "YWJj"},
+                "raw": b"abc",
+            },
+        )
+
+        persisted = json.loads(arguments.model_dump_persistence_json())
+
+        assert persisted["params"] == {
+            "remote": "https://example.test/file.wav",
+            "ordinary": "value",
+            "identifier": "12345678-1234-5678-1234-567812345678",
+        }
+        assert persisted["files"]["upload"] == {
+            "filename": "sample.wav",
+            "mime_type": "audio/wav",
+            "byte_count": 3,
+        }
+        assert persisted["body"]["image"] == {
+            "filename": None,
+            "mime_type": "image/png",
+            "byte_count": 3,
+        }
+        assert persisted["body"]["audio"] == "YWJj"
+        assert persisted["body"]["input_audio"]["data"]["byte_count"] == 3
+        assert persisted["body"]["raw"]["byte_count"] == 3
+
+    @pytest.mark.regression
+    def test_persistence_serialization_survives_strictly_typed_fields(self):
+        """Redacting a strictly typed field must not raise. ## WRITTEN BY AI ##"""
+        arguments = GenerationRequestArguments(
+            headers={"X-Inline-Image": "data:image/png;base64,YWJj"},
+            body={"prompt": "hello"},
+        )
+
+        serialized = arguments.model_dump_persistence_json()
+        persisted = json.loads(serialized)
+
+        # `headers` is typed `dict[str, str]`, so a redacted header value cannot
+        # be revalidated through the model. Serialization must still succeed,
+        # must still redact, and must leave everything else intact.
+        assert persisted["headers"]["X-Inline-Image"] == {
+            "filename": None,
+            "mime_type": "image/png",
+            "byte_count": 3,
+        }
+        assert "YWJj" not in serialized
+        assert persisted["body"] == {"prompt": "hello"}
 
     @pytest.fixture(
         params=[
