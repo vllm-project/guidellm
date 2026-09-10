@@ -41,6 +41,16 @@ These metrics provide a breakdown of the overall request statuses, helping users
 - **Definition**: The number of requests being processed simultaneously.
 - **Use Case**: Helps evaluate the system's capacity to handle parallel workloads.
 
+### SLO Attainment
+
+- **Definition**: The fraction of requests meeting every configured latency objective. Reported only when objectives are set through `--metrics`. Errored requests count as non-conforming. Requests cancelled at the run's duration limit, and requests whose objectives cannot be evaluated (such as time to first token on a non-streaming backend), are excluded from both the numerator and the denominator.
+- **Use Case**: States directly whether a deployment meets a target such as "TTFT under 200ms for 99% of requests". Because it is a ratio rather than a rate, it does not change with the length of the measurement window.
+
+### Request Goodput
+
+- **Definition**: The number of objective-conforming requests completed per second. Requests that complete but breach an objective count toward request rate and not toward goodput, so goodput is always at or below the request rate.
+- **Use Case**: Separates useful capacity from raw capacity. Past a server's saturation point the request rate can stay flat while goodput falls, because requests still complete but no longer complete quickly enough to be useful.
+
 ### Output Tokens Per Second
 
 - **Definition**: The average number of output tokens generated per second as a throughput metric across all requests.
