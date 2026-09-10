@@ -164,7 +164,6 @@ class BenchmarkArgs(ReloadableBaseModel):
         json_schema_extra={"argument_alias": "backend"},
     )
     profile: ProfileArgs = Field(  # type: ignore[assignment]
-        default_factory=lambda: default_kind("sweep"),
         description="Profile configuration to control benchmark execution.",
         examples=[{"kind": "sweep", "sweep_size": [10.0]}],
         json_schema_extra={"argument_alias": "profile"},
