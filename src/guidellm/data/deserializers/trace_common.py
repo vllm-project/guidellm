@@ -188,6 +188,41 @@ class TraceFormatBase(Protocol):
         return ConversationGraphData(turns=turns)
 
 
+class SingleTurnTraceFormat(TraceFormatBase):
+    """Replay each trace row as an independent conversation on a shared timeline."""
+
+    dataset: Dataset
+    _trace_start_timestamp: float
+
+    def __iter__(self) -> Iterable[Dataset]:
+        """Yield one timestamp-sorted row at a time for lazy prompt generation."""
+        ordered = self.dataset.sort(self.config.timestamp_column)
+        if not len(ordered):
+            return
+        self._trace_start_timestamp = ordered[0][self.config.timestamp_column]
+        for index in range(len(ordered)):
+            yield ordered.select([index])
+
+    def build_conversation_graph(
+        self,
+        conversation: Dataset,
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
+    ) -> ConversationGraphData:
+        """Build a single root turn with its offset from the start of the trace.
+
+        :param conversation: One trace row returned by iteration
+        :param processor: Tokenizer for generating the synthetic prompt
+        :param faker: Seeded synthetic text generator
+        :return: An independent conversation preserving its trace arrival time
+        """
+        graph = super().build_conversation_graph(conversation, processor, faker)
+        graph.turns[0].columns["relative_timestamp_column"] = [
+            conversation[0][self.config.timestamp_column] - self._trace_start_timestamp
+        ]
+        return graph
+
+
 class TraceFormatRegistry(RegistryMixin[type[TraceFormatBase]]):
     @classmethod
     def dispatch(cls, config: TraceDataArgs, dataset: Dataset) -> TraceFormatBase:

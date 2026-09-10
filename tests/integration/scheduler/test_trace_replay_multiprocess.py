@@ -29,7 +29,6 @@ from guidellm.scheduler import (
 )
 from guidellm.scheduler.schemas import (
     ConversationGraph,
-    ConversationNode,
     HistoryContext,
 )
 from guidellm.scheduler.schemas.conversation_graph import (
@@ -115,32 +114,19 @@ def _requests_from_trace(
     finalizer = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())
 
     relative_timestamps: list[float] = []
-    conv = next(iter(dataset))
-    mapped = mapper([{"dataset": conv}])
-    graph = finalizer(mapped)
-    assert isinstance(graph, GenerativeConversationGraph)
-    assert len(graph.nodes) == 10
-
     graphs: list[ConversationGraph[GenerationRequest]] = []
-    for idx, node in enumerate(graph.nodes.values()):
+    for idx, conversation in enumerate(dataset):
+        mapped = mapper([{"dataset": conversation}])
+        graph = finalizer(mapped)
+        assert isinstance(graph, GenerativeConversationGraph)
+        assert len(graph.nodes) == 1
+        assert not graph.edges
+        node = next(iter(graph.nodes.values()))
         node.request.request_id = f"req_{idx}"
         offset = node.settings.relative_timestamp
         assert offset is not None
         relative_timestamps.append(offset)
-        graphs.append(
-            ConversationGraph(
-                graph_id=f"graph_req_{idx}",
-                nodes={
-                    node.node_id: ConversationNode(
-                        node_id=node.node_id,
-                        agent_id=node.agent_id,
-                        request=node.request,
-                        settings=node.settings,
-                    )
-                },
-                edges=[],
-            )
-        )
+        graphs.append(graph)
 
     return graphs, relative_timestamps
 

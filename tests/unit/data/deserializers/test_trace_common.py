@@ -202,7 +202,7 @@ class TestTraceDatasetDeserializer:
             suffix=suffix,
         )
         ds = self.deserialize(deserializer, trace)
-        conv = load_graph_turns(next(iter(ds)))
+        conv = [turn for row in ds for turn in load_graph_turns(row)]
         for i, turn in enumerate(conv):
             assert turn.columns["relative_timestamp_column"][0] == i
             assert turn.columns["prompt_tokens_count_column"][0] == (i + 1) * 10
@@ -216,7 +216,7 @@ class TestTraceDatasetDeserializer:
             suffix=".csv",
         )
         ds = self.deserialize(deserializer, trace)
-        conv = load_graph_turns(next(iter(ds)))
+        conv = [turn for row in ds for turn in load_graph_turns(row)]
         for i, turn in enumerate(conv):
             assert turn.columns["relative_timestamp_column"][0] == i
             assert turn.columns["prompt_tokens_count_column"][0] == (i + 1) * 10
@@ -240,13 +240,14 @@ class TestTraceDatasetDeserializer:
         )
         ds = self.deserialize(deserializer, trace)
         assert isinstance(ds, IterableDataset)
-        conv = load_graph(next(iter(ds)))
+        conversations = [load_graph(row) for row in ds]
         proc = mock_processor()
-        assert len(conv.turns) == n_rows
-        for i, turn in enumerate(conv.turns):
-            assert turn.node_id == f"main_{i}"
-            if i > 0:
-                assert turn.parents[0].parent_node_id == f"main_{i - 1}"
+        assert len(conversations) == n_rows
+        for i, conversation in enumerate(conversations):
+            assert len(conversation.turns) == 1
+            turn = conversation.turns[0]
+            assert turn.node_id == "main_0"
+            assert not turn.parents
             n_in = turn.columns["prompt_tokens_count_column"][0]
             assert n_in == i + 1
             assert turn.columns["output_tokens_count_column"][0] == (i + 1) * 10
@@ -269,13 +270,15 @@ class TestTraceDatasetDeserializer:
             ),
         )
         ds = self.deserialize(deserializer, trace)
-        conv = load_graph_turns(next(iter(ds)))
+        conv = [turn for row in ds for turn in load_graph_turns(row)]
         for i, turn in enumerate(conv):
             assert turn.columns["relative_timestamp_column"][0] == i
 
     @pytest.mark.smoke
-    def test_max_wait_rewrites_emitted_timestamps(self, tmp_path: Path, deserializer):
-        """max_wait compresses intra-session gaps on emitted graphs.
+    def test_max_session_wait_rewrites_emitted_timestamps(
+        self, tmp_path: Path, deserializer
+    ):
+        """max_session_wait compresses gaps between independent trace rows.
 
         ## WRITTEN BY AI ##
         """
@@ -285,8 +288,8 @@ class TestTraceDatasetDeserializer:
             '{"timestamp": 10, "input_length": 10, "output_length": 1}\n'
             '{"timestamp": 1450, "input_length": 10, "output_length": 1}\n',
         )
-        ds = self.deserialize(deserializer, trace, max_wait=30.0)
-        conv = load_graph_turns(next(iter(ds)))
+        ds = self.deserialize(deserializer, trace, max_session_wait=30.0)
+        conv = [turn for row in ds for turn in load_graph_turns(row)]
         timestamps = [turn.columns["relative_timestamp_column"][0] for turn in conv]
         assert timestamps == pytest.approx([0.0, 10.0, 40.0])
 
@@ -302,8 +305,10 @@ class TestTraceDatasetDeserializer:
             '{"timestamp": 10, "input_length": 10, "output_length": 1}\n'
             '{"timestamp": 1450, "input_length": 10, "output_length": 1}\n',
         )
-        ds = self.deserialize(deserializer, trace, max_wait=30.0, time_scale=2.0)
-        conv = load_graph_turns(next(iter(ds)))
+        ds = self.deserialize(
+            deserializer, trace, max_session_wait=30.0, time_scale=2.0
+        )
+        conv = [turn for row in ds for turn in load_graph_turns(row)]
         timestamps = [turn.columns["relative_timestamp_column"][0] for turn in conv]
         assert timestamps == pytest.approx([0.0, 20.0, 80.0])
 
@@ -326,7 +331,7 @@ class TestTraceDatasetDeserializer:
             '"model": "a", "type": "n", "api_time": 2.87}\n',
         )
         ds = self.deserialize(deserializer, trace)
-        turns = load_graph_turns(next(iter(ds)))
+        turns = [turn for row in ds for turn in load_graph_turns(row)]
         assert len(turns) == 2
         for i, turn in enumerate(turns):
             assert turn.columns["prompt_tokens_count_column"][0] == (i + 1) * 10
@@ -350,7 +355,7 @@ class TestTraceDatasetDeserializer:
             '{"timestamp": 2, "input_length": 20, "output_length": 2, "stop": null}\n',
         )
         ds = self.deserialize(deserializer, trace)
-        turns = load_graph_turns(next(iter(ds)))
+        turns = [turn for row in ds for turn in load_graph_turns(row)]
         assert len(turns) == 2
 
     @pytest.mark.smoke
