@@ -104,6 +104,7 @@ class Benchmarker(
             strategy, constraints = next(strategies_generator)
 
             while strategy is not None:
+                logger.info("Starting benchmark for strategy: {}", strategy)
                 if progress:
                     await progress.on_benchmark_start(strategy)
 
@@ -167,6 +168,7 @@ class Benchmarker(
                     accumulator=accumulator,
                     scheduler_state=scheduler_state,  # type: ignore[arg-type]
                 )
+                logger.info("Benchmark complete for strategy: {}", strategy)
 
                 if progress:
                     await progress.on_benchmark_complete(benchmark)
@@ -179,5 +181,6 @@ class Benchmarker(
                     strategy = None
                     constraints = None
 
+            logger.info("All benchmarks finalized")
             if progress:
                 await progress.on_finalize()
