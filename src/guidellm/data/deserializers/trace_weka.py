@@ -91,7 +91,10 @@ def _first_api_request(requests: list[Any]) -> dict[str, Any] | None:
         if not isinstance(row, dict):
             continue
         if _is_subagent_entry(row):
-            found = _first_api_request(list(row.get("requests") or []))
+            inner = row.get("requests")
+            if not inner:
+                continue
+            found = _first_api_request(inner)
             if found is not None:
                 return found
             continue
@@ -241,7 +244,7 @@ class WEKATraceFormat(TraceFormatBase):
         self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
         # Filled by each ``__iter__`` pass so mixed subagent/API schemas are
         # not forced through a single HuggingFace Arrow table.
-        self._conversation_queue: list[tuple[str, list[dict[str, Any]]]] = []
+        self._conversations: list[tuple[str, list[dict[str, Any]]]] = []
         self._tools_json = _serialized_tools(config.tools)
         self._tool_response_sampler: Iterator[int] | None = None
         self.requests_col = _find_requests_column(dataset)
@@ -251,14 +254,14 @@ class WEKATraceFormat(TraceFormatBase):
             )
 
     def __iter__(self) -> Iterable[Dataset]:
-        self._conversation_queue = []
+        self._conversations = []
         for row in self.dataset:
             conv_id = str(row[self.config.conversation_id_column])
             # File order is spawn/join topology for every request list,
             # including nested subagent groups. Do not sort by timestamp.
             requests = [dict(item) for item in row[self.requests_col]]
-            index = len(self._conversation_queue)
-            self._conversation_queue.append((conv_id, requests))
+            index = len(self._conversations)
+            self._conversations.append((conv_id, requests))
             yield Dataset.from_dict({"_weka_index": [index]})
 
     def reset(self) -> None:
@@ -287,9 +290,16 @@ class WEKATraceFormat(TraceFormatBase):
 
     def validate_row(self, row: dict) -> None:
         n_in = row[self.config.prompt_tokens_column]
-        n_blocks = len(row[self.config.hash_ids_column])
+        hash_ids = row.get(self.config.hash_ids_column)
+        # Nested request schemas are unified across conversations, so a later
+        # record that omitted hash_ids arrives as None rather than a missing key.
+        if hash_ids is None:
+            raise InvalidRowError(
+                f"Missing column values in {self.config.hash_ids_column}"
+            )
+        n_blocks = len(hash_ids)
         block_size = self.config.hash_id_block_size
-        for hash_id in row[self.config.hash_ids_column]:
+        for hash_id in hash_ids:
             if hash_id < 0:
                 raise InvalidRowError(f"Hash ID must be non-negative, got {hash_id}")
         expected = n_in / block_size
@@ -418,8 +428,24 @@ class WEKATraceFormat(TraceFormatBase):
     def _unpack_conversation(
         self, conversation: Dataset
     ) -> tuple[str, list[dict[str, Any]]]:
+        """Look up the nested request list for a conversation stub from ``__iter__``.
+
+        The ``requests`` column mixes API request records with
+        ``type: "subagent"`` groups, which cannot share one Arrow schema, so
+        ``__iter__`` does not put that list into the yielded Dataset. It
+        appends ``(conversation_id, requests)`` to ``self._conversations``
+        and yields a Dataset with a single row and a single column,
+        ``_weka_index``.
+
+        ``conversation[0]`` is the only row in the yielded Dataset.
+        ``_weka_index`` is the integer index of the matching entry in
+        ``self._conversations``.
+
+        :param conversation: One-row Dataset yielded by ``__iter__``.
+        :return: ``(conversation_id, requests)`` for that conversation.
+        """
         index = int(conversation[0]["_weka_index"])
-        return self._conversation_queue[index]
+        return self._conversations[index]
 
     def _emit_chain(
         self,
@@ -447,11 +473,11 @@ class WEKATraceFormat(TraceFormatBase):
         pending_join_ids: list[str] = []
         last_chain_id: str | None = None
         chain_idx = 0
-        chain_events: list[tuple[float, float | None]] = []
         # Previous API row's stop on this chain only. Subagent children are
         # interleaved in the flattened spec list, so classification cannot
         # use that list's adjacency.
         prev_stop: str | None = None
+        prev_event: tuple[float, float | None] | None = None
 
         for item in requests:
             if _is_subagent_entry(item):
@@ -526,7 +552,9 @@ class WEKATraceFormat(TraceFormatBase):
             )
             last_chain_id = node_id
             chain_idx += 1
-            chain_events.append((abs_t, _optional_float(item.get("api_time"))))
+            event = (abs_t, _optional_float(item.get("api_time")))
+            self._warn_chain_overlap(conversation_id, agent_id, prev_event, event)
+            prev_event = event
             prev_stop = _weka_stop_reason(item)
 
         if pending_join_ids:
@@ -537,51 +565,51 @@ class WEKATraceFormat(TraceFormatBase):
                 agent_id,
             )
 
-        self._warn_chain_overlap(conversation_id, agent_id, chain_events)
         return specs, last_chain_id
 
     def _warn_chain_overlap(
         self,
         conversation_id: str,
         agent_id: str,
-        events: list[tuple[float, float | None]],
+        prev_event: tuple[float, float | None] | None,
+        event: tuple[float, float | None],
     ) -> None:
         """Warn when consecutive turns of one agent overlap in time.
 
+        Published WEKA traces include consecutive same-agent turns whose
+        ``api_time`` windows overlap; those turns are serialized on one chain.
         Overlap uses recorded ``api_time`` when present
         (``t[i] + api_time[i] > t[i+1]``), otherwise non-increasing start
         times. Parallel subagents overlapping each other is intended and
         is not warned here; each agent chain is checked separately.
         """
-        for idx in range(len(events) - 1):
-            t_i, api_time = events[idx]
-            t_next, _ = events[idx + 1]
-            if api_time is not None:
-                overlapped = t_i + api_time > t_next
-            else:
-                overlapped = t_next <= t_i
-            if not overlapped:
-                continue
-            if api_time is not None:
-                logger.debug(
-                    "WEKA conversation '{}' agent '{}' has overlapping requests: "
-                    "the request at t={} will run until t={}, which is after "
-                    "the next request at t={}; they will be serialized on "
-                    "this chain",
-                    conversation_id,
-                    agent_id,
-                    t_i,
-                    t_i + api_time,
-                    t_next,
-                )
-            else:
-                logger.debug(
-                    "WEKA conversation '{}' agent '{}' has overlapping requests: "
-                    "the request at t={} is followed by a request at t={} "
-                    "that does not start later; they will be serialized on "
-                    "this chain",
-                    conversation_id,
-                    agent_id,
-                    t_i,
-                    t_next,
-                )
+        if prev_event is None:
+            return
+        t_i, api_time = prev_event
+        t_next, _ = event
+        overlapped = t_i + api_time > t_next if api_time is not None else t_next <= t_i
+        if not overlapped:
+            return
+        if api_time is not None:
+            logger.debug(
+                "WEKA conversation '{}' agent '{}' has overlapping requests: "
+                "the request at t={} will run until t={}, which is after "
+                "the next request at t={}; they will be serialized on "
+                "this chain",
+                conversation_id,
+                agent_id,
+                t_i,
+                t_i + api_time,
+                t_next,
+            )
+        else:
+            logger.debug(
+                "WEKA conversation '{}' agent '{}' has overlapping requests: "
+                "the request at t={} is followed by a request at t={} "
+                "that does not start later; they will be serialized on "
+                "this chain",
+                conversation_id,
+                agent_id,
+                t_i,
+                t_next,
+            )
