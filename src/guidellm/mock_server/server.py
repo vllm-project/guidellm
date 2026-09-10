@@ -274,7 +274,7 @@ class MockServer:
                 {
                     "text": decoded_text,
                     "file_size": len(file.body),
-                    "filename": {file.name},
+                    "filename": file.name,
                     "model_used": request.form.get("model", "mock-model"),
                     "mimetype": file.type,
                 }

@@ -35,13 +35,14 @@ from guidellm.data.deserializers.trace_common import (
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
-    _validate_api_conversation,
+    _validate_api_row,
     create_distinct_token_block,
     create_prompt_from_hash_ids,
     decode_prompt,
     generate_token_ids,
     get_missing_columns,
 )
+from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationParentRef,
@@ -274,7 +275,7 @@ class WEKATraceFormat(TraceFormatBase):
 
     def find_required_columns(self, columns: list[str]) -> list[str]:
         # Only the first API row is searchable here. Missing fields on later
-        # conversations are rejected in validate_conversation.
+        # conversations are skipped at iteration via InvalidRowError.
         conv_col = self.config.conversation_id_column
         if conv_col not in self.dataset.column_names:
             return [self.config.conversation_id_column]
@@ -290,33 +291,15 @@ class WEKATraceFormat(TraceFormatBase):
         block_size = self.config.hash_id_block_size
         for hash_id in row[self.config.hash_ids_column]:
             if hash_id < 0:
-                raise DataNotSupportedError(
-                    f"Hash ID must be non-negative, got {hash_id}"
-                )
+                raise InvalidRowError(f"Hash ID must be non-negative, got {hash_id}")
         expected = n_in / block_size
         if math.floor(expected) != n_blocks and math.ceil(expected) != n_blocks:
-            raise DataNotSupportedError(
+            raise InvalidRowError(
                 f"Input token count of {n_in} split into blocks of size "
                 f"{block_size} full blocks and "
                 f"{block_size} full blocks + partially filled "
                 f"trailing block does not match given {n_blocks} blocks"
             )
-
-    def validate_conversation(self, conversation: Dataset) -> None:
-        _, requests = self._unpack_conversation(conversation)
-        if not requests:
-            raise DataNotSupportedError("Trace conversation is empty")
-        api_rows = self._collect_api_rows(requests)
-        if not api_rows:
-            raise DataNotSupportedError(
-                "WEKA format: conversation has no API requests to replay"
-            )
-        _validate_api_conversation(
-            Dataset.from_list(api_rows),
-            self.config,
-            self.required_columns(),
-            self.validate_row,
-        )
 
     def create_prompt(
         self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
@@ -370,12 +353,13 @@ class WEKATraceFormat(TraceFormatBase):
             conversation_id=conv_id,
         )
         if not specs:
-            raise DataNotSupportedError(
+            raise InvalidRowError(
                 "WEKA format: conversation has no API requests to replay"
             )
         min_t = min(spec.absolute_t for spec in specs)
         turns: list[ConversationTurnData] = []
         for spec in specs:
+            _validate_api_row(spec.row, self.config, self.validate_row)
             prompt = self.create_prompt(spec.row, processor, faker)
             columns: dict[str, Any] = {
                 "text_column": [prompt],
@@ -436,21 +420,6 @@ class WEKATraceFormat(TraceFormatBase):
     ) -> tuple[str, list[dict[str, Any]]]:
         index = int(conversation[0]["_weka_index"])
         return self._conversation_queue[index]
-
-    def _collect_api_rows(self, requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        api_rows: list[dict[str, Any]] = []
-        columns = (
-            self.config.timestamp_column,
-            self.config.prompt_tokens_column,
-            self.config.output_tokens_column,
-            self.config.hash_ids_column,
-        )
-        for row in requests:
-            if _is_subagent_entry(row):
-                api_rows.extend(self._collect_api_rows(list(row.get("requests") or [])))
-                continue
-            api_rows.append({col: row.get(col) for col in columns})
-        return api_rows
 
     def _emit_chain(
         self,

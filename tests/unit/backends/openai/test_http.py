@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import nullcontext
+from typing import Literal
 from unittest.mock import MagicMock, Mock, patch
 
 import httpx
@@ -844,6 +846,70 @@ class TestOpenAIHTTPBackend:
         assert "top_p" not in sent_body  # None value filtered
         assert "stream" not in sent_body  # None value filtered
 
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    @pytest.mark.parametrize(
+        ("behavior", "expected_error", "expected_yields"),
+        [
+            ("error_stop", ValueError, 0),
+            ("ignore_stop", asyncio.CancelledError, 1),
+        ],
+    )
+    async def test_non_streaming_missing_tool_call_stop_behavior(
+        self,
+        httpx_mock: HTTPXMock,
+        mock_request_handler,
+        behavior: Literal["ignore_stop", "error_stop"],
+        expected_error: type[BaseException],
+        expected_yields: int,
+    ):
+        """Missing tool calls match streaming stop behavior before termination.
+
+        ## WRITTEN BY AI ##
+        """
+        httpx_mock.add_response(
+            url="http://test/v1/chat/completions",
+            json={"choices": [{"message": {"content": "no tool call"}}]},
+        )
+        backend = _make_backend(
+            target="http://test",
+            model="test-model",
+            stream=False,
+            validate_backend=False,
+            request_format="/v1/chat/completions",
+            tool_call_missing_behavior=behavior,
+        )
+        await backend.process_startup()
+        request = GenerationRequest(
+            columns={"text_column": ["call the tool"]},
+            turn_type="client_tool_call",
+        )
+        request_info = RequestInfo(
+            request_id="test-id",
+            status="pending",
+            scheduler_node_id=1,
+            scheduler_process_id=1,
+            scheduler_start_time=123.0,
+            timings=RequestTimings(),
+        )
+        mock_handler, handler_patch = mock_request_handler
+        mock_handler.compile_non_streaming.return_value = GenerationResponse(
+            request_id="test-id",
+            request_args="test args",
+            text="no tool call",
+        )
+        yielded = []
+
+        async def consume_response():
+            async for item in backend.resolve(request, request_info):
+                yielded.append(item)
+
+        with handler_patch, pytest.raises(expected_error, match="tool call"):
+            await consume_response()
+
+        assert len(yielded) == expected_yields
+
 
 class TestOpenAIBackendToolCallMissingBehavior:
     """Validate tool_call_missing_behavior field on the backend.
@@ -1068,3 +1134,83 @@ class TestCheckToolCallExpectations:
         # Verify token counts
         assert final_info.timings.token_iterations > 0
         assert final_response.output_metrics.text_tokens == 10
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("event_type", "error", "include_delta", "expect_error"),
+    [
+        (
+            "response.failed",
+            {"code": "server_error", "message": "Generation failed"},
+            True,
+            True,
+        ),
+        (
+            "response.failed",
+            {"code": "server_error", "message": "Generation failed"},
+            False,
+            True,
+        ),
+        ("response.failed", None, True, False),
+        ("response.failed", {}, True, False),
+        ("response.completed", None, True, False),
+        ("response.incomplete", None, True, False),
+    ],
+)
+async def test_resolve_responses_terminal_error(
+    httpx_mock: HTTPXMock, event_type, error, include_delta, expect_error
+):
+    """Propagate explicit Responses failures even after receiving partial text.
+
+    ## WRITTEN BY AI ##
+    """
+    events = []
+    if include_delta:
+        events.append({"type": "response.output_text.delta", "delta": "Partial answer"})
+    events.append(
+        {
+            "type": event_type,
+            "response": {
+                "id": "resp-1",
+                "status": event_type.removeprefix("response."),
+                "error": error,
+            },
+        }
+    )
+    httpx_mock.add_response(
+        url="http://test/v1/responses",
+        headers={"Content-Type": "text/event-stream"},
+        stream=IteratorStream(
+            [("data: " + json.dumps(event) + "\n\n").encode() for event in events]
+        ),
+    )
+    backend = _make_backend(
+        target="http://test",
+        model="test-model",
+        stream=True,
+        request_format="/v1/responses",
+    )
+    request = GenerationRequest(columns={"text_column": ["Hello"]})
+    request_info = RequestInfo(request_id=request.request_id)
+    await backend.process_startup()
+    try:
+        expected = (
+            pytest.raises(
+                ValueError,
+                match="Streaming response returned an error: Generation failed",
+            )
+            if expect_error
+            else nullcontext()
+        )
+        with expected:
+            responses = [
+                response
+                async for response, _ in backend.resolve(request, request_info)
+                if response is not None
+            ]
+            if not expect_error:
+                assert responses[-1].text == "Partial answer"
+    finally:
+        await backend.process_shutdown()

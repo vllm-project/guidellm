@@ -7,7 +7,10 @@ import pytest
 
 from guidellm.benchmark.entrypoints import resolve_backend, resolve_output_formats
 from guidellm.benchmark.outputs import GenerativeBenchmarkerOutput
-from guidellm.schemas.backends import OpenAIHTTPBackendArgs
+from guidellm.schemas.backends import (
+    OpenAIHTTPBackendArgs,
+    VLLMPythonAsyncBackendArgs,
+)
 from guidellm.schemas.benchmark import JSONBenchmarkOutputArgs
 
 
@@ -46,6 +49,7 @@ async def test_resolve_backend_shuts_down_after_validation_error():
     ## WRITTEN BY AI ##
     """
     backend = MagicMock()
+    backend.backend_defines_model = False
     backend.process_startup = AsyncMock()
     backend.validate = AsyncMock(side_effect=RuntimeError("validation failed"))
     backend.default_model = AsyncMock()
@@ -61,4 +65,61 @@ async def test_resolve_backend_shuts_down_after_validation_error():
     backend.process_startup.assert_awaited_once_with()
     backend.validate.assert_awaited_once_with()
     backend.default_model.assert_not_awaited()
+    backend.process_shutdown.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+async def test_resolve_backend_skips_startup_for_in_process_backend():
+    """
+    resolve_backend does not start up or validate a backend that defines its own
+    model (backend_defines_model is True); it resolves the model directly so the
+    backend is only initialized in the worker process.
+
+    ## WRITTEN BY AI ##
+    """
+    backend = MagicMock()
+    backend.backend_defines_model = True
+    backend.process_startup = AsyncMock()
+    backend.validate = AsyncMock()
+    backend.default_model = AsyncMock(return_value="Qwen/Qwen3-0.6B")
+    backend.process_shutdown = AsyncMock()
+    args = VLLMPythonAsyncBackendArgs(model="Qwen/Qwen3-0.6B")
+
+    with patch("guidellm.benchmark.entrypoints.Backend.create", return_value=backend):
+        resolved_backend, model = await resolve_backend(args)
+
+    assert resolved_backend is backend
+    assert model == "Qwen/Qwen3-0.6B"
+    backend.process_startup.assert_not_awaited()
+    backend.validate.assert_not_awaited()
+    backend.process_shutdown.assert_not_awaited()
+    backend.default_model.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+async def test_resolve_backend_starts_up_for_remote_backend():
+    """
+    resolve_backend starts up, validates, resolves the model, and shuts down a
+    backend that does not define its own model (backend_defines_model is False).
+
+    ## WRITTEN BY AI ##
+    """
+    backend = MagicMock()
+    backend.backend_defines_model = False
+    backend.process_startup = AsyncMock()
+    backend.validate = AsyncMock()
+    backend.default_model = AsyncMock(return_value="test-model")
+    backend.process_shutdown = AsyncMock()
+    args = OpenAIHTTPBackendArgs(target="http://localhost:8000")
+
+    with patch("guidellm.benchmark.entrypoints.Backend.create", return_value=backend):
+        resolved_backend, model = await resolve_backend(args)
+
+    assert resolved_backend is backend
+    assert model == "test-model"
+    backend.process_startup.assert_awaited_once_with()
+    backend.validate.assert_awaited_once_with()
+    backend.default_model.assert_awaited_once_with()
     backend.process_shutdown.assert_awaited_once_with()
