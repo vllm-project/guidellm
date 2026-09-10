@@ -279,6 +279,93 @@ def _make_accumulator(
     return accumulator
 
 
+class TestMeasurementBoundsFiltering:
+    """
+    Verify that the measurement window bounds token events and TTFT samples.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @staticmethod
+    def _completed(
+        request_id: str,
+        request_start: float,
+        request_end: float,
+        first_token: float | None,
+        last_token: float | None,
+        token_iterations: int,
+    ) -> GenerativeRequestStats:
+        """Build a completed request with 2 prompt and 2 output tokens.
+
+        ## WRITTEN BY AI ##
+        """
+        return GenerativeRequestStats(
+            request_id=request_id,
+            info=RequestInfo(
+                request_id=request_id,
+                status="completed",
+                timings=RequestTimings(
+                    resolve_start=request_start,
+                    resolve_end=request_end,
+                    request_start=request_start,
+                    request_end=request_end,
+                    first_token_iteration=first_token,
+                    last_token_iteration=last_token,
+                    token_iterations=token_iterations,
+                ),
+            ),
+            input_metrics=UsageMetrics(text_tokens=2),
+            output_metrics=UsageMetrics(text_tokens=2),
+        )
+
+    @pytest.mark.regression
+    def test_measurement_bounds_filter_token_events_but_not_overlapping_requests(
+        self,
+    ):
+        """Bound token events and select TTFT by first token. ## WRITTEN BY AI ##"""
+        requests = [
+            # First token on the opening bound; both token events inside.
+            self._completed("first-token-in-window", 99.0, 105.0, 100.0, 105.0, 2),
+            # First token during warmup; the 99.0 event is outside the window.
+            self._completed("first-token-before-window", 99.0, 101.0, 99.0, 101.0, 2),
+            # First token exactly on the closing bound; the 106.0 event is outside.
+            self._completed("token-after-window", 104.0, 106.0, 105.0, 106.0, 2),
+            # Non-streaming: no first-token timing at all, wholly inside.
+            self._completed("no-token-iterations", 101.0, 103.0, None, None, 0),
+        ]
+
+        metrics = GenerativeMetrics.compile(_make_accumulator(requests, 100.0, 105.0))
+
+        # Every request overlaps the window, so request totals are untouched.
+        assert metrics.request_totals.successful == 4
+        # 100.0 and 105.0 are on the inclusive bounds and count; 99.0 does not.
+        # The non-streaming request has no first token to bound, so it is kept
+        # and keeps contributing the sample it contributed before this change.
+        assert metrics.time_to_first_token_ms.successful.count == 3
+        # Prompt events land at 100.0, 99.0 (dropped), 105.0 and 103.0.
+        assert metrics.prompt_tokens_per_second.successful.count == 6
+        # Output events land at 100.0/105.0, 99.0 (dropped)/101.0,
+        # 105.0/106.0 (dropped) and 103.0.
+        assert metrics.output_tokens_per_second.successful.count == 6
+        assert metrics.tokens_per_second.successful.count == 12
+
+    @pytest.mark.regression
+    def test_bounds_spanning_the_run_keep_every_token_event(self):
+        """A window covering the whole run drops nothing. ## WRITTEN BY AI ##"""
+        requests = [
+            self._completed("streamed", 99.0, 105.0, 100.0, 105.0, 2),
+            self._completed("non-streaming", 101.0, 103.0, None, None, 0),
+        ]
+
+        metrics = GenerativeMetrics.compile(_make_accumulator(requests, 98.0, 107.0))
+
+        assert metrics.request_totals.successful == 2
+        assert metrics.time_to_first_token_ms.successful.count == 2
+        assert metrics.prompt_tokens_per_second.successful.count == 4
+        assert metrics.output_tokens_per_second.successful.count == 4
+        assert metrics.tokens_per_second.successful.count == 8
+
+
 class TestScheduleRelativeMetrics:
     """
     Verify the schedule-relative distributions added alongside request_latency.
