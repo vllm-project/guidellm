@@ -552,6 +552,10 @@ class TestWEKATraceFormat:
     def test_multi_conversation_resets_hash_id_state(
         self, tmp_path: Path, deserializer, default_block_size
     ):
+        """Local hash IDs do not share generated tokens across conversations.
+
+        ## WRITTEN BY AI ##
+        """
         n_rows = 2
         n_virtual_rows = 2
         n_in = default_block_size * 2
@@ -560,7 +564,10 @@ class TestWEKATraceFormat:
             generate_weka_trace(
                 n_rows,
                 n_virtual_rows,
-                [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
+                [
+                    TraceColumnGenerator("id", lambda i: f'"conv{i}"'),
+                    TraceColumnGenerator("hash_id_scope", lambda _: '"local"'),
+                ],
                 [
                     TraceColumnGenerator("t", lambda i: i),
                     TraceColumnGenerator("in", lambda _: n_in),
@@ -580,6 +587,41 @@ class TestWEKATraceFormat:
         prompts1 = [turn.columns["text_column"][0] for turn in conv1]
         prompts2 = [turn.columns["text_column"][0] for turn in conv2]
         assert prompts1[0] != prompts2[0]
+
+    @pytest.mark.regression
+    def test_mixed_hash_id_scopes(self, tmp_path: Path) -> None:
+        """Global hashes survive local rows, whose turns share only local hashes.
+
+        ## WRITTEN BY AI ##
+        """
+        rows = []
+        for index, scope in enumerate(["global", "local", None, "local", "global"]):
+            row = {
+                "id": f"conv{index}",
+                "requests": [
+                    {"t": turn, "in": 4, "out": 2, "hash_ids": [1]} for turn in range(2)
+                ],
+            }
+            if scope is not None:
+                row["hash_id_scope"] = scope
+            rows.append(row)
+        trace = write_trace(tmp_path, "\n".join(json.dumps(row) for row in rows))
+        dataset = DatasetDeserializerFactory.deserialize(
+            config=WEKATraceFormatArgs(
+                source=trace_file_source(trace), hash_id_block_size=4
+            ),
+            processor_factory=compatible_processor,
+            random_seed=42,
+        )
+        prompts = [
+            [turn.columns["text_column"][0] for turn in load_graph_turns(row)]
+            for row in dataset
+        ]
+        assert all(first == second for first, second in prompts)
+        assert prompts[0] == prompts[2] == prompts[4]
+        assert prompts[1] != prompts[0]
+        assert prompts[3] != prompts[0]
+        assert prompts[1] != prompts[3]
 
     @pytest.mark.sanity
     def test_zero_prompt_tokens_empty_hash_ids(self, tmp_path: Path, deserializer):

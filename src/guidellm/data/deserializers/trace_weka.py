@@ -259,11 +259,12 @@ class WEKATraceFormat(TraceFormatBase):
             requests = [dict(item) for item in row[self.requests_col]]
             index = len(self._conversation_queue)
             self._conversation_queue.append((conv_id, requests))
-            yield Dataset.from_dict({"_weka_index": [index]})
-
-    def reset(self) -> None:
-        self.hash_id_table = {}
-        self.sibling_token_blocks = {}
+            yield Dataset.from_dict(
+                {
+                    "_weka_index": [index],
+                    "hash_id_scope": [row.get("hash_id_scope")],
+                }
+            )
 
     def required_columns(self) -> Features:
         return Features(
@@ -302,14 +303,33 @@ class WEKATraceFormat(TraceFormatBase):
             )
 
     def create_prompt(
-        self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
+        self,
+        row: dict,
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
+        hash_id_table: dict[int, tuple[int, ...]] | None = None,
+        sibling_token_blocks: dict[Any, set[tuple[int, ...]]] | None = None,
     ) -> str:
         """Before generating the prompt, this first generates a block of tokens for
         each hash ID that has not already been seen.
 
         Hash IDs that are partially filled are discarded to match the specification.
         Remainder of the prompt is created after the creation via hash IDs token
-        blocks."""
+        blocks.
+
+        :param row: API request containing hash IDs and the prompt length
+        :param processor: Tokenizer used to generate and decode token blocks
+        :param faker: Seeded synthetic text generator
+        :param hash_id_table: Conversation-local mapping, or the global mapping
+            when omitted
+        :param sibling_token_blocks: Sibling blocks in the same hash scope, or
+            the global sibling blocks when omitted
+        :return: Synthetic prompt preserving the hash relationships
+        """
+        if hash_id_table is None:
+            hash_id_table = self.hash_id_table
+        if sibling_token_blocks is None:
+            sibling_token_blocks = self.sibling_token_blocks
         ids = row[self.config.hash_ids_column]
         n_in = row[self.config.prompt_tokens_column]
         block_size = self.config.hash_id_block_size
@@ -317,17 +337,17 @@ class WEKATraceFormat(TraceFormatBase):
         if math.floor(expected) != len(ids) and math.ceil(expected) == len(ids):
             ids.pop()
         for idx, hash_id in enumerate(ids):
-            if hash_id not in self.hash_id_table:
+            if hash_id not in hash_id_table:
                 prev_id = None if idx == 0 else ids[idx - 1]
-                self.sibling_token_blocks.setdefault(prev_id, set())
-                self.hash_id_table[hash_id] = create_distinct_token_block(
+                sibling_token_blocks.setdefault(prev_id, set())
+                hash_id_table[hash_id] = create_distinct_token_block(
                     block_size,
-                    self.sibling_token_blocks[prev_id],
+                    sibling_token_blocks[prev_id],
                     processor,
                     faker,
                 )
-                self.sibling_token_blocks[prev_id].add(self.hash_id_table[hash_id])
-        prompt = create_prompt_from_hash_ids(ids, self.hash_id_table, processor)
+                sibling_token_blocks[prev_id].add(hash_id_table[hash_id])
+        prompt = create_prompt_from_hash_ids(ids, hash_id_table, processor)
         remainder = _generate_remaining_prompt(n_in % block_size, processor, faker)
         if not prompt:
             return remainder
@@ -358,9 +378,16 @@ class WEKATraceFormat(TraceFormatBase):
             )
         min_t = min(spec.absolute_t for spec in specs)
         turns: list[ConversationTurnData] = []
+        # Local hashes are shared by all turns in this conversation, including
+        # subagents, without replacing the dataset's global hash mapping.
+        local_scope = conversation[0].get("hash_id_scope") == "local"
+        hash_id_table = {} if local_scope else self.hash_id_table
+        sibling_token_blocks = {} if local_scope else self.sibling_token_blocks
         for spec in specs:
             _validate_api_row(spec.row, self.config, self.validate_row)
-            prompt = self.create_prompt(spec.row, processor, faker)
+            prompt = self.create_prompt(
+                spec.row, processor, faker, hash_id_table, sibling_token_blocks
+            )
             columns: dict[str, Any] = {
                 "text_column": [prompt],
                 "prompt_tokens_count_column": [
