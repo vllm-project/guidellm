@@ -7,7 +7,7 @@ requested input_length for replay benchmarks."""
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Protocol
 
 import numpy as np
@@ -44,6 +44,7 @@ __all__ = [
     "create_distinct_token_block",
     "create_prompt_from_hash_ids",
     "decode_prompt",
+    "fill_hash_id_table",
     "generate_token_ids",
     "get_missing_columns",
 ]
@@ -119,6 +120,42 @@ def create_distinct_token_block(
     raise ValueError(
         f"Failed to generate distinct synthetic token block after {attempt} attempts"
     )
+
+
+def fill_hash_id_table(
+    ids: Sequence[int],
+    hash_id_table: dict[int, tuple[int, ...]],
+    sibling_token_blocks: dict[Any, set[tuple[int, ...]]],
+    processor: PreTrainedTokenizerBase,
+    faker: Faker,
+    tokens_for_hash_id: Callable[[int, int], int],
+) -> None:
+    """Ensure each id has a distinct sibling-aware token block in ``hash_id_table``.
+
+    Unseen hash IDs are allocated with :func:`create_distinct_token_block` so
+    siblings under the same previous id receive different token blocks.
+    Existing entries are left unchanged.
+
+    :param ids: Ordered hash IDs for one prompt.
+    :param hash_id_table: Mapping of hash ID to token block. Mutated in place.
+    :param sibling_token_blocks: Token blocks already used per previous hash ID.
+        Mutated in place.
+    :param processor: Tokenizer used to generate synthetic token blocks.
+    :param faker: Random text source for synthetic tokens.
+    :param tokens_for_hash_id: ``(idx, hash_id) -> block size`` for unseen IDs.
+    """
+    for idx, hash_id in enumerate(ids):
+        if hash_id not in hash_id_table:
+            prev_id = None if idx == 0 else ids[idx - 1]
+            sibling_token_blocks.setdefault(prev_id, set())
+            block = create_distinct_token_block(
+                tokens_for_hash_id(idx, hash_id),
+                sibling_token_blocks[prev_id],
+                processor,
+                faker,
+            )
+            hash_id_table[hash_id] = block
+            sibling_token_blocks[prev_id].add(block)
 
 
 class TraceFormatBase(Protocol):
