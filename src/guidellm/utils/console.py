@@ -10,6 +10,8 @@ for clean progress reporting.
 
 from __future__ import annotations
 
+import os
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal
@@ -564,3 +566,15 @@ class Console(RichConsole):
             ]
 
         return formatted, widths
+
+
+def stderr_eq_stdout() -> bool:
+    """
+    Check if stderr and stdout point to the same file.
+
+    :return: True if stderr and stdout are the same, False otherwise or unknown
+    """
+    try:
+        return os.path.sameopenfile(sys.stdout.fileno(), sys.stderr.fileno())
+    except (AttributeError, OSError):
+        return False
