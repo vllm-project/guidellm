@@ -12,6 +12,7 @@ from guidellm.schemas.benchmark.entrypoints import (
     default_kind,
     default_kind_list,
 )
+from guidellm.schemas.benchmark.goodput import GoodputSLO
 from guidellm.schemas.benchmark.outputs import (
     BenchmarkOutputArgs,
     ConsoleBenchmarkOutputArgs,
@@ -45,6 +46,7 @@ __all__ = [
     "ConcurrentProfileArgs",
     "ConsoleBenchmarkOutputArgs",
     "GenerativeMetricsArgs",
+    "GoodputSLO",
     "HTMLBenchmarkOutputArgs",
     "JSONBenchmarkOutputArgs",
     "MetricsArgs",
