@@ -56,12 +56,11 @@ This section summarizes the newest capabilities available to users and outlines 
 - Multi-turn conversation capabilities for benchmarking chat agents and dialogue systems.
 - Full tool calling support (client and server side) in chat completions and responses APIs.
 - Synthetic video and image datasets for controlled experimentation.
-- Replay of Mooncake trace files for realistic load testing.
+- Replay of Mooncake, WEKA, and OTEL trace files for realistic load testing.
 - Support for benchmarking Geospatial LLMs.
 
 **Active Development**
 
-- Replay of OTEL and WEKA trace files.
 - Improved scenarios for benchmarking standard workflows.
 - Ability to stack scenario files for complex benchmarking workflows.
 - Ability to override constraints for individual benchmarks in a profile.
