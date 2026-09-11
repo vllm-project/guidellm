@@ -16,6 +16,7 @@ from guidellm.scheduler import (
     MaxErrorsConstraint,
     MaxGlobalErrorRateConstraint,
     MaxNumberConstraint,
+    MinNumberConstraint,
     PydanticConstraintInitializer,
     SchedulerProgress,
     SchedulerState,
@@ -31,6 +32,7 @@ from guidellm.schemas.scheduler import (
     MaxErrorsConstraintArgs,
     MaxGlobalErrorRateConstraintArgs,
     MaxRequestsConstraintArgs,
+    MinRequestsConstraintArgs,
 )
 from guidellm.utils.mixins import InfoMixin
 
@@ -441,6 +443,182 @@ class TestMaxNumberConstraint:
         instance = MaxNumberConstraint(args=MaxRequestsConstraintArgs(count=75))
         resolved = ConstraintsInitializerFactory.resolve({"max_requests": instance})
         assert isinstance(resolved["max_requests"], MaxNumberConstraint)
+
+
+class TestMinNumberConstraint:
+    """Test the MinNumberConstraint implementation."""
+
+    @pytest.fixture(params=[{"count": 100}, {"count": 50.5}, {"count": 1}])
+    def valid_instances(self, request):
+        constructor_args = request.param
+        instance = MinNumberConstraint(
+            args=MinRequestsConstraintArgs(**constructor_args)
+        )
+
+        return instance, constructor_args
+
+    @pytest.mark.smoke
+    def test_is_constraint_protocol(self, valid_instances):
+        """Test that MinNumberConstraint satisfies the Constraint protocol."""
+        constraint, _ = valid_instances
+        assert isinstance(constraint, Constraint)
+
+    @pytest.mark.smoke
+    def test_is_constraint_initializer_protocol(self, valid_instances):
+        """Test MinNumberConstraint satisfies the ConstraintInitializer protocol."""
+        constraint, _ = valid_instances
+        assert isinstance(constraint, ConstraintInitializer)
+
+    @pytest.mark.smoke
+    def test_initialization_valid(self, valid_instances):
+        """Test that MinNumberConstraint can be initialized with valid parameters."""
+        instance, constructor_args = valid_instances
+
+        for key, value in constructor_args.items():
+            assert hasattr(instance.args, key)
+            assert getattr(instance.args, key) == value
+
+    @pytest.mark.sanity
+    def test_initialization_invalid(self):
+        """Test that MinNumberConstraint rejects invalid parameters."""
+        with pytest.raises(ValidationError):
+            MinNumberConstraint()
+        with pytest.raises(ValidationError):
+            MinNumberConstraint(args=MinRequestsConstraintArgs(count=-1))
+        with pytest.raises(ValidationError):
+            MinNumberConstraint(args=MinRequestsConstraintArgs(count=0))
+        with pytest.raises(ValidationError):
+            MinNumberConstraint(args=MinRequestsConstraintArgs(count="invalid"))
+
+    @pytest.mark.smoke
+    def test_constraint_functionality(self, valid_instances):
+        """Test constraint returns correct actions and progress"""
+        instance, constructor_args = valid_instances
+        start_time = time.time()
+
+        for num_requests in range(0, int(constructor_args["count"]) * 2 + 1, 1):
+            state = SchedulerState(
+                start_time=start_time,
+                created_requests=num_requests,
+                processed_requests=num_requests,
+                errored_requests=0,
+            )
+            request_info = RequestInfo(
+                request_id="test", status="completed", created_at=start_time
+            )
+
+            action = instance(state, request_info)
+            assert isinstance(action, SchedulerUpdateAction)
+
+    @pytest.mark.regression
+    def test_continues_queuing_when_created_exceeded_but_processed_not(self):
+        """Queuing continues when created exceeds count but processed has not.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = MinNumberConstraint(args=MinRequestsConstraintArgs(count=10))
+        state = SchedulerState(
+            start_time=time.time(),
+            created_requests=15,
+            processed_requests=5,
+        )
+        request_info = RequestInfo(
+            request_id="test", status="completed", created_at=time.time()
+        )
+
+        action = constraint(state, request_info)
+        assert action.request_queuing == "continue"
+        assert action.request_processing == "continue"
+
+    @pytest.mark.regression
+    def test_stops_when_processed_exceeded(self):
+        """Queuing and processing stop when processed requests reach the count.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = MinNumberConstraint(args=MinRequestsConstraintArgs(count=10))
+        state = SchedulerState(
+            start_time=time.time(),
+            created_requests=15,
+            processed_requests=15,
+        )
+        request_info = RequestInfo(
+            request_id="test", status="completed", created_at=time.time()
+        )
+
+        action = constraint(state, request_info)
+        assert action.request_queuing == "stop"
+        assert action.request_processing == "stop_local"
+
+    @pytest.mark.smoke
+    def test_marshalling(self, valid_instances):
+        """Test that MinNumberConstraint can be serialized and deserialized."""
+        instance, constructor_args = valid_instances
+
+        data = instance.model_dump()
+        for key, value in constructor_args.items():
+            assert data["args"][key] == value
+
+        reconstructed = MinNumberConstraint.model_validate(data)
+        assert reconstructed.args.count == instance.args.count
+
+        for key, value in constructor_args.items():
+            assert getattr(reconstructed.args, key) == value
+
+    @pytest.mark.smoke
+    def test_create_constraint_functionality(self, valid_instances):
+        """Test the constraint initializer functionality."""
+        instance, constructor_args = valid_instances
+
+        constraint = instance.create_constraint()
+        assert isinstance(constraint, MinNumberConstraint)
+        assert constraint.args.count == constructor_args["count"]
+
+    @pytest.mark.smoke
+    def test_create_constraint(self, valid_instances):
+        """Test MinNumberConstraint.create_constraint method."""
+        instance, constructor_args = valid_instances
+        original_index = instance.current_index
+        constraint = instance.create_constraint()
+
+        assert isinstance(constraint, MinNumberConstraint)
+        assert constraint is not instance  # Should return a copy
+        assert constraint.args.count == instance.args.count
+        assert instance.current_index == original_index + 1  # Original is incremented
+        assert constraint.current_index == original_index + 1  # Copy has incremented
+
+    @pytest.mark.smoke
+    def test_factory_registration(self):
+        """Test MinNumberConstraint is properly registered.
+
+        ## WRITTEN BY AI ##
+        """
+        assert ConstraintsInitializerFactory.is_registered("min_requests")
+        registered_class = ConstraintsInitializerFactory.get_registered_object(
+            "min_requests"
+        )
+        assert registered_class == MinNumberConstraint
+
+    @pytest.mark.smoke
+    def test_factory_creation(self):
+        """Test factory creation using the registered name.
+
+        ## WRITTEN BY AI ##
+        """
+        args = MinRequestsConstraintArgs(count=100)
+        initializer = ConstraintsInitializerFactory.create(args)
+        assert isinstance(initializer, MinNumberConstraint)
+        assert initializer.args.count == 100
+
+    @pytest.mark.smoke
+    def test_factory_resolve_methods(self):
+        """Test factory resolve methods with initializer instances.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = MinNumberConstraint(args=MinRequestsConstraintArgs(count=75))
+        resolved = ConstraintsInitializerFactory.resolve({"min_requests": instance})
+        assert isinstance(resolved["min_requests"], MinNumberConstraint)
 
 
 class TestMaxDurationConstraint:
@@ -1268,6 +1446,24 @@ class TestConstraintNoneRequest:
         ## WRITTEN BY AI ##
         """
         constraint = MaxNumberConstraint(args=MaxRequestsConstraintArgs(count=10))
+        state = SchedulerState(
+            node_id=0,
+            num_processes=1,
+            start_time=time.time(),
+            created_requests=3,
+            processed_requests=3,
+        )
+        action = constraint(state, None)
+        assert action.request_queuing == "continue"
+        assert action.request_processing == "continue"
+
+    @pytest.mark.smoke
+    def test_min_requests_accepts_none_request(self):
+        """min_requests evaluates counts with request=None.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = MinNumberConstraint(args=MinRequestsConstraintArgs(count=10))
         state = SchedulerState(
             node_id=0,
             num_processes=1,
