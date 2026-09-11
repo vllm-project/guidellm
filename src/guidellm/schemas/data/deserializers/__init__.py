@@ -24,6 +24,7 @@ from guidellm.schemas.data.deserializers.synthetic_video import SyntheticVideoDa
 from guidellm.schemas.data.deserializers.trace_common import TraceDataArgs
 from guidellm.schemas.data.deserializers.trace_minimal import MinimalTraceFormatArgs
 from guidellm.schemas.data.deserializers.trace_mooncake import MooncakeTraceFormatArgs
+from guidellm.schemas.data.deserializers.trace_otel import OTELTraceFormatArgs
 from guidellm.schemas.data.deserializers.trace_weka import WEKATraceFormatArgs
 
 __all__ = [
@@ -37,6 +38,7 @@ __all__ = [
     "InMemoryItemListDataArgs",
     "MinimalTraceFormatArgs",
     "MooncakeTraceFormatArgs",
+    "OTELTraceFormatArgs",
     "SyntheticImageDataArgs",
     "SyntheticTextDataArgs",
     "SyntheticTextPrefixBucketConfig",

@@ -11,6 +11,7 @@ These are passed to the `--data` argument as `kind=format`:
 - `trace_synthetic`: A trace format that does the bare minimum needed to complete a fully functioning trace replay benchmark with synthetic prompt generation
 - `mooncake`: The trace format used by the serving platform *Mooncake*, as defined in [https://doi.org/10.48550/arXiv.2407.00079](https://doi.org/10.48550/arXiv.2407.00079)
 - `weka`: The trace format used by WEKA's *Augmented Memory Grid*, as specified [in the original research repository](https://github.com/callanjfox/agentic-coding-analysis/blob/master/docs/TRACE_FORMAT.md)
+- `otel` (aliases `opentelemetry`, `otel_trace`): OpenTelemetry GenAI spans. GuideLLM keeps successful LLM spans, flattens usage token attributes and timestamps, and replays each `trace_id` as one conversation with synthetic prompts.
 
 ## Loading Trace Data
 
@@ -121,3 +122,38 @@ Modified defaults:
 | `timestamp_column`     | "t"         |
 | `prompt_tokens_column` | "in"        |
 | `output_tokens_column` | "out"       |
+
+### `otel`
+
+OpenTelemetry GenAI traces are normalized into the same replay rows as other trace formats (`timestamp`, `input_length`, `output_length`). Two file layouts are accepted:
+
+- **Session-per-line**: each JSONL row is `{ "trace_id": ..., "spans": [ ... ] }`
+- **Span-per-line**: each JSONL row is one span; adjacent rows with the same `trace_id` become one conversation. Grouping is streaming and consecutive only, so an interleaved `a, b, a` dump is three conversations, not two. Published replay corpora write each `trace_id` contiguously; live collector exports of concurrent traces may not.
+
+Only successful LLM spans are replayed (`gen_ai.operation.name` of `chat`, `generate`, or `text_completion`, or any span that already has usage token attributes). `invoke_agent`, tool-execution, and failed spans (`status.code` error) are dropped. Real `gen_ai.input.messages` are not sent; prompts are synthesized from token counts. Within a conversation, later turns reuse the earlier turn's synthetic tokens as a growing prefix.
+
+ISO-8601 `start_time` values, unix seconds, milliseconds, and nanoseconds are converted to epoch seconds before scheduling. Token counts are read from span `attributes`, trying current GenAI names first and then the deprecated aliases.
+
+| Argument                   | Default                                                            | Description                                                 |
+| -------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `spans_column`             | "spans"                                                            | Column name for nested span lists in session-per-line files |
+| `trace_id_column`          | "trace_id"                                                         | Column used to group span-per-line files into conversations |
+| `span_timestamp_field`     | "start_time"                                                       | Span field holding the request start time                   |
+| `input_tokens_attributes`  | `["gen_ai.usage.input_tokens", "gen_ai.usage.prompt_tokens"]`      | Attribute keys tried in order for prompt token counts       |
+| `output_tokens_attributes` | `["gen_ai.usage.output_tokens", "gen_ai.usage.completion_tokens"]` | Attribute keys tried in order for output token counts       |
+
+```bash
+guidellm run \
+    --backend kind=openai_http,target=http://localhost:8000 \
+    --profile kind=replay \
+    --data kind=otel,path=synthetic.jsonl \
+    --data-loader kind=pytorch,samples=20
+```
+
+Public Hugging Face corpora that match this MVP (download locally, then pass `path=`):
+
+- [ibm-research/synthetic-conversations-traces](https://huggingface.co/datasets/ibm-research/synthetic-conversations-traces) — multi-turn chats, session-per-line JSONL, `prompt_tokens` / `completion_tokens`
+- [Exgentic/agent-llm-traces-v2](https://huggingface.co/datasets/Exgentic/agent-llm-traces-v2) — agent sessions, nested `spans`, `input_tokens` / `output_tokens`
+- [ibm-research/lmcache-agentic-traces_Otel](https://huggingface.co/datasets/ibm-research/lmcache-agentic-traces_Otel) — agentic sessions, session-per-line JSONL, deprecated token keys
+
+Related corpora: [DiscoPosse/agent-llm-traces](https://huggingface.co/datasets/DiscoPosse/agent-llm-traces) (Exgentic v1 schema) and [lenadan/otel-test-snippet-jsonl](https://huggingface.co/datasets/lenadan/otel-test-snippet-jsonl) (small span-per-line snippet). [ibm-research/codex_swebenchpro_traces_Otel](https://huggingface.co/datasets/ibm-research/codex_swebenchpro_traces_Otel) omits usage token attributes and is not usable for token-count replay.
