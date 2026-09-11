@@ -223,7 +223,7 @@ class TestMooncakeTraceFormat:
         )
         processor = ascending_processor()
         ds = self.deserialize(deserializer, trace)
-        conv = load_graph_turns(next(iter(ds)))
+        conv = [turn for row in ds for turn in load_graph_turns(row)]
         for i, turn in enumerate(conv):
             n_in = turn.columns["prompt_tokens_count_column"][0]
             assert n_in == prompt_lengths[i]
@@ -258,7 +258,7 @@ class TestMooncakeTraceFormat:
             processor_factory=lambda: processor,
             random_seed=42,
         )
-        conv = load_graph_turns(next(iter(ds)))
+        conv = [turn for row in ds for turn in load_graph_turns(row)]
         for turn in conv:
             in_cnt = turn.columns["prompt_tokens_count_column"][0]
             actual_length = len(processor.encode(turn.columns["text_column"][0]))
@@ -318,7 +318,7 @@ class TestMooncakeTraceFormat:
             random_seed=42,
         )
         with pytest.raises(ValueError, match="generate distinct"):
-            load_graph_turns(next(iter(ds)))
+            list(ds)
 
     @pytest.mark.smoke
     def test_token_block_distinctness(self, tmp_path: Path, deserializer):
@@ -341,7 +341,7 @@ class TestMooncakeTraceFormat:
             processor_factory=compatible_processor,
             random_seed=42,
         )
-        conv = load_graph_turns(next(iter(ds)))
+        conv = [turn for row in ds for turn in load_graph_turns(row)]
         root_blocks, sibling_blocks = zip(
             *[
                 (
