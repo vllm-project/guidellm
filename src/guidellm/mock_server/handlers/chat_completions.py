@@ -21,7 +21,7 @@ from pydantic import ValidationError
 from sanic import response
 from sanic.request import Request
 from sanic.response import HTTPResponse, ResponseStream
-from transformers import PreTrainedTokenizer
+from transformers import AutoTokenizer
 
 from guidellm.mock_server.models import (
     ChatCompletionChoice,
@@ -76,7 +76,7 @@ class ChatCompletionsHandler:
         self.tokenizer = (
             MockTokenizer()
             if config.processor is None
-            else PreTrainedTokenizer.from_pretrained(config.processor)
+            else AutoTokenizer.from_pretrained(config.processor)
         )
 
     async def handle(self, request: Request) -> HTTPResponse:
@@ -189,7 +189,9 @@ class ChatCompletionsHandler:
         )
 
         # Token counts
-        prompt_text = self.tokenizer.apply_chat_template(req.messages)
+        prompt_text = self.tokenizer.apply_chat_template(
+            req.messages,  # type: ignore[arg-type]  # Transformers typing is narrow
+        )
         text_tokens = len(self.tokenizer(prompt_text))  # type: ignore[arg-type]
         prompt_tokens = text_tokens + multimodal_stats.total_tokens
         max_tokens = req.max_completion_tokens or req.max_tokens or math.inf
@@ -270,7 +272,9 @@ class ChatCompletionsHandler:
             )
 
             # Token counts
-            prompt_text = self.tokenizer.apply_chat_template(req.messages)
+            prompt_text = self.tokenizer.apply_chat_template(
+                req.messages,  # type: ignore[arg-type]  # Transformers typing is narrow
+            )
             text_tokens = len(self.tokenizer(prompt_text))  # type: ignore[arg-type]
             prompt_tokens = text_tokens + multimodal_stats.total_tokens
             prompt_tokens_details = multimodal_stats.prompt_tokens_details(text_tokens)
