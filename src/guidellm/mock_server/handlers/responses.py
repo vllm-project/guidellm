@@ -20,7 +20,7 @@ from pydantic import ValidationError
 from sanic import response
 from sanic.request import Request
 from sanic.response import HTTPResponse, ResponseStream
-from transformers import PreTrainedTokenizer
+from transformers import AutoTokenizer
 
 from guidellm.mock_server.models import (
     ErrorDetail,
@@ -55,7 +55,7 @@ class ResponsesHandler:
         self.tokenizer = (
             MockTokenizer()
             if config.processor is None
-            else PreTrainedTokenizer.from_pretrained(config.processor)
+            else AutoTokenizer.from_pretrained(config.processor)
         )
 
     def _extract_input_text(self, req: ResponsesRequest) -> str:
