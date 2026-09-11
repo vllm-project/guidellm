@@ -234,6 +234,132 @@ class TestOpenAIHTTPBackend:
         assert backend.processes_limit is None
         assert backend.requests_limit is None
 
+    @pytest.mark.sanity
+    def test_generation_headers_rotate_inline_api_keys(self):
+        """
+        Generation headers rotate through inline API keys and wrap around.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = _make_backend(
+            target="http://localhost:8000",
+            api_keys=["key-1", "key-2"],
+        )
+
+        headers = [
+            backend._build_headers(rotate_api_key=True),
+            backend._build_headers(rotate_api_key=True),
+            backend._build_headers(rotate_api_key=True),
+        ]
+
+        assert headers == [
+            {"Authorization": "Bearer key-1"},
+            {"Authorization": "Bearer key-2"},
+            {"Authorization": "Bearer key-1"},
+        ]
+        assert backend._api_key_index == 1
+
+    @pytest.mark.sanity
+    def test_api_key_file_is_loaded_by_http_backend(self, tmp_path):
+        """
+        The HTTP backend loads and normalizes non-empty API key file lines.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "api-keys.txt"
+        key_file.write_text("\n key-1\n\nkey-2 \n", encoding="utf-8")
+
+        backend = _make_backend(
+            target="http://localhost:8000",
+            api_key_file=key_file,
+        )
+
+        assert [key.get_secret_value() for key in backend._api_keys] == [
+            "key-1",
+            "key-2",
+        ]
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize("filename", ["empty-keys.txt", "missing-keys.txt"])
+    def test_invalid_api_key_file_is_rejected_by_http_backend(self, tmp_path, filename):
+        """
+        Empty and missing API key files fail when creating the HTTP backend.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / filename
+        if filename == "empty-keys.txt":
+            key_file.write_text("\n\n", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="api_key_file"):
+            _make_backend(
+                target="http://localhost:8000",
+                api_key_file=key_file,
+            )
+
+    @pytest.mark.sanity
+    def test_auxiliary_headers_use_first_api_key(self):
+        """
+        Non-generation requests consistently use the first configured API key.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = _make_backend(
+            target="http://localhost:8000",
+            api_keys=["key-1", "key-2"],
+        )
+
+        assert backend._build_headers() == {"Authorization": "Bearer key-1"}
+        assert backend._build_headers() == {"Authorization": "Bearer key-1"}
+
+    @pytest.mark.sanity
+    def test_explicit_authorization_header_skips_key_rotation(self):
+        """
+        Explicit Authorization headers take precedence without consuming a key.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = _make_backend(
+            target="http://localhost:8000",
+            api_keys=["key-1", "key-2"],
+        )
+
+        assert backend._build_headers(
+            {"authorization": "Custom token"},
+            rotate_api_key=True,
+        ) == {"authorization": "Custom token"}
+        assert backend._build_headers(rotate_api_key=True) == {
+            "Authorization": "Bearer key-1"
+        }
+
+    @pytest.mark.sanity
+    def test_worker_index_offsets_api_key_rotation(self):
+        """
+        Each worker starts rotating API keys from its own offset.
+
+        ## WRITTEN BY AI ##
+        """
+        backend_one = _make_backend(
+            target="http://localhost:8000",
+            api_keys=["key-1", "key-2"],
+        )
+        backend_two = _make_backend(
+            target="http://localhost:8000",
+            api_keys=["key-1", "key-2"],
+        )
+        backend_one.set_worker_index(0)
+        backend_two.set_worker_index(1)
+
+        assert backend_one._build_headers(rotate_api_key=True) == {
+            "Authorization": "Bearer key-1"
+        }
+        assert backend_two._build_headers(rotate_api_key=True) == {
+            "Authorization": "Bearer key-2"
+        }
+        assert backend_one._build_headers(rotate_api_key=True) == {
+            "Authorization": "Bearer key-2"
+        }
+
     @pytest.mark.smoke
     def test_initialization_full(self):
         """Test full OpenAIHTTPBackend initialization."""

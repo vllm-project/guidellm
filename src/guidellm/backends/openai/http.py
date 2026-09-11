@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
+from pydantic import SecretStr
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.openai.common import FALLBACK_TIMEOUT
@@ -76,6 +77,39 @@ class OpenAIHTTPBackend(Backend):
         # Runtime state
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
+        self._api_keys = self._load_api_keys()
+        self._api_key_index = 0
+
+    def _load_api_keys(self) -> tuple[SecretStr, ...]:
+        """Load and normalize API keys from the configured backend source."""
+        if self._args.api_key_file is None:
+            return self._args.resolved_api_keys
+
+        try:
+            api_keys = tuple(
+                SecretStr(line.strip())
+                for line in self._args.api_key_file.read_text(
+                    encoding="utf-8"
+                ).splitlines()
+                if line.strip()
+            )
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ValueError(
+                f"Unable to read api_key_file '{self._args.api_key_file}'."
+            ) from exc
+
+        if not api_keys:
+            raise ValueError("api_key_file must contain at least one non-empty key.")
+        return api_keys
+
+    def set_worker_index(self, worker_index: int) -> None:
+        """
+        Set this worker's initial offset into the API-key rotation.
+
+        :param worker_index: Zero-based index assigned to this worker process
+        """
+        if api_keys := self._api_keys:
+            self._api_key_index = worker_index % len(api_keys)
 
     async def process_startup(self):
         """
@@ -276,7 +310,7 @@ class OpenAIHTTPBackend(Backend):
             "url": request_url,
             "method": arguments.method or "POST",
             "params": arguments.params,
-            "headers": self._build_headers(arguments.headers),
+            "headers": self._build_headers(arguments.headers, rotate_api_key=True),
             "json": request_json,
             "data": request_data,
             "files": request_files,
@@ -407,22 +441,30 @@ class OpenAIHTTPBackend(Backend):
             yield line
 
     def _build_headers(
-        self, existing_headers: dict[str, str] | None = None
+        self,
+        existing_headers: dict[str, str] | None = None,
+        rotate_api_key: bool = False,
     ) -> dict[str, str] | None:
         """
         Build headers dictionary with bearer token authentication.
 
-        Merges the Authorization bearer token header (if api_key is set) with any
-        existing headers. User-provided headers take precedence over the bearer token.
+        Merges the Authorization bearer token header with any existing headers.
+        User-provided Authorization headers take precedence over the selected API key.
 
         :param existing_headers: Optional existing headers to merge with
-        :return: Dictionary of headers with bearer token included if api_key is set
+        :param rotate_api_key: Select the next API key for a generation request
+        :return: Dictionary of headers with bearer token authentication when configured
         """
         headers: dict[str, str] = {}
 
-        # Add bearer token if api_key is set
-        if self._args.api_key:
-            token = self._args.api_key.get_secret_value()
+        has_authorization = existing_headers and any(
+            header.lower() == "authorization" for header in existing_headers
+        )
+        api_key = (
+            None if has_authorization else self._select_api_key(rotate=rotate_api_key)
+        )
+        if api_key is not None:
+            token = api_key.get_secret_value()
             headers["Authorization"] = f"Bearer {token}"
 
         # Merge with existing headers (user headers take precedence)
@@ -430,6 +472,23 @@ class OpenAIHTTPBackend(Backend):
             headers = {**headers, **existing_headers}
 
         return headers or None
+
+    def _select_api_key(self, rotate: bool) -> SecretStr | None:
+        """
+        Select a fixed or globally round-robin API key.
+
+        :param rotate: Whether to allocate the next key for a generation request
+        :return: Selected SecretStr API key, or None when authentication is disabled
+        """
+        api_keys = self._api_keys
+        if not api_keys:
+            return None
+        if not rotate or len(api_keys) == 1:
+            return api_keys[0]
+
+        api_key = api_keys[self._api_key_index]
+        self._api_key_index = (self._api_key_index + 1) % len(api_keys)
+        return api_key
 
     def _check_tool_call_expectations(
         self,

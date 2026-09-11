@@ -284,6 +284,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
     async def _processing_startup(self):
         """Initialize backend, messaging, and synchronize with other workers."""
         # Get backend ready
+        self.backend.set_worker_index(self.worker_index)
         await self.backend.process_startup()
         self.backend_started = True
         await self.backend.validate()
