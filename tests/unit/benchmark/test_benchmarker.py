@@ -77,13 +77,7 @@ async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, fai
             )
         ]
 
-    if failure == "initialize":
-        with pytest.RaisesGroup(
-            pytest.RaisesExc(RuntimeError, match="observer failure")
-        ):
-            await asyncio.wait_for(consume(), timeout=3)
-        assert (1, "cancelled") in finished
-    elif failure == "scheduler":
+    if failure in ("initialize", "scheduler"):
         with pytest.raises(RuntimeError, match="failure"):
             await asyncio.wait_for(consume(), timeout=3)
     else:
@@ -108,12 +102,6 @@ async def _callback(arrivals, gates, finished, failure, index, hook, *args):
     await gates[hook].wait()
     # A sequential dispatcher would deadlock waiting for the second observer.
     await asyncio.sleep(0)
-    if failure == "initialize" and hook == "on_initialize" and index == 1:
-        try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            finished.append((index, "cancelled"))
-            raise
     finished.append((index, hook))
     failing_hook = {
         "update": "on_benchmark_update",

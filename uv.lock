@@ -868,7 +868,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -1225,7 +1225,6 @@ dependencies = [
     { name = "rich" },
     { name = "sanic" },
     { name = "tabulate" },
-    { name = "taskgroup", marker = "python_full_version < '3.11'" },
     { name = "torch", version = "2.13.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "torch", version = "2.13.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "platform_machine != 'arm64' or sys_platform != 'darwin'" },
     { name = "transformers" },
@@ -1320,7 +1319,6 @@ dev = [
     { name = "ruff" },
     { name = "setuptools" },
     { name = "setuptools-git-versioning" },
-    { name = "taskgroup" },
     { name = "tox" },
     { name = "tox-uv" },
     { name = "trio" },
@@ -1341,7 +1339,6 @@ quality = [
     { name = "mypy" },
     { name = "pandas-stubs" },
     { name = "ruff" },
-    { name = "taskgroup" },
     { name = "types-pyyaml" },
 ]
 test = [
@@ -1390,7 +1387,6 @@ requires-dist = [
     { name = "rich" },
     { name = "sanic" },
     { name = "tabulate" },
-    { name = "taskgroup", marker = "python_full_version < '3.11'", specifier = ">=0.2.2" },
     { name = "tiktoken", marker = "extra == 'tokenizers'" },
     { name = "torch", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "extra == 'audio'", specifier = ">=2.11", index = "https://download.pytorch.org/whl/cpu" },
@@ -1433,7 +1429,6 @@ dev = [
     { name = "ruff", specifier = "~=0.15.20" },
     { name = "setuptools", specifier = ">=61.0" },
     { name = "setuptools-git-versioning", specifier = ">=2.0,<3" },
-    { name = "taskgroup", specifier = ">=0.2.2" },
     { name = "tox" },
     { name = "tox-uv" },
     { name = "trio", specifier = "~=0.33.0" },
@@ -1454,7 +1449,6 @@ quality = [
     { name = "mypy", specifier = "~=2.1.0" },
     { name = "pandas-stubs" },
     { name = "ruff", specifier = "~=0.15.20" },
-    { name = "taskgroup", specifier = ">=0.2.2" },
     { name = "types-pyyaml", specifier = "~=6.0.1" },
 ]
 test = [
@@ -4552,19 +4546,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ec/fe/802052aecb21e3797b8f7902564ab6ea0d60ff8ca23952079064155d1ae1/tabulate-0.9.0.tar.gz", hash = "sha256:0095b12bf5966de529c0feb1fa08671671b3368eec77d7ef7ab114be2c068b3c", size = 81090, upload-time = "2022-10-06T17:21:48.54Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/40/44/4a5f08c96eb108af5cb50b41f76142f0afa346dfa99d5296fe7202a11854/tabulate-0.9.0-py3-none-any.whl", hash = "sha256:024ca478df22e9340661486f85298cff5f6dcdba14f3813e8830015b9ed1948f", size = 35252, upload-time = "2022-10-06T17:21:44.262Z" },
-]
-
-[[package]]
-name = "taskgroup"
-version = "0.2.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "exceptiongroup" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f0/8d/e218e0160cc1b692e6e0e5ba34e8865dbb171efeb5fc9a704544b3020605/taskgroup-0.2.2.tar.gz", hash = "sha256:078483ac3e78f2e3f973e2edbf6941374fbea81b9c5d0a96f51d297717f4752d", size = 11504, upload-time = "2025-01-03T09:24:13.761Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/b1/74babcc824a57904e919f3af16d86c08b524c0691504baf038ef2d7f655c/taskgroup-0.2.2-py2.py3-none-any.whl", hash = "sha256:e2c53121609f4ae97303e9ea1524304b4de6faf9eb2c9280c7f87976479a52fb", size = 14237, upload-time = "2025-01-03T09:24:11.41Z" },
 ]
 
 [[package]]

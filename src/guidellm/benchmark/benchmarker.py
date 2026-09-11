@@ -10,10 +10,10 @@ singleton operations for consistent state management across concurrent workflows
 
 from __future__ import annotations
 
-import sys
+import asyncio
 import uuid
 from abc import ABC
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from typing import Generic
 
 from guidellm.benchmark.profiles import Profile
@@ -37,11 +37,6 @@ from guidellm.scheduler import (
 from guidellm.schemas.benchmark import GoodputSLO, TransientPhaseConfig
 from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
-
-if sys.version_info >= (3, 11):
-    from asyncio import TaskGroup
-else:
-    from taskgroup import TaskGroup
 
 __all__ = ["Benchmarker"]
 
@@ -101,9 +96,9 @@ class Benchmarker(
         """
         trackers = list(progress or [])
         with self.thread_lock:
-            async with TaskGroup() as tg:
-                for tracker in trackers:
-                    tg.create_task(tracker.on_initialize(profile))
+            await _notify_progress(
+                *(tracker.on_initialize(profile) for tracker in trackers)
+            )
 
             run_id = str(uuid.uuid4())
             strategies_generator = profile.strategies_generator()
@@ -113,9 +108,9 @@ class Benchmarker(
 
             while strategy is not None:
                 logger.info("Starting benchmark for strategy: {}", strategy)
-                async with TaskGroup() as tg:
-                    for tracker in trackers:
-                        tg.create_task(tracker.on_benchmark_start(strategy))
+                await _notify_progress(
+                    *(tracker.on_benchmark_start(strategy) for tracker in trackers)
+                )
 
                 config = BenchmarkConfig(
                     run_id=run_id,
@@ -164,13 +159,14 @@ class Benchmarker(
                             request_info,
                             scheduler_state,
                         )
-                        async with TaskGroup() as tg:
-                            for tracker in trackers:
-                                tg.create_task(
-                                    tracker.on_benchmark_update(
-                                        accumulator, scheduler_state
-                                    )
+                        await _notify_progress(
+                            *(
+                                tracker.on_benchmark_update(
+                                    accumulator, scheduler_state
                                 )
+                                for tracker in trackers
+                            )
+                        )
                     except Exception as err:  # noqa: BLE001
                         logger.error(
                             "Error updating benchmark estimate/progress: {}", err
@@ -182,9 +178,9 @@ class Benchmarker(
                 )
                 logger.info("Benchmark complete for strategy: {}", strategy)
 
-                async with TaskGroup() as tg:
-                    for tracker in trackers:
-                        tg.create_task(tracker.on_benchmark_complete(benchmark))
+                await _notify_progress(
+                    *(tracker.on_benchmark_complete(benchmark) for tracker in trackers)
+                )
 
                 yield benchmark
 
@@ -195,6 +191,12 @@ class Benchmarker(
                     constraints = None
 
             logger.info("All benchmarks finalized")
-            async with TaskGroup() as tg:
-                for tracker in trackers:
-                    tg.create_task(tracker.on_finalize())
+            await _notify_progress(*(tracker.on_finalize() for tracker in trackers))
+
+
+async def _notify_progress(*callbacks: Awaitable[None]) -> None:
+    """Finish every callback before propagating the first lifecycle failure."""
+    results = await asyncio.gather(*callbacks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result

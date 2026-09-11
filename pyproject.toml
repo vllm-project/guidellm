@@ -76,7 +76,6 @@ dependencies = [
     "rich",
     "sanic",
     "tabulate",
-    "taskgroup>=0.2.2; python_version < '3.11'",
     "transformers",
     "uvloop>=0.18",
     "torch",
@@ -126,7 +125,6 @@ quality = [
     "mdformat-gfm~=1.0.0",
 
     # type-checking
-    "taskgroup>=0.2.2",  # Check the Python 3.10 compatibility import on newer Python.
     "pandas-stubs",
     "types-PyYAML~=6.0.1",
 
