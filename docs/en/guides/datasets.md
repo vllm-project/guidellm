@@ -20,7 +20,7 @@ The following arguments configure datasets and their processing:
   - `synthetic_text` — generates synthetic prompts on the fly. Required field: `prompt_tokens`. Optional: `output_tokens`, `turns`, `prefix_tokens`, `prefix_count`, `prefix_buckets`, and distribution controls (`prompt_tokens_stdev`, `output_tokens_stdev`, etc.).
   - `huggingface` (alias `hf`) — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (for example `split`, `name`) via `load_kwargs`.
   - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `db_file`, `tar_file` — loads from a local file. Required field: `path`.
-  - `trace_synthetic`, `mooncake`, `weka` — replay trace data with `--profile kind=replay`. Required field: `source` (a nested dataset config such as `json_file` or `huggingface`), see other supported sources for details. Optional: `timestamp_column`, `prompt_tokens_column`, `output_tokens_column`, `time_scale`, `copies`, and other format-specific options. For more information, see [Trace File Formats](./trace_replay.md).
+  - `trace_synthetic`, `mooncake`, `weka`, `otel` — replay trace data with `--profile kind=replay`. Required field: `source` (a nested dataset config such as `json_file` or `huggingface`), see other supported sources for details. Optional: `timestamp_column`, `prompt_tokens_column`, `output_tokens_column`, `time_scale`, `copies`, and other format-specific options. For more information, see [Trace File Formats](./trace_replay.md).
 
 In addition, you can specify additional arguments to the dataset loading with the data argument `load_kwargs`:
 
@@ -190,7 +190,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   {"prompt": "What is your name?", "output_tokens_count": 3, "additional_column": "baz", "additional_column2": "qux"}
   ```
 
-- **Trace files (`.jsonl`, `.json`, `.csv` or `.parquet` with a supported trace file format)**: Specialized files for replay. Used with `--profile kind=replay` to replay trace events using each row's timestamp and token lengths. Timestamps must be numbers expressed in seconds on a shared timeline with any consistent zero point; GuideLLM sorts them and converts them to offsets from the first event before scheduling. Date strings are not parsed yet, so provide timestamps as numbers. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
+- **Trace files (`.jsonl`, `.json`, `.csv` or `.parquet` with a supported trace file format)**: Specialized files for replay. Used with `--profile kind=replay` to replay trace events using each row's timestamp and token lengths. Timestamps must be numbers expressed in seconds on a shared timeline with any consistent zero point, except `otel`, which parses ISO-8601 `start_time` values (and unix seconds, milliseconds, or nanoseconds) into epoch seconds. GuideLLM sorts them and converts them to offsets from the first event before scheduling. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
 
   ```json
   {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
@@ -215,6 +215,15 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
     --data kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
+  ```
+
+  `otel` uses the same nested `source` field. Token counts come from span attributes rather than top-level columns:
+
+  ```bash
+  guidellm run \
+    --backend kind=openai_http,target=http://localhost:8000 \
+    --profile kind=replay \
+    --data kind=otel,source.kind=json_file,source.path=synthetic.jsonl
   ```
 
   For replay, `time_scale` on `--data` is a time scale for the intervals between trace events after wait and pack caps. Wait caps (`max_wait`, `max_session_wait`, `min_concurrent_sessions`) are applied in original trace seconds before `time_scale`. Prefer those packing options to raise parallelism; use `copies` to replay the packed dataset sequentially when it is too short for the benchmark. The replay profile also accepts a scheduler-side `time_scale` on `--profile kind=replay`. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. Use `--constraint kind=max_requests,count=<n>` only as a runtime completion constraint; it does not limit the trace rows loaded from the file. `--constraint kind=max_duration,seconds=<n>` also cancels in-flight waits, including replay sleeps.
