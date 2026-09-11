@@ -315,7 +315,7 @@ guidellm run \
 
 Each strategy prints a start line, periodic statistics, and a completion line. Lines include elapsed time, successful/errored/incomplete request counts, request throughput, and output token throughput. They are flushed immediately and contain no terminal cursor controls, so they can be read through `kubectl logs` or a pipe. Periodic lines are emitted on benchmark updates, at most once per `interval` seconds (default: 10); they are not an independent heartbeat if execution stalls. Completion is always printed, including for benchmarks shorter than the interval.
 
-The default remains `--console kind=rich`. `--disable-console-interactive` (legacy alias: `--disable-progress`) suppresses Rich progress but allows an explicitly selected simple display. `--disable-console` suppresses both modes as well as other console output. Console progress does not change the saved result files.
+The default is `--console kind=rich`. `--disable-console-interactive` suppresses Rich progress but allows an explicitly selected simple display. `--disable-console` suppresses both modes as well as other console output. Console progress does not change the saved result files.
 
 ## Authentication
 
