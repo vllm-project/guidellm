@@ -10,7 +10,6 @@ same previous hash ID.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
 from typing import Any
 
 from datasets import Dataset, Features, List, Value
@@ -21,8 +20,8 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.deserializers.trace_common import (
+    SingleTurnTraceFormat,
     TraceDatasetDeserializer,
-    TraceFormatBase,
     TraceFormatRegistry,
     create_distinct_token_block,
     create_prompt_from_hash_ids,
@@ -50,7 +49,7 @@ DatasetDeserializerFactory.register_decorator(TraceDatasetDeserializer, "mooncak
 
 
 @TraceFormatRegistry.register("mooncake")
-class MooncakeTraceFormat(TraceFormatBase):
+class MooncakeTraceFormat(SingleTurnTraceFormat):
     """Mooncake trace format requires a column for timestamps, prompt token counts,
     ouput token counts and lists of hash IDs.
 
@@ -70,9 +69,6 @@ class MooncakeTraceFormat(TraceFormatBase):
 
         self.hash_id_table: dict[int, tuple[int, ...]] = {}
         self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
-
-    def __iter__(self) -> Iterable[Dataset]:
-        yield self.dataset.sort(self.config.timestamp_column)
 
     def required_columns(self) -> Features:
         return Features({self.config.hash_ids_column: List(Value("int32"))})

@@ -16,7 +16,7 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
 )
-from guidellm.schemas.data import MinimalTraceFormatArgs
+from guidellm.schemas.data import MinimalTraceFormatArgs, MooncakeTraceFormatArgs
 from tests.unit.data.deserializers.trace_test_utils import trace_file_source
 
 
@@ -109,7 +109,7 @@ class TestMinimalTraceFormat:
             prompt_tokens_column="input_tokens",
             output_tokens_column="generated_tokens",
         )
-        conv = load_graph_turns(next(iter(ds)))
+        conv = [turn for row in ds for turn in load_graph_turns(row)]
 
         prompt_counts = [2, 4]
         output_counts = [20, 40]
@@ -145,7 +145,7 @@ class TestMinimalTraceFormat:
             processor_factory=lambda: processor,
             random_seed=42,
         )
-        conv = load_graph_turns(next(iter(ds)))
+        conv = [turn for row in ds for turn in load_graph_turns(row)]
 
         assert processor.encode.call_count <= len(prompt_lengths) + 4
         for i, turn in enumerate(conv):
@@ -156,3 +156,47 @@ class TestMinimalTraceFormat:
             actual_length = len(processor.encode(turn.columns["text_column"][0]))
             if actual_length != n_in:
                 pytest.fail(f"{actual_length} != {n_in}")
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("kind", ["trace_synthetic", "mooncake"])
+def test_trace_rows_are_independent_conversations(tmp_path: Path, kind: str) -> None:
+    """Emit independent requests lazily while retaining sorted arrival offsets.
+
+    ## WRITTEN BY AI ##
+    """
+    trace = write_trace(
+        tmp_path,
+        "\n".join(
+            json.dumps(
+                {
+                    "timestamp": timestamp,
+                    "input_length": 4,
+                    "output_length": 2,
+                    "hash_ids": [1],
+                }
+            )
+            for timestamp in [15, 10, 12]
+        ),
+    )
+    config = (
+        MooncakeTraceFormatArgs(source=trace_file_source(trace), hash_id_block_size=4)
+        if kind == "mooncake"
+        else MinimalTraceFormatArgs(source=trace_file_source(trace), max_wait=1.0)
+    )
+    processor = mock_processor()
+    dataset = DatasetDeserializerFactory.deserialize(
+        config=config, processor_factory=lambda: processor, random_seed=42
+    )
+    iterator = iter(dataset)
+    first = load_graph_turns(next(iterator))
+    assert len(first) == 1
+    assert processor.decode.call_count == 1
+    conversations = [first, *(load_graph_turns(row) for row in iterator)]
+    assert len(conversations) == 3
+    assert all(len(turns) == 1 and not turns[0].parents for turns in conversations)
+    assert [
+        turns[0].columns["relative_timestamp_column"][0] for turns in conversations
+    ] == [0, 2, 5]
+    if kind == "mooncake":
+        assert len({turns[0].columns["text_column"][0] for turns in conversations}) == 1
