@@ -371,7 +371,10 @@ class TestWEKATraceFormat:
     def test_trace_row_validation_raises_on_later_conversation(
         self, tmp_path: Path, deserializer
     ):
-        """Missing columns on a later conversation fail when that row is iterated.
+        """A later conversation that omitted hash_ids fails when that row is iterated.
+
+        HuggingFace unifies nested request schemas, so the missing field is
+        ``None`` rather than a missing key.
 
         ## WRITTEN BY AI ##
         """
@@ -385,7 +388,7 @@ class TestWEKATraceFormat:
         ds = self.deserialize(deserializer, trace)
         row_iter = iter(ds)
         next(row_iter)
-        with pytest.raises(KeyError, match="hash_ids"):
+        with pytest.raises(InvalidRowError, match="hash_ids"):
             next(row_iter)
 
     @pytest.mark.regression
