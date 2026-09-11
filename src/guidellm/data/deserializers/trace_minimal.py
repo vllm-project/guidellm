@@ -9,14 +9,12 @@ line with a synthetic prompt matching the requested input_length for replay benc
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-
 from datasets import Dataset, Features
 from faker import Faker
 from transformers import PreTrainedTokenizerBase
 
 from guidellm.data.deserializers.trace_common import (
-    TraceFormatBase,
+    SingleTurnTraceFormat,
     TraceFormatRegistry,
     decode_prompt,
     generate_token_ids,
@@ -28,13 +26,10 @@ __all__ = ["MinimalTraceFormat"]
 
 
 @TraceFormatRegistry.register("trace_synthetic")
-class MinimalTraceFormat(TraceFormatBase):
+class MinimalTraceFormat(SingleTurnTraceFormat):
     def __init__(self, config: MinimalTraceFormatArgs, dataset: Dataset) -> None:
         self.config = config
         self.dataset = dataset
-
-    def __iter__(self) -> Iterable[Dataset]:
-        yield self.dataset.sort(self.config.timestamp_column)
 
     def required_columns(self) -> Features:
         return {}
