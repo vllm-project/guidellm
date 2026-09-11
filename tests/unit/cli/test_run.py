@@ -8,7 +8,6 @@ from click.testing import CliRunner
 from guidellm.__main__ import cli
 from guidellm.benchmark.progress import (
     GenerativeConsoleBenchmarkerProgress,
-    GenerativeSimpleBenchmarkerProgress,
 )
 
 
@@ -193,23 +192,16 @@ def test_run_rejects_duplicate_backend_flags():
 
 @pytest.mark.regression
 @pytest.mark.parametrize(
-    ("options", "expected_type"),
+    "options",
     [
-        ([], GenerativeConsoleBenchmarkerProgress),
-        (["--console", "kind=rich"], GenerativeConsoleBenchmarkerProgress),
-        (["--console", "kind=simple,interval=2"], GenerativeSimpleBenchmarkerProgress),
-        (["--disable-console-interactive"], None),
-        (["--disable-progress"], None),
-        (
-            ["--console", "kind=simple,interval=2", "--disable-console-interactive"],
-            GenerativeSimpleBenchmarkerProgress,
-        ),
-        (["--console", "kind=simple", "--disable-console"], None),
-        (["--console", "kind=rich", "--disable-progress"], None),
+        [],
+        ["--disable-console"],
+        ["--disable-console-interactive"],
+        ["--disable-progress"],
     ],
 )
-def test_console_progress_selection(monkeypatch, options, expected_type):
-    """Preserve default and disable flags while explicitly selecting simple output.
+def test_console_progress_selection(monkeypatch, options):
+    """Keep display flags independent of automatic entrypoint logging.
 
     ## WRITTEN BY AI ##
     """
@@ -230,40 +222,8 @@ def test_console_progress_selection(monkeypatch, options, expected_type):
     )
     assert result.exit_code == 0, result.output
     benchmark.assert_awaited_once()
-    progress = benchmark.call_args.kwargs["progress"]
-    if expected_type is None:
-        assert progress is None
+    display = benchmark.call_args.kwargs["progress"]
+    if options:
+        assert display is None
     else:
-        assert isinstance(progress, expected_type)
-        if isinstance(progress, GenerativeSimpleBenchmarkerProgress):
-            assert progress.interval == 2
-
-
-@pytest.mark.regression
-@pytest.mark.parametrize(
-    "value", ["kind=simple,interval=0", "kind=simple,interval=nan", "kind=unknown"]
-)
-def test_console_invalid_configuration_reports_cli_error(value):
-    """Invalid console settings fail before starting a benchmark.
-
-    ## WRITTEN BY AI ##
-    """
-    result = CliRunner().invoke(cli, ["run", "--console", value])
-    assert result.exit_code == 2
-    assert "--console" in result.output
-
-
-@pytest.mark.regression
-@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
-def test_invalid_log_interval_prevents_benchmark(monkeypatch, value):
-    """Reject invalid intervals before launching the benchmark.
-
-    ## WRITTEN BY AI ##
-    """
-    benchmark = AsyncMock()
-    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
-    result = CliRunner().invoke(cli, ["run", "--log-progress-interval", value])
-    assert result.exit_code != 0
-    assert "--log-progress-interval" in result.output
-    assert "positive and finite" in result.output
-    benchmark.assert_not_awaited()
+        assert isinstance(display, GenerativeConsoleBenchmarkerProgress)

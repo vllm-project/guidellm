@@ -1,4 +1,4 @@
-"""Plain text progress through the real CLI, scheduler, and HTTP backend."""
+"""Automatic progress logging through the real CLI, scheduler, and HTTP backend."""
 
 import json
 import os
@@ -15,8 +15,8 @@ from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 @pytest.mark.regression
 @pytest.mark.timeout(60)
-@pytest.mark.parametrize("mode", ["simple", "rich_logs", "logs_only"])
-def test_simple_progress_with_redirected_stdout(
+@pytest.mark.parametrize("mode", ["rich_logs", "logs_only", "no_interactive"])
+def test_default_progress_logging_without_extra_options(
     server: E2EServer, tmp_path: Path, mode
 ):
     """A real benchmark emits periodic lines and correct final counts into a pipe.
@@ -24,13 +24,11 @@ def test_simple_progress_with_redirected_stdout(
     ## WRITTEN BY AI ##
     """
     log_path = tmp_path / "progress.jsonl"
-    options = (
-        ["--console", "kind=simple,interval=0.5"]
-        if mode == "simple"
-        else ["--log-progress-interval", "0.5"]
-    )
+    options = []
     if mode == "logs_only":
         options.append("--disable-console")
+    elif mode == "no_interactive":
+        options.append("--disable-console-interactive")
     report_path = tmp_path / "benchmarks.json"
     result = subprocess.run(  # noqa: S603
         [
@@ -43,7 +41,7 @@ def test_simple_progress_with_redirected_stdout(
             "--profile",
             "kind=constant,rate=4",
             "--constraint",
-            "kind=max_duration,seconds=3",
+            "kind=max_duration,seconds=12",
             "--data",
             "kind=synthetic_text,prompt_tokens=64,output_tokens=16",
             "--tokenizer",
@@ -67,23 +65,15 @@ def test_simple_progress_with_redirected_stdout(
     )
     assert result.returncode == 0, result.stderr
     assert_no_python_exceptions(result.stderr)
+    records = [json.loads(line)["record"] for line in log_path.read_text().splitlines()]
     lines = [
-        line for line in result.stdout.splitlines() if line.startswith("Benchmark 1 (")
+        record["message"] for record in records if "progress_status" in record["extra"]
     ]
-    if mode != "simple":
-        records = [
-            json.loads(line)["record"] for line in log_path.read_text().splitlines()
-        ]
-        lines = [
-            record["message"]
-            for record in records
-            if "progress_status" in record["extra"]
-        ]
-        assert "Benchmark 1 (" in result.stderr
-        if mode == "rich_logs":
-            assert "Benchmarks" in result.stdout
-        else:
-            assert "Benchmarks" not in result.stdout
+    assert "Benchmark 1 (" in result.stderr
+    if mode == "rich_logs":
+        assert "Benchmarks" in result.stdout
+    else:
+        assert "Benchmarks" not in result.stdout
     assert len(lines) >= 3, result.stdout
     assert ": started |" in lines[0]
     assert ": completed |" in lines[-1]

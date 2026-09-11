@@ -300,22 +300,11 @@ guidellm run \
 
 By default, benchmark results are saved to `benchmarks.json` and `benchmarks.csv`. Specifying `--output` replaces this default selection. See [output configuration](../guides/outputs.md#cli-output-configuration) for examples of selecting formats and [configuring file outputs](../guides/outputs.md#configuring-file-outputs) for default directories and custom paths.
 
-### Progress in containers and redirected logs
+### Progress logging
 
-Use `--console kind=simple,interval=10` to print plain text progress to standard output instead of the interactive Rich display:
+Benchmark progress is logged automatically at INFO, including in non-interactive shells. No extra progress options are needed. Each strategy logs its start, periodic statistics (at most once every ten seconds during updates), and completion. Records include elapsed time, successful/errored/incomplete request counts, and request/output-token throughput. Updates depend on scheduler callbacks and are not an independent heartbeat during a stall.
 
-```bash
-guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --profile kind=synchronous \
-  --constraint kind=max_duration,seconds=60 \
-  --console kind=simple,interval=10
-```
-
-Each strategy prints a start line, periodic statistics, and a completion line. Lines include elapsed time, successful/errored/incomplete request counts, request throughput, and output token throughput. They are flushed immediately and contain no terminal cursor controls, so they can be read through `kubectl logs` or a pipe. Periodic lines are emitted on benchmark updates, at most once per `interval` seconds (default: 10); they are not an independent heartbeat if execution stalls. Completion is always printed, including for benchmarks shorter than the interval.
-
-The default is `--console kind=rich`. `--disable-console-interactive` suppresses Rich progress but allows an explicitly selected simple display. `--disable-console` suppresses both modes as well as other console output. Console progress does not change the saved result files.
+Rich progress continues to work alongside logging. `--disable-console` and `--disable-console-interactive` control displays, not logging. Existing logger levels control which records are emitted. To redirect only logs, use `2>progress.log`; to retain structured file logs, configure `GUIDELLM__LOGGING__LOG_FILE_LEVEL=INFO` and `GUIDELLM__LOGGING__LOG_FILE=progress.jsonl`.
 
 ## Authentication
 
@@ -324,9 +313,3 @@ When benchmarking against servers that require authentication (such as OpenAI's 
 ## Troubleshooting
 
 See the [Troubleshooting guide](../guides/troubleshooting.md) for common issues.
-
-### Logging progress alongside the console
-
-Add `--log-progress-interval 10` to `guidellm run` to emit INFO progress records at most once every ten seconds during benchmark updates. Strategy start and completion are always logged. The Rich display remains enabled by default. Updates use the existing logger and respect its console/file level settings. For example, set `GUIDELLM__LOGGING__LOG_FILE_LEVEL=INFO` and `GUIDELLM__LOGGING__LOG_FILE=progress.jsonl` to retain structured file logs.
-
-Progress logging is independent of `--disable-console` and `--disable-console-interactive`; these flags control displays, not log handlers. The interval must be positive and finite. Logs are emitted by progress callbacks, not a background heartbeat, so a stalled callback produces no periodic record.

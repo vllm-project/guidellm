@@ -1,5 +1,4 @@
 from guidellm.benchmark import (
-    GenerativeBenchmarkerProgress,
     GenerativeConsoleBenchmarkerProgress,
     GenerativeLoggingBenchmarkerProgress,
     benchmark_generative_text,
@@ -9,7 +8,6 @@ from guidellm.data import process_dataset
 from guidellm.mock_server import MockServer
 
 __all__ = [
-    "GenerativeBenchmarkerProgress",
     "GenerativeConsoleBenchmarkerProgress",
     "GenerativeLoggingBenchmarkerProgress",
     "MockServer",
