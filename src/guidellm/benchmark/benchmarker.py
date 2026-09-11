@@ -10,9 +10,10 @@ singleton operations for consistent state management across concurrent workflows
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from abc import ABC
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from typing import Generic
 
 from guidellm.benchmark.profiles import Profile
@@ -67,7 +68,7 @@ class Benchmarker(
         sample_size: int | None = None,
         prefer_response_metrics: bool = True,
         progress: (
-            BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT] | None
+            list[BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT]] | None
         ) = None,
         slo: GoodputSLO | None = None,
     ) -> AsyncIterator[BenchmarkT]:
@@ -87,100 +88,120 @@ class Benchmarker(
             None keeps all, 0 strips all, N > 0 uses reservoir sampling.
         :param prefer_response_metrics: Whether to prefer response metrics over
             request metrics, defaults to True
-        :param progress: Optional tracker for benchmark lifecycle events
+        :param progress: Independent trackers notified concurrently for lifecycle events
         :param slo: Per-request latency objectives defining which requests count
             toward goodput, or None to disable goodput measurement
         :yield: Compiled benchmark result for each strategy execution
         :raises Exception: If benchmark execution or compilation fails
         """
+        trackers = list(progress or [])
         with self.thread_lock:
-            if progress:
-                await progress.on_initialize(profile)
-
-            run_id = str(uuid.uuid4())
-            strategies_generator = profile.strategies_generator()
-            strategy: SchedulingStrategy | None
-            constraints: dict[str, Constraint] | None
-            strategy, constraints = next(strategies_generator)
-
-            while strategy is not None:
-                logger.info("Starting benchmark for strategy: {}", strategy)
-                if progress:
-                    await progress.on_benchmark_start(strategy)
-
-                config = BenchmarkConfig(
-                    run_id=run_id,
-                    run_index=len(profile.completed_strategies),
-                    strategy=strategy,
-                    constraints=(
-                        {
-                            key: InfoMixin.extract_from_obj(val)
-                            for key, val in constraints.items()
-                        }
-                        if isinstance(constraints, dict)
-                        else {"constraint": InfoMixin.extract_from_obj(constraints)}
-                        if constraints
-                        else {}
-                    ),
-                    sample_size=sample_size,
-                    warmup=warmup,
-                    cooldown=cooldown,
-                    prefer_response_metrics=prefer_response_metrics,
-                    slo=slo,
-                    profile=InfoMixin.extract_from_obj(profile),
-                    requests=InfoMixin.extract_from_obj(requests),
-                    backend=InfoMixin.extract_from_obj(backend),
-                    environment=InfoMixin.extract_from_obj(environment),
+            try:
+                await _notify_progress(
+                    *(tracker.on_initialize(profile) for tracker in trackers)
                 )
-                accumulator = accumulator_class(config=config)
-                scheduler_state = None
-                scheduler: Scheduler[RequestT, ResponseT] = Scheduler()
 
-                async for (
-                    response,
-                    request,
-                    request_info,
-                    scheduler_state,
-                ) in scheduler.run(
-                    requests=requests,
-                    backend=backend,
-                    strategy=strategy,
-                    env=environment,
-                    **constraints or {},
-                ):
-                    try:
-                        accumulator.update_estimate(
-                            response,
-                            request,
-                            request_info,
-                            scheduler_state,
-                        )
-                        if progress:
-                            await progress.on_benchmark_update(
-                                accumulator, scheduler_state
+                run_id = str(uuid.uuid4())
+                strategies_generator = profile.strategies_generator()
+                strategy: SchedulingStrategy | None
+                constraints: dict[str, Constraint] | None
+                strategy, constraints = next(strategies_generator)
+
+                while strategy is not None:
+                    logger.info("Starting benchmark for strategy: {}", strategy)
+                    await _notify_progress(
+                        *(tracker.on_benchmark_start(strategy) for tracker in trackers)
+                    )
+
+                    config = BenchmarkConfig(
+                        run_id=run_id,
+                        run_index=len(profile.completed_strategies),
+                        strategy=strategy,
+                        constraints=(
+                            {
+                                key: InfoMixin.extract_from_obj(val)
+                                for key, val in constraints.items()
+                            }
+                            if isinstance(constraints, dict)
+                            else {"constraint": InfoMixin.extract_from_obj(constraints)}
+                            if constraints
+                            else {}
+                        ),
+                        sample_size=sample_size,
+                        warmup=warmup,
+                        cooldown=cooldown,
+                        prefer_response_metrics=prefer_response_metrics,
+                        slo=slo,
+                        profile=InfoMixin.extract_from_obj(profile),
+                        requests=InfoMixin.extract_from_obj(requests),
+                        backend=InfoMixin.extract_from_obj(backend),
+                        environment=InfoMixin.extract_from_obj(environment),
+                    )
+                    accumulator = accumulator_class(config=config)
+                    scheduler_state = None
+                    scheduler: Scheduler[RequestT, ResponseT] = Scheduler()
+
+                    async for (
+                        response,
+                        request,
+                        request_info,
+                        scheduler_state,
+                    ) in scheduler.run(
+                        requests=requests,
+                        backend=backend,
+                        strategy=strategy,
+                        env=environment,
+                        **constraints or {},
+                    ):
+                        try:
+                            accumulator.update_estimate(
+                                response,
+                                request,
+                                request_info,
+                                scheduler_state,
                             )
-                    except Exception as err:  # noqa: BLE001
-                        logger.error(
-                            "Error updating benchmark estimate/progress: {}", err
+                            await _notify_progress(
+                                *(
+                                    tracker.on_benchmark_update(
+                                        accumulator, scheduler_state
+                                    )
+                                    for tracker in trackers
+                                )
+                            )
+                        except Exception as err:  # noqa: BLE001
+                            logger.error(
+                                "Error updating benchmark estimate/progress: {}", err
+                            )
+
+                    benchmark = benchmark_class.compile(
+                        accumulator=accumulator,
+                        scheduler_state=scheduler_state,  # type: ignore[arg-type]
+                    )
+                    logger.info("Benchmark complete for strategy: {}", strategy)
+
+                    await _notify_progress(
+                        *(
+                            tracker.on_benchmark_complete(benchmark)
+                            for tracker in trackers
                         )
+                    )
 
-                benchmark = benchmark_class.compile(
-                    accumulator=accumulator,
-                    scheduler_state=scheduler_state,  # type: ignore[arg-type]
-                )
-                logger.info("Benchmark complete for strategy: {}", strategy)
+                    yield benchmark
 
-                if progress:
-                    await progress.on_benchmark_complete(benchmark)
+                    try:
+                        strategy, constraints = strategies_generator.send(benchmark)
+                    except StopIteration:
+                        strategy = None
+                        constraints = None
 
-                yield benchmark
+                logger.info("All benchmarks finalized")
+            finally:
+                await _notify_progress(*(tracker.on_finalize() for tracker in trackers))
 
-                try:
-                    strategy, constraints = strategies_generator.send(benchmark)
-                except StopIteration:
-                    strategy = None
-                    constraints = None
 
-            logger.info("All benchmarks finalized")
-            if progress:
-                await progress.on_finalize()
+async def _notify_progress(*callbacks: Awaitable[None]) -> None:
+    """Finish every callback before propagating the first lifecycle failure."""
+    results = await asyncio.gather(*callbacks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result

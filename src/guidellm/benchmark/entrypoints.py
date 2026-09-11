@@ -550,7 +550,10 @@ async def benchmark_generative_text(
         backend=backend,
         profile=profile,
         environment=NonDistributedEnvironment(),
-        progress=GenerativeLoggingBenchmarkerProgress(display=progress),
+        progress=[
+            GenerativeLoggingBenchmarkerProgress(),
+            *([progress] if progress else []),
+        ],
         sample_size=metrics_args.sample_size,
         warmup=warmup,
         cooldown=cooldown,

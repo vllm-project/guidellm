@@ -1,5 +1,6 @@
 """Tests for default benchmark logging and Rich progress."""
 
+import asyncio
 import sys
 from io import StringIO
 
@@ -90,20 +91,28 @@ async def test_logs_are_periodic_with_or_without_rich(
     output = StringIO()
     if display:
         display.console = Console(file=output, force_terminal=True, width=120)
-    progress = GenerativeLoggingBenchmarkerProgress(interval=10, display=display)
+    progress = GenerativeLoggingBenchmarkerProgress(interval=10)
+    trackers = [progress, *([display] if display else [])]
     profile = ProfileFactory.create(SynchronousProfileArgs(), random_seed=0)
     state = SchedulerState(successful_requests=12, errored_requests=2)
     try:
-        await progress.on_initialize(profile)
-        await progress.on_benchmark_start(SynchronousStrategy())
+        await asyncio.gather(*(p.on_initialize(profile) for p in trackers))
+        await asyncio.gather(
+            *(p.on_benchmark_start(SynchronousStrategy()) for p in trackers)
+        )
         for timestamp in (100.0, 101.0, 109.9, 110.0):
             now[0] = timestamp
-            await progress.on_benchmark_update(accumulator, state)
-        await progress.on_benchmark_complete(
-            GenerativeBenchmark.compile(accumulator, state)
+            await asyncio.gather(
+                *(p.on_benchmark_update(accumulator, state) for p in trackers)
+            )
+        await asyncio.gather(
+            *(
+                p.on_benchmark_complete(GenerativeBenchmark.compile(accumulator, state))
+                for p in trackers
+            )
         )
     finally:
-        await progress.on_finalize()
+        await asyncio.gather(*(p.on_finalize() for p in trackers))
         progress_module.logger.remove(sink)
     assert [r["extra"]["progress_status"] for r in records] == [
         "started",
@@ -146,16 +155,24 @@ async def test_queued_logs_share_rich_terminal(monkeypatch, accumulator):
         format="{message}",
         filter=lambda record: "progress_status" in record["extra"],
     )
-    progress = GenerativeLoggingBenchmarkerProgress(display=display)
+    progress = GenerativeLoggingBenchmarkerProgress()
+    trackers = [progress, *([display] if display else [])]
     profile = ProfileFactory.create(SynchronousProfileArgs(), random_seed=0)
     try:
-        await progress.on_initialize(profile)
-        await progress.on_benchmark_start(SynchronousStrategy())
-        await progress.on_benchmark_complete(
-            GenerativeBenchmark.compile(accumulator, SchedulerState())
+        await asyncio.gather(*(p.on_initialize(profile) for p in trackers))
+        await asyncio.gather(
+            *(p.on_benchmark_start(SynchronousStrategy()) for p in trackers)
+        )
+        await asyncio.gather(
+            *(
+                p.on_benchmark_complete(
+                    GenerativeBenchmark.compile(accumulator, SchedulerState())
+                )
+                for p in trackers
+            )
         )
     finally:
-        await progress.on_finalize()
+        await asyncio.gather(*(p.on_finalize() for p in trackers))
         progress_module.logger.remove(sink)
     assert "Benchmarks" in output.getvalue()
     assert ": started |" in output.getvalue()
