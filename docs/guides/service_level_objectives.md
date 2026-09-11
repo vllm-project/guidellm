@@ -97,6 +97,31 @@ This category includes use cases where maximizing throughput is the primary conc
 - **SLOs**:
   - Maximize Throughput: ≥ 150 requests per second
 
+## Measuring Against These Objectives
+
+The targets above are stated as a threshold plus a share of requests, for example "TTFT ≤ 200ms for 99% of requests". GuideLLM measures both parts directly.
+
+### Declaring Objectives
+
+Objectives are set on `--metrics`. Each is a per-request threshold in milliseconds, and a request conforms only when it meets all of them:
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=concurrent,streams=32 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --metrics '{"kind":"generative","slo":{"ttft_ms":200,"tpot_ms":50}}' \
+  --constraint kind=max_duration,seconds=120
+```
+
+| Objective | Compared against    | Notes                                                                                                                                                                                                                                                                                                        |
+| --------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ttft_ms` | Time to First Token | Requires a streaming backend                                                                                                                                                                                                                                                                                 |
+| `tpot_ms` | Inter-Token Latency | Excludes the first token. This is not GuideLLM's Time Per Output Token, which includes it. It is the closest metric to vLLM's `tpot`, though not identical: vLLM measures to request completion, inter-token latency to the last token received. Requests producing one token or fewer are left undetermined |
+| `e2el_ms` | Request Latency     | Works with streaming and non-streaming backends                                                                                                                                                                                                                                                              |
+
+Two metrics are then reported: SLO attainment, the share of requests meeting every objective, and request goodput, the rate of those conforming requests. Errored requests count against attainment, since a request that failed did not deliver a response within its objective. Requests cancelled when the run hits its duration limit are excluded, since the run ended them rather than the server. An objective naming a metric the workload cannot measure, such as `ttft_ms` against a non-streaming backend, leaves every request undetermined and both metrics are reported as unset rather than zero.
+
 ## Conclusion
 
 Setting appropriate SLOs and SLAs is essential for optimizing LLM deployments to meet user expectations and business requirements. By balancing latency, throughput, and cost efficiency, organizations can ensure high-quality service while minimizing operational costs. The examples provided above serve as a starting point for defining SLOs and SLAs tailored to specific use cases.

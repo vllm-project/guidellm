@@ -9,6 +9,11 @@ benchmarks.json
 benchmarks.yaml
 benchmarks.csv
 benchmarks.html
+benchmarks.png
+benchmarks.jpg
+benchmarks.jpeg
+benchmarks.svg
+benchmarks.pdf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

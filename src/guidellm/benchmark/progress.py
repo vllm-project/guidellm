@@ -42,7 +42,7 @@ from guidellm.schemas.benchmark.progress import (
     RichBenchmarkProgressArgs,
     SimpleBenchmarkProgressArgs,
 )
-from guidellm.utils.console import Colors
+from guidellm.utils.console import Colors, stderr_eq_stdout
 from guidellm.utils.functions import safe_format_timestamp
 from guidellm.utils.registry import RegistryMixin
 from guidellm.utils.text import format_value_display
@@ -183,7 +183,8 @@ class GenerativeConsoleBenchmarkerProgress(GenerativeBenchmarkerProgress, Live):
             refresh_per_second=4,
             auto_refresh=True,
             redirect_stdout=True,
-            redirect_stderr=True,
+            # Only redirect stderr if it would interfere with stdout display
+            redirect_stderr=stderr_eq_stdout(),
         )
         self.display_scheduler_stats: bool = display_scheduler_stats
         self.run_progress: Progress | None = None

@@ -223,6 +223,8 @@ def test_console_progress_selection(monkeypatch, options, expected_type):
             "kind=openai_http,target=http://localhost:8000",
             "--data",
             "kind=synthetic_text,prompt_tokens=8",
+            "--profile",
+            "kind=constant,rate=1",
             *options,
         ],
     )

@@ -32,6 +32,7 @@ from guidellm.schemas import (
     standard_model_config,
 )
 from guidellm.schemas.backends import BackendArgs
+from guidellm.schemas.benchmark.goodput import GoodputSLO
 from guidellm.schemas.benchmark.outputs import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.profiles import ProfileArgs
 from guidellm.schemas.benchmark.random import RandomArgs
@@ -134,6 +135,14 @@ class GenerativeMetricsArgs(MetricsArgs):
             "when both are available."
         ),
     )
+    slo: GoodputSLO | None = Field(
+        default=None,
+        description=(
+            "Per-request latency objectives defining which requests count "
+            "toward goodput. None disables goodput measurement."
+        ),
+        examples=[None, {"ttft_ms": 2000, "tpot_ms": 100}],
+    )
 
 
 class BenchmarkArgs(ReloadableBaseModel):
@@ -155,7 +164,6 @@ class BenchmarkArgs(ReloadableBaseModel):
         json_schema_extra={"argument_alias": "backend"},
     )
     profile: ProfileArgs = Field(  # type: ignore[assignment]
-        default_factory=lambda: default_kind("sweep"),
         description="Profile configuration to control benchmark execution.",
         examples=[{"kind": "sweep", "sweep_size": [10.0]}],
         json_schema_extra={"argument_alias": "profile"},
