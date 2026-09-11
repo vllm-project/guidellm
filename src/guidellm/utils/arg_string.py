@@ -67,12 +67,16 @@ class ArgStringParser:
 
         :param skip_invalid: If True, skips invalid key=value pairs rather than raising
         :param fill_value: Callable that returns fill value for sparse lists.
-            Defaults to lambda: None.
+            Called separately for each fill position. Defaults to lambda: None.
         :param allow_overwrite: If True, allows overwriting existing values.
             Defaults to False, which raises an error on overwrites.
         """
         self.skip_invalid = skip_invalid
-        self.fill_value = fill_value() if fill_value is not None else None
+        self._fill_value_factory = (
+            fill_value if fill_value is not None else lambda: None
+        )
+        # Keep a separate reference value for the existing overwrite checks.
+        self.fill_value = self._fill_value_factory()
         self.allow_overwrite = allow_overwrite
         self.key_delimiter = key_delimiter
         self.split_delimiter = split_delimiter
@@ -250,7 +254,7 @@ class ArgStringParser:
         :param index: The minimum index that must be accessible
         """
         while len(lst) <= index:
-            lst.append(self.fill_value)
+            lst.append(self._fill_value_factory())
 
     def _list_set_value(
         self,
