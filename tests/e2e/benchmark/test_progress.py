@@ -1,5 +1,6 @@
 """Plain text progress through the real CLI, scheduler, and HTTP backend."""
 
+import json
 import os
 import subprocess
 import sys
@@ -14,11 +15,22 @@ from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 @pytest.mark.regression
 @pytest.mark.timeout(60)
-def test_simple_progress_with_redirected_stdout(server: E2EServer, tmp_path: Path):
+@pytest.mark.parametrize("mode", ["simple", "rich_logs", "logs_only"])
+def test_simple_progress_with_redirected_stdout(
+    server: E2EServer, tmp_path: Path, mode
+):
     """A real benchmark emits periodic lines and correct final counts into a pipe.
 
     ## WRITTEN BY AI ##
     """
+    log_path = tmp_path / "progress.jsonl"
+    options = (
+        ["--console", "kind=simple,interval=0.5"]
+        if mode == "simple"
+        else ["--log-progress-interval", "0.5"]
+    )
+    if mode == "logs_only":
+        options.append("--disable-console")
     report_path = tmp_path / "benchmarks.json"
     result = subprocess.run(  # noqa: S603
         [
@@ -38,14 +50,15 @@ def test_simple_progress_with_redirected_stdout(server: E2EServer, tmp_path: Pat
             f"kind=huggingface_auto,model={MINIMAL_TOKENIZER_DIR}",
             "--output",
             f"kind=json,path={report_path}",
-            "--console",
-            "kind=simple,interval=0.5",
+            *options,
         ],
         capture_output=True,
         text=True,
         timeout=45,
         env={
             **os.environ,
+            "GUIDELLM__LOGGING__LOG_FILE": str(log_path),
+            "GUIDELLM__LOGGING__LOG_FILE_LEVEL": "INFO",
             "HF_HUB_OFFLINE": "1",
             "TRANSFORMERS_OFFLINE": "1",
             "HF_DATASETS_OFFLINE": "1",
@@ -57,6 +70,20 @@ def test_simple_progress_with_redirected_stdout(server: E2EServer, tmp_path: Pat
     lines = [
         line for line in result.stdout.splitlines() if line.startswith("Benchmark 1 (")
     ]
+    if mode != "simple":
+        records = [
+            json.loads(line)["record"] for line in log_path.read_text().splitlines()
+        ]
+        lines = [
+            record["message"]
+            for record in records
+            if "progress_status" in record["extra"]
+        ]
+        assert "Benchmark 1 (" in result.stderr
+        if mode == "rich_logs":
+            assert "Benchmarks" in result.stdout
+        else:
+            assert "Benchmarks" not in result.stdout
     assert len(lines) >= 3, result.stdout
     assert ": started |" in lines[0]
     assert ": completed |" in lines[-1]

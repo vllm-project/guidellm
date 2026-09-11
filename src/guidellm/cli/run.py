@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from math import isfinite
 from pathlib import Path
 
 import click
@@ -96,11 +97,17 @@ __all__ = [
         "Disable all outputs to the console (updates, interactive progress, results)."
     ),
 )
+@click.option(
+    "--log-progress-interval",
+    type=float,
+    default=None,
+    help="Log progress at INFO every N seconds, independently of the console.",
+)
 @registry_option(
     "--console",
     "console_progress",
     registry=BenchmarkProgressArgs,
-    help="Progress display (default: kind=rich). For logs: kind=simple,interval=10.",
+    help="Display: kind=rich (default), or kind=simple,interval=10 for plain stdout.",
 )
 @click.option(
     "--disable-console-interactive",
@@ -114,6 +121,11 @@ def run(**kwargs):  # noqa: C901, PLR0915
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(ctx, **kwargs)
 
+    log_interval = kwargs.pop("log_progress_interval", None)
+    if log_interval is not None and (not isfinite(log_interval) or log_interval <= 0):
+        raise click.BadParameter(
+            "must be positive and finite", param_hint="--log-progress-interval"
+        )
     disable_console = kwargs.pop("disable_console", False)
     disable_console_interactive = (
         kwargs.pop("disable_console_interactive", False) or disable_console
@@ -173,7 +185,13 @@ def run(**kwargs):  # noqa: C901, PLR0915
     asyncio.run(
         entry.benchmark_generative_text(
             args=args,
-            progress=progress,
+            progress=(
+                entry.GenerativeLoggingBenchmarkerProgress(
+                    log_interval, display=progress
+                )
+                if log_interval is not None
+                else progress
+            ),
             console=console,
         )
     )

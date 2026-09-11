@@ -12,9 +12,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from math import isfinite
 from time import monotonic
 from typing import Any, ClassVar, Generic, Literal
 
+from loguru import logger
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
@@ -51,6 +53,7 @@ __all__ = [
     "BenchmarkerProgress",
     "GenerativeBenchmarkerProgress",
     "GenerativeConsoleBenchmarkerProgress",
+    "GenerativeLoggingBenchmarkerProgress",
     "GenerativeSimpleBenchmarkerProgress",
 ]
 
@@ -397,6 +400,122 @@ class GenerativeSimpleBenchmarkerProgress(GenerativeBenchmarkerProgress):
             markup=False,
             highlight=False,
             soft_wrap=True,
+        )
+        self._last_update = now
+
+
+class GenerativeLoggingBenchmarkerProgress(
+    BenchmarkerProgress[GenerativeBenchmarkAccumulator, GenerativeBenchmark]
+):
+    """Log interval-limited progress alongside an optional display."""
+
+    def __init__(
+        self,
+        interval: float = 10.0,
+        display: BenchmarkerProgress[
+            GenerativeBenchmarkAccumulator, GenerativeBenchmark
+        ]
+        | None = None,
+    ):
+        """
+        Initialize independent progress logging.
+
+        :param interval: Positive finite minimum seconds between periodic records
+        :param display: Optional display receiving the same lifecycle events
+        :raises ValueError: If the interval is not positive and finite
+        """
+        super().__init__()
+        if not isfinite(interval) or interval <= 0:
+            raise ValueError("Progress log interval must be positive and finite")
+        self.interval = interval
+        self.display = display
+        self._state: _GenerativeProgressTaskState | None = None
+        self._index = 0
+        self._started_at = 0.0
+        self._last_update = 0.0
+
+    async def on_initialize(self, profile: Profile):
+        """
+        Reset logging and initialize the display.
+
+        :param profile: Benchmark profile
+        """
+        self._index = 0
+        self._state = None
+        if self.display:
+            await self.display.on_initialize(profile)
+
+    async def on_benchmark_start(self, strategy: SchedulingStrategy):
+        """
+        Log strategy start immediately.
+
+        :param strategy: Strategy being executed
+        """
+        if self.display:
+            await self.display.on_benchmark_start(strategy)
+        self._index += 1
+        self._state = _GenerativeProgressTaskState(strategy_type=strategy.type_)
+        self._state.start(strategy)
+        self._started_at = monotonic()
+        self._log_update("started")
+
+    async def on_benchmark_update(
+        self,
+        accumulator: GenerativeBenchmarkAccumulator,
+        scheduler_state: SchedulerState,
+    ):
+        """
+        Update the display and periodically log current metrics.
+
+        :param accumulator: Accumulated benchmark metrics
+        :param scheduler_state: Scheduler counters and progress
+        """
+        if self.display:
+            await self.display.on_benchmark_update(accumulator, scheduler_state)
+        if self._state and monotonic() - self._last_update >= self.interval:
+            self._state.update(accumulator, scheduler_state)
+            self._log_update(self._state.benchmark_status)
+
+    async def on_benchmark_complete(self, benchmark: GenerativeBenchmark):
+        """
+        Log final metrics regardless of the interval.
+
+        :param benchmark: Completed result
+        """
+        if self.display:
+            await self.display.on_benchmark_complete(benchmark)
+        if self._state:
+            self._state.complete(benchmark)
+            self._log_update("completed")
+            self._state = None
+
+    async def on_finalize(self):
+        """Drain queued logs before the display restores terminal streams."""
+        self._state = None
+        try:
+            await logger.complete()
+        finally:
+            if self.display:
+                await self.display.on_finalize()
+
+    def _log_update(self, status: str):
+        if self._state is None:
+            return
+        state = self._state
+        now = monotonic()
+        logger.bind(benchmark_index=self._index, progress_status=status).info(
+            "Benchmark {} ({}): {} | elapsed={:.1f}s | "
+            "successful={} errored={} incomplete={} | "
+            "requests/s={:.2f} output_tokens/s={:.2f}",
+            self._index,
+            state.strategy,
+            status,
+            now - self._started_at,
+            state.successful_requests,
+            state.errored_requests,
+            state.cancelled_requests,
+            state.requests_per_second,
+            state.output_tokens_rate,
         )
         self._last_update = now
 

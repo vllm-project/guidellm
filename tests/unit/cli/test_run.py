@@ -251,3 +251,19 @@ def test_console_invalid_configuration_reports_cli_error(value):
     result = CliRunner().invoke(cli, ["run", "--console", value])
     assert result.exit_code == 2
     assert "--console" in result.output
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("value", ["0", "-1", "nan", "inf"])
+def test_invalid_log_interval_prevents_benchmark(monkeypatch, value):
+    """Reject invalid intervals before launching the benchmark.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = AsyncMock()
+    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
+    result = CliRunner().invoke(cli, ["run", "--log-progress-interval", value])
+    assert result.exit_code != 0
+    assert "--log-progress-interval" in result.output
+    assert "positive and finite" in result.output
+    benchmark.assert_not_awaited()

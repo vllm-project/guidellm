@@ -324,3 +324,9 @@ When benchmarking against servers that require authentication (such as OpenAI's 
 ## Troubleshooting
 
 See the [Troubleshooting guide](../guides/troubleshooting.md) for common issues.
+
+### Logging progress alongside the console
+
+Add `--log-progress-interval 10` to `guidellm run` to emit INFO progress records at most once every ten seconds during benchmark updates. Strategy start and completion are always logged. The Rich display remains enabled by default. Updates use the existing logger and respect its console/file level settings. For example, set `GUIDELLM__LOGGING__LOG_FILE_LEVEL=INFO` and `GUIDELLM__LOGGING__LOG_FILE=progress.jsonl` to retain structured file logs.
+
+Progress logging is independent of `--disable-console` and `--disable-console-interactive`; these flags control displays, not log handlers. The interval must be positive and finite. Logs are emitted by progress callbacks, not a background heartbeat, so a stalled callback produces no periodic record.

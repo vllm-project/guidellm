@@ -36,6 +36,7 @@ from .progress import (
     BenchmarkerProgress,
     GenerativeBenchmarkerProgress,
     GenerativeConsoleBenchmarkerProgress,
+    GenerativeLoggingBenchmarkerProgress,
     GenerativeSimpleBenchmarkerProgress,
 )
 from .schemas import (
@@ -90,6 +91,7 @@ __all__ = [
     "GenerativeBenchmarksReport",
     "GenerativeConsoleBenchmarkerProgress",
     "GenerativeImageMetricsSummary",
+    "GenerativeLoggingBenchmarkerProgress",
     "GenerativeMetrics",
     "GenerativeMetricsAccumulator",
     "GenerativeMetricsSummary",

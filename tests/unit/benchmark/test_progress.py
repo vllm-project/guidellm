@@ -1,5 +1,6 @@
 """Tests for plain text benchmark progress."""
 
+import sys
 from io import StringIO
 
 import pytest
@@ -9,6 +10,7 @@ from guidellm.benchmark import progress as progress_module
 from guidellm.benchmark.profiles import ProfileFactory
 from guidellm.benchmark.progress import (
     GenerativeConsoleBenchmarkerProgress,
+    GenerativeLoggingBenchmarkerProgress,
     GenerativeSimpleBenchmarkerProgress,
 )
 from guidellm.benchmark.schemas import (
@@ -154,3 +156,98 @@ async def test_rich_lifecycle_still_renders(accumulator):
             await progress.on_finalize()
     assert "Benchmarks" in captured.get()
     assert progress.tasks_progress is None
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_rich", [True, False])
+async def test_logs_are_periodic_with_or_without_rich(
+    monkeypatch, accumulator, with_rich
+):
+    """Keep Rich rendering and queued log records independent.
+
+    ## WRITTEN BY AI ##
+    """
+    now = [100.0]
+    monkeypatch.setattr(progress_module, "monotonic", lambda: now[0])
+    records = []
+    sink = progress_module.logger.add(
+        lambda message: records.append(message.record),
+        enqueue=True,
+        filter=lambda record: "progress_status" in record["extra"],
+    )
+    display = GenerativeConsoleBenchmarkerProgress() if with_rich else None
+    output = StringIO()
+    if display:
+        display.console = Console(file=output, force_terminal=True, width=120)
+    progress = GenerativeLoggingBenchmarkerProgress(interval=10, display=display)
+    profile = ProfileFactory.create(SynchronousProfileArgs(), random_seed=0)
+    state = SchedulerState(successful_requests=12, errored_requests=2)
+    try:
+        await progress.on_initialize(profile)
+        await progress.on_benchmark_start(SynchronousStrategy())
+        for timestamp in (100.0, 101.0, 109.9, 110.0):
+            now[0] = timestamp
+            await progress.on_benchmark_update(accumulator, state)
+        await progress.on_benchmark_complete(
+            GenerativeBenchmark.compile(accumulator, state)
+        )
+    finally:
+        await progress.on_finalize()
+        progress_module.logger.remove(sink)
+    assert [r["extra"]["progress_status"] for r in records] == [
+        "started",
+        "active",
+        "completed",
+    ]
+    assert "successful=12 errored=2" in records[1]["message"]
+    assert "elapsed=10.0s" in records[1]["message"]
+    if display:
+        assert "Benchmarks" in output.getvalue()
+        assert display.tasks_progress is None
+
+
+@pytest.mark.sanity
+@pytest.mark.parametrize("interval", [0, -1, float("nan"), float("inf")])
+def test_invalid_log_intervals(interval):
+    """Reject non-finite or non-positive logging intervals.
+
+    ## WRITTEN BY AI ##
+    """
+    with pytest.raises(ValueError):
+        GenerativeLoggingBenchmarkerProgress(interval=interval)
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_queued_logs_share_rich_terminal(monkeypatch, accumulator):
+    """Queued stderr records coexist with Rich and restore its stream on exit.
+
+    ## WRITTEN BY AI ##
+    """
+    output = StringIO()
+    monkeypatch.setattr(sys, "stderr", output)
+    monkeypatch.setattr(progress_module, "stderr_eq_stdout", lambda: True)
+    display = GenerativeConsoleBenchmarkerProgress()
+    display.console = Console(file=output, force_terminal=True, width=160)
+    sink = progress_module.logger.add(
+        lambda message: sys.stderr.write(str(message)),
+        enqueue=True,
+        format="{message}",
+        filter=lambda record: "progress_status" in record["extra"],
+    )
+    progress = GenerativeLoggingBenchmarkerProgress(display=display)
+    profile = ProfileFactory.create(SynchronousProfileArgs(), random_seed=0)
+    try:
+        await progress.on_initialize(profile)
+        await progress.on_benchmark_start(SynchronousStrategy())
+        await progress.on_benchmark_complete(
+            GenerativeBenchmark.compile(accumulator, SchedulerState())
+        )
+    finally:
+        await progress.on_finalize()
+        progress_module.logger.remove(sink)
+    assert "Benchmarks" in output.getvalue()
+    assert ": started |" in output.getvalue()
+    assert ": completed |" in output.getvalue()
+    assert sys.stderr is output
