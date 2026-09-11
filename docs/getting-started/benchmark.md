@@ -89,12 +89,13 @@ Constraints control when each strategy in a profile stops. Add one or more `--co
 | ----------------------- | ------------------------ | --------------------------------------------------------------- |
 | `max_duration`          | `max_duration` (seconds) | `--constraint kind=max_duration,seconds=30`                     |
 | `max_requests`          | `max_num`                | `--constraint kind=max_requests,count=1000`                     |
+| `min_requests`          | `count`                  | `--constraint kind=min_requests,count=1000`                     |
 | `max_errors`            | `max_errors`             | `--constraint kind=max_errors,count=10`                         |
 | `max_error_rate`        | `max_error_rate`         | `--constraint kind=max_error_rate,rate=0.05`                    |
 | `max_global_error_rate` | `max_global_error_rate`  | `--constraint kind=max_global_error_rate,rate=0.05`             |
 | `over_saturation`       | detection parameters     | `--constraint kind=over_saturation,min_seconds=30,mode=enforce` |
 
-For example, `--constraint kind=max_requests,count=1000` with `--profile kind=sweep` runs up to 1000 requests for each strategy in the sweep (synchronous, throughput, and each interpolated rate). `--constraint kind=max_duration,seconds=30` with `--profile '{"kind":"concurrent","streams":[10,20]}'` runs 10 concurrent streams for 30 seconds, then 20 concurrent streams for 30 seconds.
+For example, `--constraint kind=max_requests,count=1000` with `--profile kind=sweep` runs up to 1000 requests for each strategy in the sweep (synchronous, throughput, and each interpolated rate). `--constraint kind=min_requests,count=1000` is like `max_requests`, but keeps queuing until 1000 requests have been processed, which avoids throughput tail-off at the end of rate-based benchmarks. `--constraint kind=max_duration,seconds=30` with `--profile '{"kind":"concurrent","streams":[10,20]}'` runs 10 concurrent streams for 30 seconds, then 20 concurrent streams for 30 seconds.
 
 See [Over-Saturation Stopping](../guides/over_saturation_stopping.md) for over-saturation constraint details.
 

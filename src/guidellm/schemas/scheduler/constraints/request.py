@@ -16,6 +16,7 @@ from guidellm.schemas.scheduler.constraints.args import (
 __all__ = [
     "MaxDurationConstraintArgs",
     "MaxRequestsConstraintArgs",
+    "MinRequestsConstraintArgs",
 ]
 
 
@@ -54,4 +55,25 @@ class MaxRequestsConstraintArgs(ConstraintArgs):
     )
     count: PositiveNumOrList = Field(
         description="Maximum number of requests before stopping execution",
+    )
+
+
+@ConstraintArgs.register("min_requests")
+class MinRequestsConstraintArgs(ConstraintArgs):
+    """
+    Arguments for minimum processed request count constraint.
+
+    Stops execution once the given number of requests have been processed.
+    Unlike ``max_requests``, queuing continues until processing reaches the
+    limit, which avoids throughput tail-off at the end of a benchmark.
+
+    :cvar kind: Always "min_requests"
+    """
+
+    kind: Literal["min_requests"] = Field(
+        default="min_requests",
+        description="Constraint type discriminator",
+    )
+    count: PositiveNumOrList = Field(
+        description="Number of processed requests required before stopping execution",
     )

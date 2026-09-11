@@ -15,6 +15,7 @@ from guidellm.scheduler.constraints.error import (
 from guidellm.scheduler.constraints.request import (
     MaxDurationConstraint,
     MaxNumberConstraint,
+    MinNumberConstraint,
 )
 from guidellm.scheduler.constraints.saturation import (
     OverSaturationConstraintInitializer,
@@ -27,6 +28,7 @@ from guidellm.schemas.scheduler import (
     MaxErrorsConstraintArgs,
     MaxGlobalErrorRateConstraintArgs,
     MaxRequestsConstraintArgs,
+    MinRequestsConstraintArgs,
     OverSaturationConstraintArgs,
 )
 
@@ -60,6 +62,7 @@ class TestConstraintArgsPolymorphicValidation:
         [
             ({"kind": "max_duration", "seconds": 60}, MaxDurationConstraintArgs),
             ({"kind": "max_requests", "count": 100}, MaxRequestsConstraintArgs),
+            ({"kind": "min_requests", "count": 100}, MinRequestsConstraintArgs),
             ({"kind": "max_errors", "count": 5}, MaxErrorsConstraintArgs),
             (
                 {"kind": "max_error_rate", "rate": 0.5},
@@ -155,6 +158,18 @@ class TestConstraintArgsToInitializerHelper:
         args = MaxRequestsConstraintArgs(count=1000)
         init = ConstraintsInitializerFactory.create(args)
         assert isinstance(init, MaxNumberConstraint)
+        assert init.args.count == 1000
+
+    @pytest.mark.smoke
+    def test_min_requests_to_initializer(self):
+        """
+        ConstraintsInitializerFactory.create produces MinNumberConstraint.
+
+        ## WRITTEN BY AI ##
+        """
+        args = MinRequestsConstraintArgs(count=1000)
+        init = ConstraintsInitializerFactory.create(args)
+        assert isinstance(init, MinNumberConstraint)
         assert init.args.count == 1000
 
     @pytest.mark.smoke
