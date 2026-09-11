@@ -101,102 +101,100 @@ class Benchmarker(
         """
         trackers = list(progress or [])
         with self.thread_lock:
-            try:
+            async with TaskGroup() as tg:
+                for tracker in trackers:
+                    tg.create_task(tracker.on_initialize(profile))
+
+            run_id = str(uuid.uuid4())
+            strategies_generator = profile.strategies_generator()
+            strategy: SchedulingStrategy | None
+            constraints: dict[str, Constraint] | None
+            strategy, constraints = next(strategies_generator)
+
+            while strategy is not None:
+                logger.info("Starting benchmark for strategy: {}", strategy)
                 async with TaskGroup() as tg:
                     for tracker in trackers:
-                        tg.create_task(tracker.on_initialize(profile))
+                        tg.create_task(tracker.on_benchmark_start(strategy))
 
-                run_id = str(uuid.uuid4())
-                strategies_generator = profile.strategies_generator()
-                strategy: SchedulingStrategy | None
-                constraints: dict[str, Constraint] | None
-                strategy, constraints = next(strategies_generator)
+                config = BenchmarkConfig(
+                    run_id=run_id,
+                    run_index=len(profile.completed_strategies),
+                    strategy=strategy,
+                    constraints=(
+                        {
+                            key: InfoMixin.extract_from_obj(val)
+                            for key, val in constraints.items()
+                        }
+                        if isinstance(constraints, dict)
+                        else {"constraint": InfoMixin.extract_from_obj(constraints)}
+                        if constraints
+                        else {}
+                    ),
+                    sample_size=sample_size,
+                    warmup=warmup,
+                    cooldown=cooldown,
+                    prefer_response_metrics=prefer_response_metrics,
+                    slo=slo,
+                    profile=InfoMixin.extract_from_obj(profile),
+                    requests=InfoMixin.extract_from_obj(requests),
+                    backend=InfoMixin.extract_from_obj(backend),
+                    environment=InfoMixin.extract_from_obj(environment),
+                )
+                accumulator = accumulator_class(config=config)
+                scheduler_state = None
+                scheduler: Scheduler[RequestT, ResponseT] = Scheduler()
 
-                while strategy is not None:
-                    logger.info("Starting benchmark for strategy: {}", strategy)
-                    async with TaskGroup() as tg:
-                        for tracker in trackers:
-                            tg.create_task(tracker.on_benchmark_start(strategy))
-
-                    config = BenchmarkConfig(
-                        run_id=run_id,
-                        run_index=len(profile.completed_strategies),
-                        strategy=strategy,
-                        constraints=(
-                            {
-                                key: InfoMixin.extract_from_obj(val)
-                                for key, val in constraints.items()
-                            }
-                            if isinstance(constraints, dict)
-                            else {"constraint": InfoMixin.extract_from_obj(constraints)}
-                            if constraints
-                            else {}
-                        ),
-                        sample_size=sample_size,
-                        warmup=warmup,
-                        cooldown=cooldown,
-                        prefer_response_metrics=prefer_response_metrics,
-                        slo=slo,
-                        profile=InfoMixin.extract_from_obj(profile),
-                        requests=InfoMixin.extract_from_obj(requests),
-                        backend=InfoMixin.extract_from_obj(backend),
-                        environment=InfoMixin.extract_from_obj(environment),
-                    )
-                    accumulator = accumulator_class(config=config)
-                    scheduler_state = None
-                    scheduler: Scheduler[RequestT, ResponseT] = Scheduler()
-
-                    async for (
-                        response,
-                        request,
-                        request_info,
-                        scheduler_state,
-                    ) in scheduler.run(
-                        requests=requests,
-                        backend=backend,
-                        strategy=strategy,
-                        env=environment,
-                        **constraints or {},
-                    ):
-                        try:
-                            accumulator.update_estimate(
-                                response,
-                                request,
-                                request_info,
-                                scheduler_state,
-                            )
-                            async with TaskGroup() as tg:
-                                for tracker in trackers:
-                                    tg.create_task(
-                                        tracker.on_benchmark_update(
-                                            accumulator, scheduler_state
-                                        )
-                                    )
-                        except Exception as err:  # noqa: BLE001
-                            logger.error(
-                                "Error updating benchmark estimate/progress: {}", err
-                            )
-
-                    benchmark = benchmark_class.compile(
-                        accumulator=accumulator,
-                        scheduler_state=scheduler_state,  # type: ignore[arg-type]
-                    )
-                    logger.info("Benchmark complete for strategy: {}", strategy)
-
-                    async with TaskGroup() as tg:
-                        for tracker in trackers:
-                            tg.create_task(tracker.on_benchmark_complete(benchmark))
-
-                    yield benchmark
-
+                async for (
+                    response,
+                    request,
+                    request_info,
+                    scheduler_state,
+                ) in scheduler.run(
+                    requests=requests,
+                    backend=backend,
+                    strategy=strategy,
+                    env=environment,
+                    **constraints or {},
+                ):
                     try:
-                        strategy, constraints = strategies_generator.send(benchmark)
-                    except StopIteration:
-                        strategy = None
-                        constraints = None
+                        accumulator.update_estimate(
+                            response,
+                            request,
+                            request_info,
+                            scheduler_state,
+                        )
+                        async with TaskGroup() as tg:
+                            for tracker in trackers:
+                                tg.create_task(
+                                    tracker.on_benchmark_update(
+                                        accumulator, scheduler_state
+                                    )
+                                )
+                    except Exception as err:  # noqa: BLE001
+                        logger.error(
+                            "Error updating benchmark estimate/progress: {}", err
+                        )
 
-                logger.info("All benchmarks finalized")
-            finally:
+                benchmark = benchmark_class.compile(
+                    accumulator=accumulator,
+                    scheduler_state=scheduler_state,  # type: ignore[arg-type]
+                )
+                logger.info("Benchmark complete for strategy: {}", strategy)
+
                 async with TaskGroup() as tg:
                     for tracker in trackers:
-                        tg.create_task(tracker.on_finalize())
+                        tg.create_task(tracker.on_benchmark_complete(benchmark))
+
+                yield benchmark
+
+                try:
+                    strategy, constraints = strategies_generator.send(benchmark)
+                except StopIteration:
+                    strategy = None
+                    constraints = None
+
+            logger.info("All benchmarks finalized")
+            async with TaskGroup() as tg:
+                for tracker in trackers:
+                    tg.create_task(tracker.on_finalize())

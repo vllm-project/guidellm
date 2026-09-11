@@ -14,7 +14,7 @@ from guidellm.benchmark.progress import BenchmarkerProgress
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", [None, "update", "scheduler", "initialize"])
 async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, failure):
-    """Notify every observer and clean up even after initialization or engine failure.
+    """Notify observers concurrently and finalize only when execution completes.
 
     ## WRITTEN BY AI ##
     """
@@ -93,8 +93,12 @@ async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, fai
         assert [o.on_benchmark_complete.await_count for o in observers] == [1, 1]
     for observer in observers:
         observer.on_initialize.assert_awaited_once()
-        observer.on_finalize.assert_awaited_once()
-    assert all((index, "on_finalize") in finished for index in range(2))
+        assert observer.on_finalize.await_count == int(
+            failure not in ("initialize", "scheduler")
+        )
+    assert [(index, "on_finalize") in finished for index in range(2)] == [
+        failure not in ("initialize", "scheduler")
+    ] * 2
 
 
 async def _callback(arrivals, gates, finished, failure, index, hook, *args):
