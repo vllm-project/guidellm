@@ -23,8 +23,8 @@ from guidellm.data.deserializers.trace_common import (
     SingleTurnTraceFormat,
     TraceDatasetDeserializer,
     TraceFormatRegistry,
-    create_distinct_token_block,
     create_prompt_from_hash_ids,
+    fill_hash_id_table,
     get_missing_columns,
 )
 from guidellm.data.schemas import InvalidRowError
@@ -95,18 +95,14 @@ class MooncakeTraceFormat(SingleTurnTraceFormat):
         """Before generating the prompt, this first generates a block of tokens for
         each hash ID that has not already been seen."""
         ids = row[self.config.hash_ids_column]
-        for idx, hash_id in enumerate(ids):
-            if hash_id not in self.hash_id_table:
-                prev_id = None if idx == 0 else ids[idx - 1]
-                num_tokens = _calculate_required_prompt_tokens(
-                    self.config, row, hash_id
-                )
-                self.sibling_token_blocks.setdefault(prev_id, set())
-                self.hash_id_table[hash_id] = create_distinct_token_block(
-                    num_tokens,
-                    self.sibling_token_blocks[prev_id],
-                    processor,
-                    faker,
-                )
-                self.sibling_token_blocks[prev_id].add(self.hash_id_table[hash_id])
+        fill_hash_id_table(
+            ids,
+            self.hash_id_table,
+            self.sibling_token_blocks,
+            processor,
+            faker,
+            lambda _idx, hash_id: _calculate_required_prompt_tokens(
+                self.config, row, hash_id
+            ),
+        )
         return create_prompt_from_hash_ids(ids, self.hash_id_table, processor)

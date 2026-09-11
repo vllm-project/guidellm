@@ -36,9 +36,9 @@ from guidellm.data.deserializers.trace_common import (
     TraceFormatBase,
     TraceFormatRegistry,
     _validate_api_row,
-    create_distinct_token_block,
     create_prompt_from_hash_ids,
     decode_prompt,
+    fill_hash_id_table,
     generate_token_ids,
     get_missing_columns,
 )
@@ -214,7 +214,9 @@ class WEKATraceFormat(TraceFormatBase):
     blocks in a prompt. The relationships of IDs forms a tree, where every first ID
     in a prompt has a parent node of `None`. Parent nodes can have an unbounded
     number of children. Two hash IDs can represent identical blocks of tokens so long
-    as they do not share the same parent (previous ID).
+    as they do not share the same parent (previous ID). Per-row ``hash_id_scope``
+    of ``"global"`` or omitted shares that table across conversations; ``"local"``
+    isolates it to the current conversation.
 
     Declared ``type: "subagent"`` groups become isolated child chains that
     spawn from the preceding parent API turn (``history_context="new"``) and
@@ -244,7 +246,7 @@ class WEKATraceFormat(TraceFormatBase):
         self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
         # Filled by each ``__iter__`` pass so mixed subagent/API schemas are
         # not forced through a single HuggingFace Arrow table.
-        self._conversations: list[tuple[str, list[dict[str, Any]]]] = []
+        self._conversations: list[tuple[str, list[dict[str, Any]], str | None]] = []
         self._tools_json = _serialized_tools(config.tools)
         self._tool_response_sampler: Iterator[int] | None = None
         self.requests_col = _find_requests_column(dataset)
@@ -260,13 +262,11 @@ class WEKATraceFormat(TraceFormatBase):
             # File order is spawn/join topology for every request list,
             # including nested subagent groups. Do not sort by timestamp.
             requests = [dict(item) for item in row[self.requests_col]]
+            raw_scope = row.get("hash_id_scope")
+            hash_id_scope = str(raw_scope) if raw_scope is not None else None
             index = len(self._conversations)
-            self._conversations.append((conv_id, requests))
+            self._conversations.append((conv_id, requests, hash_id_scope))
             yield Dataset.from_dict({"_weka_index": [index]})
-
-    def reset(self) -> None:
-        self.hash_id_table = {}
-        self.sibling_token_blocks = {}
 
     def required_columns(self) -> Features:
         return Features(
@@ -312,32 +312,45 @@ class WEKATraceFormat(TraceFormatBase):
             )
 
     def create_prompt(
-        self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
+        self,
+        row: dict,
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
+        hash_id_table: dict[int, tuple[int, ...]] | None = None,
+        sibling_token_blocks: dict[Any, set[tuple[int, ...]]] | None = None,
     ) -> str:
         """Before generating the prompt, this first generates a block of tokens for
         each hash ID that has not already been seen.
 
         Hash IDs that are partially filled are discarded to match the specification.
         Remainder of the prompt is created after the creation via hash IDs token
-        blocks."""
+        blocks.
+
+        :param hash_id_table: Token blocks keyed by hash ID. Instance storage for
+            global scope, or a throwaway dict for local scope. Defaults to the
+            instance table.
+        :param sibling_token_blocks: Distinctness set per previous hash ID, matching
+            ``hash_id_table``'s lifetime. Defaults to the instance set.
+        """
+        if hash_id_table is None:
+            hash_id_table = self.hash_id_table
+        if sibling_token_blocks is None:
+            sibling_token_blocks = self.sibling_token_blocks
         ids = row[self.config.hash_ids_column]
         n_in = row[self.config.prompt_tokens_column]
         block_size = self.config.hash_id_block_size
         expected = n_in / block_size
         if math.floor(expected) != len(ids) and math.ceil(expected) == len(ids):
             ids.pop()
-        for idx, hash_id in enumerate(ids):
-            if hash_id not in self.hash_id_table:
-                prev_id = None if idx == 0 else ids[idx - 1]
-                self.sibling_token_blocks.setdefault(prev_id, set())
-                self.hash_id_table[hash_id] = create_distinct_token_block(
-                    block_size,
-                    self.sibling_token_blocks[prev_id],
-                    processor,
-                    faker,
-                )
-                self.sibling_token_blocks[prev_id].add(self.hash_id_table[hash_id])
-        prompt = create_prompt_from_hash_ids(ids, self.hash_id_table, processor)
+        fill_hash_id_table(
+            ids,
+            hash_id_table,
+            sibling_token_blocks,
+            processor,
+            faker,
+            lambda _idx, _hash_id: block_size,
+        )
+        prompt = create_prompt_from_hash_ids(ids, hash_id_table, processor)
         remainder = _generate_remaining_prompt(n_in % block_size, processor, faker)
         if not prompt:
             return remainder
@@ -351,7 +364,15 @@ class WEKATraceFormat(TraceFormatBase):
         processor: PreTrainedTokenizerBase,
         faker: Faker,
     ) -> ConversationGraphData:
-        conv_id, requests = self._unpack_conversation(conversation)
+        conv_id, requests, hash_id_scope = self._unpack_conversation(conversation)
+        # Local scope uses throwaway tables so this conversation cannot reuse
+        # or pollute the instance-level hash storage used by global/unset rows.
+        if hash_id_scope == "local":
+            hash_id_table: dict[int, tuple[int, ...]] = {}
+            sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
+        else:
+            hash_id_table = self.hash_id_table
+            sibling_token_blocks = self.sibling_token_blocks
         specs, _last = self._emit_chain(
             requests,
             agent_id="default",
@@ -370,7 +391,13 @@ class WEKATraceFormat(TraceFormatBase):
         turns: list[ConversationTurnData] = []
         for spec in specs:
             _validate_api_row(spec.row, self.config, self.validate_row)
-            prompt = self.create_prompt(spec.row, processor, faker)
+            prompt = self.create_prompt(
+                spec.row,
+                processor,
+                faker,
+                hash_id_table,
+                sibling_token_blocks,
+            )
             columns: dict[str, Any] = {
                 "text_column": [prompt],
                 "prompt_tokens_count_column": [
@@ -427,22 +454,23 @@ class WEKATraceFormat(TraceFormatBase):
 
     def _unpack_conversation(
         self, conversation: Dataset
-    ) -> tuple[str, list[dict[str, Any]]]:
+    ) -> tuple[str, list[dict[str, Any]], str | None]:
         """Look up the nested request list for a conversation stub from ``__iter__``.
 
         The ``requests`` column mixes API request records with
         ``type: "subagent"`` groups, which cannot share one Arrow schema, so
         ``__iter__`` does not put that list into the yielded Dataset. It
-        appends ``(conversation_id, requests)`` to ``self._conversations``
-        and yields a Dataset with a single row and a single column,
-        ``_weka_index``.
+        appends ``(conversation_id, requests, hash_id_scope)`` to
+        ``self._conversations`` and yields a Dataset with a single row and a
+        single column, ``_weka_index``.
 
         ``conversation[0]`` is the only row in the yielded Dataset.
         ``_weka_index`` is the integer index of the matching entry in
         ``self._conversations``.
 
         :param conversation: One-row Dataset yielded by ``__iter__``.
-        :return: ``(conversation_id, requests)`` for that conversation.
+        :return: ``(conversation_id, requests, hash_id_scope)`` for that
+            conversation. ``hash_id_scope`` is ``None`` when the field is omitted.
         """
         index = int(conversation[0]["_weka_index"])
         return self._conversations[index]
