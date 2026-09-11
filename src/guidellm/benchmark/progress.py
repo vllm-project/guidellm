@@ -313,9 +313,8 @@ class GenerativeLoggingBenchmarkerProgress(
             self._state = None
 
     async def on_finalize(self):
-        """Release progress state and drain queued log records."""
+        """Release progress state."""
         self._state = None
-        await logger.complete()
 
     def _log_update(self, status: str):
         if self._state is None:
