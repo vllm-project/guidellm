@@ -33,7 +33,7 @@ from guidellm.scheduler import (
     Scheduler,
     SchedulingStrategy,
 )
-from guidellm.schemas.benchmark import TransientPhaseConfig
+from guidellm.schemas.benchmark import GoodputSLO, TransientPhaseConfig
 from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
@@ -69,6 +69,7 @@ class Benchmarker(
         progress: (
             BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT] | None
         ) = None,
+        slo: GoodputSLO | None = None,
     ) -> AsyncIterator[BenchmarkT]:
         """
         Execute benchmark runs across scheduling strategies in the profile.
@@ -87,6 +88,8 @@ class Benchmarker(
         :param prefer_response_metrics: Whether to prefer response metrics over
             request metrics, defaults to True
         :param progress: Optional tracker for benchmark lifecycle events
+        :param slo: Per-request latency objectives defining which requests count
+            toward goodput, or None to disable goodput measurement
         :yield: Compiled benchmark result for each strategy execution
         :raises Exception: If benchmark execution or compilation fails
         """
@@ -101,6 +104,7 @@ class Benchmarker(
             strategy, constraints = next(strategies_generator)
 
             while strategy is not None:
+                logger.info("Starting benchmark for strategy: {}", strategy)
                 if progress:
                     await progress.on_benchmark_start(strategy)
 
@@ -122,6 +126,7 @@ class Benchmarker(
                     warmup=warmup,
                     cooldown=cooldown,
                     prefer_response_metrics=prefer_response_metrics,
+                    slo=slo,
                     profile=InfoMixin.extract_from_obj(profile),
                     requests=InfoMixin.extract_from_obj(requests),
                     backend=InfoMixin.extract_from_obj(backend),
@@ -163,6 +168,7 @@ class Benchmarker(
                     accumulator=accumulator,
                     scheduler_state=scheduler_state,  # type: ignore[arg-type]
                 )
+                logger.info("Benchmark complete for strategy: {}", strategy)
 
                 if progress:
                     await progress.on_benchmark_complete(benchmark)
@@ -175,5 +181,6 @@ class Benchmarker(
                     strategy = None
                     constraints = None
 
+            logger.info("All benchmarks finalized")
             if progress:
                 await progress.on_finalize()

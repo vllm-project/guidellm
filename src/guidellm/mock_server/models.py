@@ -50,6 +50,13 @@ class Usage(BaseModel):
         description="Number of tokens in the generated completion"
     )
     total_tokens: int = Field(description="Total tokens used (prompt + completion)")
+    prompt_tokens_details: dict[str, int | float] | None = Field(
+        default=None,
+        description=(
+            "Optional per-modality breakdown of prompt tokens (text, image, "
+            "video, audio) following vLLM usage conventions"
+        ),
+    )
 
     def __init__(self, prompt_tokens: int = 0, completion_tokens: int = 0, **kwargs):
         """Initialize usage statistics.

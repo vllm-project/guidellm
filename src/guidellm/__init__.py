@@ -19,7 +19,7 @@ except ImportError:
         stacklevel=2,
     )
 
-from .logger import configure_logger, logger
+from .logger import configure_logger, logger, reinstall_inherited_logger
 from .settings import (
     reload_settings,
     settings,
@@ -28,6 +28,7 @@ from .settings import (
 __all__ = [
     "configure_logger",
     "logger",
+    "reinstall_inherited_logger",
     "reload_settings",
     "settings",
 ]

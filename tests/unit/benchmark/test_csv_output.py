@@ -375,3 +375,99 @@ class TestRequestLatencyCSVMetrics:
         assert "Dispatch Delay" not in groups
         assert "Scheduled Latency" not in groups
         assert "Request Latency" in groups
+
+
+class TestServerThroughputGoodputColumns:
+    """
+    Tests for goodput columns in the CSV server throughput section.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @staticmethod
+    def _render(attainment, goodput_mean):
+        """Render the throughput section for one benchmark and return headers."""
+        goodput = (
+            None
+            if goodput_mean is None
+            else StatusDistributionSummary.from_values(
+                successful=[goodput_mean], incomplete=[], errored=[]
+            )
+        )
+        distribution = StatusDistributionSummary.from_values([1.0, 2.0], [], [])
+        # Every distribution the throughput section reads, so the stub does not
+        # need updating when unrelated columns are added.
+        metric_names = (
+            "iter_tokens_per_iteration",
+            "output_token_count",
+            "output_tokens_per_iteration",
+            "output_tokens_per_second",
+            "prompt_token_count",
+            "prompt_tokens_per_second",
+            "request_concurrency",
+            "requests_per_second",
+            "tokens_per_second",
+            "total_token_count",
+        )
+        benchmark = SimpleNamespace(
+            config=SimpleNamespace(slo=object()),
+            metrics=SimpleNamespace(
+                **dict.fromkeys(metric_names, distribution),
+                slo_attainment=attainment,
+                request_goodput=goodput,
+            ),
+        )
+        csv_out = GenerativeBenchmarkerCSV.__new__(GenerativeBenchmarkerCSV)
+        headers: list[list[str]] = []
+        values: list[str | int | float] = []
+        csv_out._add_server_throughput_metrics(benchmark, headers, values)
+
+        return headers, values
+
+    @pytest.mark.regression
+    def test_columns_present_when_nothing_conforms(self):
+        """
+        The goodput columns are written even when no request met the
+        objectives.
+
+        _add_stats_for_metric drops any status whose total is 0.0, which would
+        omit the columns from the CSV while the console and JSON still report
+        0.0 for the same run.
+
+        ## WRITTEN BY AI ##
+        """
+        headers, values = self._render(attainment=0.0, goodput_mean=0.0)
+        flat = [h[1] for h in headers]
+
+        assert "Successful Goodput/Sec" in flat
+        assert "SLO Attainment" in flat
+        assert values[flat.index("Successful Goodput/Sec")] == 0.0
+        assert values[flat.index("SLO Attainment")] == 0.0
+
+    @pytest.mark.regression
+    def test_columns_match_between_conforming_and_non_conforming_runs(self):
+        """
+        A run that conforms to nothing produces the same columns as one that
+        conforms, so rows stay aligned across a multi-benchmark report.
+
+        ## WRITTEN BY AI ##
+        """
+        conforming, _ = self._render(attainment=0.9, goodput_mean=9.0)
+        failing, _ = self._render(attainment=0.0, goodput_mean=0.0)
+
+        assert conforming == failing
+
+    @pytest.mark.regression
+    def test_columns_empty_when_objectives_cannot_be_evaluated(self):
+        """
+        Objectives that no request can be evaluated against still produce the
+        columns, with empty values.
+
+        ## WRITTEN BY AI ##
+        """
+        headers, values = self._render(attainment=None, goodput_mean=None)
+        flat = [h[1] for h in headers]
+
+        assert "Successful Goodput/Sec" in flat
+        assert values[flat.index("Successful Goodput/Sec")] == ""
+        assert values[flat.index("SLO Attainment")] == ""
