@@ -301,6 +301,12 @@ guidellm run \
 
 By default, benchmark results are saved to `benchmarks.json` and `benchmarks.csv`. Specifying `--output` replaces this default selection. See [output configuration](../guides/outputs.md#cli-output-configuration) for examples of selecting formats and [configuring file outputs](../guides/outputs.md#configuring-file-outputs) for default directories and custom paths.
 
+### Progress logging
+
+Benchmark progress is logged automatically at INFO, including in non-interactive shells. No extra progress options are needed. Each strategy logs its start, periodic statistics (at most once every ten seconds during updates), and completion. Records include elapsed time, successful/errored/incomplete request counts, and request/output-token throughput. Updates depend on scheduler callbacks and are not an independent heartbeat during a stall.
+
+Rich progress continues to work alongside logging. `--disable-console` and `--disable-console-interactive` control displays, not logging. Existing logger levels control which records are emitted. To redirect only logs, use `2>progress.log`; to retain structured file logs, configure `GUIDELLM__LOGGING__LOG_FILE_LEVEL=INFO` and `GUIDELLM__LOGGING__LOG_FILE=progress.jsonl`.
+
 ## Authentication
 
 When benchmarking against servers that require authentication (such as OpenAI's API), provide an API key in the backend configuration. See the [API Key Configuration](../guides/backends.md#api-key-configuration) section in the Backends documentation for details.

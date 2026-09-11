@@ -1,9 +1,14 @@
 """Tests for ``guidellm run`` CLI error translation."""
 
+from unittest.mock import AsyncMock
+
 import pytest
 from click.testing import CliRunner
 
 from guidellm.__main__ import cli
+from guidellm.benchmark.progress import (
+    GenerativeConsoleBenchmarkerProgress,
+)
 
 
 @pytest.mark.regression
@@ -183,3 +188,42 @@ def test_run_rejects_duplicate_backend_flags():
     assert result.exit_code != 0
     assert "cannot be specified multiple times" in result.output
     assert "--backend" in result.output
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    "options",
+    [
+        [],
+        ["--disable-console"],
+        ["--disable-console-interactive"],
+        ["--disable-progress"],
+    ],
+)
+def test_console_progress_selection(monkeypatch, options):
+    """Keep display flags independent of automatic entrypoint logging.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = AsyncMock()
+    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            "kind=openai_http,target=http://localhost:8000",
+            "--data",
+            "kind=synthetic_text,prompt_tokens=8",
+            "--profile",
+            "kind=constant,rate=1",
+            *options,
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    benchmark.assert_awaited_once()
+    display = benchmark.call_args.kwargs["progress"]
+    if options:
+        assert display is None
+    else:
+        assert isinstance(display, GenerativeConsoleBenchmarkerProgress)

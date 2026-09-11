@@ -12,8 +12,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from math import isfinite
+from time import monotonic
 from typing import Any, Generic, Literal
 
+from loguru import logger
 from rich.console import Group
 from rich.live import Live
 from rich.panel import Panel
@@ -40,7 +43,11 @@ from guidellm.utils.console import Colors, stderr_eq_stdout
 from guidellm.utils.functions import safe_format_timestamp
 from guidellm.utils.text import format_value_display
 
-__all__ = ["BenchmarkerProgress", "GenerativeConsoleBenchmarkerProgress"]
+__all__ = [
+    "BenchmarkerProgress",
+    "GenerativeConsoleBenchmarkerProgress",
+    "GenerativeLoggingBenchmarkerProgress",
+]
 
 
 class BenchmarkerProgress(Generic[BenchmarkAccumulatorT, BenchmarkT], ABC):
@@ -234,6 +241,101 @@ class GenerativeConsoleBenchmarkerProgress(
                 completed_benchmarks=self.tasks_progress.tasks_progress,
                 total_benchmarks=self.tasks_progress.tasks_total,
             )
+
+
+class GenerativeLoggingBenchmarkerProgress(
+    BenchmarkerProgress[GenerativeBenchmarkAccumulator, GenerativeBenchmark]
+):
+    """Log interval-limited progress independently of other progress trackers."""
+
+    def __init__(self, interval: float = 10.0):
+        """
+        Initialize independent progress logging.
+
+        :param interval: Positive finite minimum seconds between periodic records
+        :raises ValueError: If the interval is not positive and finite
+        """
+        super().__init__()
+        if not isfinite(interval) or interval <= 0:
+            raise ValueError("Progress log interval must be positive and finite")
+        self.interval = interval
+        self._state: _GenerativeProgressTaskState | None = None
+        self._index = 0
+        self._started_at = 0.0
+        self._last_update = 0.0
+
+    async def on_initialize(self, profile: Profile):
+        """
+        Reset logging for a new run.
+
+        :param profile: Benchmark profile
+        """
+        self.profile = profile
+        self._index = 0
+        self._state = None
+
+    async def on_benchmark_start(self, strategy: SchedulingStrategy):
+        """
+        Log strategy start immediately.
+
+        :param strategy: Strategy being executed
+        """
+        self._index += 1
+        self._state = _GenerativeProgressTaskState(strategy_type=strategy.type_)
+        self._state.start(strategy)
+        self._started_at = monotonic()
+        self._log_update("started")
+
+    async def on_benchmark_update(
+        self,
+        accumulator: GenerativeBenchmarkAccumulator,
+        scheduler_state: SchedulerState,
+    ):
+        """
+        Periodically log current metrics.
+
+        :param accumulator: Accumulated benchmark metrics
+        :param scheduler_state: Scheduler counters and progress
+        """
+        if self._state and monotonic() - self._last_update >= self.interval:
+            self._state.update(accumulator, scheduler_state)
+            self._log_update(self._state.benchmark_status)
+
+    async def on_benchmark_complete(self, benchmark: GenerativeBenchmark):
+        """
+        Log final metrics regardless of the interval.
+
+        :param benchmark: Completed result
+        """
+        if self._state:
+            self._state.complete(benchmark)
+            self._log_update("completed")
+            self._state = None
+
+    async def on_finalize(self):
+        """Release progress state."""
+        self._state = None
+
+    def _log_update(self, status: str):
+        if self._state is None:
+            return
+        state = self._state
+        now = monotonic()
+        logger.bind(benchmark_index=self._index, progress_status=status).info(
+            "Benchmark {} ({}): {} | elapsed={:.1f}s | "
+            "successful={} errored={} incomplete={} | "
+            "requests/s={:.2f} output_tokens/s={:.2f}",
+            self._index,
+            state.strategy,
+            status,
+            now - self._started_at,
+            state.successful_requests,
+            state.errored_requests,
+            state.cancelled_requests,
+            state.requests_per_second,
+            state.output_tokens_rate,
+        )
+        self._last_update = now
 
 
 # Scaling factor for progress calculations to provide granular progress updates

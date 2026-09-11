@@ -22,7 +22,10 @@ from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerOutput,
 )
 from guidellm.benchmark.profiles import Profile, ProfileFactory
-from guidellm.benchmark.progress import GenerativeConsoleBenchmarkerProgress
+from guidellm.benchmark.progress import (
+    BenchmarkerProgress,
+    GenerativeLoggingBenchmarkerProgress,
+)
 from guidellm.benchmark.schemas import (
     GenerativeBenchmark,
     GenerativeBenchmarkAccumulator,
@@ -471,7 +474,8 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
 
 async def benchmark_generative_text(
     args: BenchmarkScenario,
-    progress: GenerativeConsoleBenchmarkerProgress | None = None,
+    progress: BenchmarkerProgress[GenerativeBenchmarkAccumulator, GenerativeBenchmark]
+    | None = None,
     console: Console | None = None,
     **constraints: str | ConstraintInitializer | Any,
 ) -> tuple[GenerativeBenchmarksReport, list[tuple[str, Any]]]:
@@ -484,8 +488,8 @@ async def benchmark_generative_text(
     initialization, data loading, profile configuration, and output generation.
 
     :param args: Scenario configuration for the benchmark execution
-    :param progress: Progress tracker for benchmark execution, or None for no tracking
-    :param console: Console instance for status reporting, or None for silent operation
+    :param progress: Optional display tracker; progress is always logged at INFO
+    :param console: Optional console for status reporting, independent of logging
     :param constraints: Additional constraint initializers for benchmark limits
     :return: Tuple of GenerativeBenchmarksReport and dictionary of output format
         results
@@ -546,7 +550,10 @@ async def benchmark_generative_text(
         backend=backend,
         profile=profile,
         environment=NonDistributedEnvironment(),
-        progress=progress,
+        progress=[
+            GenerativeLoggingBenchmarkerProgress(),
+            *([progress] if progress else []),
+        ],
         sample_size=metrics_args.sample_size,
         warmup=warmup,
         cooldown=cooldown,

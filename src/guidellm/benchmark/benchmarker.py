@@ -10,9 +10,10 @@ singleton operations for consistent state management across concurrent workflows
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from abc import ABC
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from typing import Generic
 
 from guidellm.benchmark.profiles import Profile
@@ -67,7 +68,7 @@ class Benchmarker(
         sample_size: int | None = None,
         prefer_response_metrics: bool = True,
         progress: (
-            BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT] | None
+            list[BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT]] | None
         ) = None,
         slo: GoodputSLO | None = None,
     ) -> AsyncIterator[BenchmarkT]:
@@ -87,15 +88,17 @@ class Benchmarker(
             None keeps all, 0 strips all, N > 0 uses reservoir sampling.
         :param prefer_response_metrics: Whether to prefer response metrics over
             request metrics, defaults to True
-        :param progress: Optional tracker for benchmark lifecycle events
+        :param progress: Independent trackers notified concurrently for lifecycle events
         :param slo: Per-request latency objectives defining which requests count
             toward goodput, or None to disable goodput measurement
         :yield: Compiled benchmark result for each strategy execution
         :raises Exception: If benchmark execution or compilation fails
         """
+        trackers = list(progress or [])
         with self.thread_lock:
-            if progress:
-                await progress.on_initialize(profile)
+            await _notify_progress(
+                *(tracker.on_initialize(profile) for tracker in trackers)
+            )
 
             run_id = str(uuid.uuid4())
             strategies_generator = profile.strategies_generator()
@@ -105,8 +108,9 @@ class Benchmarker(
 
             while strategy is not None:
                 logger.info("Starting benchmark for strategy: {}", strategy)
-                if progress:
-                    await progress.on_benchmark_start(strategy)
+                await _notify_progress(
+                    *(tracker.on_benchmark_start(strategy) for tracker in trackers)
+                )
 
                 config = BenchmarkConfig(
                     run_id=run_id,
@@ -155,10 +159,14 @@ class Benchmarker(
                             request_info,
                             scheduler_state,
                         )
-                        if progress:
-                            await progress.on_benchmark_update(
-                                accumulator, scheduler_state
+                        await _notify_progress(
+                            *(
+                                tracker.on_benchmark_update(
+                                    accumulator, scheduler_state
+                                )
+                                for tracker in trackers
                             )
+                        )
                     except Exception as err:  # noqa: BLE001
                         logger.error(
                             "Error updating benchmark estimate/progress: {}", err
@@ -170,8 +178,9 @@ class Benchmarker(
                 )
                 logger.info("Benchmark complete for strategy: {}", strategy)
 
-                if progress:
-                    await progress.on_benchmark_complete(benchmark)
+                await _notify_progress(
+                    *(tracker.on_benchmark_complete(benchmark) for tracker in trackers)
+                )
 
                 yield benchmark
 
@@ -182,5 +191,12 @@ class Benchmarker(
                     constraints = None
 
             logger.info("All benchmarks finalized")
-            if progress:
-                await progress.on_finalize()
+            await _notify_progress(*(tracker.on_finalize() for tracker in trackers))
+
+
+async def _notify_progress(*callbacks: Awaitable[None]) -> None:
+    """Finish every callback before propagating the first lifecycle failure."""
+    results = await asyncio.gather(*callbacks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
