@@ -40,6 +40,7 @@ from .trace_common import (
     create_distinct_token_block,
     create_prompt_from_hash_ids,
     decode_prompt,
+    fill_hash_id_table,
     generate_token_ids,
     get_missing_columns,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "create_distinct_token_block",
     "create_prompt_from_hash_ids",
     "decode_prompt",
+    "fill_hash_id_table",
     "generate_token_ids",
     "get_missing_columns",
 ]
