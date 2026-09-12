@@ -62,8 +62,8 @@ class MockTokenizer(PreTrainedTokenizerBase):
             return self.convert_tokens_to_ids(tokens)
         elif isinstance(text, list):
             result = []
-            for item in text:
-                result.extend(self.__call__(item))
+            for t in text:
+                result.extend(self.__call__(t))
             return result
         else:
             msg = f"text input must be of type `str` or `list[str]`, got {type(text)}"
@@ -277,9 +277,7 @@ def create_fake_tokens_str(
     tokens: list[str] = []
 
     while len(tokens) < num_tokens:
-        text = fake.text(
-            max_nb_chars=(num_tokens - len(tokens)) * 30  # oversample
-        )
+        text = fake.text(max_nb_chars=(num_tokens - len(tokens)) * 30)  # oversample
         new_tokens = processor.tokenize(text)
 
         if len(tokens) > 0:

@@ -190,7 +190,7 @@ class ChatCompletionsHandler:
 
         # Token counts
         prompt_text = self.tokenizer.apply_chat_template(
-            req.messages,  # type: ignore[arg-type]  # Transformers typing is narrow
+            req.messages,  # type: ignore[arg-type]
             tokenize=False,
         )
         text_tokens = len(self.tokenizer.encode(prompt_text))  # type: ignore[arg-type]
@@ -274,7 +274,7 @@ class ChatCompletionsHandler:
 
             # Token counts
             prompt_text = self.tokenizer.apply_chat_template(
-                req.messages,  # type: ignore[arg-type]  # Transformers typing is narrow
+                req.messages,  # type: ignore[arg-type]
                 tokenize=False,
             )
             text_tokens = len(

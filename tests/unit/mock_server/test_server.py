@@ -1200,9 +1200,7 @@ async def test_handles_requests_with_huggingface_processor(
     is_chat = input_field == "messages"
     input_value = messages if is_chat else prompt
     prompt_text = (
-        tokenizer.apply_chat_template(messages, tokenize=False)
-        if is_chat
-        else prompt
+        tokenizer.apply_chat_template(messages, tokenize=False) if is_chat else prompt
     )
     payload = {
         "model": config.model,
@@ -1218,6 +1216,4 @@ async def test_handles_requests_with_huggingface_processor(
         )
 
     assert response.status_code == 200
-    assert response.json()["usage"][usage_field] == len(
-        tokenizer.encode(prompt_text)
-    )
+    assert response.json()["usage"][usage_field] == len(tokenizer.encode(prompt_text))
