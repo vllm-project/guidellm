@@ -5,6 +5,8 @@ import base64
 import json
 import math
 import multiprocessing
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 import httpx
 import pytest
@@ -23,6 +25,43 @@ def _start_server_process(config: MockServerConfig):
     server.run(access_log=False)
 
 
+@asynccontextmanager
+async def _run_mock_server(
+    config: MockServerConfig,
+) -> AsyncGenerator[str, None]:
+    base_url = f"http://{config.host}:{config.port}"
+    server_process = multiprocessing.Process(
+        target=_start_server_process, args=(config,)
+    )
+    server_process.start()
+
+    async def wait_for_startup() -> None:
+        poll_frequency = 1.0
+        async with httpx.AsyncClient() as client:
+            while True:
+                try:
+                    response = await client.get(f"{base_url}/health", timeout=1.0)
+                    if response.status_code == 200:
+                        return
+                except (httpx.RequestError, httpx.TimeoutException):
+                    pass
+                await asyncio.sleep(poll_frequency)
+                poll_frequency = min(poll_frequency * 1.5, 2.0)
+
+    try:
+        try:
+            await asyncio.wait_for(wait_for_startup(), timeout=30.0)
+        except TimeoutError:
+            pytest.fail(f"MockServer on port {config.port} failed to start")
+        yield base_url
+    finally:
+        server_process.terminate()
+        server_process.join(timeout=5)
+        if server_process.is_alive():
+            server_process.kill()
+            server_process.join(timeout=5)
+
+
 @pytest_asyncio.fixture(scope="class")
 async def mock_server_instance():
     """Instance-level fixture that provides a running server for HTTP testing."""
@@ -35,44 +74,8 @@ async def mock_server_instance():
         itl_ms=1.0,
         request_latency=0.1,
     )
-    base_url = f"http://{config.host}:{config.port}"
-    server_process = multiprocessing.Process(
-        target=_start_server_process, args=(config,)
-    )
-    server_process.start()
-
-    # Wait for server to start up and be ready
-    async def wait_for_startup():
-        poll_frequency = 1.0
-        async with httpx.AsyncClient() as client:
-            while True:
-                try:
-                    response = await client.get(f"{base_url}/health", timeout=1.0)
-                    if response.status_code == 200:
-                        break
-                except (httpx.RequestError, httpx.TimeoutException):
-                    pass
-                await asyncio.sleep(poll_frequency)
-                poll_frequency = min(poll_frequency * 1.5, 2.0)
-
-    timeout = 30.0
-    try:
-        await asyncio.wait_for(wait_for_startup(), timeout)
-    except TimeoutError:
-        server_process.terminate()
-        server_process.join(timeout=5)
-        if server_process.is_alive():
-            server_process.kill()
-            server_process.join(timeout=5)
-        pytest.fail(f"Server failed to start within {timeout} seconds")
-
-    yield base_url, config
-
-    server_process.terminate()
-    server_process.join(timeout=5)
-    if server_process.is_alive():
-        server_process.kill()
-        server_process.join(timeout=5)
+    async with _run_mock_server(config) as base_url:
+        yield base_url, config
 
 
 class TestMockServerConfig:
@@ -1016,37 +1019,8 @@ async def fail_after_mock_server():
         output_tokens=4,
         fail_after_requests=2,
     )
-    base_url = f"http://{config.host}:{config.port}"
-    server_process = multiprocessing.Process(
-        target=_start_server_process, args=(config,)
-    )
-    server_process.start()
-
-    async def wait_for_startup():
-        async with httpx.AsyncClient() as client:
-            while True:
-                try:
-                    response = await client.get(f"{base_url}/health", timeout=1.0)
-                    if response.status_code == 200:
-                        return
-                except (httpx.RequestError, httpx.TimeoutException):
-                    pass
-                await asyncio.sleep(0.2)
-
-    try:
-        await asyncio.wait_for(wait_for_startup(), timeout=30.0)
-    except TimeoutError:
-        server_process.terminate()
-        server_process.join(timeout=5)
-        pytest.fail("fail_after MockServer failed to start")
-
-    yield base_url
-
-    server_process.terminate()
-    server_process.join(timeout=5)
-    if server_process.is_alive():
-        server_process.kill()
-        server_process.join(timeout=5)
+    async with _run_mock_server(config) as base_url:
+        yield base_url
 
 
 @pytest_asyncio.fixture
@@ -1065,37 +1039,8 @@ async def concurrent_limit_mock_server():
         output_tokens=4,
         max_concurrent_requests=1,
     )
-    base_url = f"http://{config.host}:{config.port}"
-    server_process = multiprocessing.Process(
-        target=_start_server_process, args=(config,)
-    )
-    server_process.start()
-
-    async def wait_for_startup():
-        async with httpx.AsyncClient() as client:
-            while True:
-                try:
-                    response = await client.get(f"{base_url}/health", timeout=1.0)
-                    if response.status_code == 200:
-                        return
-                except (httpx.RequestError, httpx.TimeoutException):
-                    pass
-                await asyncio.sleep(0.2)
-
-    try:
-        await asyncio.wait_for(wait_for_startup(), timeout=30.0)
-    except TimeoutError:
-        server_process.terminate()
-        server_process.join(timeout=5)
-        pytest.fail("concurrency MockServer failed to start")
-
-    yield base_url
-
-    server_process.terminate()
-    server_process.join(timeout=5)
-    if server_process.is_alive():
-        server_process.kill()
-        server_process.join(timeout=5)
+    async with _run_mock_server(config) as base_url:
+        yield base_url
 
 
 class TestMockServerFailAfterAndConcurrency:
