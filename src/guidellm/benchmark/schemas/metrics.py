@@ -11,6 +11,7 @@ performance metrics for request processing and queueing behavior.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal
 
 from pydantic import Field
@@ -655,6 +656,22 @@ class GenerativeAudioMetricsSummary(StandardBaseDict):
     bytes: GenerativeMetricsSummary | None = Field(
         description="Byte size metrics and distributions"
     )
+    real_time_factor: StatusDistributionSummary | None = Field(
+        default=None,
+        description=(
+            "Distribution of Real-Time Factor (RTF), the ratio of processing "
+            "time to input audio duration. Values below 1.0 are faster than "
+            "real time. None when no request carried input audio."
+        ),
+    )
+    inverse_real_time_factor: StatusDistributionSummary | None = Field(
+        default=None,
+        description=(
+            "Distribution of inverse Real-Time Factor (RTFx), the seconds of "
+            "audio processed per second of wall-clock time. Values above 1.0 "
+            "are faster than real time. None when no request carried input audio."
+        ),
+    )
 
     @classmethod
     def compile(
@@ -696,6 +713,53 @@ class GenerativeAudioMetricsSummary(StandardBaseDict):
                 incomplete=incomplete,
                 errored=errored,
             ),
+            real_time_factor=cls._compile_ratio(
+                lambda req: req.real_time_factor,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            inverse_real_time_factor=cls._compile_ratio(
+                lambda req: req.inverse_real_time_factor,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+        )
+
+    @classmethod
+    def _compile_ratio(
+        cls,
+        function: Callable[[GenerativeRequestStats], float | None],
+        successful: list[GenerativeRequestStats],
+        incomplete: list[GenerativeRequestStats],
+        errored: list[GenerativeRequestStats],
+    ) -> StatusDistributionSummary | None:
+        """
+        Compile a per-request ratio into a distribution, or None when no data.
+
+        Requests without input audio yield None from ``function`` and are
+        excluded rather than coerced to zero, so text-only benchmarks report no
+        distribution at all instead of a distribution of zeros.
+
+        :param function: Extracts the per-request ratio, or None if unavailable
+        :param successful: Successfully completed request statistics
+        :param incomplete: Incomplete/cancelled request statistics
+        :param errored: Failed request statistics
+        :return: Distribution summary, or None if no request produced a value
+        """
+        if not any(
+            function(req) is not None
+            for reqs in (successful, incomplete, errored)
+            for req in reqs
+        ):
+            return None
+
+        return StatusDistributionSummary.from_values_function(
+            function=function,
+            successful=successful,
+            incomplete=incomplete,
+            errored=errored,
         )
 
 

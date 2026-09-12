@@ -320,6 +320,51 @@ class GenerativeRequestStats(StandardBaseDict):
 
     @computed_field  # type: ignore[misc]
     @property
+    def audio_seconds(self) -> float | None:
+        """
+        :return: Duration of the input audio in seconds, or None if unavailable
+        """
+        return self.input_metrics.audio_seconds
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def real_time_factor(self) -> float | None:
+        """
+        Real-Time Factor (RTF) for audio workloads such as transcription.
+
+        Ratio of processing time to the duration of the audio processed. Values
+        below 1.0 mean the request was handled faster than real time.
+
+        :return: End-to-end latency divided by input audio duration, or None if
+            either is unavailable or non-positive
+        """
+        audio_seconds = self.audio_seconds
+        if not audio_seconds or not (latency := self.request_latency):
+            return None
+
+        return latency / audio_seconds
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def inverse_real_time_factor(self) -> float | None:
+        """
+        Inverse Real-Time Factor (RTFx) for audio workloads.
+
+        Reciprocal of :meth:`real_time_factor`, expressing how many seconds of
+        audio were processed per second of wall-clock time. Values above 1.0
+        mean the request was handled faster than real time.
+
+        :return: Input audio duration divided by end-to-end latency, or None if
+            either is unavailable or non-positive
+        """
+        audio_seconds = self.audio_seconds
+        if not audio_seconds or not (latency := self.request_latency):
+            return None
+
+        return audio_seconds / latency
+
+    @computed_field  # type: ignore[misc]
+    @property
     def time_to_first_output_token_ms(self) -> float | None:
         """
         Time to first content (non-reasoning) token in milliseconds.

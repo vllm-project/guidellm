@@ -228,6 +228,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         self.print_image_table(report)
         self.print_video_table(report)
         self.print_audio_table(report)
+        self.print_audio_latency_table(report)
         self.print_tool_call_table(report)
         self.print_request_counts_table(report)
         self.print_request_latency_table(report)
@@ -362,6 +363,51 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 ("seconds", "Seconds"),
                 ("bytes", "Bytes"),
             ],
+        )
+
+    def print_audio_latency_table(self, report: GenerativeBenchmarksReport):
+        """
+        Print Real-Time Factor metrics, if any benchmark processed input audio.
+
+        Skipped entirely for workloads without input audio, where RTF is
+        undefined.
+
+        :param report: The benchmark report containing audio metrics
+        """
+        if not any(
+            benchmark.metrics.audio.real_time_factor is not None
+            for benchmark in report.benchmarks
+        ):
+            return
+
+        columns = ConsoleTableColumnsCollection()
+
+        for benchmark in report.benchmarks:
+            columns.add_value(
+                benchmark.config.strategy.type_,
+                group="Benchmark",
+                name="Strategy",
+                type_="text",
+            )
+            columns.add_stats(
+                benchmark.metrics.audio.real_time_factor,
+                group="RTF",
+                name="Ratio",
+                precision=3,
+            )
+            columns.add_stats(
+                benchmark.metrics.audio.inverse_real_time_factor,
+                group="RTFx",
+                name="Ratio",
+                precision=3,
+            )
+
+        headers, values = columns.get_table_data()
+        self.console.print("\n")
+        self.console.print_table(
+            headers,
+            values,
+            title="Audio Real-Time Factor (Completed Requests)",
         )
 
     def print_tool_call_table(self, report: GenerativeBenchmarksReport):
