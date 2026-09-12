@@ -238,9 +238,8 @@ def create_fake_text(
     """
     Generate fake text using a tokenizer processor with specified token count.
 
-    Creates text by generating fake tokens and joining them into a string,
-    ensuring the result has the exact number of tokens when processed by
-    the given tokenizer.
+    Creates text by joining decoded chunks generated for the requested
+    simulated token count.
 
     :param num_tokens: Target number of tokens in the generated text
     :param processor: Tokenizer to use for token generation and validation
@@ -258,17 +257,18 @@ def create_fake_tokens_str(
     fake: Faker | None = None,
 ) -> list[str]:
     """
-    Generate fake token strings using a tokenizer processor.
+    Generate detokenized text chunks using a tokenizer processor.
 
-    Creates a list of token strings by generating fake text and tokenizing it
-    until the desired token count is reached. Uses the provided tokenizer
-    for accurate token boundary detection.
+    Creates a list of text chunks by generating fake text and tokenizing it until
+    the desired token count is reached. The complete token sequence is decoded once
+    and divided into the same number of chunks so tokenizer-specific boundary markers
+    are not exposed without changing streaming event counts.
 
     :param num_tokens: Target number of tokens to generate
     :param processor: Tokenizer to use for token generation and validation
     :param seed: Random seed for reproducible token generation
     :param fake: Optional Faker instance for text generation
-    :return: List of token strings with the specified count
+    :return: List of decoded text chunks matching the specified count
     """
     if not fake:
         fake = Faker()
@@ -292,7 +292,20 @@ def create_fake_tokens_str(
         )
         tokens += new_tokens
 
-    return tokens
+    if not tokens:
+        return []
+
+    text = processor.convert_tokens_to_string(tokens)
+    chunk_size, remainder = divmod(len(text), len(tokens))
+    chunks = []
+    start = 0
+    # Split all decoded text across exactly `len(tokens)` transport chunks,
+    # giving the first `remainder` chunks one extra character.
+    for index in range(len(tokens)):
+        end = start + chunk_size + (index < remainder)
+        chunks.append(text[start:end])
+        start = end
+    return chunks
 
 
 def times_generator(mean: float, standard_dev: float) -> Generator[float]:
