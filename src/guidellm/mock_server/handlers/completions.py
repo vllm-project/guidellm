@@ -19,7 +19,7 @@ from pydantic import ValidationError
 from sanic import response
 from sanic.request import Request
 from sanic.response import HTTPResponse, ResponseStream
-from transformers import PreTrainedTokenizer
+from transformers import AutoTokenizer
 
 from guidellm.mock_server.models import (
     CompletionChoice,
@@ -68,7 +68,7 @@ class CompletionsHandler:
         self.tokenizer = (
             MockTokenizer()
             if config.processor is None
-            else PreTrainedTokenizer.from_pretrained(config.processor)
+            else AutoTokenizer.from_pretrained(config.processor)
         )
 
     async def handle(self, request: Request) -> HTTPResponse:
@@ -135,7 +135,7 @@ class CompletionsHandler:
         )
 
         # Token counts
-        prompt_tokens = len(self.tokenizer(req.prompt))
+        prompt_tokens = len(self.tokenizer.encode(req.prompt))
         max_tokens = req.max_tokens or math.inf
         completion_tokens_count = int(
             min(
@@ -195,7 +195,9 @@ class CompletionsHandler:
             )
 
             # Token counts
-            prompt_tokens = len(self.tokenizer(req.prompt))
+            prompt_tokens = len(
+                self.tokenizer.encode(req.prompt)  # type: ignore[arg-type]
+            )
             max_tokens = req.max_tokens or math.inf
             completion_tokens_count = int(
                 min(

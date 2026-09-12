@@ -5,21 +5,69 @@ import base64
 import json
 import math
 import multiprocessing
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
 import httpx
 import pytest
 import pytest_asyncio
 from pydantic import ValidationError
+from transformers import AutoTokenizer
 
 from guidellm.mock_server.server import MockServer
 from guidellm.schemas.mock_server.config import MockServerConfig
+from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 
 # Start server in a separate process
-def _start_server_process(config: MockServerConfig):
+def _start_server_process(
+    config: MockServerConfig,
+    chat_template: str | None = None,
+):
     server = MockServer(config)
+    if chat_template is not None:
+        server.chat_handler.tokenizer.chat_template = chat_template
     # Disable Sanic access logs / MOTD so ANSI formatters do not clobber pytest's TTY.
     server.run(access_log=False)
+
+
+@asynccontextmanager
+async def _run_mock_server(
+    config: MockServerConfig,
+    chat_template: str | None = None,
+) -> AsyncGenerator[str, None]:
+    base_url = f"http://{config.host}:{config.port}"
+    server_process = multiprocessing.Process(
+        target=_start_server_process,
+        args=(config, chat_template),
+    )
+    server_process.start()
+
+    async def wait_for_startup() -> None:
+        poll_frequency = 1.0
+        async with httpx.AsyncClient() as client:
+            while True:
+                try:
+                    response = await client.get(f"{base_url}/health", timeout=1.0)
+                    if response.status_code == 200:
+                        return
+                except (httpx.RequestError, httpx.TimeoutException):
+                    pass
+                await asyncio.sleep(poll_frequency)
+                poll_frequency = min(poll_frequency * 1.5, 2.0)
+
+    try:
+        try:
+            await asyncio.wait_for(wait_for_startup(), timeout=30.0)
+        except TimeoutError:
+            pytest.fail(f"MockServer on port {config.port} failed to start")
+        yield base_url
+    finally:
+        server_process.terminate()
+        server_process.join(timeout=5)
+        if server_process.is_alive():
+            server_process.kill()
+            server_process.join(timeout=5)
 
 
 @pytest_asyncio.fixture(scope="class")
@@ -34,44 +82,8 @@ async def mock_server_instance():
         itl_ms=1.0,
         request_latency=0.1,
     )
-    base_url = f"http://{config.host}:{config.port}"
-    server_process = multiprocessing.Process(
-        target=_start_server_process, args=(config,)
-    )
-    server_process.start()
-
-    # Wait for server to start up and be ready
-    async def wait_for_startup():
-        poll_frequency = 1.0
-        async with httpx.AsyncClient() as client:
-            while True:
-                try:
-                    response = await client.get(f"{base_url}/health", timeout=1.0)
-                    if response.status_code == 200:
-                        break
-                except (httpx.RequestError, httpx.TimeoutException):
-                    pass
-                await asyncio.sleep(poll_frequency)
-                poll_frequency = min(poll_frequency * 1.5, 2.0)
-
-    timeout = 30.0
-    try:
-        await asyncio.wait_for(wait_for_startup(), timeout)
-    except TimeoutError:
-        server_process.terminate()
-        server_process.join(timeout=5)
-        if server_process.is_alive():
-            server_process.kill()
-            server_process.join(timeout=5)
-        pytest.fail(f"Server failed to start within {timeout} seconds")
-
-    yield base_url, config
-
-    server_process.terminate()
-    server_process.join(timeout=5)
-    if server_process.is_alive():
-        server_process.kill()
-        server_process.join(timeout=5)
+    async with _run_mock_server(config) as base_url:
+        yield base_url, config
 
 
 class TestMockServerConfig:
@@ -1015,37 +1027,8 @@ async def fail_after_mock_server():
         output_tokens=4,
         fail_after_requests=2,
     )
-    base_url = f"http://{config.host}:{config.port}"
-    server_process = multiprocessing.Process(
-        target=_start_server_process, args=(config,)
-    )
-    server_process.start()
-
-    async def wait_for_startup():
-        async with httpx.AsyncClient() as client:
-            while True:
-                try:
-                    response = await client.get(f"{base_url}/health", timeout=1.0)
-                    if response.status_code == 200:
-                        return
-                except (httpx.RequestError, httpx.TimeoutException):
-                    pass
-                await asyncio.sleep(0.2)
-
-    try:
-        await asyncio.wait_for(wait_for_startup(), timeout=30.0)
-    except TimeoutError:
-        server_process.terminate()
-        server_process.join(timeout=5)
-        pytest.fail("fail_after MockServer failed to start")
-
-    yield base_url
-
-    server_process.terminate()
-    server_process.join(timeout=5)
-    if server_process.is_alive():
-        server_process.kill()
-        server_process.join(timeout=5)
+    async with _run_mock_server(config) as base_url:
+        yield base_url
 
 
 @pytest_asyncio.fixture
@@ -1064,37 +1047,8 @@ async def concurrent_limit_mock_server():
         output_tokens=4,
         max_concurrent_requests=1,
     )
-    base_url = f"http://{config.host}:{config.port}"
-    server_process = multiprocessing.Process(
-        target=_start_server_process, args=(config,)
-    )
-    server_process.start()
-
-    async def wait_for_startup():
-        async with httpx.AsyncClient() as client:
-            while True:
-                try:
-                    response = await client.get(f"{base_url}/health", timeout=1.0)
-                    if response.status_code == 200:
-                        return
-                except (httpx.RequestError, httpx.TimeoutException):
-                    pass
-                await asyncio.sleep(0.2)
-
-    try:
-        await asyncio.wait_for(wait_for_startup(), timeout=30.0)
-    except TimeoutError:
-        server_process.terminate()
-        server_process.join(timeout=5)
-        pytest.fail("concurrency MockServer failed to start")
-
-    yield base_url
-
-    server_process.terminate()
-    server_process.join(timeout=5)
-    if server_process.is_alive():
-        server_process.kill()
-        server_process.join(timeout=5)
+    async with _run_mock_server(config) as base_url:
+        yield base_url
 
 
 class TestMockServerFailAfterAndConcurrency:
@@ -1173,3 +1127,93 @@ class TestMockServerFailAfterAndConcurrency:
         # Two non-stream requests each sleep ~ttft (0.2s); serialized => slower
         # request should take at least ~0.3s when they contend for one slot.
         assert max(durations) >= 0.3
+
+
+@pytest_asyncio.fixture(scope="module")
+async def huggingface_mock_server():
+    """MockServer configured with the vendored Hugging Face tokenizer.
+
+    ## WRITTEN BY AI ##
+    """
+    chat_template = "{% for message in messages %}{{ message['content'] }}{% endfor %}"
+    config = MockServerConfig(
+        host="127.0.0.1",
+        port=8015,
+        model="huggingface-model",
+        processor=str(MINIMAL_TOKENIZER_DIR),
+        output_tokens=1,
+        ttft_ms=0,
+        itl_ms=0,
+    )
+    async with _run_mock_server(config, chat_template) as base_url:
+        tokenizer = AutoTokenizer.from_pretrained(MINIMAL_TOKENIZER_DIR)
+        tokenizer.chat_template = chat_template
+        yield base_url, config, tokenizer
+
+
+@pytest.mark.regression
+def test_initializes_with_huggingface_processor():
+    """Test all handlers initialize with a Hugging Face tokenizer.
+
+    ## WRITTEN BY AI ##
+    """
+    config = MockServerConfig(processor=str(MINIMAL_TOKENIZER_DIR))
+
+    server = MockServer(config)
+
+    assert server.chat_handler.tokenizer is not None
+    assert server.completions_handler.tokenizer is not None
+    assert server.responses_handler.tokenizer is not None
+    assert server.tokenizer_handler.tokenizer is not None
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("endpoint", "input_field", "max_tokens_field", "usage_field"),
+    [
+        (
+            "/v1/chat/completions",
+            "messages",
+            "max_tokens",
+            "prompt_tokens",
+        ),
+        ("/v1/completions", "prompt", "max_tokens", "prompt_tokens"),
+        ("/v1/responses", "input", "max_output_tokens", "input_tokens"),
+    ],
+    ids=("chat_completions", "completions", "responses"),
+)
+async def test_handles_requests_with_huggingface_processor(
+    huggingface_mock_server,
+    endpoint,
+    input_field,
+    max_tokens_field,
+    usage_field,
+):
+    """Test Hugging Face tokenizers handle and count endpoint prompts.
+
+    ## WRITTEN BY AI ##
+    """
+    server_url, config, tokenizer = huggingface_mock_server
+    prompt = "Hello world " * 20
+    messages = [{"role": "user", "content": prompt}]
+    is_chat = input_field == "messages"
+    input_value = messages if is_chat else prompt
+    prompt_text = (
+        tokenizer.apply_chat_template(messages, tokenize=False) if is_chat else prompt
+    )
+    payload = {
+        "model": config.model,
+        input_field: input_value,
+        max_tokens_field: 1,
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{server_url}{endpoint}",
+            json=payload,
+            timeout=10.0,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["usage"][usage_field] == len(tokenizer.encode(prompt_text))
