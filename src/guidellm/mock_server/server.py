@@ -312,7 +312,7 @@ class MockServer:
 
         @self.app.exception(Exception)
         async def generic_error_handler(_request: Request, exception: Exception):
-            logger.error("Unhandled exception: {}", exception)
+            logger.error("Unhandled exception: %s", exception)
             return response.json(
                 {
                     "error": {
