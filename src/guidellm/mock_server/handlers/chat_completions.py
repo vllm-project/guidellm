@@ -191,9 +191,10 @@ class ChatCompletionsHandler:
         # Token counts
         prompt_text = self.tokenizer.apply_chat_template(
             req.messages,  # type: ignore[arg-type]  # Transformers typing is narrow
+            tokenize=False,
         )
-        text_tokens = len(self.tokenizer(prompt_text))  # type: ignore[arg-type]
-        prompt_tokens = text_tokens + multimodal_stats.total_tokens
+        text_tokens = len(self.tokenizer.encode(prompt_text))  # type: ignore[arg-type]
+        prompt_tokens_count = text_tokens + multimodal_stats.total_tokens
         max_tokens = req.max_completion_tokens or req.max_tokens or math.inf
         completion_tokens_count = min(
             sample_number(self.config.output_tokens, self.config.output_tokens_std),
@@ -235,7 +236,7 @@ class ChatCompletionsHandler:
             model=req.model,
             choices=[choice],
             usage=Usage(
-                prompt_tokens=prompt_tokens,
+                prompt_tokens=prompt_tokens_count,
                 completion_tokens=int(completion_tokens_count),
                 prompt_tokens_details=multimodal_stats.prompt_tokens_details(
                     text_tokens
@@ -274,9 +275,12 @@ class ChatCompletionsHandler:
             # Token counts
             prompt_text = self.tokenizer.apply_chat_template(
                 req.messages,  # type: ignore[arg-type]  # Transformers typing is narrow
+                tokenize=False,
             )
-            text_tokens = len(self.tokenizer(prompt_text))  # type: ignore[arg-type]
-            prompt_tokens = text_tokens + multimodal_stats.total_tokens
+            text_tokens = len(
+                self.tokenizer.encode(prompt_text)  # type: ignore[arg-type]
+            )
+            prompt_tokens_count = text_tokens + multimodal_stats.total_tokens
             prompt_tokens_details = multimodal_stats.prompt_tokens_details(text_tokens)
             max_tokens = req.max_completion_tokens or req.max_tokens or math.inf
             completion_tokens_count = int(
@@ -293,7 +297,7 @@ class ChatCompletionsHandler:
                     stream_response,
                     req,
                     completion_id,
-                    prompt_tokens,
+                    prompt_tokens_count,
                     completion_tokens_count,
                     prompt_tokens_details,
                 )
@@ -302,7 +306,7 @@ class ChatCompletionsHandler:
                     stream_response,
                     req,
                     completion_id,
-                    prompt_tokens,
+                    prompt_tokens_count,
                     completion_tokens_count,
                     prompt_tokens_details,
                 )

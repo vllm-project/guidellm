@@ -12,6 +12,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from pydantic import ValidationError
+from transformers import AutoTokenizer
 
 from guidellm.mock_server.server import MockServer
 from guidellm.schemas.mock_server.config import MockServerConfig
@@ -19,8 +20,13 @@ from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 
 # Start server in a separate process
-def _start_server_process(config: MockServerConfig):
+def _start_server_process(
+    config: MockServerConfig,
+    chat_template: str | None = None,
+):
     server = MockServer(config)
+    if chat_template is not None:
+        server.chat_handler.tokenizer.chat_template = chat_template
     # Disable Sanic access logs / MOTD so ANSI formatters do not clobber pytest's TTY.
     server.run(access_log=False)
 
@@ -28,10 +34,12 @@ def _start_server_process(config: MockServerConfig):
 @asynccontextmanager
 async def _run_mock_server(
     config: MockServerConfig,
+    chat_template: str | None = None,
 ) -> AsyncGenerator[str, None]:
     base_url = f"http://{config.host}:{config.port}"
     server_process = multiprocessing.Process(
-        target=_start_server_process, args=(config,)
+        target=_start_server_process,
+        args=(config, chat_template),
     )
     server_process.start()
 
@@ -1121,6 +1129,28 @@ class TestMockServerFailAfterAndConcurrency:
         assert max(durations) >= 0.3
 
 
+@pytest_asyncio.fixture(scope="module")
+async def huggingface_mock_server():
+    """MockServer configured with the vendored Hugging Face tokenizer.
+
+    ## WRITTEN BY AI ##
+    """
+    chat_template = "{% for message in messages %}{{ message['content'] }}{% endfor %}"
+    config = MockServerConfig(
+        host="127.0.0.1",
+        port=8015,
+        model="huggingface-model",
+        processor=str(MINIMAL_TOKENIZER_DIR),
+        output_tokens=1,
+        ttft_ms=0,
+        itl_ms=0,
+    )
+    async with _run_mock_server(config, chat_template) as base_url:
+        tokenizer = AutoTokenizer.from_pretrained(MINIMAL_TOKENIZER_DIR)
+        tokenizer.chat_template = chat_template
+        yield base_url, config, tokenizer
+
+
 @pytest.mark.regression
 def test_initializes_with_huggingface_processor():
     """Test all handlers initialize with a Hugging Face tokenizer.
@@ -1135,3 +1165,59 @@ def test_initializes_with_huggingface_processor():
     assert server.completions_handler.tokenizer is not None
     assert server.responses_handler.tokenizer is not None
     assert server.tokenizer_handler.tokenizer is not None
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("endpoint", "input_field", "max_tokens_field", "usage_field"),
+    [
+        (
+            "/v1/chat/completions",
+            "messages",
+            "max_tokens",
+            "prompt_tokens",
+        ),
+        ("/v1/completions", "prompt", "max_tokens", "prompt_tokens"),
+        ("/v1/responses", "input", "max_output_tokens", "input_tokens"),
+    ],
+    ids=("chat_completions", "completions", "responses"),
+)
+async def test_handles_requests_with_huggingface_processor(
+    huggingface_mock_server,
+    endpoint,
+    input_field,
+    max_tokens_field,
+    usage_field,
+):
+    """Test Hugging Face tokenizers handle and count endpoint prompts.
+
+    ## WRITTEN BY AI ##
+    """
+    server_url, config, tokenizer = huggingface_mock_server
+    prompt = "Hello world " * 20
+    messages = [{"role": "user", "content": prompt}]
+    is_chat = input_field == "messages"
+    input_value = messages if is_chat else prompt
+    prompt_text = (
+        tokenizer.apply_chat_template(messages, tokenize=False)
+        if is_chat
+        else prompt
+    )
+    payload = {
+        "model": config.model,
+        input_field: input_value,
+        max_tokens_field: 1,
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{server_url}{endpoint}",
+            json=payload,
+            timeout=10.0,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["usage"][usage_field] == len(
+        tokenizer.encode(prompt_text)
+    )

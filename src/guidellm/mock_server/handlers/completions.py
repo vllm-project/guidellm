@@ -135,7 +135,7 @@ class CompletionsHandler:
         )
 
         # Token counts
-        prompt_tokens = len(self.tokenizer(req.prompt))
+        prompt_tokens = len(self.tokenizer.encode(req.prompt))
         max_tokens = req.max_tokens or math.inf
         completion_tokens_count = int(
             min(
@@ -195,7 +195,9 @@ class CompletionsHandler:
             )
 
             # Token counts
-            prompt_tokens = len(self.tokenizer(req.prompt))
+            prompt_tokens = len(
+                self.tokenizer.encode(req.prompt)  # type: ignore[arg-type]
+            )
             max_tokens = req.max_tokens or math.inf
             completion_tokens_count = int(
                 min(
