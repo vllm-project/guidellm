@@ -611,6 +611,27 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                     io_type.capitalize(),
                 )
 
+        # Real-Time Factor is a single per-request ratio rather than an
+        # input/output/total triple, so it is emitted outside the loop above.
+        if modality == "audio":
+            for metric_name, display_name in (
+                ("real_time_factor", "RTF"),
+                ("inverse_real_time_factor", "RTFx"),
+            ):
+                dist_summary = getattr(modality_summary, metric_name, None)
+                if dist_summary is None or not self._has_distribution_data(
+                    dist_summary
+                ):
+                    continue
+
+                self._add_stats_for_metric(
+                    headers,
+                    values,
+                    dist_summary,
+                    f"Audio {display_name}",
+                    "Ratio",
+                )
+
     def _has_distribution_data(self, dist_summary: StatusDistributionSummary) -> bool:
         """
         Check if distribution summary contains any data.
