@@ -61,14 +61,22 @@ class MockTokenizer(PreTrainedTokenizerBase):
             tokens = self.tokenize(text)
             return self.convert_tokens_to_ids(tokens)
         elif isinstance(text, list):
-            # Handle batch processing
             result = []
-            for t in text:
-                result.extend(self.__call__(t))
+            for item in text:
+                result.extend(self.__call__(item))
             return result
         else:
             msg = f"text input must be of type `str` or `list[str]`, got {type(text)}"
             raise ValueError(msg)
+
+    def encode(self, text: TextInput, **_kwargs) -> list[int]:
+        """
+        Encode text as a sequence of token IDs.
+
+        :param text: Input text to encode
+        :return: List of token IDs
+        """
+        return self(text)
 
     def tokenize(self, text: TextInput, **_kwargs) -> list[str]:  # type: ignore[override]
         """

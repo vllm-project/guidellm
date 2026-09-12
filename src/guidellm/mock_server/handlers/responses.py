@@ -167,7 +167,7 @@ class ResponsesHandler:
         )
 
         input_text = self._extract_input_text(req)
-        input_tokens = len(self.tokenizer(input_text))  # type: ignore[arg-type]
+        input_tokens = len(self.tokenizer.encode(input_text))
         max_tokens = req.max_output_tokens or math.inf
         output_tokens_count = min(
             sample_number(self.config.output_tokens, self.config.output_tokens_std),
@@ -223,7 +223,7 @@ class ResponsesHandler:
             )
 
             input_text = self._extract_input_text(req)
-            input_tokens = len(self.tokenizer(input_text))  # type: ignore[arg-type]
+            input_tokens = len(self.tokenizer.encode(input_text))
             max_tokens = req.max_output_tokens or math.inf
             output_tokens_count = int(
                 min(
