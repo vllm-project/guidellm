@@ -217,14 +217,17 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
     --data kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
   ```
 
-  `otel` uses the same nested `source` field. Token counts come from span attributes rather than top-level columns:
+  `otel` uses the same nested `source` field. Token counts come from span attributes rather than top-level columns. Hugging Face is the fastest way to start (`samples` counts conversations, not spans):
 
   ```bash
   guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
-    --data kind=otel,source.kind=json_file,source.path=synthetic.jsonl
+    --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces,load_kwargs.split=train \
+    --data-loader kind=pytorch,samples=2
   ```
+
+  Defaults are `content=raw` (recorded `gen_ai.input.messages`) and `history=trace` (each span's full input, `history_context=new`). Pass `history=runtime` to send only new messages and attach live completions through the DAG. Pass `content=synthetic` to build faker prompts from token counts (required when the corpus has no recorded messages). Local JSONL uses `source.kind=json_file,source.path=...` with the same switches. See [Trace File Formats](./trace_replay.md#otel).
 
   For replay, `time_scale` on `--data` is a time scale for the intervals between trace events after wait and pack caps. Wait caps (`max_wait`, `max_session_wait`, `min_concurrent_sessions`) are applied in original trace seconds before `time_scale`. Prefer those packing options to raise parallelism; use `copies` to replay the packed dataset sequentially when it is too short for the benchmark. The replay profile also accepts a scheduler-side `time_scale` on `--profile kind=replay`. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. Use `--constraint kind=max_requests,count=<n>` only as a runtime completion constraint; it does not limit the trace rows loaded from the file. `--constraint kind=max_duration,seconds=<n>` also cancels in-flight waits, including replay sleeps.
 
@@ -426,6 +429,7 @@ When your dataset uses non-standard column names, you can use `--data-column-map
 **Supported column types:**
 
 - `text_column`: The main prompt text (defaults: `prompt`, `instruction`, `question`, `input`, `context`, `content`, `text`)
+- `raw_messages_column`: Chat-completions messages for the current turn (`[{role, content}, …]`; defaults: `messages`, `chat_messages`). `/v1/chat/completions` sends them as-is. `/v1/responses` converts them to `input` items (`input_text`, `function_call`, `function_call_output`).
 - `prefix_column`: System prompt or prefix (defaults: `system_prompt`, `system`, `prefix`)
 - `prompt_tokens_count_column`: Column containing prompt token counts (defaults: `prompt_tokens_count`, `input_tokens_count`)
 - `output_tokens_count_column`: Column containing output token counts (defaults: `output_tokens_count`, `completion_tokens_count`)
