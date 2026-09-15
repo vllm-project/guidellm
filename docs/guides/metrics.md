@@ -103,6 +103,16 @@ Dispatch Delay and Scheduled Latency only apply to some of the scheduling strate
 - **Definition**: For the WebSocket backend, the mean of received-token timestamps minus the mean of sent-packet timestamps.
 - **Use Case**: Estimates the average send-to-receive lag across a request. It is approximate, since it assumes sent packets and received tokens line up evenly in time.
 
+### Real-Time Factor (RTF)
+
+- **Definition**: For audio workloads such as transcription, the ratio of end-to-end request latency to the duration of the input audio. A value of 0.25 means a 60-second recording was transcribed in 15 seconds.
+- **Use Case**: The standard measure of transcription speed. Values below 1.0 mean the server keeps up with real-time audio; values above 1.0 mean it falls behind, so a live stream would back up. Reported only for requests carrying input audio.
+
+### Inverse Real-Time Factor (RTFx)
+
+- **Definition**: The reciprocal of RTF, expressing how many seconds of audio are processed per second of wall-clock time.
+- **Use Case**: The same measurement expressed so that higher is better, which is how transcription throughput is usually quoted. An RTFx of 4.0 means the server processes audio four times faster than real time.
+
 ## Statistical Summaries
 
 GuideLLM provides detailed statistical summaries for each of the above metrics using the `StatusDistributionSummary` and `DistributionSummary` models. These summaries include the following statistics:

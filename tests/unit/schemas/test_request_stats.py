@@ -288,6 +288,9 @@ class TestGenerativeRequestStats:
             "output_tokens_per_iteration",
             "time_to_last_round_trip_ms",
             "avg_round_trip_time_ms",
+            "audio_seconds",
+            "real_time_factor",
+            "inverse_real_time_factor",
         ):
             assert hasattr(GenerativeRequestStats, prop_name)
 
@@ -883,3 +886,94 @@ class TestGenerativeRequestStats:
             assert got is None
         else:
             assert pytest.approx(exp, rel=1e-6, abs=1e-6) == got
+
+
+class TestAudioRealTimeFactor:
+    """RTF and RTFx for audio workloads such as transcription."""
+
+    @staticmethod
+    def _make_stats(
+        audio_seconds: float | None,
+        request_start: float = 0.0,
+        request_end: float = 2.0,
+    ) -> GenerativeRequestStats:
+        info = RequestInfo(request_id="req", status="completed")
+        info.timings.request_start = request_start
+        info.timings.request_end = request_end
+        info.timings.resolve_end = request_end
+
+        return GenerativeRequestStats(
+            request_id="req",
+            request_args="{}",
+            output="transcript",
+            info=info,
+            input_metrics=UsageMetrics(audio_seconds=audio_seconds),
+            output_metrics=UsageMetrics(text_tokens=5),
+        )
+
+    @pytest.mark.smoke
+    def test_audio_seconds_reads_input_metrics(self):
+        assert self._make_stats(12.5).audio_seconds == 12.5
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("audio_seconds", "latency", "expected_rtf", "expected_rtfx"),
+        [
+            (10.0, 2.0, 0.2, 5.0),  # faster than real time
+            (10.0, 20.0, 2.0, 0.5),  # slower than real time
+            (4.0, 4.0, 1.0, 1.0),  # exactly real time
+        ],
+    )
+    def test_real_time_factors(
+        self,
+        audio_seconds: float,
+        latency: float,
+        expected_rtf: float,
+        expected_rtfx: float,
+    ):
+        stats = self._make_stats(audio_seconds, request_end=latency)
+
+        assert stats.real_time_factor == pytest.approx(expected_rtf)
+        assert stats.inverse_real_time_factor == pytest.approx(expected_rtfx)
+
+    @pytest.mark.sanity
+    def test_factors_are_reciprocal(self):
+        stats = self._make_stats(7.5, request_end=3.0)
+
+        assert stats.real_time_factor * stats.inverse_real_time_factor == pytest.approx(
+            1.0
+        )
+
+    @pytest.mark.sanity
+    def test_none_without_audio(self):
+        """Text-only requests report no RTF rather than a misleading zero."""
+        stats = self._make_stats(None)
+
+        assert stats.real_time_factor is None
+        assert stats.inverse_real_time_factor is None
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("audio_seconds", "request_start", "request_end"),
+        [
+            (0.0, 0.0, 2.0),  # zero-duration audio
+            (10.0, 1.0, 1.0),  # zero latency
+        ],
+    )
+    def test_none_instead_of_zero_division(
+        self, audio_seconds: float, request_start: float, request_end: float
+    ):
+        stats = self._make_stats(
+            audio_seconds, request_start=request_start, request_end=request_end
+        )
+
+        assert stats.real_time_factor is None
+        assert stats.inverse_real_time_factor is None
+
+    @pytest.mark.smoke
+    def test_serialized_in_model_dump(self):
+        dumped = self._make_stats(10.0).model_dump()
+
+        assert dumped["audio_seconds"] == 10.0
+        assert dumped["real_time_factor"] == pytest.approx(0.2)
+        assert dumped["inverse_real_time_factor"] == pytest.approx(5.0)

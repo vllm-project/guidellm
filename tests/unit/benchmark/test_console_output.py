@@ -218,3 +218,71 @@ class TestServerThroughputTableGoodput:
         assert all(len(column) == 2 for column in values)
         attainment_column = next(column for column in values if "99.0" in column)
         assert attainment_column[1] == "--"
+
+
+def _make_audio_benchmark(
+    rtf: StatusDistributionSummary | None,
+    rtfx: StatusDistributionSummary | None,
+) -> SimpleNamespace:
+    """Build a benchmark stub exposing the audio RTF metrics."""
+    return SimpleNamespace(
+        config=SimpleNamespace(strategy=SimpleNamespace(type_="constant")),
+        metrics=SimpleNamespace(
+            audio=SimpleNamespace(
+                real_time_factor=rtf,
+                inverse_real_time_factor=rtfx,
+            )
+        ),
+    )
+
+
+def _render_audio_latency_table(benchmarks) -> str | None:
+    """Render the RTF table, returning its headers as text or None if skipped."""
+    captured: dict[str, object] = {}
+    output = GenerativeBenchmarkerConsole()
+    output.console.print = lambda *args, **kwargs: None
+    output.console.print_table = lambda headers, values, title=None: captured.update(
+        headers=headers
+    )
+    output.print_audio_latency_table(SimpleNamespace(benchmarks=benchmarks))
+
+    if "headers" not in captured:
+        return None
+
+    return " ".join(str(header) for header in captured["headers"])
+
+
+class TestAudioLatencyTable:
+    """Verify the console RTF table appears only for audio workloads."""
+
+    @pytest.mark.smoke
+    def test_renders_rtf_columns_for_audio_benchmarks(self):
+        distribution = StatusDistributionSummary.from_values([0.1, 0.2, 0.4], [], [])
+        benchmark = _make_audio_benchmark(distribution, distribution)
+
+        headers = _render_audio_latency_table([benchmark])
+
+        assert headers is not None
+        assert "RTF" in headers
+        assert "RTFx" in headers
+
+    @pytest.mark.sanity
+    def test_skipped_entirely_without_audio(self):
+        """Text-only runs must not print an empty Real-Time Factor table."""
+        benchmark = _make_audio_benchmark(None, None)
+
+        assert _render_audio_latency_table([benchmark]) is None
+
+    @pytest.mark.regression
+    def test_renders_when_any_benchmark_has_audio(self):
+        """A mixed report still prints the table for the audio benchmarks."""
+        distribution = StatusDistributionSummary.from_values([0.5], [], [])
+        benchmarks = [
+            _make_audio_benchmark(None, None),
+            _make_audio_benchmark(distribution, distribution),
+        ]
+
+        headers = _render_audio_latency_table(benchmarks)
+
+        assert headers is not None
+        assert "RTF" in headers

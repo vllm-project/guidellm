@@ -10,6 +10,7 @@ import pytest
 from guidellm.benchmark.schemas.accumulator import GenerativeBenchmarkAccumulator
 from guidellm.benchmark.schemas.base import BenchmarkConfig
 from guidellm.benchmark.schemas.metrics import (
+    GenerativeAudioMetricsSummary,
     GenerativeMetrics,
     GenerativeMetricsSummary,
     GenerativeToolCallMetricsSummary,
@@ -930,3 +931,86 @@ class TestGoodputConfigWiring:
         del payload["slo"]
 
         assert BenchmarkConfig.model_validate(payload).slo is None
+
+
+def _make_audio_stats(
+    request_id: str, audio_seconds: float | None, latency: float
+) -> GenerativeRequestStats:
+    """Build a request that processed ``audio_seconds`` of audio in ``latency``."""
+    info = RequestInfo(request_id=request_id, status="completed")
+    info.timings.request_start = 0.0
+    info.timings.request_end = latency
+    info.timings.resolve_end = latency
+
+    return GenerativeRequestStats(
+        request_id=request_id,
+        request_args="{}",
+        output="transcript",
+        info=info,
+        input_metrics=UsageMetrics(audio_seconds=audio_seconds),
+        output_metrics=UsageMetrics(text_tokens=5),
+    )
+
+
+class TestAudioRealTimeFactorMetrics:
+    """Aggregation of RTF/RTFx into audio metric distributions."""
+
+    @pytest.mark.smoke
+    def test_compile_distributions(self):
+        """10s of audio at 1s, 2s and 4s latency -> RTF 0.1, 0.2, 0.4."""
+        successful = [
+            _make_audio_stats("a", 10.0, 1.0),
+            _make_audio_stats("b", 10.0, 2.0),
+            _make_audio_stats("c", 10.0, 4.0),
+        ]
+
+        summary = GenerativeAudioMetricsSummary.compile(successful, [], [])
+
+        rtf = summary.real_time_factor
+        rtfx = summary.inverse_real_time_factor
+        assert rtf is not None
+        assert rtfx is not None
+        assert rtf.successful.count == 3
+        assert rtf.successful.mean == pytest.approx((0.1 + 0.2 + 0.4) / 3)
+        assert rtf.successful.min == pytest.approx(0.1)
+        assert rtf.successful.max == pytest.approx(0.4)
+        assert rtfx.successful.mean == pytest.approx((10.0 + 5.0 + 2.5) / 3)
+
+    @pytest.mark.sanity
+    def test_none_for_text_only_benchmarks(self):
+        """No audio anywhere reports no distribution, not a spread of zeros."""
+        successful = [
+            _make_audio_stats("a", None, 1.0),
+            _make_audio_stats("b", None, 2.0),
+        ]
+
+        summary = GenerativeAudioMetricsSummary.compile(successful, [], [])
+
+        assert summary.real_time_factor is None
+        assert summary.inverse_real_time_factor is None
+
+    @pytest.mark.sanity
+    def test_requests_without_audio_are_excluded_not_zeroed(self):
+        """A mixed workload must not drag RTF toward zero with text requests."""
+        successful = [
+            _make_audio_stats("a", 10.0, 2.0),  # RTF 0.2
+            _make_audio_stats("b", None, 2.0),  # no audio, excluded
+            _make_audio_stats("c", 10.0, 1.0),  # RTF 0.1
+        ]
+
+        summary = GenerativeAudioMetricsSummary.compile(successful, [], [])
+
+        rtf = summary.real_time_factor
+        assert rtf is not None
+        assert rtf.successful.count == 2
+        assert rtf.successful.mean == pytest.approx(0.15)
+
+    @pytest.mark.regression
+    def test_fields_are_optional_for_existing_reports(self):
+        """Reports written before RTF existed must still deserialize."""
+        summary = GenerativeAudioMetricsSummary.model_validate(
+            {"tokens": None, "samples": None, "seconds": None, "bytes": None}
+        )
+
+        assert summary.real_time_factor is None
+        assert summary.inverse_real_time_factor is None
