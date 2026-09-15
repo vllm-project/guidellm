@@ -1104,11 +1104,25 @@ class GenerativeMetrics(StandardBaseDict):
                 incomplete=incomplete,
                 errored=errored,
             ),
+            # TODO: Need to evaluate closed=False vs closed=True for first-token
+            # latencies. See github.com/vllm-project/guidellm/issues/1078
             time_to_first_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_first_token_ms or 0.0,
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+                successful=accumulator.completed.get_within_range(
+                    start_time,
+                    end_time,
+                    end_func=lambda req: req.first_token_iteration,
+                ),
+                incomplete=accumulator.incomplete.get_within_range(
+                    start_time,
+                    end_time,
+                    end_func=lambda req: req.first_token_iteration,
+                ),
+                errored=accumulator.errored.get_within_range(
+                    start_time,
+                    end_time,
+                    end_func=lambda req: req.first_token_iteration,
+                ),
             ),
             time_to_last_round_trip_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_last_round_trip_ms or 0.0,
@@ -1124,9 +1138,21 @@ class GenerativeMetrics(StandardBaseDict):
             ),
             time_to_first_output_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_first_output_token_ms or 0.0,
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+                successful=accumulator.completed.get_within_range(
+                    start_time,
+                    end_time,
+                    end_func=lambda req: req.first_output_token_iteration,
+                ),
+                incomplete=accumulator.incomplete.get_within_range(
+                    start_time,
+                    end_time,
+                    end_func=lambda req: req.first_output_token_iteration,
+                ),
+                errored=accumulator.errored.get_within_range(
+                    start_time,
+                    end_time,
+                    end_func=lambda req: req.first_output_token_iteration,
+                ),
             ),
             time_per_output_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: (
@@ -1142,27 +1168,45 @@ class GenerativeMetrics(StandardBaseDict):
                     req.inter_token_latency_ms or 0.0,
                     (req.output_tokens or 1.0) - 1.0,
                 ),
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+                successful=accumulator.completed.get_within_range(
+                    start_time,
+                    end_time,
+                    start_func=lambda req: req.first_token_iteration,
+                ),
+                incomplete=accumulator.incomplete.get_within_range(
+                    start_time,
+                    end_time,
+                    start_func=lambda req: req.first_token_iteration,
+                ),
+                errored=accumulator.errored.get_within_range(
+                    start_time,
+                    end_time,
+                    start_func=lambda req: req.first_token_iteration,
+                ),
             ),
             prompt_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.prompt_tokens_timing,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             output_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.output_tokens_timings,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.total_tokens_timings,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             output_tokens_per_iteration=StatusDistributionSummary.from_values_function(
                 function=lambda req: [

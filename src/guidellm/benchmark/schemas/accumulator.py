@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import random
 import time
+from collections.abc import Callable
 from typing import Literal
 
 from pydantic import Field
@@ -629,30 +630,54 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
         return [self.requests_stats[ind] for ind in self.samples]
 
     def get_within_range(
-        self, start_time: float, end_time: float
+        self,
+        start_time: float,
+        end_time: float,
+        start_func: Callable[[GenerativeRequestStats], float | None] = lambda s: (
+            s.request_start_time
+        ),
+        end_func: Callable[[GenerativeRequestStats], float | None] = lambda s: (
+            s.request_end_time
+        ),
+        closed: bool = False,
     ) -> list[GenerativeRequestStats]:
         """
         Retrieve request statistics within a specified time range.
 
-        :param start_time: Start timestamp for filtering (requests must end after this)
-        :param end_time: End timestamp for filtering (requests must start before this)
+        If the request has no start time we treat it
+        as an instantaneous event at the end time.
+
+        :param start_time: Start timestamp for filtering (events must end after this)
+        :param end_time: End timestamp for filtering (events must start before this)
+        :param start_func: Function to extract the start timestamp from a request stat
+        :param end_func: Function to extract the end timestamp from a request stats
+        :param closed: If True, events must be strictly enclosed within the time range.
+                       If False, include events that partially overlap the time range.
         :return: List of request statistics within the time range
         """
-        return [
-            stats
-            for stats in self.requests_stats
-            if (stats.request_end_time >= start_time)
-            and (
-                (
-                    stats.request_start_time is not None
-                    and stats.request_start_time <= end_time
-                )
-                or (
-                    stats.request_start_time is None
-                    and stats.request_end_time <= end_time
-                )
-            )
-        ]
+        within_range = []
+        for stats in self.requests_stats:
+            start_event = start_func(stats)
+            end_event = end_func(stats)
+
+            # Skip if we don't know when the event ended
+            if end_event is None:
+                continue
+
+            # Treat instantaneous events as starting exactly when they end
+            actual_start = start_event if start_event is not None else end_event
+
+            if closed:
+                # Fully enclosed
+                is_in_range = actual_start >= start_time and end_event <= end_time
+            else:
+                # Partial overlap
+                is_in_range = end_event >= start_time and actual_start <= end_time
+
+            if is_in_range:
+                within_range.append(stats)
+
+        return within_range
 
     def update_estimate(
         self,

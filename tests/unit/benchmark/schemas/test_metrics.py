@@ -280,6 +280,116 @@ def _make_accumulator(
     return accumulator
 
 
+@pytest.mark.regression
+def test_compile_filters_token_and_ttft_events_to_measurement_window():
+    """
+    Token rates and TTFT include only events that overlap the measurement window.
+
+    Requests crossing either boundary remain part of the request totals. TTFT is
+    filtered by the first-token event timestamp with partial overlap, so requests
+    whose first token falls inside the window are included even when request
+    start is before the window.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def _make_stats(
+        request_id: str,
+        request_start: float,
+        request_end: float,
+        first_token: float,
+        last_token: float,
+    ) -> GenerativeRequestStats:
+        timings = RequestTimings(
+            resolve_start=request_start,
+            resolve_end=request_end,
+            request_start=request_start,
+            request_end=request_end,
+            first_token_iteration=first_token,
+            last_token_iteration=last_token,
+            token_iterations=3,
+        )
+        return GenerativeRequestStats(
+            request_id=request_id,
+            info=RequestInfo(
+                request_id=request_id, status="completed", timings=timings
+            ),
+            input_metrics=UsageMetrics(text_tokens=4),
+            output_metrics=UsageMetrics(text_tokens=3),
+        )
+
+    metrics = GenerativeMetrics.compile(
+        _make_accumulator(
+            [
+                _make_stats("warmup", 5.0, 12.0, 8.0, 12.0),
+                _make_stats("warmup-first-in-profile", 8.0, 18.0, 12.0, 16.0),
+                _make_stats("profile", 11.0, 18.0, 12.0, 16.0),
+                _make_stats("cooldown", 18.0, 24.0, 22.0, 24.0),
+            ],
+            start_time=10.0,
+            end_time=20.0,
+        )
+    )
+
+    assert metrics.request_totals.successful == 4
+    assert metrics.time_to_first_token_ms.successful.count == 3
+    assert metrics.time_to_first_token_ms.successful.mean == pytest.approx(3000.0)
+    assert metrics.prompt_tokens_per_second.successful.count == 8
+    assert metrics.output_tokens_per_second.successful.count == 8
+    assert metrics.tokens_per_second.successful.count == 16
+
+
+@pytest.mark.regression
+def test_compile_filters_ttfot_by_first_output_token_event():
+    """
+    TTFOT is filtered by first_output_token_iteration, which can differ from TTFT
+    when reasoning tokens precede content tokens.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def _make_stats(
+        request_id: str,
+        request_start: float,
+        request_end: float,
+        first_token: float,
+        first_output_token: float,
+    ) -> GenerativeRequestStats:
+        timings = RequestTimings(
+            resolve_start=request_start,
+            resolve_end=request_end,
+            request_start=request_start,
+            request_end=request_end,
+            first_token_iteration=first_token,
+            first_output_token_iteration=first_output_token,
+            last_token_iteration=request_end,
+            token_iterations=3,
+        )
+        return GenerativeRequestStats(
+            request_id=request_id,
+            info=RequestInfo(
+                request_id=request_id, status="completed", timings=timings
+            ),
+            input_metrics=UsageMetrics(text_tokens=4),
+            output_metrics=UsageMetrics(text_tokens=3),
+        )
+
+    metrics = GenerativeMetrics.compile(
+        _make_accumulator(
+            [
+                _make_stats("both-in-window", 10.0, 18.0, 12.0, 15.0),
+                # Reasoning token in window; first content token before window.
+                _make_stats("output-before-window", 8.0, 18.0, 12.0, 8.5),
+            ],
+            start_time=10.0,
+            end_time=20.0,
+        )
+    )
+
+    assert metrics.time_to_first_token_ms.successful.count == 2
+    assert metrics.time_to_first_output_token_ms.successful.count == 1
+
+
 class TestScheduleRelativeMetrics:
     """
     Verify the schedule-relative distributions added alongside request_latency.
