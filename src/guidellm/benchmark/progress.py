@@ -118,11 +118,12 @@ class GenerativeConsoleBenchmarkerProgress(
     :cvar display_scheduler_stats: Whether to include scheduler statistics in display
     """
 
-    def __init__(self, display_scheduler_stats: bool = False):
+    def __init__(self, display_scheduler_stats: bool = False, cleanup: bool = True):
         """
         Initialize console progress display with rendering configuration.
 
         :param display_scheduler_stats: Whether to display scheduler timing statistics
+        :param cleanup: Whether to clear the console display after completion
         """
         super().__init__()
         Live.__init__(
@@ -132,6 +133,7 @@ class GenerativeConsoleBenchmarkerProgress(
             redirect_stdout=True,
             # Only redirect stderr if it would interfere with stdout display
             redirect_stderr=stderr_eq_stdout(),
+            transient=cleanup,
         )
         self.display_scheduler_stats: bool = display_scheduler_stats
         self.run_progress: Progress | None = None
