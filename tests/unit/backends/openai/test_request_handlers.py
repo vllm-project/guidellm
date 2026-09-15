@@ -1014,6 +1014,43 @@ class TestChatCompletionsRequestHandler:
         assert result.body["messages"][0]["content"][1]["type"] == "text"
         assert result.body["messages"][0]["content"][1]["text"] == "How are you?"
 
+    @pytest.mark.sanity
+    def test_format_raw_messages_column_history_and_current(self, valid_instances):
+        """
+        raw_messages_column supplies OpenAI dicts for history and the current turn.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        prev_request = GenerationRequest(
+            columns={
+                "raw_messages_column": [[{"role": "user", "content": "hello"}]],
+                "text_column": ["should not be used"],
+            }
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="hi",
+        )
+        data = GenerationRequest(
+            columns={
+                "raw_messages_column": [[{"role": "user", "content": "again"}]],
+                "text_column": ["also ignored"],
+            }
+        )
+
+        result = instance.format(
+            data,
+            history=[(prev_request, prev_response)],
+        )
+
+        assert result.body["messages"] == [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+            {"role": "user", "content": "again"},
+        ]
+
     @pytest.mark.regression
     def test_content_extras_enrich_plain_text_only(self, valid_instances):
         """Content extras enrich text without changing multimodal parts.
@@ -3153,6 +3190,90 @@ class TestResponsesRequestHandler:
         assert result.body is not None
         assert isinstance(result.body, dict)
         assert "input" in result.body
+
+    @pytest.mark.sanity
+    def test_format_raw_messages_column_converts_chat_dicts(self, valid_instances):
+        """raw_messages_column is chat format and is converted to Responses input items.
+
+        ## WRITTEN BY AI ##
+        """
+        data = GenerationRequest(
+            columns={
+                "raw_messages_column": [[{"role": "user", "content": "hello"}]],
+                "text_column": ["should not be used"],
+            }
+        )
+
+        result = valid_instances.format(data)
+
+        assert result.body["input"] == [
+            {"role": "user", "content": [{"type": "input_text", "text": "hello"}]},
+        ]
+
+    @pytest.mark.sanity
+    def test_format_raw_messages_column_history_and_tool_calls(self, valid_instances):
+        """Chat tool_calls and role=tool convert; live history still appends.
+
+        ## WRITTEN BY AI ##
+        """
+        prev_request = GenerationRequest(
+            columns={
+                "raw_messages_column": [[{"role": "user", "content": "hello"}]],
+            }
+        )
+        prev_response = GenerationResponse(
+            request_id="prev",
+            request_args=None,
+            text="hi",
+        )
+        data = GenerationRequest(
+            columns={
+                "raw_messages_column": [
+                    [
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "get_weather",
+                                        "arguments": '{"city": "Paris"}',
+                                    },
+                                }
+                            ],
+                        },
+                        {
+                            "role": "tool",
+                            "tool_call_id": "call_1",
+                            "content": "rainy",
+                        },
+                    ]
+                ]
+            }
+        )
+
+        result = valid_instances.format(
+            data,
+            history=[(prev_request, prev_response)],
+        )
+
+        assert result.body["input"] == [
+            {"role": "user", "content": [{"type": "input_text", "text": "hello"}]},
+            {"role": "assistant", "content": "hi"},
+            {
+                "type": "function_call",
+                "call_id": "call_1",
+                "name": "get_weather",
+                "arguments": '{"city": "Paris"}',
+            },
+            {
+                "type": "function_call_output",
+                "call_id": "call_1",
+                "output": "rainy",
+            },
+        ]
 
     @pytest.mark.sanity
     def test_format_with_model(self, valid_instances):
@@ -5422,6 +5543,44 @@ class TestChatCompletionsToolChoiceOverride:
         result = handler.format(data, extras=extras)
 
         assert result.body["tool_choice"] == "auto"
+
+    @pytest.mark.sanity
+    def test_tool_choice_column_auto(self, handler):
+        """tool_choice_column sets tool_choice when extras do not.
+
+        ## WRITTEN BY AI ##
+        """
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        data = GenerationRequest(
+            columns={
+                "text_column": ["test"],
+                "tools_column": [json.dumps(tools)],
+                "tool_choice_column": ["auto"],
+            },
+            turn_type="client_tool_call",
+        )
+        result = handler.format(data)
+
+        assert result.body["tool_choice"] == "auto"
+
+    @pytest.mark.sanity
+    def test_tool_choice_column_required(self, handler):
+        """tool_choice_column required is the default dataset override.
+
+        ## WRITTEN BY AI ##
+        """
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        data = GenerationRequest(
+            columns={
+                "text_column": ["test"],
+                "tools_column": [json.dumps(tools)],
+                "tool_choice_column": ["required"],
+            },
+            turn_type="client_tool_call",
+        )
+        result = handler.format(data)
+
+        assert result.body["tool_choice"] == "required"
 
     @pytest.mark.sanity
     def test_no_override_without_tools(self, handler):

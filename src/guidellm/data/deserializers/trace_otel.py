@@ -1,9 +1,10 @@
 """
 OpenTelemetry GenAI trace format.
 
-Normalizes session-per-line and span-per-line OTEL files into the shared
-replay row shape (timestamp, input_length, output_length), then generates
-synthetic prompts like the other trace formats.
+Normalizes session-per-line and span-per-line OTEL files into timed
+conversation graphs. Replay can send recorded ``gen_ai.input.messages``
+or synthetic prompts, each with either full-trace inputs per call or
+DAG runtime history of live completions.
 """
 
 from __future__ import annotations
@@ -31,13 +32,20 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationParentRef,
     ConversationTurnData,
 )
+from guidellm.scheduler.schemas import HistoryContext
 from guidellm.schemas.data.deserializers import OTELTraceFormatArgs
+from guidellm.schemas.data.deserializers.synthetic import DEFAULT_SYNTHETIC_TOOLS
+from guidellm.settings import settings
+from guidellm.utils.imports import json
 
-__all__ = ["OTELTraceFormat"]
+__all__ = ["OTELTraceFormat", "parse_gen_ai_messages"]
 
 _LLM_OPERATIONS = frozenset({"chat", "generate", "text_completion"})
 _NON_LLM_OPERATIONS = frozenset({"invoke_agent", "execute_tool", "embeddings"})
 _FAILED_STATUS_CODES = frozenset({2, "2", "ERROR", "STATUS_CODE_ERROR"})
+_TOOL_FINISH_REASONS = frozenset(
+    {"tool_calls", "tool_call", "tool_use", "function_call"}
+)
 _NANOSECONDS = 1e16
 _MILLISECONDS = 1e11
 
@@ -87,6 +95,194 @@ def usage_tokens(
     if prompt is None or output is None:
         return None
     return int(prompt), int(output)
+
+
+def _json_dumps(value: Any) -> str:
+    dumped = json.dumps(value)
+    if isinstance(dumped, bytes):
+        return dumped.decode()
+    return dumped
+
+
+def parse_gen_ai_messages(value: Any) -> list[dict[str, Any]]:
+    """Normalize ``gen_ai.input/output.messages`` to OpenAI chat dicts.
+
+    Accepts a JSON string or a list. OTel ``parts`` (``text``, ``tool_call``,
+    ``tool_call_response``) become ``{role, content}`` / ``tool_calls`` /
+    ``role=tool`` messages. Values that are already OpenAI-shaped are passed
+    through with tool-call arguments normalized to JSON strings.
+
+    :param value: Raw attribute value (string, list, or ``None``).
+    :return: OpenAI chat message dicts. Empty when ``value`` is missing.
+    :raises InvalidRowError: If the value cannot be parsed as a message list.
+    """
+    if value is None or value == "":
+        return []
+    parsed = value
+    if isinstance(value, str | bytes):
+        try:
+            parsed = json.loads(value)
+        except (TypeError, ValueError) as exc:
+            raise InvalidRowError(
+                f"OTEL format: gen_ai messages are not valid JSON: {value!r}"
+            ) from exc
+    if not isinstance(parsed, list):
+        raise InvalidRowError(
+            f"OTEL format: gen_ai messages must be a list, got {type(parsed).__name__}"
+        )
+    messages: list[dict[str, Any]] = []
+    for item in parsed:
+        messages.extend(_normalize_message(item))
+    return messages
+
+
+def span_output_messages(attributes: dict[str, Any]) -> list[dict[str, Any]]:
+    """Assistant (or tool) messages recorded on a completed span.
+
+    Prefers ``gen_ai.output.messages``. Falls back to ``gen_ai.output.text``
+    as a single assistant message. Used for runtime-history prefix checks,
+    never as the live completion.
+
+    :param attributes: Span attribute mapping.
+    :return: Normalized OpenAI chat dicts, possibly empty.
+    """
+    raw = attributes.get("gen_ai.output.messages")
+    messages = parse_gen_ai_messages(raw)
+    if messages:
+        return messages
+    text = attributes.get("gen_ai.output.text")
+    if text is None or text == "":
+        return []
+    return [{"role": "assistant", "content": str(text)}]
+
+
+def span_tool_definitions(attributes: dict[str, Any]) -> Any | None:
+    """Return ``gen_ai.tool.definitions`` decoded from JSON if needed.
+
+    :param attributes: Span attribute mapping.
+    :return: Tool definitions as stored on the span, or ``None``.
+    """
+    defs = attributes.get("gen_ai.tool.definitions")
+    if defs is None or defs == "":
+        return None
+    if isinstance(defs, str | bytes):
+        try:
+            return json.loads(defs)
+        except (TypeError, ValueError) as exc:
+            raise InvalidRowError(
+                "OTEL format: gen_ai.tool.definitions is not valid JSON"
+            ) from exc
+    return defs
+
+
+def _normalize_message(item: Any) -> list[dict[str, Any]]:
+    if not isinstance(item, dict):
+        raise InvalidRowError(
+            f"OTEL format: message must be an object, got {type(item).__name__}"
+        )
+    parts = item.get("parts")
+    if isinstance(parts, list):
+        return _messages_from_parts(item.get("role"), parts)
+    return [_normalize_openai_message(item)]
+
+
+def _normalize_openai_message(item: dict[str, Any]) -> dict[str, Any]:
+    role = item.get("role") or "user"
+    message: dict[str, Any] = {"role": role}
+    if "content" in item:
+        message["content"] = item["content"]
+    if item.get("tool_calls"):
+        message["tool_calls"] = [
+            _normalize_openai_tool_call(call) for call in item["tool_calls"]
+        ]
+        message.setdefault("content", None)
+    if role == "tool":
+        tool_call_id = item.get("tool_call_id") or item.get("id")
+        if tool_call_id is not None:
+            message["tool_call_id"] = str(tool_call_id)
+        if "name" in item:
+            message["name"] = item["name"]
+        if "content" not in message:
+            result = item.get("result")
+            message["content"] = "" if result is None else result
+    return message
+
+
+def _normalize_openai_tool_call(call: Any) -> dict[str, Any]:
+    if not isinstance(call, dict):
+        raise InvalidRowError("OTEL format: tool_calls entries must be objects")
+    function = call.get("function")
+    if not isinstance(function, dict):
+        function = {}
+    arguments = function.get("arguments", call.get("arguments", {}))
+    if not isinstance(arguments, str):
+        arguments = _json_dumps(arguments if arguments is not None else {})
+    name = function.get("name") or call.get("name") or ""
+    return {
+        "id": str(call.get("id") or call.get("tool_call_id") or ""),
+        "type": "function",
+        "function": {"name": name, "arguments": arguments},
+    }
+
+
+def _messages_from_parts(role: Any, parts: list[Any]) -> list[dict[str, Any]]:
+    texts: list[str] = []
+    tool_calls: list[dict[str, Any]] = []
+    tool_responses: list[dict[str, Any]] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        part_type = part.get("type")
+        if part_type == "text":
+            content = part.get("content", part.get("text", ""))
+            texts.append("" if content is None else str(content))
+        elif part_type == "tool_call":
+            tool_calls.append(_tool_call_from_part(part))
+        elif part_type in {"tool_call_response", "tool_result"}:
+            tool_responses.append(_tool_response_from_part(part))
+    messages: list[dict[str, Any]] = []
+    if texts or tool_calls:
+        message: dict[str, Any] = {
+            "role": role or ("assistant" if tool_calls else "user"),
+        }
+        if texts:
+            message["content"] = "".join(texts)
+        elif tool_calls:
+            message["content"] = None
+        if tool_calls:
+            message["tool_calls"] = tool_calls
+        messages.append(message)
+    messages.extend(tool_responses)
+    return messages
+
+
+def _tool_call_from_part(part: dict[str, Any]) -> dict[str, Any]:
+    function = part.get("function")
+    arguments = part.get("arguments")
+    name = part.get("name")
+    if isinstance(function, dict):
+        if arguments is None:
+            arguments = function.get("arguments")
+        if not name:
+            name = function.get("name")
+    if not isinstance(arguments, str):
+        arguments = _json_dumps(arguments if arguments is not None else {})
+    return {
+        "id": str(part.get("id") or part.get("tool_call_id") or ""),
+        "type": "function",
+        "function": {"name": name or "", "arguments": arguments},
+    }
+
+
+def _tool_response_from_part(part: dict[str, Any]) -> dict[str, Any]:
+    content = part.get("result", part.get("response", part.get("content", "")))
+    if not isinstance(content, str):
+        content = _json_dumps(content if content is not None else "")
+    return {
+        "role": "tool",
+        "tool_call_id": str(part.get("id") or part.get("tool_call_id") or ""),
+        "content": content,
+    }
 
 
 def parse_span_timestamp(value: Any) -> float:
@@ -159,6 +355,142 @@ def is_llm_span(span: dict[str, Any], config: OTELTraceFormatArgs) -> bool:
     if operation in _LLM_OPERATIONS:
         return True
     return usage_tokens(attributes, config) is not None
+
+
+def is_execute_tool_span(span: dict[str, Any]) -> bool:
+    """Return whether ``span`` is a tool-execution span, not an LLM request.
+
+    Matches ``gen_ai.operation.name == execute_tool``, or a span name that
+    starts with ``execute_tool`` when the operation name is missing.
+
+    :param span: One OTEL span dict.
+    :return: ``True`` when this span records a tool execution.
+    """
+    attributes = span_attributes(span)
+    if attributes.get("gen_ai.operation.name") == "execute_tool":
+        return True
+    name = span.get("name")
+    return isinstance(name, str) and name.startswith("execute_tool")
+
+
+def finish_reasons_indicate_tool_call(attributes: dict[str, Any]) -> bool:
+    """Return whether ``gen_ai.response.finish_reasons`` records a tool call.
+
+    Accepts a list, a JSON string, or a single string. Recognized values are
+    ``tool_calls``, ``tool_call``, ``tool_use``, and ``function_call``.
+
+    :param attributes: Span attribute mapping.
+    :return: ``True`` when any recorded finish reason is a tool-call alias.
+    """
+    raw = attributes.get("gen_ai.response.finish_reasons")
+    if raw is None or raw == "":
+        return False
+    parsed: Any = raw
+    if isinstance(raw, str | bytes):
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError):
+            parsed = [raw.decode() if isinstance(raw, bytes) else raw]
+    if isinstance(parsed, str):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        return False
+    return any(str(item) in _TOOL_FINISH_REASONS for item in parsed)
+
+
+def messages_have_tool_calls(messages: list[dict[str, Any]]) -> bool:
+    """Return whether any OpenAI-shaped message carries ``tool_calls``.
+
+    :param messages: Normalized chat messages.
+    :return: ``True`` when at least one assistant message requested tools.
+    """
+    return any(bool(message.get("tool_calls")) for message in messages)
+
+
+def stringify_tool_result(value: Any) -> str:
+    """Coerce a recorded tool result to a string for ``tool_response_column``.
+
+    :param value: Result content (string, bytes, or JSON-serializable).
+    :return: String payload to inject.
+    """
+    if isinstance(value, bytes):
+        return value.decode()
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return ""
+    return _json_dumps(value)
+
+
+def execute_tool_result_text(span: dict[str, Any]) -> str | None:
+    """Return ``gen_ai.tool.call.result`` from an execute-tool span, if set.
+
+    :param span: One OTEL span dict.
+    :return: Stringified result, or ``None`` when the attribute is absent.
+    """
+    result = span_attributes(span).get("gen_ai.tool.call.result")
+    if result is None or result == "":
+        return None
+    return stringify_tool_result(result)
+
+
+def execute_tool_spans_between(
+    spans: list[dict[str, Any]],
+    start_ts: float,
+    end_ts: float,
+    config: OTELTraceFormatArgs,
+) -> list[dict[str, Any]]:
+    """Return execute-tool spans with start times in ``(start_ts, end_ts)``.
+
+    Pairing is by timestamp order in the conversation group, not
+    ``parent_span_id``. Spans whose timestamps cannot be parsed are skipped.
+
+    :param spans: Raw spans in one ``trace_id`` group.
+    :param start_ts: Exclusive lower bound (typically the LLM span start).
+    :param end_ts: Exclusive upper bound (next LLM span start, or infinity).
+    :param config: Format args for the timestamp field name.
+    :return: Matching execute-tool spans, sorted by start time.
+    """
+    matched: list[tuple[float, dict[str, Any]]] = []
+    for span in spans:
+        if not is_execute_tool_span(span):
+            continue
+        try:
+            timestamp = parse_span_timestamp(span.get(config.span_timestamp_field))
+        except InvalidRowError:
+            continue
+        if start_ts < timestamp < end_ts:
+            matched.append((timestamp, span))
+    matched.sort(key=lambda item: item[0])
+    return [span for _, span in matched]
+
+
+def tool_result_delta(prev: dict[str, Any], curr: dict[str, Any]) -> list[str] | None:
+    """Return tool-result strings when ``curr`` is a pure tool-result continuation.
+
+    Requires ``input[curr] == input[prev] + output[prev] + delta`` and that
+    every delta message is a tool result. Prefix mismatch, missing messages,
+    or a mixed (non-tool) delta return ``None`` so the caller can synthesize
+    a placeholder without consuming ``curr`` as an injection.
+
+    :param prev: LLM replay row for the tool-call span.
+    :param curr: LLM replay row for the candidate follow-up span.
+    :return: Tool result content strings, or ``None`` when this is not an injection.
+    """
+    prev_attrs = span_attributes(prev["span"])
+    curr_attrs = span_attributes(curr["span"])
+    prev_input = parse_gen_ai_messages(prev_attrs.get("gen_ai.input.messages"))
+    prev_output = span_output_messages(prev_attrs)
+    curr_input = parse_gen_ai_messages(curr_attrs.get("gen_ai.input.messages"))
+    if not prev_input or not prev_output or not curr_input:
+        return None
+    prefix = prev_input + prev_output
+    if curr_input[: len(prefix)] != prefix:
+        return None
+    delta = curr_input[len(prefix) :]
+    if not delta or any(message.get("role") != "tool" for message in delta):
+        return None
+    return [stringify_tool_result(message.get("content")) for message in delta]
 
 
 def span_to_replay_row(
@@ -245,10 +577,10 @@ def _span_group_id(
     return f"span_{index}"
 
 
-def _replay_rows_from_spans(
+def _llm_replay_spans(
     spans: list[dict[str, Any]], config: OTELTraceFormatArgs
 ) -> list[dict[str, Any]]:
-    """Filter LLM spans and flatten them into timestamp-sorted replay rows."""
+    """Return timestamp-sorted LLM spans that carry usage token counts."""
     rows: list[dict[str, Any]] = []
     for span in spans:
         if not is_llm_span(span, config):
@@ -256,17 +588,28 @@ def _replay_rows_from_spans(
         row = span_to_replay_row(span, config)
         if row is None:
             continue
-        rows.append(row)
-    rows.sort(key=lambda row: row[config.timestamp_column])
+        rows.append(
+            {
+                "span": span,
+                "timestamp": row[config.timestamp_column],
+                "prompt_tokens": row[config.prompt_tokens_column],
+                "output_tokens": row[config.output_tokens_column],
+            }
+        )
+    rows.sort(key=lambda item: item["timestamp"])
     return rows
 
 
 @TraceFormatRegistry.register(_OTEL_KINDS)
 class OTELTraceFormat(TraceFormatBase):
-    """OpenTelemetry GenAI traces flattened into timed synthetic-prompt turns.
+    """OpenTelemetry GenAI traces replayed as timed conversation graphs.
 
     Each ``trace_id`` is one conversation. Relative timestamps and the growing
     synthetic prefix reset between conversations, matching WEKA session scope.
+
+    ``content`` and ``history`` select whether recorded messages or synthetic
+    prompts are sent, and whether each call resends the full trace input or
+    only the new messages with DAG runtime history.
     """
 
     def __init__(self, config: OTELTraceFormatArgs, dataset: Dataset) -> None:
@@ -311,6 +654,11 @@ class OTELTraceFormat(TraceFormatBase):
         self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
     ) -> str:
         n_in = int(row[self.config.prompt_tokens_column])
+        return self._decode_growing_prefix(n_in, processor, faker)
+
+    def _decode_growing_prefix(
+        self, n_in: int, processor: PreTrainedTokenizerBase, faker: Faker
+    ) -> str:
         if n_in <= 0:
             return ""
         # Later turns in a trace usually grow the prompt; reuse earlier tokens
@@ -321,6 +669,15 @@ class OTELTraceFormat(TraceFormatBase):
             )
             self._prefix_token_ids = self._prefix_token_ids + extra
         return decode_prompt(processor, list(self._prefix_token_ids[:n_in]))
+
+    def _create_prompt_tokens(
+        self, n_tokens: int, processor: PreTrainedTokenizerBase, faker: Faker
+    ) -> str:
+        """Synthesize exactly ``n_tokens`` new tokens, not a growing prefix."""
+        if n_tokens <= 0:
+            return ""
+        token_ids = generate_token_ids(n_tokens, processor, faker)
+        return decode_prompt(processor, list(token_ids))
 
     def build_conversation_graph(
         self,
@@ -338,12 +695,12 @@ class OTELTraceFormat(TraceFormatBase):
             or a replay row fails validation.
         """
         spans = self._unpack_conversation(conversation)
-        rows = _replay_rows_from_spans(spans, self.config)
+        rows = _llm_replay_spans(spans, self.config)
         if not rows:
             raise InvalidRowError(
                 "OTEL format: conversation has no LLM spans with token counts to replay"
             )
-        return self._build_linear_chain(rows, processor, faker)
+        return self._build_linear_chain(rows, spans, processor, faker)
 
     def _unpack_conversation(self, conversation: Dataset) -> list[dict[str, Any]]:
         """Look up the raw span list for a conversation stub from ``__iter__``.
@@ -361,33 +718,314 @@ class OTELTraceFormat(TraceFormatBase):
     def _build_linear_chain(
         self,
         rows: list[dict[str, Any]],
+        all_spans: list[dict[str, Any]],
         processor: PreTrainedTokenizerBase,
         faker: Faker,
     ) -> ConversationGraphData:
-        """Emit the shared linear ``main_*`` chain from flattened replay rows."""
-        start_ts = rows[0][self.config.timestamp_column]
+        """Emit the linear ``main_*`` chain, pre-splitting recorded tool loops.
+
+        Walk LLM spans with lookahead. A tool-call span becomes
+        ``client_tool_call`` plus a ``tool_response_injection``. When the next
+        span's new messages are only tool results, that span is the injection
+        (not a second chat turn). Otherwise a placeholder injection is
+        synthesized and the next span is still replayed.
+        """
+        start_ts = rows[0]["timestamp"]
+        history_context: HistoryContext = (
+            "full" if self.config.history == "runtime" else "new"
+        )
         turns: list[ConversationTurnData] = []
-        for turn_idx, turn in enumerate(rows):
-            parents = []
-            if turn_idx > 0:
-                parents.append(
-                    ConversationParentRef(parent_node_id=f"main_{turn_idx - 1}")
-                )
-            _validate_api_row(turn, self.config, self.validate_row)
-            prompt = self.create_prompt(turn, processor, faker)
-            relative_timestamp = turn[self.config.timestamp_column] - start_ts
-            columns = {
-                "text_column": [prompt],
-                "prompt_tokens_count_column": [turn[self.config.prompt_tokens_column]],
-                "output_tokens_count_column": [turn[self.config.output_tokens_column]],
-                "relative_timestamp_column": [relative_timestamp],
+        index = 0
+        while index < len(rows):
+            turn = rows[index]
+            replay_row = {
+                self.config.timestamp_column: turn["timestamp"],
+                self.config.prompt_tokens_column: turn["prompt_tokens"],
+                self.config.output_tokens_column: turn["output_tokens"],
             }
-            turns.append(
-                ConversationTurnData(
-                    node_id=f"main_{turn_idx}",
-                    agent_id="default",
-                    parents=parents,
-                    columns=columns,
+            _validate_api_row(replay_row, self.config, self.validate_row)
+            if self._is_tool_call_turn(index, rows, all_spans):
+                index = self._append_tool_loop(
+                    turns,
+                    rows,
+                    all_spans,
+                    index,
+                    start_ts,
+                    history_context,
+                    processor,
+                    faker,
+                )
+                continue
+            self._append_turn(
+                turns,
+                self._content_columns(
+                    index, turn, rows, turn["timestamp"] - start_ts, processor, faker
+                ),
+                history_context,
+            )
+            index += 1
+        return ConversationGraphData(turns=turns)
+
+    def _append_turn(
+        self,
+        turns: list[ConversationTurnData],
+        columns: dict[str, Any],
+        history_context: HistoryContext,
+        parent_history_context: HistoryContext | None = None,
+    ) -> str:
+        parents: list[ConversationParentRef] = []
+        if turns:
+            parents.append(
+                ConversationParentRef(
+                    parent_node_id=turns[-1].node_id,
+                    history_context=parent_history_context or history_context,
                 )
             )
-        return ConversationGraphData(turns=turns)
+        node_id = f"main_{len(turns)}"
+        turns.append(
+            ConversationTurnData(
+                node_id=node_id,
+                agent_id="default",
+                parents=parents,
+                columns=columns,
+            )
+        )
+        return node_id
+
+    def _is_tool_call_turn(
+        self,
+        index: int,
+        rows: list[dict[str, Any]],
+        all_spans: list[dict[str, Any]],
+    ) -> bool:
+        """Classify an LLM span as a client tool-call turn.
+
+        Uses recorded output ``tool_calls`` when messages exist, otherwise
+        ``finish_reasons`` or a following ``execute_tool`` span. Tool
+        definitions alone are not a trigger.
+        """
+        attributes = span_attributes(rows[index]["span"])
+        if messages_have_tool_calls(span_output_messages(attributes)):
+            return True
+        if finish_reasons_indicate_tool_call(attributes):
+            return True
+        next_ts = (
+            rows[index + 1]["timestamp"] if index + 1 < len(rows) else float("inf")
+        )
+        return bool(
+            execute_tool_spans_between(
+                all_spans, rows[index]["timestamp"], next_ts, self.config
+            )
+        )
+
+    def _append_tool_loop(
+        self,
+        turns: list[ConversationTurnData],
+        rows: list[dict[str, Any]],
+        all_spans: list[dict[str, Any]],
+        index: int,
+        start_ts: float,
+        history_context: HistoryContext,
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
+    ) -> int:
+        """Emit a call node plus one or more injections; return the next row index.
+
+        When the following span is a pure tool-result continuation, consume it
+        as the injection (and keep consuming while that injection also called
+        tools). Otherwise synthesize a placeholder and leave the next span for
+        the outer walk.
+        """
+        call = rows[index]
+        self._append_turn(
+            turns,
+            self._tool_call_columns(
+                index, call, rows, call["timestamp"] - start_ts, processor, faker
+            ),
+            history_context,
+        )
+        current = index
+        while True:
+            next_index = current + 1
+            delta = (
+                tool_result_delta(rows[current], rows[next_index])
+                if next_index < len(rows)
+                else None
+            )
+            if delta is not None:
+                next_row = rows[next_index]
+                include_tools = self._is_tool_call_turn(next_index, rows, all_spans)
+                self._append_turn(
+                    turns,
+                    self._injection_columns(
+                        responses=delta,
+                        relative_timestamp=next_row["timestamp"] - start_ts,
+                        output_tokens=next_row["output_tokens"],
+                        tools_span=next_row["span"] if include_tools else None,
+                    ),
+                    history_context,
+                    parent_history_context="full",
+                )
+                current = next_index
+                if include_tools:
+                    continue
+                return current + 1
+            responses = self._placeholder_or_execute_results(all_spans, rows, current)
+            self._append_turn(
+                turns,
+                self._injection_columns(
+                    responses=responses,
+                    relative_timestamp=rows[current]["timestamp"] - start_ts,
+                    output_tokens=None,
+                    tools_span=None,
+                ),
+                history_context,
+                parent_history_context="full",
+            )
+            return current + 1
+
+    def _placeholder_or_execute_results(
+        self,
+        all_spans: list[dict[str, Any]],
+        rows: list[dict[str, Any]],
+        index: int,
+    ) -> list[str]:
+        next_ts = (
+            rows[index + 1]["timestamp"] if index + 1 < len(rows) else float("inf")
+        )
+        results: list[str] = []
+        for span in execute_tool_spans_between(
+            all_spans, rows[index]["timestamp"], next_ts, self.config
+        ):
+            text = execute_tool_result_text(span)
+            if text is not None:
+                results.append(text)
+        if results:
+            return results
+        return [settings.default_synthetic_tool_response]
+
+    def _tools_for_call(self, span: dict[str, Any]) -> Any:
+        tools = span_tool_definitions(span_attributes(span))
+        if tools is not None:
+            return tools
+        return DEFAULT_SYNTHETIC_TOOLS
+
+    def _tool_call_columns(
+        self,
+        turn_idx: int,
+        turn: dict[str, Any],
+        rows: list[dict[str, Any]],
+        relative_timestamp: float,
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
+    ) -> dict[str, Any]:
+        columns = self._content_columns(
+            turn_idx, turn, rows, relative_timestamp, processor, faker
+        )
+        columns.pop("output_tokens_count_column", None)
+        columns["turn_type_column"] = ["client_tool_call"]
+        columns["tools_column"] = [self._tools_for_call(turn["span"])]
+        columns["tool_choice_column"] = [self.config.tool_choice]
+        return columns
+
+    def _injection_columns(
+        self,
+        *,
+        responses: list[str],
+        relative_timestamp: float,
+        output_tokens: int | None,
+        tools_span: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        columns: dict[str, Any] = {
+            "turn_type_column": ["tool_response_injection"],
+            "tool_response_column": responses,
+            "relative_timestamp_column": [relative_timestamp],
+        }
+        if output_tokens is not None:
+            columns["output_tokens_count_column"] = [output_tokens]
+        if tools_span is not None:
+            columns["tools_column"] = [self._tools_for_call(tools_span)]
+            columns["tool_choice_column"] = [self.config.tool_choice]
+        return columns
+
+    def _content_columns(
+        self,
+        turn_idx: int,
+        turn: dict[str, Any],
+        rows: list[dict[str, Any]],
+        relative_timestamp: float,
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
+    ) -> dict[str, Any]:
+        columns: dict[str, Any] = {
+            "prompt_tokens_count_column": [turn["prompt_tokens"]],
+            "output_tokens_count_column": [turn["output_tokens"]],
+            "relative_timestamp_column": [relative_timestamp],
+        }
+        if self.config.content == "synthetic":
+            columns["text_column"] = [
+                self._synthetic_prompt(turn_idx, turn, rows, processor, faker)
+            ]
+            return columns
+        columns["raw_messages_column"] = [self._raw_turn_messages(turn_idx, turn, rows)]
+        return columns
+
+    def _synthetic_prompt(
+        self,
+        turn_idx: int,
+        turn: dict[str, Any],
+        rows: list[dict[str, Any]],
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
+    ) -> str:
+        if self.config.history == "runtime" and turn_idx > 0:
+            prev = rows[turn_idx - 1]
+            delta = max(
+                0,
+                int(turn["prompt_tokens"])
+                - int(prev["prompt_tokens"])
+                - int(prev["output_tokens"]),
+            )
+            return self._create_prompt_tokens(delta, processor, faker)
+        replay_row = {self.config.prompt_tokens_column: turn["prompt_tokens"]}
+        return self.create_prompt(replay_row, processor, faker)
+
+    def _raw_turn_messages(
+        self,
+        turn_idx: int,
+        turn: dict[str, Any],
+        rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        attributes = span_attributes(turn["span"])
+        input_messages = parse_gen_ai_messages(attributes.get("gen_ai.input.messages"))
+        if not input_messages:
+            raise InvalidRowError(
+                "OTEL format: span missing gen_ai.input.messages for content=raw. "
+                "Pass content=synthetic to replay metrics-only traces from token "
+                "counts."
+            )
+        if self.config.history != "runtime" or turn_idx == 0:
+            return input_messages
+        return self._runtime_raw_delta(input_messages, rows[turn_idx - 1])
+
+    def _runtime_raw_delta(
+        self,
+        input_messages: list[dict[str, Any]],
+        prev: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        prev_attrs = span_attributes(prev["span"])
+        prev_input = parse_gen_ai_messages(prev_attrs.get("gen_ai.input.messages"))
+        prev_output = span_output_messages(prev_attrs)
+        if not prev_output:
+            raise InvalidRowError(
+                "OTEL format: previous span has no gen_ai.output.messages or "
+                "gen_ai.output.text for history=runtime prefix check"
+            )
+        prefix = prev_input + prev_output
+        if input_messages[: len(prefix)] != prefix:
+            raise InvalidRowError(
+                "OTEL format: input messages do not continue the previous span "
+                "(history=runtime requires input[i] == input[i-1] + "
+                "output[i-1] + delta)"
+            )
+        return input_messages[len(prefix) :]

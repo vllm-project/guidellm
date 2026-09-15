@@ -471,6 +471,107 @@ def _constrain_tool_call_body(
             body.pop(key, None)
 
 
+def _dataset_tool_choice(data: GenerationRequest) -> str:
+    """Return ``tool_choice`` from ``tool_choice_column``, else ``required``.
+
+    :param data: Current generation request.
+    :return: ``required`` or ``auto``.
+    """
+    values = data.columns.get("tool_choice_column") or []
+    if values:
+        choice = values[0]
+        if choice in ("required", "auto"):
+            return str(choice)
+    return "required"
+
+
+def _recorded_chat_messages(columns: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """Return OpenAI chat dicts from ``raw_messages_column`` when present.
+
+    The column is always chat-completions format. Dataset cells store one
+    value per column as a list: either ``[[{role, content}, ...]]`` or a
+    flat list of dicts.
+
+    :param columns: Request column mapping.
+    :return: Message dicts, or ``None`` when the column is unset.
+    """
+    recorded = columns.get("raw_messages_column")
+    if not recorded:
+        return None
+    first = recorded[0]
+    if isinstance(first, list):
+        return [item for item in first if isinstance(item, dict)]
+    if isinstance(first, dict):
+        return [item for item in recorded if isinstance(item, dict)]
+    return None
+
+
+def _json_to_str(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode()
+    if isinstance(value, str):
+        return value
+    dumped = json.dumps(value)
+    if isinstance(dumped, bytes):
+        return dumped.decode()
+    return dumped
+
+
+def _chat_messages_to_responses_input(
+    messages: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Convert chat-completions messages to Responses API ``input`` items.
+
+    ``raw_messages_column`` is stored in chat format. This mapping is one-way
+    and used only when building ``/v1/responses`` requests.
+
+    :param messages: OpenAI chat dicts.
+    :return: Responses ``input`` items.
+    """
+    items: list[dict[str, Any]] = []
+    for message in messages:
+        role = message.get("role") or "user"
+        if role == "tool":
+            items.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": str(message.get("tool_call_id") or ""),
+                    "output": _json_to_str(message.get("content")),
+                }
+            )
+            continue
+        tool_calls = message.get("tool_calls") or []
+        if tool_calls:
+            text = message.get("content")
+            if isinstance(text, str) and text:
+                items.append({"role": "assistant", "content": text})
+            for call in tool_calls:
+                if not isinstance(call, dict):
+                    continue
+                function = call.get("function")
+                if not isinstance(function, dict):
+                    function = {}
+                items.append(
+                    {
+                        "type": "function_call",
+                        "call_id": str(call.get("id") or ""),
+                        "name": str(function.get("name") or ""),
+                        "arguments": _json_to_str(function.get("arguments", "")),
+                    }
+                )
+            continue
+        text = message.get("content")
+        if role in {"user", "system", "developer"}:
+            if not isinstance(text, str):
+                text = "" if text is None else str(text)
+            items.append(
+                {"role": role, "content": [{"type": "input_text", "text": text}]}
+            )
+        else:
+            items.append({"role": role, "content": "" if text is None else text})
+    return items
+
+
 @OpenAIRequestHandlerFactory.register("/v1/completions")
 class TextCompletionsRequestHandler(OpenAIRequestHandler):
     """
@@ -887,8 +988,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         Handles three concerns:
 
         1. Deserializes and injects tool definitions from dataset columns.
-        2. Sets ``tool_choice`` to ``"required"`` or ``"none"`` depending on
-           whether the current turn expects a tool call.
+        2. Sets ``tool_choice`` from ``tool_choice_column`` when present,
+           otherwise ``"required"``, or ``"none"`` on turns that must not
+           emit tool calls.
         3. Removes body keys that are incompatible with tool calling
            (``ignore_eos``, ``stop``, and token-limit keys on tool-call turns).
 
@@ -908,9 +1010,53 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     ChatCompletionsRequestHandler._ensure_tool_format(t)
                     for t in tools_value
                 ]
-                body.setdefault("tool_choice", "required")
+                body.setdefault("tool_choice", _dataset_tool_choice(data))
 
         _constrain_tool_call_body(body, data, "max_completion_tokens")
+
+    def _append_request_content_messages(
+        self,
+        messages: list[dict[str, Any]],
+        req: GenerationRequest,
+        **kwargs,
+    ) -> None:
+        """Append current-turn content: recorded chat dicts or text/multimodal.
+
+        When ``raw_messages_column`` is set, those dicts are extended as-is so
+        multi-turn replay can send user, assistant, and tool messages without
+        wrapping them as a single user string.
+
+        :param messages: Message list to extend in place.
+        :param req: Request whose columns supply the current turn.
+        :param kwargs: Forwarded format kwargs (``extras`` for multimodal).
+        """
+        recorded = _recorded_chat_messages(req.columns)
+        if recorded is not None:
+            messages.extend(recorded)
+            return
+
+        prefix = " ".join(req.columns.get("prefix_column", []))
+        if prefix:
+            messages.append({"role": "system", "content": prefix})
+
+        extras = kwargs.get("extras")
+        content_extras = extras.content if extras is not None else None
+        prompts = [
+            self._format_prompts(
+                req.columns.get(col, []),
+                col,
+                content_extras,
+            )
+            for col in (
+                "text_column",
+                "image_column",
+                "video_column",
+                "audio_column",
+            )
+        ]
+        user_content = list(roundrobin(*prompts))
+        if user_content:
+            messages.append({"role": "user", "content": user_content})
 
     def _build_history_messages(
         self,
@@ -977,29 +1123,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     content = wrapped + content
                 messages.append({"role": "assistant", "content": content})
         else:
-            # Standard or tool_call turn: system + user content.
-            prefix = " ".join(req.columns.get("prefix_column", []))
-            if prefix:
-                messages.append({"role": "system", "content": prefix})
-
-            extras = kwargs.get("extras")
-            content_extras = extras.content if extras is not None else None
-            prompts = [
-                self._format_prompts(
-                    req.columns.get(col, []),
-                    col,
-                    content_extras,
-                )
-                for col in (
-                    "text_column",
-                    "image_column",
-                    "video_column",
-                    "audio_column",
-                )
-            ]
-            user_content = list(roundrobin(*prompts))
-            if user_content:
-                messages.append({"role": "user", "content": user_content})
+            # Standard or tool_call turn: recorded messages, or system + user content.
+            self._append_request_content_messages(messages, req, **kwargs)
 
             # Assistant response for history replay.
             wrapped = _wrap_reasoning(
@@ -1091,31 +1216,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     )
                 )
         else:
-            # Standard or tool_call turn: system prompt + user content.
-            prefix = " ".join(data.columns.get("prefix_column", []))
-            if prefix:
-                arguments.body["messages"].append({"role": "system", "content": prefix})
-
-            extras = kwargs.get("extras")
-            content_extras = extras.content if extras is not None else None
-            prompts = [
-                self._format_prompts(
-                    data.columns.get(col, []),
-                    col,
-                    content_extras,
-                )
-                for col in (
-                    "text_column",
-                    "image_column",
-                    "video_column",
-                    "audio_column",
-                )
-            ]
-            user_content = list(roundrobin(*prompts))
-            if user_content:
-                arguments.body["messages"].append(
-                    {"role": "user", "content": user_content}
-                )
+            # Standard or tool_call turn: recorded messages, or system + user content.
+            self._append_request_content_messages(
+                arguments.body["messages"], data, **kwargs
+            )
 
         # Inject tool definitions and apply tool-call-specific overrides.
         self._apply_tool_call_overrides(arguments.body, data)
@@ -1713,25 +1817,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                     content = wrapped + content
                 items.append({"role": "assistant", "content": content})
         else:
-            # Standard or tool_call turn: user content.
-            extras = kwargs.get("extras")
-            content_extras = extras.content if extras is not None else None
-            prompts = [
-                self._format_prompts(
-                    req.columns.get(col, []),
-                    col,
-                    content_extras,
-                )
-                for col in (
-                    "text_column",
-                    "image_column",
-                    "video_column",
-                    "audio_column",
-                )
-            ]
-            content_parts = list(roundrobin(*prompts))
-            if content_parts:
-                items.append({"role": "user", "content": content_parts})
+            self._append_request_content_input_items(items, req, **kwargs)
 
             wrapped = _wrap_reasoning(
                 res.reasoning_text if res else None, multiturn_reasoning
@@ -1794,8 +1880,9 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
         1. Deserializes and injects tool definitions from dataset columns,
            normalising to Responses API format when necessary.
-        2. Sets ``tool_choice`` to ``"required"`` or ``"none"`` depending on
-           whether the current turn expects a tool call.
+        2. Sets ``tool_choice`` from ``tool_choice_column`` when present,
+           otherwise ``"required"``, or ``"none"`` on turns that must not
+           emit tool calls.
         3. Removes body keys that are incompatible with tool calling
            (``ignore_eos``, ``stop``, and ``max_output_tokens`` on tool-call
            turns).
@@ -1812,9 +1899,48 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 body["tools"] = [
                     ResponsesRequestHandler._ensure_tool_format(t) for t in tools_value
                 ]
-                body.setdefault("tool_choice", "required")
+                body.setdefault("tool_choice", _dataset_tool_choice(data))
 
         _constrain_tool_call_body(body, data, "max_output_tokens")
+
+    def _append_request_content_input_items(
+        self,
+        items: list[dict[str, Any]],
+        req: GenerationRequest,
+        **kwargs,
+    ) -> None:
+        """Append current-turn content as Responses ``input`` items.
+
+        ``raw_messages_column`` is chat-completions format and is converted
+        here. Otherwise ``text_column`` / media wrap as a user message.
+
+        :param items: Input item list to extend in place.
+        :param req: Request whose columns supply the current turn.
+        :param kwargs: Forwarded format kwargs (``extras`` for multimodal).
+        """
+        recorded = _recorded_chat_messages(req.columns)
+        if recorded is not None:
+            items.extend(_chat_messages_to_responses_input(recorded))
+            return
+
+        extras = kwargs.get("extras")
+        content_extras = extras.content if extras is not None else None
+        prompts = [
+            self._format_prompts(
+                req.columns.get(col, []),
+                col,
+                content_extras,
+            )
+            for col in (
+                "text_column",
+                "image_column",
+                "video_column",
+                "audio_column",
+            )
+        ]
+        content_parts = list(roundrobin(*prompts))
+        if content_parts:
+            items.append({"role": "user", "content": content_parts})
 
     def format(  # noqa: C901
         self,
@@ -1874,25 +2000,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                     )
                 )
         elif data.turn_type != "tool_response_injection":
-            # Standard or tool_call turn: user content.
-            extras = kwargs.get("extras")
-            content_extras = extras.content if extras is not None else None
-            prompts = [
-                self._format_prompts(
-                    data.columns.get(col, []),
-                    col,
-                    content_extras,
-                )
-                for col in (
-                    "text_column",
-                    "image_column",
-                    "video_column",
-                    "audio_column",
-                )
-            ]
-            content_parts = list(roundrobin(*prompts))
-            if content_parts:
-                input_items.append({"role": "user", "content": content_parts})
+            self._append_request_content_input_items(input_items, data, **kwargs)
 
         arguments.body["input"] = input_items
 
