@@ -156,7 +156,9 @@ guidellm run \
 
 When `tools` is omitted, the same built-in placeholder tool as synthetic data is used.
 
-**3. Datasets with a tools column** -- datasets that already contain tool definitions (e.g. `madroid/glaive-function-calling-openai`) work directly. The column mapper auto-detects columns named `tools`, `functions`, or `tool_definitions`:
+**3. OTEL traces** -- tool-call turns come from the file: assistant `tool_call` parts on span output, or (when messages are missing) `gen_ai.response.finish_reasons` / a following `execute_tool` span. Schemas come from `gen_ai.tool.definitions` when present, otherwise the default synthetic tool. Recorded tool result strings are injected and rebound to live `tool_call_id`s. Pass `tool_choice=required` (default) or `tool_choice=auto` on `--data kind=otel`. Recorded messages are chat-completions dicts; `/v1/chat/completions` (the default) sends them as-is and `/v1/responses` converts them to `input` items. `/v1/completions` has no tool loop. Backend `tool_call_missing_behavior` is unchanged. See [Trace replay](trace_replay.md#otel).
+
+**4. Datasets with a tools column** -- datasets that already contain tool definitions (e.g. `madroid/glaive-function-calling-openai`) work directly. The column mapper auto-detects columns named `tools`, `functions`, or `tool_definitions`:
 
 ```bash
 guidellm run \
