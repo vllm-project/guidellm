@@ -80,6 +80,10 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         self._available_after: dict[str, float] = dict.fromkeys(graph.nodes, 0.0)
         self._in_progress: set[str] = set()
         self._aborted: bool = False
+        order = self.topological_order()
+        self._preceding_nodes: dict[str, int] = {
+            node_id: index for index, node_id in enumerate(order)
+        }
 
     @property
     def graph(self) -> ConversationGraph[_RequestT]:
@@ -292,6 +296,20 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
             return result
 
         return _depth(node_id)
+
+    def compute_preceding_nodes(self, node_id: str) -> int:
+        """
+        Count graph nodes that precede ``node_id`` in topological order.
+
+        Independent of ``history_context``; reflects DAG structure only.
+
+        :param node_id: The node to look up.
+        :return: Number of nodes before this one in topological order (0-based).
+        :raises KeyError: If ``node_id`` is not in the graph.
+        """
+        if node_id not in self._preceding_nodes:
+            raise KeyError(f"Unknown node_id '{node_id}'")
+        return self._preceding_nodes[node_id]
 
     def _find_full_parent_edge(
         self, incoming: Iterable[ConversationEdge]
