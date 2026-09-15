@@ -132,6 +132,7 @@ class GenerativeConsoleBenchmarkerProgress(
             redirect_stdout=True,
             # Only redirect stderr if it would interfere with stdout display
             redirect_stderr=stderr_eq_stdout(),
+            transient=True,
         )
         self.display_scheduler_stats: bool = display_scheduler_stats
         self.run_progress: Progress | None = None
