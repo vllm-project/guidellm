@@ -216,6 +216,13 @@ class RequestInfo(StandardBaseModel):
             "recursion. Multiple parents take the maximum."
         ),
     )
+    preceding_nodes: int = Field(
+        default=0,
+        description=(
+            "Count of graph nodes that precede this node in topological "
+            "execution order (0-based). Independent of history_context."
+        ),
+    )
     node_id: str | None = Field(
         default=None,
         description="Node ID within a conversation graph, if applicable.",
