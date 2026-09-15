@@ -266,6 +266,20 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 benchmark.cooldown_duration, group="Timings", name="Cool", units="Sec"
             )
 
+            request_totals = benchmark.metrics.request_totals
+            for count, name in (
+                (request_totals.successful, "Comp"),
+                (request_totals.incomplete, "Inc"),
+                (request_totals.errored, "Err"),
+            ):
+                columns.add_value(
+                    count,
+                    group="Requests",
+                    name=name,
+                    units="Tot",
+                    precision=0,
+                )
+
             for token_metrics, group in [
                 (benchmark.metrics.prompt_token_count, "Input Tokens"),
                 (benchmark.metrics.output_token_count, "Output Tokens"),

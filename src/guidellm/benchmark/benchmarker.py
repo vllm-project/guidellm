@@ -176,7 +176,6 @@ class Benchmarker(
                     accumulator=accumulator,
                     scheduler_state=scheduler_state,  # type: ignore[arg-type]
                 )
-                logger.info("Benchmark complete for strategy: {}", strategy)
 
                 await _notify_progress(
                     *(tracker.on_benchmark_complete(benchmark) for tracker in trackers)

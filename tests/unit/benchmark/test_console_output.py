@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from guidellm.benchmark.outputs.console import GenerativeBenchmarkerConsole
-from guidellm.schemas import StatusDistributionSummary
+from guidellm.schemas import StatusBreakdown, StatusDistributionSummary
 
 # Metrics read by GenerativeBenchmarkerConsole.print_server_throughput_table.
 THROUGHPUT_TABLE_METRICS = (
@@ -218,3 +218,92 @@ class TestServerThroughputTableGoodput:
         assert all(len(column) == 2 for column in values)
         attainment_column = next(column for column in values if "99.0" in column)
         assert attainment_column[1] == "--"
+
+
+def _token_status_totals(total_sum: float) -> SimpleNamespace:
+    """Build a minimal status breakdown stub with only total_sum populated.
+
+    ## WRITTEN BY AI ##
+    """
+    return SimpleNamespace(
+        successful=SimpleNamespace(total_sum=total_sum),
+        incomplete=SimpleNamespace(total_sum=0.0),
+        errored=SimpleNamespace(total_sum=0.0),
+    )
+
+
+def _make_run_summary_benchmark(
+    *,
+    successful: int = 8,
+    incomplete: int = 2,
+    errored: int = 1,
+) -> SimpleNamespace:
+    """Build a benchmark stub exposing every metric the run summary table reads.
+
+    ## WRITTEN BY AI ##
+    """
+    return SimpleNamespace(
+        config=SimpleNamespace(strategy=SimpleNamespace(type_="constant")),
+        start_time=1_700_000_000.0,
+        end_time=1_700_000_060.0,
+        duration=60.0,
+        warmup_duration=5.0,
+        cooldown_duration=2.0,
+        metrics=SimpleNamespace(
+            request_totals=StatusBreakdown(
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+                total=successful + incomplete + errored,
+            ),
+            prompt_token_count=_token_status_totals(100.0),
+            output_token_count=_token_status_totals(200.0),
+        ),
+    )
+
+
+def _render_run_summary_table(benchmarks) -> tuple[str, list]:
+    """Render the run summary table, returning flattened headers and value columns.
+
+    ## WRITTEN BY AI ##
+    """
+    captured: dict[str, object] = {}
+    output = GenerativeBenchmarkerConsole()
+    output.console.print = lambda *args, **kwargs: None
+    output.console.print_table = lambda headers, values, title=None: captured.update(
+        headers=headers, values=values
+    )
+    output.print_run_summary_table(SimpleNamespace(benchmarks=benchmarks))
+
+    return (
+        " ".join(str(header) for header in captured["headers"]),  # type: ignore[union-attr]
+        captured["values"],  # type: ignore[return-value]
+    )
+
+
+class TestRunSummaryTable:
+    """
+    Verify request totals appear in the console run summary table.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.regression
+    def test_renders_request_totals_by_status(self):
+        """
+        Successful, incomplete, and errored request counts are shown in the
+        first console table alongside existing timing and token columns.
+
+        ## WRITTEN BY AI ##
+        """
+        headers, values = _render_run_summary_table([_make_run_summary_benchmark()])
+
+        assert "Requests" in headers
+        for name in ("Comp", "Inc", "Err"):
+            assert name in headers
+        assert "Timings" in headers
+        assert "Input Tokens" in headers
+        assert "Output Tokens" in headers
+        assert any("8" in column for column in values)
+        assert any("2" in column for column in values)
+        assert any("1" in column for column in values)
