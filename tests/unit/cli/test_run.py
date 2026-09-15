@@ -6,9 +6,6 @@ import pytest
 from click.testing import CliRunner
 
 from guidellm.__main__ import cli
-from guidellm.benchmark.progress import (
-    GenerativeConsoleBenchmarkerProgress,
-)
 
 
 @pytest.mark.regression
@@ -222,8 +219,8 @@ def test_console_progress_selection(monkeypatch, options):
     )
     assert result.exit_code == 0, result.output
     benchmark.assert_awaited_once()
-    display = benchmark.call_args.kwargs["progress"]
+    display: bool = benchmark.call_args.kwargs["progress"]
     if options:
-        assert display is None
+        assert not display
     else:
-        assert isinstance(display, GenerativeConsoleBenchmarkerProgress)
+        assert display

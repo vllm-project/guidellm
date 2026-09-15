@@ -24,6 +24,8 @@ from guidellm.benchmark.outputs import (
 from guidellm.benchmark.profiles import Profile, ProfileFactory
 from guidellm.benchmark.progress import (
     BenchmarkerProgress,
+    CompositeBenchmarkerProgress,
+    GenerativeConsoleBenchmarkerProgress,
     GenerativeLoggingBenchmarkerProgress,
 )
 from guidellm.benchmark.schemas import (
@@ -474,8 +476,7 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
 
 async def benchmark_generative_text(
     args: BenchmarkScenario,
-    progress: BenchmarkerProgress[GenerativeBenchmarkAccumulator, GenerativeBenchmark]
-    | None = None,
+    progress: bool = True,
     console: Console | None = None,
     **constraints: str | ConstraintInitializer | Any,
 ) -> tuple[GenerativeBenchmarksReport, list[tuple[str, Any]]]:
@@ -488,12 +489,18 @@ async def benchmark_generative_text(
     initialization, data loading, profile configuration, and output generation.
 
     :param args: Scenario configuration for the benchmark execution
-    :param progress: Optional display tracker; progress is always logged at INFO
-    :param console: Optional console for status reporting, independent of logging
+    :param progress: Progress tracker for benchmark execution, or None for no tracking
+    :param console: Console instance for status reporting, or None for silent operation
     :param constraints: Additional constraint initializers for benchmark limits
     :return: Tuple of GenerativeBenchmarksReport and dictionary of output format
         results
     """
+    trackers: list[
+        BenchmarkerProgress[GenerativeBenchmarkAccumulator, GenerativeBenchmark]
+    ] = [GenerativeLoggingBenchmarkerProgress()]
+    if progress:
+        trackers.append(GenerativeConsoleBenchmarkerProgress())
+
     benchmark_args = resolve_to_single_benchmark(args.get_benchmarks())
 
     metrics_args = benchmark_args.metrics
@@ -550,10 +557,7 @@ async def benchmark_generative_text(
         backend=backend,
         profile=profile,
         environment=NonDistributedEnvironment(),
-        progress=[
-            GenerativeLoggingBenchmarkerProgress(),
-            *([progress] if progress else []),
-        ],
+        progress=CompositeBenchmarkerProgress(trackers),
         sample_size=metrics_args.sample_size,
         warmup=warmup,
         cooldown=cooldown,

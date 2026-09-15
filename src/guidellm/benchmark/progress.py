@@ -10,7 +10,9 @@ request/token statistics and scheduler state updates.
 
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from math import isfinite
 from time import monotonic
@@ -103,6 +105,67 @@ class BenchmarkerProgress(Generic[BenchmarkAccumulatorT, BenchmarkT], ABC):
     @abstractmethod
     async def on_finalize(self):
         """Finalize progress tracking and release associated resources."""
+
+
+class CompositeBenchmarkerProgress(
+    BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT]
+):
+    """
+    Composite progress tracker that aggregates multiple progress trackers.
+
+    Delegates lifecycle events to all registered progress trackers, enabling
+    simultaneous monitoring and display of benchmark execution across different
+    interfaces or formats.
+    """
+
+    def __init__(
+        self, trackers: list[BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT]]
+    ):
+        """
+        Initialize composite progress tracker with a list of individual trackers.
+
+        :param progress_trackers: Individual progress trackers to aggregate
+        """
+        super().__init__()
+        self.trackers = trackers
+
+    @staticmethod
+    async def _notify_progress(*callbacks: Awaitable) -> None:
+        """Finish every callback before propagating the first lifecycle failure."""
+        results = await asyncio.gather(*callbacks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+
+    async def on_initialize(self, profile: Profile):
+        await self._notify_progress(
+            *(tracker.on_initialize(profile) for tracker in self.trackers)
+        )
+
+    async def on_benchmark_start(self, strategy: SchedulingStrategy):
+        await self._notify_progress(
+            *(tracker.on_benchmark_start(strategy) for tracker in self.trackers)
+        )
+
+    async def on_benchmark_update(
+        self, accumulator: BenchmarkAccumulatorT, scheduler_state: SchedulerState
+    ):
+        await self._notify_progress(
+            *(
+                tracker.on_benchmark_update(accumulator, scheduler_state)
+                for tracker in self.trackers
+            )
+        )
+
+    async def on_benchmark_complete(self, benchmark: BenchmarkT):
+        await self._notify_progress(
+            *(tracker.on_benchmark_complete(benchmark) for tracker in self.trackers)
+        )
+
+    async def on_finalize(self):
+        await self._notify_progress(
+            *(tracker.on_finalize() for tracker in self.trackers)
+        )
 
 
 class GenerativeConsoleBenchmarkerProgress(
