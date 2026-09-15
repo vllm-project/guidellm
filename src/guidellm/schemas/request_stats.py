@@ -237,7 +237,7 @@ class GenerativeRequestStats(StandardBaseDict):
         :return: Milliseconds from request start to first content token,
             or None if unavailable
         """
-        first_output = self.info.timings.first_output_token_iteration
+        first_output = self.first_output_token_iteration
         start = self.info.timings.request_start
         if first_output is None or start is None:
             return None
@@ -278,6 +278,13 @@ class GenerativeRequestStats(StandardBaseDict):
         :return: Timestamp of first token generation, or None if unavailable
         """
         return self.info.timings.first_token_iteration
+
+    @property
+    def first_output_token_iteration(self) -> float | None:
+        """
+        :return: Timestamp of first token generation, or None if unavailable
+        """
+        return self.info.timings.first_output_token_iteration
 
     @property
     def last_token_iteration(self) -> float | None:

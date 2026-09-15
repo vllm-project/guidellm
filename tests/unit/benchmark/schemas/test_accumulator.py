@@ -153,3 +153,70 @@ class TestClearStatsData:
         assert stats.request_args == "args"
         assert stats.output == "answer"
         assert stats.reasoning_output == "thinking..."
+
+
+def _make_timed_stats(
+    request_id: str,
+    request_start: float,
+    request_end: float,
+) -> GenerativeRequestStats:
+    """Build a GenerativeRequestStats with explicit request timing bounds."""
+    info = RequestInfo(request_id=request_id, status="completed")
+    info.timings.request_start = request_start
+    info.timings.request_end = request_end
+    info.timings.resolve_end = request_end
+    return GenerativeRequestStats(
+        request_id=request_id,
+        info=info,
+        input_metrics=UsageMetrics(text_tokens=5),
+        output_metrics=UsageMetrics(text_tokens=10),
+    )
+
+
+class TestGetWithinRange:
+    """
+    Tests for GenerativeRequestsAccumulator.get_within_range.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.sanity
+    def test_partial_overlap_includes_events_crossing_boundary(self):
+        """
+        Default closed=False includes events that partially overlap the window.
+
+        ## WRITTEN BY AI ##
+        """
+        acc = GenerativeRequestsAccumulator()
+        acc.requests_stats = [
+            _make_timed_stats("before", 5.0, 12.0),
+            _make_timed_stats("inside", 11.0, 18.0),
+            _make_timed_stats("after", 18.0, 24.0),
+        ]
+
+        in_range = acc.get_within_range(10.0, 20.0)
+
+        assert [stats.request_id for stats in in_range] == [
+            "before",
+            "inside",
+            "after",
+        ]
+
+    @pytest.mark.sanity
+    def test_closed_range_requires_full_enclosure(self):
+        """
+        closed=True excludes boundary-crossing events and keeps only fully
+        enclosed ones.
+
+        ## WRITTEN BY AI ##
+        """
+        acc = GenerativeRequestsAccumulator()
+        acc.requests_stats = [
+            _make_timed_stats("before", 5.0, 12.0),
+            _make_timed_stats("inside", 11.0, 18.0),
+            _make_timed_stats("after", 18.0, 24.0),
+        ]
+
+        in_range = acc.get_within_range(10.0, 20.0, closed=True)
+
+        assert [stats.request_id for stats in in_range] == ["inside"]
