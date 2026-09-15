@@ -52,7 +52,7 @@ async def test_rich_lifecycle_still_renders(accumulator):
 
     ## WRITTEN BY AI ##
     """
-    progress = GenerativeConsoleBenchmarkerProgress()
+    progress = GenerativeConsoleBenchmarkerProgress(cleanup=False)
     profile = ProfileFactory.create(SynchronousProfileArgs(), random_seed=0)
     state = SchedulerState()
     with progress.console.capture() as captured:
