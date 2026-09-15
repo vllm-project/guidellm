@@ -668,10 +668,10 @@ class GenerativeRequestsAccumulator(StandardBaseModel):
             actual_start = start_event if start_event is not None else end_event
 
             if closed:
-                # Fully enclosed: Event starts after range starts AND ends before ends
+                # Fully enclosed
                 is_in_range = actual_start >= start_time and end_event <= end_time
             else:
-                # Partial overlap: Event ends after range starts AND starts before ends
+                # Partial overlap
                 is_in_range = end_event >= start_time and actual_start <= end_time
 
             if is_in_range:
