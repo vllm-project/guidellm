@@ -1104,25 +1104,28 @@ class GenerativeMetrics(StandardBaseDict):
                 incomplete=incomplete,
                 errored=errored,
             ),
+            # TODO: Need to evaluate closed=False vs closed=True for first-token
+            # latencies. Whether excluding more latency data is better for ensuring
+            # clean measurement.
             time_to_first_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_first_token_ms or 0.0,
                 successful=accumulator.completed.get_within_range(
                     start_time,
                     end_time,
                     end_func=lambda req: req.first_token_iteration,
-                    closed=True,
+                    closed=False,
                 ),
                 incomplete=accumulator.incomplete.get_within_range(
                     start_time,
                     end_time,
                     end_func=lambda req: req.first_token_iteration,
-                    closed=True,
+                    closed=False,
                 ),
                 errored=accumulator.errored.get_within_range(
                     start_time,
                     end_time,
                     end_func=lambda req: req.first_token_iteration,
-                    closed=True,
+                    closed=False,
                 ),
             ),
             time_to_last_round_trip_ms=StatusDistributionSummary.from_values_function(
@@ -1143,19 +1146,19 @@ class GenerativeMetrics(StandardBaseDict):
                     start_time,
                     end_time,
                     end_func=lambda req: req.first_output_token_iteration,
-                    closed=True,
+                    closed=False,
                 ),
                 incomplete=accumulator.incomplete.get_within_range(
                     start_time,
                     end_time,
                     end_func=lambda req: req.first_output_token_iteration,
-                    closed=True,
+                    closed=False,
                 ),
                 errored=accumulator.errored.get_within_range(
                     start_time,
                     end_time,
                     end_func=lambda req: req.first_output_token_iteration,
-                    closed=True,
+                    closed=False,
                 ),
             ),
             time_per_output_token_ms=StatusDistributionSummary.from_values_function(
