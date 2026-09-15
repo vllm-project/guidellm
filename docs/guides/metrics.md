@@ -103,6 +103,23 @@ Dispatch Delay and Scheduled Latency only apply to some of the scheduling strate
 - **Definition**: For the WebSocket backend, the mean of received-token timestamps minus the mean of sent-packet timestamps.
 - **Use Case**: Estimates the average send-to-receive lag across a request. It is approximate, since it assumes sent packets and received tokens line up evenly in time.
 
+## Measurement Window, Warmup, and Cooldown
+
+Benchmark profiles can configure `warmup` and `cooldown` periods that bracket the active measurement window. Requests sent during warmup still run to completion, but reported metrics are scoped to the interval between `measure_start` (warmup ends) and `measure_end` (cooldown begins).
+
+Not every metric applies that window the same way:
+
+- **Request-level metrics**: request totals, request latency, concurrency, and per-request token counts, etc. will include any request whose lifetime overlaps the measurement window, even when the request started during warmup or finished during cooldown.
+- **Event-level metrics**: TTFT, time to first output token (TTFOT), inter-token latency (ITL), and per-token throughput rates will include only events whose timestamps fall inside the window. A request can therefore appear in request totals while some or all of its token events are excluded.
+
+For token latencies specifically, GuideLLM filters on when the event occurs rather than on the whole request span:
+
+- **TTFT** is included when the interval from request start to first token partially overlaps the measurement window. A request that starts during warmup but streams its first token after warmup ends contributes a TTFT sample; a request whose first token arrives before `measure_start` does not, even if the request completes during the active phase.
+- **TTFOT** uses the first *content* token timestamp (`first_output_token_iteration`), which can differ from TTFT when reasoning or tool tokens precede visible output.
+- **ITL** is included when the span from first token through request completion partially overlaps the window.
+
+The purpose of warmup is meant to let the system reach steady state before measurement and event-level filtering keeps pre-warmup token timing from skewing latency and throughput figures while still counting long-running requests that cross the boundary.
+
 ## Statistical Summaries
 
 GuideLLM provides detailed statistical summaries for each of the above metrics using the `StatusDistributionSummary` and `DistributionSummary` models. These summaries include the following statistics:
