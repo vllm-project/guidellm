@@ -61,13 +61,89 @@ def _parse_conversation_turns(raw: Any) -> ConversationGraphData:
     return ConversationGraphData.model_validate(raw)
 
 
+def _merge_sibling_columns_into_graph(
+    items: list[dict[str, Any]],
+    graph_item_index: int,
+    graph_data: ConversationGraphData,
+) -> ConversationGraphData:
+    """
+    Merge sibling dataset columns into the root turn(s) of the passed pre-built graph.
+
+    :param items: Full mapper output (one dict of columns per outer turn index).
+    :param graph_item_index: Index within items to the graph_data column.
+    :param graph_data: The parsed conversation graph.
+
+    :return: Graph with sibling columns merged to its root conversation_turn
+             (or the original unchanged graph if there are no sibling columns)
+    :raises ValueError: If sibling columns exist on an outer item inconsistent with the
+            graph_item_index, or if the graph has more than one root conversation_turn.
+    """
+
+    sibling_columns = {
+        key: vals
+        for key, vals in items[graph_item_index].items()
+        if key != "conversation_turns_column"
+    }
+
+    for index, item in enumerate(items):
+        if index == graph_item_index or not item:
+            continue
+        raise ValueError(
+            "Cannot combine a dataset that emits its own conversation_turns_column "
+            "(e.g. kind=synthetic_text) with sibling dataset columns "
+            f"({', '.join(sorted(item))}) mapped to a different turn index"
+            f" ({index}) than the one carrying conversation_turns_column"
+            f"({graph_item_index}). Provide sibling modality/content data at the "
+            "same turn index as the packed conversation, or use a dataset without "
+            "its own conversation_turns_column."
+        )
+    if not sibling_columns:
+        return graph_data
+
+    root_turns = [turn for turn in graph_data.turns if not turn.parents]
+    if len(root_turns) != 1:
+        raise ValueError(
+            "Cannot attach sibling dataset columns "
+            f"({', '.join(sorted(sibling_columns))}) to a conversation_turns_column"
+            f" payload with {len(root_turns)} root turns; branched/subagent"
+            "conversations are ambiguous for shared sibling data. Fold the "
+            "modality/content data into the source dataset's own conversation_turns"
+            " payload instead of a sibling --data source."
+        )
+
+    sibling_content, sibling_settings = _lift_settings_from_columns(sibling_columns)
+
+    merged_turns = []
+    for turn in graph_data.turns:
+        if turn.node_id != root_turns[0].node_id:
+            merged_turns.append(turn)
+            continue
+        merged_columns = dict(turn.columns)
+        for key, values in sibling_content.items():
+            merged_columns[key] = merged_columns.get(key, []) + list(values)
+        merged_turns.append(
+            ConversationTurnData(
+                node_id=turn.node_id,
+                agent_id=turn.agent_id,
+                parents=turn.parents,
+                columns=merged_columns,
+                settings=(
+                    turn.settings if turn.settings is not None else sibling_settings
+                ),
+            )
+        )
+    return ConversationGraphData(graph_id=graph_data.graph_id, turns=merged_turns)
+
+
 def turns_from_mapped_items(items: list[dict[str, Any]]) -> ConversationGraphData:
     """
     Normalize mapper output into a :class:`ConversationGraphData` payload.
 
-    If any item carries ``conversation_turns_column``, that payload is parsed and
-    returned. Otherwise each item becomes a linear-chain turn
-    (``turn_0``, ``turn_1``, …) with ``full`` history edges.
+    If any item carries ``conversation_turns_column``, that payload is parsed and any
+    sibling columns (like image_column/video_column/audio_column which passed via
+    separate --data argument) - are added to the *same* conversation_turn item  —
+    see :func:`_merge_sibling_columns_into_graph`. Otherwise, each item becomes a
+    linear-chain turn (``turn_0``, ``turn_1``, …) with ``full`` history edges.
 
     Scheduling columns are lifted onto ``turn.settings`` so ``columns`` stay
     request-content only.
@@ -77,14 +153,14 @@ def turns_from_mapped_items(items: list[dict[str, Any]]) -> ConversationGraphDat
     :return: A conversation graph data object (possibly with an empty turns list).
     :raises ValueError: If ``conversation_turns_column`` is present but empty.
     """
-    for item in items:
+    for index, item in enumerate(items):
         raw_values = item.get("conversation_turns_column")
         if not raw_values:
             continue
         graph_data = _parse_conversation_turns(raw_values[0])
         if not graph_data.turns:
             raise ValueError("ConversationGraphData.turns must not be empty")
-        return graph_data
+        return _merge_sibling_columns_into_graph(items, index, graph_data)
 
     turns: list[ConversationTurnData] = []
     for item in items:
