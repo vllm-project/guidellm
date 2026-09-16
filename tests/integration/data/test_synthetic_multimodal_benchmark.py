@@ -129,11 +129,60 @@ def _run_benchmark(
     )
 
 
+def _successful_requests(report: dict) -> list[dict]:
+    benchmarks = report.get("benchmarks", [])
+    assert benchmarks, "expected at least one benchmark in the report"
+
+    requests = benchmarks[0].get("requests", {}).get("successful", [])
+    assert requests, "expected at least one successful request"
+
+    return requests
+
+
+def _assert_image_metrics(report: dict) -> None:
+
+    requests = _successful_requests(report)
+    static_input_val = 128 * 128
+
+    for request in requests:
+        input_metrics = request["input_metrics"]
+        assert input_metrics["image_pixels"] == static_input_val
+        assert input_metrics["image_bytes"] > 0
+
+    image_metrics = report["benchmarks"][0]["metrics"]["image"]
+    image_stats = image_metrics["pixels"]["input"]["successful"]
+
+    assert image_stats["mean"] > 0
+    assert image_stats["median"] > 0
+    assert image_stats["total_sum"] == pytest.approx(
+        image_stats["mean"] * image_stats["count"]
+    )
+
+
+def _assert_video_metrics(report: dict) -> None:
+
+    requests = _successful_requests(report)
+
+    for request in requests:
+        input_metrics = request["input_metrics"]
+        assert input_metrics["video_frames"] == 4
+        assert input_metrics["video_seconds"] == pytest.approx(4.0)
+        assert input_metrics["video_bytes"] > 0
+
+    video_metrics = report["benchmarks"][0]["metrics"]["video"]
+    video_stats = video_metrics["frames"]["input"]["successful"]
+    assert video_stats["mean"] > 0
+    assert video_stats["median"] > 0
+    assert video_stats["total_sum"] == pytest.approx(
+        video_stats["mean"] * video_stats["count"]
+    )
+
+
 @pytest.mark.timeout(240)
 def test_synthetic_image_benchmark_against_mock(mock_backend, tmp_path):
     """A short benchmark on synthetic_image must complete cleanly.
 
-    ## WRITTEN BY AI ##
+    ## AI-ASSISTED ##
     """
     result = _run_benchmark(
         base_url=mock_backend,
@@ -151,15 +200,14 @@ def test_synthetic_image_benchmark_against_mock(mock_backend, tmp_path):
     report_path = tmp_path / "image.json"
     assert report_path.exists(), "expected benchmark JSON output"
     report = json.loads(report_path.read_text())
-    benchmarks = report.get("benchmarks", [])
-    assert benchmarks, "expected at least one benchmark in the report"
+    _assert_image_metrics(report)
 
 
 @pytest.mark.timeout(240)
 def test_synthetic_video_benchmark_against_mock(mock_backend, tmp_path):
     """A short benchmark on synthetic_video must complete cleanly.
 
-    ## WRITTEN BY AI ##
+    ## AI-ASSISTED ##
     """
     result = _run_benchmark(
         base_url=mock_backend,
@@ -178,5 +226,4 @@ def test_synthetic_video_benchmark_against_mock(mock_backend, tmp_path):
     report_path = tmp_path / "video.json"
     assert report_path.exists(), "expected benchmark JSON output"
     report = json.loads(report_path.read_text())
-    benchmarks = report.get("benchmarks", [])
-    assert benchmarks, "expected at least one benchmark in the report"
+    _assert_video_metrics(report)
