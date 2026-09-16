@@ -368,6 +368,80 @@ class TestBackendArgsTransformation:
         assert "api_key" in serialized["backend"]
         assert serialized["backend"]["api_key"] != "secret123"
 
+    @pytest.mark.sanity
+    def test_api_keys_are_normalized_and_masked(self):
+        """
+        Inline API keys are trimmed, normalized, and masked during serialization.
+
+        ## WRITTEN BY AI ##
+        """
+        args = OpenAIHTTPBackendArgs(
+            target="http://localhost:9000",
+            api_keys=[" key-1 ", "key-2"],
+        )
+
+        assert [key.get_secret_value() for key in args.resolved_api_keys] == [
+            "key-1",
+            "key-2",
+        ]
+        assert args.model_dump()["api_keys"] != ["key-1", "key-2"]
+
+    @pytest.mark.sanity
+    def test_api_key_file_is_loaded_and_not_serialized(self, tmp_path):
+        """
+        API key files load non-empty lines without serializing their contents.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "api-keys.txt"
+        key_file.write_text("\n key-1\n\nkey-2 \n", encoding="utf-8")
+
+        args = OpenAIHTTPBackendArgs(
+            target="http://localhost:9000",
+            api_key_file=key_file,
+        )
+
+        assert [key.get_secret_value() for key in args.resolved_api_keys] == [
+            "key-1",
+            "key-2",
+        ]
+        assert "key-1" not in str(args.model_dump())
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"api_keys": []},
+            {"api_keys": [""]},
+            {"api_key": "key-1", "api_keys": ["key-2"]},
+        ],
+    )
+    def test_invalid_api_key_sources_are_rejected(self, kwargs):
+        """
+        Empty or conflicting API key sources fail validation.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError):
+            OpenAIHTTPBackendArgs(target="http://localhost:9000", **kwargs)
+
+    @pytest.mark.sanity
+    def test_invalid_api_key_file_is_rejected(self, tmp_path):
+        """
+        Empty and missing API key files fail validation.
+
+        ## WRITTEN BY AI ##
+        """
+        empty_file = tmp_path / "empty-keys.txt"
+        empty_file.write_text("\n\n", encoding="utf-8")
+
+        for key_file in (empty_file, tmp_path / "missing-keys.txt"):
+            with pytest.raises(ValidationError):
+                OpenAIHTTPBackendArgs(
+                    target="http://localhost:9000",
+                    api_key_file=key_file,
+                )
+
     def test_different_backend_types(self):
         """
         Test that different backend types get correct BackendArgs subclasses.
