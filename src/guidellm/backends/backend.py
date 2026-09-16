@@ -88,23 +88,13 @@ class Backend(
         self.kind = args.kind
         self._args = args
 
-    def create_process_shared_state(self, mp_context: Any) -> Any:
+    def set_worker_index(self, worker_index: int) -> None:
         """
-        Create runtime state shared by all worker-process copies of this backend.
+        Set this backend copy's worker index before process startup.
 
-        :param mp_context: Multiprocessing context used to spawn worker processes
-        :return: Pickleable state to attach before worker processes are created
+        :param worker_index: Zero-based index assigned to the worker process
         """
-        del mp_context
-        return None
-
-    def attach_process_shared_state(self, state: Any) -> None:
-        """
-        Attach shared runtime state created before worker processes are spawned.
-
-        :param state: State returned by :meth:`create_process_shared_state`
-        """
-        del state
+        del worker_index
 
     @property
     def info(self) -> dict[str, Any]:

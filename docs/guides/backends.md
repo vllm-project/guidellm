@@ -131,7 +131,7 @@ guidellm run \
   --backend kind=openai_http,target=https://api.example.com/v1,model=example-model,api_key_file=./api-keys.txt
 ```
 
-GuideLLM assigns generation requests globally in round-robin order across worker processes. Health checks and model discovery use the first configured key and do not advance the rotation. An explicit `Authorization` value in `extras.headers` takes precedence and does not consume a rotating key.
+Each worker starts at an API-key offset matching its worker index, then rotates keys locally in round-robin order for generation requests. This distributes requests across keys without cross-process locking. Health checks and model discovery use the first configured key and do not advance rotation. An explicit `Authorization` value in `extras.headers` takes precedence and does not consume a rotating key.
 
 Keep key files out of source control, restrict their filesystem permissions, and avoid passing secrets through shell history or committed configuration files.
 
