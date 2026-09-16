@@ -26,7 +26,8 @@ class TraceSessionTiming:
     ``max_session_wait`` then clamps idle time from the previous session's
     last request to this session's first request. ``min_concurrent_sessions``
     then shifts this session earlier if needed so at least that many
-    sessions overlap. ``time_scale`` multiplies the resulting timestamps.
+    sessions overlap. Instantaneous sessions are left at their wait-capped
+    start. ``time_scale`` multiplies the resulting timestamps.
 
     Caps are in unscaled trace seconds. Callers should construct a new
     instance per dataset iteration so packing state does not leak across epochs.
@@ -121,7 +122,8 @@ class TraceSessionTiming:
 
         The first N sessions start together. Each later session starts when
         session ``i - N`` ends, which keeps N in flight during steady state.
-        Sessions are never delayed past their current start.
+        Sessions are never delayed past their current start. Instantaneous
+        sessions (single-turn rows whose start equals end) are not shifted.
 
         :param graph: Session whose timestamps may be shifted earlier
         """
@@ -134,6 +136,14 @@ class TraceSessionTiming:
 
         session_start, session_end = bounds
         placed = self._placed_session_ends
+        if session_end == session_start:
+            # Instantaneous (single-turn) session: packing cannot overlap
+            # without collapsing distinct arrivals. Leave the start in place.
+            if self._first_session_start is None:
+                self._first_session_start = session_start
+            placed.append(session_end)
+            return
+
         target_count = self.min_concurrent_sessions
         if not placed:
             target_start = session_start
@@ -182,8 +192,8 @@ class TraceSessionTiming:
 def shift_graph_timestamps(graph: ConversationGraphData, offset: float) -> None:
     """Add ``offset`` to every turn that has a relative timestamp.
 
-    Used to concatenate sequential dataset copies onto the previous pass's
-    timeline. ``offset == 0`` is a no-op.
+    Used to place sequential dataset copies on the shared timeline.
+    ``offset == 0`` is a no-op.
 
     :param graph: Conversation whose timestamps may be shifted later
     :param offset: Seconds to add to each present relative timestamp

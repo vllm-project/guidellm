@@ -228,6 +228,26 @@ class TestTraceSessionTimingMinConcurrentSessions:
         assert _relative_timestamps(first) == pytest.approx([0.0, 10.0])
         assert _relative_timestamps(second) == pytest.approx([20.0, 30.0])
 
+    @pytest.mark.smoke
+    def test_does_not_collapse_zero_duration_sessions(self):
+        """Single-turn sessions keep distinct arrivals instead of packing to t=0.
+
+        ## WRITTEN BY AI ##
+        """
+        sessions = [
+            _graph_with_timestamps([0.0]),
+            _graph_with_timestamps([0.5]),
+            _graph_with_timestamps([60.0]),
+            _graph_with_timestamps([60.5]),
+        ]
+        timing = TraceSessionTiming(min_concurrent_sessions=4)
+        for session in sessions:
+            timing.apply(session)
+        assert _relative_timestamps(sessions[0]) == pytest.approx([0.0])
+        assert _relative_timestamps(sessions[1]) == pytest.approx([0.5])
+        assert _relative_timestamps(sessions[2]) == pytest.approx([60.0])
+        assert _relative_timestamps(sessions[3]) == pytest.approx([60.5])
+
 
 class TestTraceSessionTimingTimeScale:
     @pytest.mark.smoke

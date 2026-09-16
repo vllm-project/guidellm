@@ -329,20 +329,19 @@ class TraceExamplesIterable(_BaseExamplesIterable):
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
         self.iteration_count += 1
         samples_count = 0
-        # Next pass starts at the previous pass's last scheduled timestamp.
-        offset = 0.0
+        last_end = 0.0
         for copy_index in range(self.config.copies):
             self.format.set_copy_index(copy_index)
             copy_faker = self._copy_fakers[copy_index]
-            # Fresh timing per pass so packing cannot pull copy k+1 into
-            # copy k's lanes. Multiplication only extends duration.
+            # Fresh packing state per copy so inner min_concurrent_sessions
+            # does not carry session-end lanes across sequential passes.
             timing = TraceSessionTiming(
                 max_wait=self.config.max_wait,
                 max_session_wait=self.config.max_session_wait,
                 min_concurrent_sessions=self.config.min_concurrent_sessions,
                 time_scale=self.config.time_scale,
             )
-            pass_offset = offset
+            pass_offset = 0.0 if copy_index == 0 else last_end
             for conv in self.format:  # type: ignore[attr-defined]
                 graph_data = self.format.build_conversation_graph(
                     conv, self.processor, copy_faker
@@ -362,7 +361,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                 self.format.reset()
                 pass_end = graph_max_timestamp(graph_data)
                 if pass_end is not None:
-                    offset = max(offset, pass_end)
+                    last_end = max(last_end, pass_end)
 
     @property
     def is_typed(self) -> bool:
