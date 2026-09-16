@@ -2,9 +2,9 @@
 OpenTelemetry GenAI trace format.
 
 Normalizes session-per-line and span-per-line OTEL files into timed
-conversation graphs. Replay can send recorded ``gen_ai.input.messages``
-or synthetic prompts, each with either full-trace inputs per call or
-DAG runtime history of live completions.
+conversation graphs. Replay sends recorded ``gen_ai.input.messages``,
+either as each span's full input or as new-message deltas with DAG
+runtime history of live completions.
 """
 
 from __future__ import annotations
@@ -23,8 +23,6 @@ from guidellm.data.deserializers.trace_common import (
     TraceFormatBase,
     TraceFormatRegistry,
     _validate_api_row,
-    decode_prompt,
-    generate_token_ids,
 )
 from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
@@ -604,18 +602,14 @@ def _llm_replay_spans(
 class OTELTraceFormat(TraceFormatBase):
     """OpenTelemetry GenAI traces replayed as timed conversation graphs.
 
-    Each ``trace_id`` is one conversation. Relative timestamps and the growing
-    synthetic prefix reset between conversations, matching WEKA session scope.
-
-    ``content`` and ``history`` select whether recorded messages or synthetic
-    prompts are sent, and whether each call resends the full trace input or
-    only the new messages with DAG runtime history.
+    Each ``trace_id`` is one conversation. Replay sends recorded
+    ``gen_ai.input.messages``. ``history`` selects whether each call resends
+    the full trace input or only the new messages with DAG runtime history.
     """
 
     def __init__(self, config: OTELTraceFormatArgs, dataset: Dataset) -> None:
         self.config = config
         self.dataset = dataset
-        self._prefix_token_ids: tuple[int, ...] = ()
         # Filled by each ``__iter__`` pass so nested span lists are not forced
         # through a HuggingFace Arrow table.
         self._conversations: list[list[dict[str, Any]]] = []
@@ -628,7 +622,7 @@ class OTELTraceFormat(TraceFormatBase):
             yield Dataset.from_dict({"_otel_index": [index]})
 
     def reset(self) -> None:
-        self._prefix_token_ids = ()
+        return
 
     def required_columns(self) -> Features:
         return Features({})
@@ -651,45 +645,25 @@ class OTELTraceFormat(TraceFormatBase):
         return
 
     def create_prompt(
-        self, row: dict, processor: PreTrainedTokenizerBase, faker: Faker
+        self,
+        row: dict,  # noqa: ARG002
+        processor: PreTrainedTokenizerBase,  # noqa: ARG002
+        faker: Faker,  # noqa: ARG002
     ) -> str:
-        n_in = int(row[self.config.prompt_tokens_column])
-        return self._decode_growing_prefix(n_in, processor, faker)
-
-    def _decode_growing_prefix(
-        self, n_in: int, processor: PreTrainedTokenizerBase, faker: Faker
-    ) -> str:
-        if n_in <= 0:
-            return ""
-        # Later turns in a trace usually grow the prompt; reuse earlier tokens
-        # as a shared prefix so multi-turn KV-cache behavior is not lost.
-        if len(self._prefix_token_ids) < n_in:
-            extra = generate_token_ids(
-                n_in - len(self._prefix_token_ids), processor, faker
-            )
-            self._prefix_token_ids = self._prefix_token_ids + extra
-        return decode_prompt(processor, list(self._prefix_token_ids[:n_in]))
-
-    def _create_prompt_tokens(
-        self, n_tokens: int, processor: PreTrainedTokenizerBase, faker: Faker
-    ) -> str:
-        """Synthesize exactly ``n_tokens`` new tokens, not a growing prefix."""
-        if n_tokens <= 0:
-            return ""
-        token_ids = generate_token_ids(n_tokens, processor, faker)
-        return decode_prompt(processor, list(token_ids))
+        # OTEL overrides ``build_conversation_graph`` and sends recorded messages.
+        return ""
 
     def build_conversation_graph(
         self,
         conversation: Dataset,
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
+        processor: PreTrainedTokenizerBase,  # noqa: ARG002
+        faker: Faker,  # noqa: ARG002
     ) -> ConversationGraphData:
         """Build a linear conversation from one ``__iter__`` stub.
 
         :param conversation: One-row Dataset yielded by ``__iter__``.
-        :param processor: Tokenizer used to synthesize prompts.
-        :param faker: Seeded faker for token generation.
+        :param processor: Unused; recorded messages do not need synthesis.
+        :param faker: Unused; recorded messages do not need synthesis.
         :return: Linear ``main_*`` graph for the unpacked span list.
         :raises InvalidRowError: If the conversation has no LLM spans to replay
             or a replay row fails validation.
@@ -700,7 +674,7 @@ class OTELTraceFormat(TraceFormatBase):
             raise InvalidRowError(
                 "OTEL format: conversation has no LLM spans with token counts to replay"
             )
-        return self._build_linear_chain(rows, spans, processor, faker)
+        return self._build_linear_chain(rows, spans)
 
     def _unpack_conversation(self, conversation: Dataset) -> list[dict[str, Any]]:
         """Look up the raw span list for a conversation stub from ``__iter__``.
@@ -719,8 +693,6 @@ class OTELTraceFormat(TraceFormatBase):
         self,
         rows: list[dict[str, Any]],
         all_spans: list[dict[str, Any]],
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
     ) -> ConversationGraphData:
         """Emit the linear ``main_*`` chain, pre-splitting recorded tool loops.
 
@@ -744,7 +716,7 @@ class OTELTraceFormat(TraceFormatBase):
                 self.config.output_tokens_column: turn["output_tokens"],
             }
             _validate_api_row(replay_row, self.config, self.validate_row)
-            if self._is_tool_call_turn(index, rows, all_spans):
+            if self._is_tool_call_turn(index, rows):
                 index = self._append_tool_loop(
                     turns,
                     rows,
@@ -752,15 +724,11 @@ class OTELTraceFormat(TraceFormatBase):
                     index,
                     start_ts,
                     history_context,
-                    processor,
-                    faker,
                 )
                 continue
             self._append_turn(
                 turns,
-                self._content_columns(
-                    index, turn, rows, turn["timestamp"] - start_ts, processor, faker
-                ),
+                self._content_columns(index, turn, rows, turn["timestamp"] - start_ts),
                 history_context,
             )
             index += 1
@@ -796,27 +764,17 @@ class OTELTraceFormat(TraceFormatBase):
         self,
         index: int,
         rows: list[dict[str, Any]],
-        all_spans: list[dict[str, Any]],
     ) -> bool:
         """Classify an LLM span as a client tool-call turn.
 
-        Uses recorded output ``tool_calls`` when messages exist, otherwise
-        ``finish_reasons`` or a following ``execute_tool`` span. Tool
-        definitions alone are not a trigger.
+        Uses recorded output ``tool_calls``, else ``finish_reasons``. Tool
+        definitions alone are not a trigger. ``execute_tool`` spans are not
+        used to classify; they only supply placeholder injection text.
         """
         attributes = span_attributes(rows[index]["span"])
         if messages_have_tool_calls(span_output_messages(attributes)):
             return True
-        if finish_reasons_indicate_tool_call(attributes):
-            return True
-        next_ts = (
-            rows[index + 1]["timestamp"] if index + 1 < len(rows) else float("inf")
-        )
-        return bool(
-            execute_tool_spans_between(
-                all_spans, rows[index]["timestamp"], next_ts, self.config
-            )
-        )
+        return finish_reasons_indicate_tool_call(attributes)
 
     def _append_tool_loop(
         self,
@@ -826,8 +784,6 @@ class OTELTraceFormat(TraceFormatBase):
         index: int,
         start_ts: float,
         history_context: HistoryContext,
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
     ) -> int:
         """Emit a call node plus one or more injections; return the next row index.
 
@@ -839,9 +795,7 @@ class OTELTraceFormat(TraceFormatBase):
         call = rows[index]
         self._append_turn(
             turns,
-            self._tool_call_columns(
-                index, call, rows, call["timestamp"] - start_ts, processor, faker
-            ),
+            self._tool_call_columns(index, call, rows, call["timestamp"] - start_ts),
             history_context,
         )
         current = index
@@ -854,7 +808,7 @@ class OTELTraceFormat(TraceFormatBase):
             )
             if delta is not None:
                 next_row = rows[next_index]
-                include_tools = self._is_tool_call_turn(next_index, rows, all_spans)
+                include_tools = self._is_tool_call_turn(next_index, rows)
                 self._append_turn(
                     turns,
                     self._injection_columns(
@@ -916,12 +870,8 @@ class OTELTraceFormat(TraceFormatBase):
         turn: dict[str, Any],
         rows: list[dict[str, Any]],
         relative_timestamp: float,
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
     ) -> dict[str, Any]:
-        columns = self._content_columns(
-            turn_idx, turn, rows, relative_timestamp, processor, faker
-        )
+        columns = self._content_columns(turn_idx, turn, rows, relative_timestamp)
         columns.pop("output_tokens_count_column", None)
         columns["turn_type_column"] = ["client_tool_call"]
         columns["tools_column"] = [self._tools_for_call(turn["span"])]
@@ -954,41 +904,13 @@ class OTELTraceFormat(TraceFormatBase):
         turn: dict[str, Any],
         rows: list[dict[str, Any]],
         relative_timestamp: float,
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
     ) -> dict[str, Any]:
-        columns: dict[str, Any] = {
+        return {
             "prompt_tokens_count_column": [turn["prompt_tokens"]],
             "output_tokens_count_column": [turn["output_tokens"]],
             "relative_timestamp_column": [relative_timestamp],
+            "raw_messages_column": [self._raw_turn_messages(turn_idx, turn, rows)],
         }
-        if self.config.content == "synthetic":
-            columns["text_column"] = [
-                self._synthetic_prompt(turn_idx, turn, rows, processor, faker)
-            ]
-            return columns
-        columns["raw_messages_column"] = [self._raw_turn_messages(turn_idx, turn, rows)]
-        return columns
-
-    def _synthetic_prompt(
-        self,
-        turn_idx: int,
-        turn: dict[str, Any],
-        rows: list[dict[str, Any]],
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
-    ) -> str:
-        if self.config.history == "runtime" and turn_idx > 0:
-            prev = rows[turn_idx - 1]
-            delta = max(
-                0,
-                int(turn["prompt_tokens"])
-                - int(prev["prompt_tokens"])
-                - int(prev["output_tokens"]),
-            )
-            return self._create_prompt_tokens(delta, processor, faker)
-        replay_row = {self.config.prompt_tokens_column: turn["prompt_tokens"]}
-        return self.create_prompt(replay_row, processor, faker)
 
     def _raw_turn_messages(
         self,
@@ -1000,9 +922,8 @@ class OTELTraceFormat(TraceFormatBase):
         input_messages = parse_gen_ai_messages(attributes.get("gen_ai.input.messages"))
         if not input_messages:
             raise InvalidRowError(
-                "OTEL format: span missing gen_ai.input.messages for content=raw. "
-                "Pass content=synthetic to replay metrics-only traces from token "
-                "counts."
+                "OTEL format: span missing gen_ai.input.messages. "
+                "Use kind=trace_synthetic for token-count-only traces."
             )
         if self.config.history != "runtime" or turn_idx == 0:
             return input_messages

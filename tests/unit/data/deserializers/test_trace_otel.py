@@ -18,7 +18,7 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
 )
-from guidellm.schemas.data import DEFAULT_SYNTHETIC_TOOLS, OTELTraceFormatArgs
+from guidellm.schemas.data import OTELTraceFormatArgs
 from guidellm.settings import settings
 from tests.unit.data.deserializers.trace_test_utils import trace_file_source
 
@@ -53,6 +53,7 @@ def ibm_chat_span(
     output_text: str | None = None,
     tools: list[dict] | str | None = None,
     finish_reasons: list[str] | str | None = None,
+    omit_messages: bool = False,
 ) -> dict:
     span = {
         "span_id": span_id,
@@ -67,8 +68,10 @@ def ibm_chat_span(
     }
     if status_code is not None:
         span["status"] = {"code": status_code, "message": ""}
-    if messages is not None:
-        span["attributes"]["gen_ai.input.messages"] = messages
+    if not omit_messages:
+        span["attributes"]["gen_ai.input.messages"] = (
+            messages if messages is not None else [{"role": "user", "content": "hello"}]
+        )
     if output_messages is not None:
         span["attributes"]["gen_ai.output.messages"] = output_messages
     if output_text is not None:
@@ -104,6 +107,7 @@ def exgentic_chat_span(
             "gen_ai.operation.name": operation,
             "gen_ai.usage.input_tokens": input_tokens,
             "gen_ai.usage.output_tokens": output_tokens,
+            "gen_ai.input.messages": [{"role": "user", "content": "hello"}],
         },
         "status": {"code": 1, "message": ""},
     }
@@ -334,11 +338,11 @@ def load_graph_turns(row: dict) -> list[ConversationTurnData]:
     return graph.turns
 
 
-def deserialize(path: Path, **kwargs):
+def deserialize(path: Path, processor_factory=mock_processor, **kwargs):
     config = OTELTraceFormatArgs(source=trace_file_source(path), **kwargs)
     return TraceDatasetDeserializer()(
         config=config,
-        processor_factory=mock_processor,
+        processor_factory=processor_factory,
         random_seed=42,
     )
 
@@ -400,9 +404,7 @@ class TestOTELTraceFormat:
             ],
         )
         ds = DatasetDeserializerFactory.deserialize(
-            config=OTELTraceFormatArgs(
-                kind=kind, source=trace_file_source(trace), content="synthetic"
-            ),
+            config=OTELTraceFormatArgs(kind=kind, source=trace_file_source(trace)),
             processor_factory=mock_processor,
             random_seed=42,
         )
@@ -441,7 +443,7 @@ class TestOTELTraceFormat:
                 )
             ],
         )
-        turns = load_graph_turns(next(iter(deserialize(trace, content="synthetic"))))
+        turns = load_graph_turns(next(iter(deserialize(trace))))
         assert [turn.columns["prompt_tokens_count_column"][0] for turn in turns] == [
             4,
             8,
@@ -475,7 +477,7 @@ class TestOTELTraceFormat:
                 }
             ],
         )
-        turns = load_graph_turns(next(iter(deserialize(trace, content="synthetic"))))
+        turns = load_graph_turns(next(iter(deserialize(trace))))
         assert turns[0].columns["prompt_tokens_count_column"][0] == 6
         assert turns[0].columns["output_tokens_count_column"][0] == 9
 
@@ -512,9 +514,7 @@ class TestOTELTraceFormat:
                 ),
             ],
         )
-        conversations = [
-            load_graph_turns(row) for row in deserialize(trace, content="synthetic")
-        ]
+        conversations = [load_graph_turns(row) for row in deserialize(trace)]
         assert len(conversations) == 2
         assert [
             turn.columns["prompt_tokens_count_column"][0] for turn in conversations[0]
@@ -556,9 +556,7 @@ class TestOTELTraceFormat:
                 ),
             ],
         )
-        conversations = [
-            load_graph_turns(row) for row in deserialize(trace, content="synthetic")
-        ]
+        conversations = [load_graph_turns(row) for row in deserialize(trace)]
         assert len(conversations) == 3
         assert [
             turn.columns["prompt_tokens_count_column"][0] for turn in conversations[0]
@@ -601,7 +599,7 @@ class TestOTELTraceFormat:
                 )
             ],
         )
-        turns = load_graph_turns(next(iter(deserialize(trace, content="synthetic"))))
+        turns = load_graph_turns(next(iter(deserialize(trace))))
         offsets = [turn.columns["relative_timestamp_column"][0] for turn in turns]
         assert offsets[0] == pytest.approx(0.0)
         assert offsets[1] == pytest.approx(0.5)
@@ -635,7 +633,7 @@ class TestOTELTraceFormat:
                 )
             ],
         )
-        turns = load_graph_turns(next(iter(deserialize(trace, content="synthetic"))))
+        turns = load_graph_turns(next(iter(deserialize(trace))))
         assert len(turns) == 1
         assert turns[0].columns["prompt_tokens_count_column"][0] == 5
 
@@ -672,7 +670,7 @@ class TestOTELTraceFormat:
                 )
             ],
         )
-        turns = load_graph_turns(next(iter(deserialize(trace, content="synthetic"))))
+        turns = load_graph_turns(next(iter(deserialize(trace))))
         assert len(turns) == 1
         assert turns[0].columns["prompt_tokens_count_column"][0] == 4
 
@@ -704,7 +702,7 @@ class TestOTELTraceFormat:
                 )
             ],
         )
-        ds = deserialize(trace, content="synthetic")
+        ds = deserialize(trace)
         with pytest.raises(InvalidRowError, match="no LLM spans"):
             next(iter(ds))
 
@@ -742,54 +740,13 @@ class TestOTELTraceFormat:
                 ),
             ],
         )
-        ds = deserialize(trace, content="synthetic")
+        ds = deserialize(trace)
         row_iter = iter(ds)
         turns = load_graph_turns(next(row_iter))
         assert len(turns) == 1
         assert turns[0].columns["prompt_tokens_count_column"][0] == 4
         with pytest.raises(InvalidRowError, match="no LLM spans"):
             next(row_iter)
-
-    @pytest.mark.sanity
-    def test_prefix_reuse_within_conversation(self, tmp_path: Path):
-        """
-        Synthetic+trace mode grows a full prompt of n_in and uses history_context=new.
-
-        ## WRITTEN BY AI ##
-        """
-        trace = write_jsonl(
-            tmp_path,
-            [
-                ibm_session_line(
-                    "t0",
-                    [
-                        ibm_chat_span(
-                            span_id="s0",
-                            trace_id="t0",
-                            start_time="2024-01-01T12:00:00+00:00",
-                            prompt_tokens=4,
-                            completion_tokens=1,
-                        ),
-                        ibm_chat_span(
-                            span_id="s1",
-                            trace_id="t0",
-                            start_time="2024-01-01T12:00:01+00:00",
-                            prompt_tokens=8,
-                            completion_tokens=1,
-                        ),
-                    ],
-                )
-            ],
-        )
-        turns = load_graph_turns(
-            next(iter(deserialize(trace, content="synthetic", history="trace")))
-        )
-        first = turns[0].columns["text_column"][0]
-        second = turns[1].columns["text_column"][0]
-        assert first.split() == ["tok0", "tok1", "tok2", "tok3"]
-        assert second.split()[:4] == first.split()
-        assert len(second.split()) == 8
-        assert turns[1].parents[0].history_context == "new"
 
     @pytest.mark.smoke
     def test_raw_trace_sends_full_messages_and_new_history(self, tmp_path: Path):
@@ -818,9 +775,7 @@ class TestOTELTraceFormat:
         ## WRITTEN BY AI ##
         """
         trace = write_jsonl(tmp_path, [accumulating_session()])
-        turns = load_graph_turns(
-            next(iter(deserialize(trace, content="raw", history="runtime")))
-        )
+        turns = load_graph_turns(next(iter(deserialize(trace, history="runtime"))))
         assert turns[0].columns["raw_messages_column"][0] == [USER_HELLO]
         assert turns[1].columns["raw_messages_column"][0] == [USER_AGAIN]
         assert turns[1].parents[0].history_context == "full"
@@ -840,48 +795,9 @@ class TestOTELTraceFormat:
                 )
             ],
         )
-        ds = deserialize(trace, content="raw", history="runtime")
+        ds = deserialize(trace, history="runtime")
         with pytest.raises(InvalidRowError, match="do not continue the previous span"):
             next(iter(ds))
-
-    @pytest.mark.sanity
-    def test_synthetic_runtime_sends_token_delta(self, tmp_path: Path):
-        """
-        Synthetic+runtime mode synthesizes only n_in - prev n_in - prev n_out tokens.
-
-        ## WRITTEN BY AI ##
-        """
-        trace = write_jsonl(
-            tmp_path,
-            [
-                ibm_session_line(
-                    "t0",
-                    [
-                        ibm_chat_span(
-                            span_id="s0",
-                            trace_id="t0",
-                            start_time="2024-01-01T12:00:00+00:00",
-                            prompt_tokens=4,
-                            completion_tokens=1,
-                        ),
-                        ibm_chat_span(
-                            span_id="s1",
-                            trace_id="t0",
-                            start_time="2024-01-01T12:00:01+00:00",
-                            prompt_tokens=8,
-                            completion_tokens=1,
-                        ),
-                    ],
-                )
-            ],
-        )
-        turns = load_graph_turns(
-            next(iter(deserialize(trace, content="synthetic", history="runtime")))
-        )
-        assert len(turns[0].columns["text_column"][0].split()) == 4
-        # delta = 8 - 4 - 1 = 3
-        assert len(turns[1].columns["text_column"][0].split()) == 3
-        assert turns[1].parents[0].history_context == "full"
 
     @pytest.mark.sanity
     def test_json_string_messages_round_trip(self, tmp_path: Path):
@@ -891,7 +807,7 @@ class TestOTELTraceFormat:
         ## WRITTEN BY AI ##
         """
         trace = write_jsonl(tmp_path, [accumulating_session(messages_as_json=True)])
-        turns = load_graph_turns(next(iter(deserialize(trace, content="raw"))))
+        turns = load_graph_turns(next(iter(deserialize(trace))))
         assert turns[0].columns["raw_messages_column"][0] == [USER_HELLO]
         assert turns[1].columns["raw_messages_column"][0] == [
             USER_HELLO,
@@ -964,7 +880,7 @@ class TestOTELTraceFormat:
     @pytest.mark.regression
     def test_raw_missing_messages_raises(self, tmp_path: Path):
         """
-        content=raw errors on metrics-only spans and tells the user to use synthetic.
+        Spans without gen_ai.input.messages are skipped with an error.
 
         ## WRITTEN BY AI ##
         """
@@ -980,34 +896,25 @@ class TestOTELTraceFormat:
                             start_time="2024-01-01T12:00:00+00:00",
                             prompt_tokens=4,
                             completion_tokens=2,
+                            omit_messages=True,
                         )
                     ],
                 )
             ],
         )
-        with pytest.raises(InvalidRowError, match="Pass content=synthetic"):
+        with pytest.raises(InvalidRowError, match="missing gen_ai.input.messages"):
             next(iter(deserialize(trace)))
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize(
-        ("content", "history"),
-        [
-            ("raw", "trace"),
-            ("raw", "runtime"),
-            ("synthetic", "trace"),
-            ("synthetic", "runtime"),
-        ],
-    )
-    def test_tool_loop_all_modes(self, tmp_path: Path, content: str, history: str):
+    @pytest.mark.parametrize("history", ["trace", "runtime"])
+    def test_tool_loop_all_modes(self, tmp_path: Path, history: str):
         """
-        Recorded tool_call then tool-result delta becomes call + injection in all modes.
+        Recorded tool_call then tool-result delta becomes call + injection.
 
         ## WRITTEN BY AI ##
         """
         trace = write_jsonl(tmp_path, [two_span_tool_session()])
-        turns = load_graph_turns(
-            next(iter(deserialize(trace, content=content, history=history)))
-        )
+        turns = load_graph_turns(next(iter(deserialize(trace, history=history))))
         assert len(turns) == 2
         assert turns[0].columns["turn_type_column"] == ["client_tool_call"]
         assert turns[0].columns["tools_column"][0] == WEATHER_TOOLS
@@ -1018,13 +925,9 @@ class TestOTELTraceFormat:
         assert "raw_messages_column" not in turns[1].columns
         assert "text_column" not in turns[1].columns
         assert turns[1].parents[0].history_context == "full"
-        if content == "raw":
-            assert turns[0].columns["raw_messages_column"][0] == [
-                {"role": "user", "content": "Weather in Paris?"}
-            ]
-        else:
-            assert "text_column" in turns[0].columns
-            assert "raw_messages_column" not in turns[0].columns
+        assert turns[0].columns["raw_messages_column"][0] == [
+            {"role": "user", "content": "Weather in Paris?"}
+        ]
 
     @pytest.mark.sanity
     def test_multi_step_injection_keeps_tools(self, tmp_path: Path):
@@ -1135,127 +1038,6 @@ class TestOTELTraceFormat:
         assert "turn_type_column" not in turns[2].columns
         assert turns[2].columns["raw_messages_column"][0] == [USER_HELLO]
 
-    @pytest.mark.smoke
-    def test_metrics_only_finish_reasons_tool_loop(self, tmp_path: Path):
-        """
-        Metrics-only finish_reasons=tool_calls becomes a synthetic call plus injection.
-
-        ## WRITTEN BY AI ##
-        """
-        trace = write_jsonl(
-            tmp_path,
-            [
-                ibm_session_line(
-                    "t0",
-                    [
-                        ibm_chat_span(
-                            span_id="s0",
-                            trace_id="t0",
-                            start_time="2024-01-01T12:00:00+00:00",
-                            prompt_tokens=10,
-                            completion_tokens=8,
-                            finish_reasons=["tool_calls"],
-                        ),
-                        ibm_chat_span(
-                            span_id="s1",
-                            trace_id="t0",
-                            start_time="2024-01-01T12:00:02+00:00",
-                            prompt_tokens=20,
-                            completion_tokens=12,
-                            finish_reasons=["stop"],
-                        ),
-                    ],
-                )
-            ],
-        )
-        turns = load_graph_turns(next(iter(deserialize(trace, content="synthetic"))))
-        assert turns[0].columns["turn_type_column"] == ["client_tool_call"]
-        assert turns[0].columns["tools_column"][0] == DEFAULT_SYNTHETIC_TOOLS
-        assert turns[1].columns["turn_type_column"] == ["tool_response_injection"]
-        assert turns[1].columns["tool_response_column"] == [
-            settings.default_synthetic_tool_response
-        ]
-        assert "turn_type_column" not in turns[2].columns
-        assert "text_column" in turns[2].columns
-
-    @pytest.mark.sanity
-    def test_metrics_only_execute_tool_span(self, tmp_path: Path):
-        """
-        A following execute_tool span marks the preceding LLM span as a tool call.
-
-        ## WRITTEN BY AI ##
-        """
-        trace = write_jsonl(
-            tmp_path,
-            [
-                ibm_session_line(
-                    "t0",
-                    [
-                        ibm_chat_span(
-                            span_id="s0",
-                            trace_id="t0",
-                            start_time="2024-01-01T12:00:00+00:00",
-                            prompt_tokens=10,
-                            completion_tokens=8,
-                        ),
-                        execute_tool_span(
-                            span_id="tool",
-                            trace_id="t0",
-                            start_time="2024-01-01T12:00:01+00:00",
-                            result="rainy, 57F",
-                        ),
-                        ibm_chat_span(
-                            span_id="s1",
-                            trace_id="t0",
-                            start_time="2024-01-01T12:00:02+00:00",
-                            prompt_tokens=20,
-                            completion_tokens=12,
-                        ),
-                    ],
-                )
-            ],
-        )
-        turns = load_graph_turns(next(iter(deserialize(trace, content="synthetic"))))
-        assert turns[0].columns["turn_type_column"] == ["client_tool_call"]
-        assert turns[1].columns["tool_response_column"] == ["rainy, 57F"]
-        assert "turn_type_column" not in turns[2].columns
-
-    @pytest.mark.sanity
-    def test_metrics_only_execute_tool_name_without_operation(self, tmp_path: Path):
-        """
-        Span name execute_tool is enough when gen_ai.operation.name is missing.
-
-        ## WRITTEN BY AI ##
-        """
-        trace = write_jsonl(
-            tmp_path,
-            [
-                ibm_session_line(
-                    "t0",
-                    [
-                        ibm_chat_span(
-                            span_id="s0",
-                            trace_id="t0",
-                            start_time="2024-01-01T12:00:00+00:00",
-                            prompt_tokens=10,
-                            completion_tokens=8,
-                        ),
-                        execute_tool_span(
-                            span_id="tool",
-                            trace_id="t0",
-                            start_time="2024-01-01T12:00:01+00:00",
-                            operation=False,
-                            name="execute_tool get_weather",
-                            result={"temp": 57},
-                        ),
-                    ],
-                )
-            ],
-        )
-        turns = load_graph_turns(next(iter(deserialize(trace, content="synthetic"))))
-        assert turns[0].columns["turn_type_column"] == ["client_tool_call"]
-        assert json.loads(turns[1].columns["tool_response_column"][0]) == {"temp": 57}
-
     @pytest.mark.regression
     def test_tool_definitions_alone_are_not_a_tool_loop(self, tmp_path: Path):
         """
@@ -1281,10 +1063,59 @@ class TestOTELTraceFormat:
                 )
             ],
         )
-        turns = load_graph_turns(next(iter(deserialize(trace, content="synthetic"))))
+        turns = load_graph_turns(next(iter(deserialize(trace))))
         assert len(turns) == 1
         assert "turn_type_column" not in turns[0].columns
         assert "tools_column" not in turns[0].columns
+
+    @pytest.mark.sanity
+    def test_finish_reasons_classify_tool_call(self, tmp_path: Path):
+        """
+        finish_reasons=tool_calls classifies a tool call when output has no tool_calls.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_jsonl(
+            tmp_path,
+            [
+                ibm_session_line(
+                    "t0",
+                    [
+                        ibm_chat_span(
+                            span_id="s0",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00+00:00",
+                            prompt_tokens=10,
+                            completion_tokens=8,
+                            messages=[USER_HELLO],
+                            output_messages=[ASSISTANT_HI],
+                            finish_reasons=["tool_calls"],
+                        ),
+                        ibm_chat_span(
+                            span_id="s1",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:02+00:00",
+                            prompt_tokens=20,
+                            completion_tokens=12,
+                            messages=[USER_HELLO, ASSISTANT_HI, USER_AGAIN],
+                            output_messages=[ASSISTANT_OK],
+                        ),
+                    ],
+                )
+            ],
+        )
+        turns = load_graph_turns(next(iter(deserialize(trace))))
+        assert turns[0].columns["turn_type_column"] == ["client_tool_call"]
+        assert turns[1].columns["turn_type_column"] == ["tool_response_injection"]
+        assert turns[1].columns["tool_response_column"] == [
+            settings.default_synthetic_tool_response
+        ]
+        assert "turn_type_column" not in turns[2].columns
+        assert turns[2].columns["raw_messages_column"][0] == [
+            USER_HELLO,
+            ASSISTANT_HI,
+            USER_AGAIN,
+        ]
 
 
 @pytest.mark.parametrize(

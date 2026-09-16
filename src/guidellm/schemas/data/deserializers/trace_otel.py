@@ -42,13 +42,6 @@ class OTELTraceFormatArgs(TraceDataArgs):
         ],
         description="Attribute keys tried in order for output token counts.",
     )
-    content: Literal["raw", "synthetic"] = Field(
-        default="raw",
-        description=(
-            "Prompt content: 'raw' sends recorded gen_ai.input.messages; "
-            "'synthetic' builds a faker prompt matching the span token count."
-        ),
-    )
     history: Literal["trace", "runtime"] = Field(
         default="trace",
         description=(
