@@ -203,14 +203,18 @@ class OpenAIHTTPBackendArgs(BackendArgs):
 
     @model_validator(mode="after")
     def validate_server_history(self):
-        """Validate backend configuration combinations."""
+        """Validate that server history is used only with the Responses API."""
         if self.server_history and self.request_format != "/v1/responses":
             raise ValueError(
                 "server_history=True is only supported with the /v1/responses "
                 "request format. Current request_format: "
                 f"'{self.request_format}'"
             )
+        return self
 
+    @model_validator(mode="after")
+    def validate_api_credentials(self):
+        """Validate that exactly one valid API key source is configured."""
         api_key_sources = sum(
             source is not None
             for source in (self.api_key, self.api_keys, self.api_key_file)

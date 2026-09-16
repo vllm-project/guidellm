@@ -181,6 +181,8 @@ def test_run_rejects_duplicate_backend_flags():
             ),
             "--data",
             "kind=synthetic_text,prompt_tokens=16,output_tokens=8",
+            "--profile",
+            "kind=constant,rate=1",
             "--constraint",
             "kind=max_requests,count=1",
         ],
@@ -217,6 +219,8 @@ def test_run_accepts_inline_api_keys(monkeypatch):
             ),
             "--data",
             "kind=synthetic_text,prompt_tokens=16,output_tokens=8",
+            "--profile",
+            "kind=constant,rate=1",
             "--constraint",
             "kind=max_requests,count=1",
             "--disable-console",
@@ -229,6 +233,7 @@ def test_run_accepts_inline_api_keys(monkeypatch):
         "key-1",
         "key-2",
     ]
+
 
 @pytest.mark.sanity
 def test_run_accepts_api_key_file(monkeypatch, tmp_path):
@@ -255,6 +260,8 @@ def test_run_accepts_api_key_file(monkeypatch, tmp_path):
             (f"kind=openai_http,target=http://127.0.0.1:8000,api_key_file={key_file}"),
             "--data",
             "kind=synthetic_text,prompt_tokens=16,output_tokens=8",
+            "--profile",
+            "kind=constant,rate=1",
             "--constraint",
             "kind=max_requests,count=1",
             "--disable-console",
