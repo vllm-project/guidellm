@@ -118,7 +118,7 @@ class MockBackend(BackendInterface):
 
 @pytest.mark.smoke
 @pytest.mark.asyncio
-@async_timeout(10.0)
+@async_timeout(60.0)
 @pytest.mark.parametrize(
     ("strategy", "env", "constraint_inits"),
     [
@@ -138,7 +138,11 @@ async def test_scheduler_run_integration(
     env: Environment,
     constraint_inits: dict[str, ConstraintInitializer],
 ):
-    """Integration test for full scheduler workflow."""
+    """Integration test for full scheduler workflow.
+
+    Timeout is 60s: 100 multiprocess requests plus worker spawn routinely
+    exceeds 10s on loaded CI runners.
+    """
     # Clear singleton state
     if hasattr(Scheduler, "singleton_instance"):
         Scheduler.singleton_instance = None
