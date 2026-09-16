@@ -55,6 +55,7 @@ All trace formats can accept the following optional data arguments:
 | `max_wait`                | unset           | Maximum gap in original trace seconds between consecutive requests in one session               |
 | `max_session_wait`        | unset           | Maximum idle in original trace seconds from the previous session's last request to this session |
 | `min_concurrent_sessions` | unset           | Pack sessions so at least this many overlap during steady state                                 |
+| `copies`                  | 1               | Sequential full-dataset replays; pass k+1 starts at pass k's last scheduled request             |
 
 These are passed through the `--data` argument like below:
 
@@ -67,7 +68,9 @@ guidellm run \
 
 `trace_synthetic` can be thought of as the format-agnostic option, only looking for the timestamp, prompt token count and output token count columns and ignoring all other features contained in a dataset. While primarily used for testing, `trace_synthetic` may be used as a fallback for trace formats not currently supported by GuideLLM.
 
-`trace_synthetic` and `mooncake` replay each row as an independent, single-request conversation. Rows are sorted by timestamp and keep their offsets from the first request in the trace. Prompts are generated as rows are consumed, and Mooncake hash IDs remain shared across rows. Use `max_session_wait` to cap gaps between these independent requests; `max_wait` only caps gaps within multi-request conversations, such as WEKA sessions.
+`trace_synthetic` and `mooncake` replay each row as an independent, single-request conversation. Rows are sorted by timestamp and keep their offsets from the first request in the trace. Prompts are generated as rows are consumed, and Mooncake hash IDs remain shared across rows within one `copies` pass. Use `max_session_wait` to cap gaps between these independent requests; `max_wait` only caps gaps within multi-request conversations, such as WEKA sessions.
+
+Raise parallelism with `min_concurrent_sessions`, wait caps, and `time_scale` first. Use `copies` only when that packed pass is too short for the benchmark (`max_duration` / `max_requests`). `copies` replays the entire packed dataset back-to-back; it does not run duplicate conversations at the same timestamp. The next pass's first request is scheduled at the previous pass's last request timestamp (timeline concatenation, not a wait for the last generated token). Hash-id formats (`mooncake`, `weka`) use a separately salted global token-block table per pass so later passes do not reuse earlier tokens and inflate prefix-cache hits.
 
 ## Format-Specific Data Arguments
 
@@ -92,8 +95,8 @@ GuideLLM will generate prompts starting from the first conversation. When the co
 
 Hash IDs follow the per-row `hash_id_scope` field:
 
-- `"global"` or omitted: hash IDs share one token-block table across conversations, matching Mooncake. The same hash ID in a later conversation reuses the earlier token block so prefix-cache hit rate stays close to the original trace.
-- `"local"`: hash IDs apply only within that conversation. The table is discarded after the conversation is emitted.
+- `"global"` or omitted: hash IDs share one token-block table across conversations, matching Mooncake. The same hash ID in a later conversation reuses the earlier token block so prefix-cache hit rate stays close to the original trace. Each `copies` pass uses a separately salted global table.
+- `"local"`: hash IDs apply only within that conversation. The table is discarded after the conversation is emitted. Local isolation also applies independently on each `copies` pass.
 
 Declared `type: "subagent"` entries become isolated child chains. Each child spawns from the preceding parent API turn with a fresh history (`history_context="new"`) and the following parent turn waits for every sibling spawned since that turn (`history_context="last"`). Multiple subagents listed between the same parent turns therefore run in parallel; the parent resumes only after all of them complete. Request-list order is preserved at every nesting level (it is the spawn/join topology) and is not sorted by timestamp.
 

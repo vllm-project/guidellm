@@ -66,9 +66,23 @@ class MooncakeTraceFormat(SingleTurnTraceFormat):
     def __init__(self, config: MooncakeTraceFormatArgs, dataset: Dataset) -> None:
         self.config = config
         self.dataset = dataset
+        self._copy_index = 0
+        self._hash_id_tables: list[dict[int, tuple[int, ...]]] = [
+            {} for _ in range(config.copies)
+        ]
+        self._sibling_tables: list[dict[Any, set[tuple[int, ...]]]] = [
+            {} for _ in range(config.copies)
+        ]
 
-        self.hash_id_table: dict[int, tuple[int, ...]] = {}
-        self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
+    def set_copy_index(self, copy_index: int) -> None:
+        """Select the hash-table slot for a sequential dataset copy.
+
+        Index 0 is the original global table. Each later copy has its own
+        independently salted slot in the same lists.
+
+        :param copy_index: Zero-based sequential pass index
+        """
+        self._copy_index = copy_index
 
     def required_columns(self) -> Features:
         return Features({self.config.hash_ids_column: List(Value("int32"))})
@@ -95,14 +109,16 @@ class MooncakeTraceFormat(SingleTurnTraceFormat):
         """Before generating the prompt, this first generates a block of tokens for
         each hash ID that has not already been seen."""
         ids = row[self.config.hash_ids_column]
+        hash_id_table = self._hash_id_tables[self._copy_index]
+        sibling_token_blocks = self._sibling_tables[self._copy_index]
         fill_hash_id_table(
             ids,
-            self.hash_id_table,
-            self.sibling_token_blocks,
+            hash_id_table,
+            sibling_token_blocks,
             processor,
             faker,
             lambda _idx, hash_id: _calculate_required_prompt_tokens(
                 self.config, row, hash_id
             ),
         )
-        return create_prompt_from_hash_ids(ids, self.hash_id_table, processor)
+        return create_prompt_from_hash_ids(ids, hash_id_table, processor)

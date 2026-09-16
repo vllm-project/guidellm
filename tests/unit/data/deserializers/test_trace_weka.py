@@ -678,6 +678,102 @@ class TestWEKATraceFormat:
         assert prompts[1] != prompts[3]
 
     @pytest.mark.sanity
+    def test_copies_global_hash_id_scope_reuses_within_pass(
+        self, tmp_path: Path, deserializer, default_block_size
+    ):
+        """Global hash IDs reuse token blocks within a copies pass and differ across.
+
+        ## WRITTEN BY AI ##
+        """
+        n_rows = 2
+        n_virtual_rows = 2
+        n_in = default_block_size * 2
+        trace = write_trace(
+            tmp_path,
+            generate_weka_trace(
+                n_rows,
+                n_virtual_rows,
+                [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
+                [
+                    TraceColumnGenerator("t", lambda i: i),
+                    TraceColumnGenerator("in", lambda _: n_in),
+                    TraceColumnGenerator("out", lambda _: 5),
+                    TraceColumnGenerator("hash_ids", lambda i: [1, i + 2]),
+                ],
+            ),
+        )
+        source = trace_file_source(trace)
+        baseline = deserializer(
+            config=WEKATraceFormatArgs(source=source),
+            processor_factory=compatible_processor,
+            random_seed=42,
+        )
+        baseline_prompts = [
+            [turn.columns["text_column"][0] for turn in load_graph_turns(row)]
+            for row in baseline
+        ]
+        copied = deserializer(
+            config=WEKATraceFormatArgs(source=source, copies=2),
+            processor_factory=compatible_processor,
+            random_seed=42,
+        )
+        copied_prompts = [
+            [turn.columns["text_column"][0] for turn in load_graph_turns(row)]
+            for row in copied
+        ]
+        assert len(copied_prompts) == n_rows * 2
+        pass0 = copied_prompts[:n_rows]
+        pass1 = copied_prompts[n_rows:]
+        assert pass0 == baseline_prompts
+        assert pass0[0] == pass0[1]
+        assert pass1[0] == pass1[1]
+        assert pass0[0] != pass1[0]
+
+    @pytest.mark.sanity
+    def test_copies_local_hash_id_scope_isolates_per_conversation(
+        self, tmp_path: Path, deserializer, default_block_size
+    ):
+        """Local scope stays isolated per conversation on every copies pass.
+
+        ## WRITTEN BY AI ##
+        """
+        n_rows = 2
+        n_virtual_rows = 2
+        n_in = default_block_size * 2
+        trace = write_trace(
+            tmp_path,
+            generate_weka_trace(
+                n_rows,
+                n_virtual_rows,
+                [
+                    TraceColumnGenerator("id", lambda i: f'"conv{i}"'),
+                    TraceColumnGenerator("hash_id_scope", lambda _: '"local"'),
+                ],
+                [
+                    TraceColumnGenerator("t", lambda i: i),
+                    TraceColumnGenerator("in", lambda _: n_in),
+                    TraceColumnGenerator("out", lambda _: 5),
+                    TraceColumnGenerator("hash_ids", lambda i: [1, i + 2]),
+                ],
+            ),
+        )
+        copied = deserializer(
+            config=WEKATraceFormatArgs(source=trace_file_source(trace), copies=2),
+            processor_factory=compatible_processor,
+            random_seed=42,
+        )
+        copied_prompts = [
+            [turn.columns["text_column"][0] for turn in load_graph_turns(row)]
+            for row in copied
+        ]
+        pass0 = copied_prompts[:n_rows]
+        pass1 = copied_prompts[n_rows:]
+        assert pass0[0][0] != pass0[1][0]
+        assert pass0[0][0][: n_in // 2] == pass0[0][1][: n_in // 2]
+        assert pass1[0][0] != pass1[1][0]
+        assert pass0[0] != pass1[0]
+
+    @pytest.mark.sanity
     def test_zero_prompt_tokens_empty_hash_ids(self, tmp_path: Path, deserializer):
         trace = write_trace(
             tmp_path,
