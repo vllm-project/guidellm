@@ -1,0 +1,9 @@
+[data-md-color-scheme="guidellm"] {
+  --md-primary-fg-color:        #498CF5;
+  --md-primary-fg-color--light: #498CF5;
+  --md-primary-fg-color--dark:  #498CF5;
+}
+
+.md-nav__title {
+  display: none;
+}
