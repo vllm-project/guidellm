@@ -12,7 +12,11 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationTurnData,
 )
 
-__all__ = ["TraceSessionTiming"]
+__all__ = [
+    "TraceSessionTiming",
+    "graph_max_timestamp",
+    "shift_graph_timestamps",
+]
 
 
 class TraceSessionTiming:
@@ -173,6 +177,40 @@ class TraceSessionTiming:
             if relative_timestamp is None:
                 continue
             _set_turn_timestamp(turn, relative_timestamp - trim)
+
+
+def shift_graph_timestamps(graph: ConversationGraphData, offset: float) -> None:
+    """Add ``offset`` to every turn that has a relative timestamp.
+
+    Used to concatenate sequential dataset copies onto the previous pass's
+    timeline. ``offset == 0`` is a no-op.
+
+    :param graph: Conversation whose timestamps may be shifted later
+    :param offset: Seconds to add to each present relative timestamp
+    """
+    if offset == 0:
+        return
+    for turn in graph.turns:
+        relative_timestamp = _turn_timestamp(turn)
+        if relative_timestamp is None:
+            continue
+        _set_turn_timestamp(turn, relative_timestamp + offset)
+
+
+def graph_max_timestamp(graph: ConversationGraphData) -> float | None:
+    """Return the latest relative timestamp on ``graph``, if any.
+
+    :param graph: Conversation to inspect
+    :return: Maximum relative timestamp, or ``None`` when no turn is timed
+    """
+    times = [
+        timestamp
+        for timestamp in (_turn_timestamp(turn) for turn in graph.turns)
+        if timestamp is not None
+    ]
+    if not times:
+        return None
+    return max(times)
 
 
 def _turn_timestamp(turn: ConversationTurnData) -> float | None:

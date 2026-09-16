@@ -242,8 +242,13 @@ class WEKATraceFormat(TraceFormatBase):
         self.config = config
         self.dataset = dataset
 
-        self.hash_id_table: dict[int, tuple[int, ...]] = {}
-        self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
+        self._copy_index = 0
+        self._hash_id_tables: list[dict[int, tuple[int, ...]]] = [
+            {} for _ in range(config.copies)
+        ]
+        self._sibling_tables: list[dict[Any, set[tuple[int, ...]]]] = [
+            {} for _ in range(config.copies)
+        ]
         # Filled by each ``__iter__`` pass so mixed subagent/API schemas are
         # not forced through a single HuggingFace Arrow table.
         self._conversations: list[tuple[str, list[dict[str, Any]], str | None]] = []
@@ -254,6 +259,20 @@ class WEKATraceFormat(TraceFormatBase):
             raise DataNotSupportedError(
                 "WEKA format: Failed to find requests column or requests was empty"
             )
+
+    def set_copy_index(self, copy_index: int) -> None:
+        """Select the hash-table slot for a sequential dataset copy.
+
+        Index 0 is the original global table. Each later copy has its own
+        independently salted slot in the same lists. Local-scope conversations
+        still use throwaway tables in ``build_conversation_graph``. The
+        tool-response sampler is reset so each pass draws remainder/tool text
+        from that pass's faker.
+
+        :param copy_index: Zero-based sequential pass index
+        """
+        self._copy_index = copy_index
+        self._tool_response_sampler = None
 
     def __iter__(self) -> Iterable[Dataset]:
         self._conversations = []
@@ -328,14 +347,14 @@ class WEKATraceFormat(TraceFormatBase):
 
         :param hash_id_table: Token blocks keyed by hash ID. Instance storage for
             global scope, or a throwaway dict for local scope. Defaults to the
-            instance table.
+            active copy's table.
         :param sibling_token_blocks: Distinctness set per previous hash ID, matching
-            ``hash_id_table``'s lifetime. Defaults to the instance set.
+            ``hash_id_table``'s lifetime. Defaults to the active copy's set.
         """
         if hash_id_table is None:
-            hash_id_table = self.hash_id_table
+            hash_id_table = self._hash_id_tables[self._copy_index]
         if sibling_token_blocks is None:
-            sibling_token_blocks = self.sibling_token_blocks
+            sibling_token_blocks = self._sibling_tables[self._copy_index]
         ids = row[self.config.hash_ids_column]
         n_in = row[self.config.prompt_tokens_column]
         block_size = self.config.hash_id_block_size
@@ -371,8 +390,8 @@ class WEKATraceFormat(TraceFormatBase):
             hash_id_table: dict[int, tuple[int, ...]] = {}
             sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
         else:
-            hash_id_table = self.hash_id_table
-            sibling_token_blocks = self.sibling_token_blocks
+            hash_id_table = self._hash_id_tables[self._copy_index]
+            sibling_token_blocks = self._sibling_tables[self._copy_index]
         specs, _last = self._emit_chain(
             requests,
             agent_id="default",

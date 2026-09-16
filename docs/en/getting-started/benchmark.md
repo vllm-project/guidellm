@@ -262,6 +262,10 @@ guidellm run \
 
 The data parameter `time_scale` acts as a scaling factor for the intervals between trace events after wait and pack caps: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast. Wait caps (`max_wait`, `max_session_wait`, `min_concurrent_sessions`) are applied in original trace seconds before `time_scale`.
 
+Raise parallelism with `min_concurrent_sessions`. Use `copies` when the packed dataset is not large enough to sustain that load for the whole benchmark. `copies` replays the full packed trace sequentially: the next pass starts at the previous pass's last scheduled request. It does not overlay duplicate conversations on the same timestamps. Synthetic data traces re-salt the synthetic data to ensure cache-unique conversations for the copies.
+
+Strategically choose between increasing parallelism and affecting request timings for your use case. Higher parallelism increases concurrent simultaneous requests, and increases the chance of cache evictions affecting your benchmark.
+
 `--constraint kind=max_duration,seconds=<n>` stops in-flight waits as well as new request starts. Workers sleeping until a future replay timestamp are cancelled when the duration elapses.
 
 GuideLLM schedules trace rows in timestamp order. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. `--constraint kind=max_requests,count=1000` remains a runtime completion constraint; it does not truncate the trace dataset.

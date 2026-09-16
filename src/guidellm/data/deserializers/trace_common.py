@@ -27,7 +27,11 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.data.deserializers.trace_session_timing import TraceSessionTiming
+from guidellm.data.deserializers.trace_session_timing import (
+    TraceSessionTiming,
+    graph_max_timestamp,
+    shift_graph_timestamps,
+)
 from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
@@ -41,6 +45,7 @@ __all__ = [
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
+    "copy_faker_seed",
     "create_distinct_token_block",
     "create_prompt_from_hash_ids",
     "decode_prompt",
@@ -158,6 +163,26 @@ def fill_hash_id_table(
             sibling_token_blocks[prev_id].add(block)
 
 
+def copy_faker_seed(random_seed: int, copy_index: int) -> int:
+    """Return the Faker seed for sequential dataset copy ``copy_index``.
+
+    Copy 0 is ``random_seed``. Later copies add a large prime stride so
+    their streams do not collide with nearby seeds.
+
+    :param random_seed: Dataset deserializer seed for copy 0
+    :param copy_index: Zero-based sequential pass index
+    :return: Seed for that copy's Faker instance
+    """
+    return random_seed + copy_index * 1_000_003
+
+
+def _seeded_faker(random_seed: int, copy_index: int) -> Faker:
+    """Build a Faker instance for sequential dataset copy ``copy_index``."""
+    faker = Faker()
+    faker.seed_instance(copy_faker_seed(random_seed, copy_index))
+    return faker
+
+
 class TraceFormatBase(Protocol):
     config: TraceDataArgs
 
@@ -168,6 +193,15 @@ class TraceFormatBase(Protocol):
 
     def reset(self) -> None:
         pass
+
+    def set_copy_index(self, copy_index: int) -> None:  # noqa: ARG002
+        """Select the hash-table cohort for a sequential dataset copy.
+
+        Formats without hash IDs leave this as a no-op. Hash formats switch
+        the active global table so each copy gets independently salted tokens.
+
+        :param copy_index: Zero-based sequential pass index
+        """
 
     def required_columns(self) -> Features: ...
 
@@ -286,36 +320,49 @@ class TraceExamplesIterable(_BaseExamplesIterable):
         self.config = config
         self.format = trace_format
         self.processor = processor
-        self.faker = Faker()
-        self.faker.seed_instance(random_seed)
+        self._copy_fakers = [
+            _seeded_faker(random_seed, copy_index)
+            for copy_index in range(config.copies)
+        ]
         self.iteration_count = 0
 
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
         self.iteration_count += 1
         samples_count = 0
-        # Fresh instance per iteration so packing state does not leak across epochs.
-        timing = TraceSessionTiming(
-            max_wait=self.config.max_wait,
-            max_session_wait=self.config.max_session_wait,
-            min_concurrent_sessions=self.config.min_concurrent_sessions,
-            time_scale=self.config.time_scale,
-        )
-        for conv in self.format:  # type: ignore[attr-defined]
-            graph_data = self.format.build_conversation_graph(
-                conv, self.processor, self.faker
+        # Next pass starts at the previous pass's last scheduled timestamp.
+        offset = 0.0
+        for copy_index in range(self.config.copies):
+            self.format.set_copy_index(copy_index)
+            copy_faker = self._copy_fakers[copy_index]
+            # Fresh timing per pass so packing cannot pull copy k+1 into
+            # copy k's lanes. Multiplication only extends duration.
+            timing = TraceSessionTiming(
+                max_wait=self.config.max_wait,
+                max_session_wait=self.config.max_session_wait,
+                min_concurrent_sessions=self.config.min_concurrent_sessions,
+                time_scale=self.config.time_scale,
             )
-            timing.apply(graph_data)
-            samples_count += len(graph_data.turns)
-            payload = json.dumps(graph_data.model_dump(mode="json"))
-            yield (
-                samples_count,
-                {
-                    "conversation_turns": (
-                        payload.decode() if isinstance(payload, bytes) else payload
-                    )
-                },
-            )
-            self.format.reset()
+            pass_offset = offset
+            for conv in self.format:  # type: ignore[attr-defined]
+                graph_data = self.format.build_conversation_graph(
+                    conv, self.processor, copy_faker
+                )
+                timing.apply(graph_data)
+                shift_graph_timestamps(graph_data, pass_offset)
+                samples_count += len(graph_data.turns)
+                payload = json.dumps(graph_data.model_dump(mode="json"))
+                yield (
+                    samples_count,
+                    {
+                        "conversation_turns": (
+                            payload.decode() if isinstance(payload, bytes) else payload
+                        )
+                    },
+                )
+                self.format.reset()
+                pass_end = graph_max_timestamp(graph_data)
+                if pass_end is not None:
+                    offset = max(offset, pass_end)
 
     @property
     def is_typed(self) -> bool:

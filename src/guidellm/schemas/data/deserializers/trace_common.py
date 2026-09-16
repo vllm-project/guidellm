@@ -74,6 +74,17 @@ class TraceDataArgs(DataArgs):
             "values below 1.0 compress them."
         ),
     )
+    copies: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Number of sequential full-dataset replays. Pass k+1 starts when "
+            "pass k's last request is scheduled. Use wait/pack options to "
+            "raise parallelism first; raise copies when the packed pass is "
+            "too short for the benchmark. Hash-id formats use a separately "
+            "salted global token-block table per pass."
+        ),
+    )
 
     @model_validator(mode="after")
     def merge_kwargs(self):

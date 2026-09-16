@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from guidellm.data.deserializers.trace_session_timing import TraceSessionTiming
+from guidellm.data.deserializers.trace_session_timing import (
+    TraceSessionTiming,
+    graph_max_timestamp,
+    shift_graph_timestamps,
+)
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
@@ -255,3 +259,38 @@ class TestTraceSessionTimingTimeScale:
         graph = _graph_with_timestamps([0.0, 10.0, 1450.0])
         TraceSessionTiming().apply(graph)
         assert _relative_timestamps(graph) == pytest.approx([0.0, 10.0, 1450.0])
+
+
+class TestShiftGraphTimestamps:
+    @pytest.mark.smoke
+    def test_adds_offset_to_timed_turns(self):
+        """Sequential copies shift the packed pass by the previous pass end.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = _graph_with_timestamps([0.0, 10.0, None, 40.0])
+        shift_graph_timestamps(graph, 40.0)
+        timestamps = _relative_timestamps(graph)
+        assert timestamps[0] == pytest.approx(40.0)
+        assert timestamps[1] == pytest.approx(50.0)
+        assert timestamps[2] is None
+        assert timestamps[3] == pytest.approx(80.0)
+
+    @pytest.mark.smoke
+    def test_zero_offset_is_noop(self):
+        """Zero offset leaves timestamps unchanged.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = _graph_with_timestamps([0.0, 10.0])
+        shift_graph_timestamps(graph, 0.0)
+        assert _relative_timestamps(graph) == pytest.approx([0.0, 10.0])
+
+    @pytest.mark.smoke
+    def test_graph_max_timestamp_ignores_missing(self):
+        """Max timestamp skips turns without a relative timestamp.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = _graph_with_timestamps([0.0, None, 40.0])
+        assert graph_max_timestamp(graph) == pytest.approx(40.0)

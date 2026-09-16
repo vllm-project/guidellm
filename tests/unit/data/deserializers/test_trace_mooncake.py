@@ -354,3 +354,61 @@ class TestMooncakeTraceFormat:
         )
         assert all_equal(root_blocks)
         assert all_distinct(sibling_blocks)
+
+    @pytest.mark.sanity
+    def test_copies_reuse_hash_blocks_within_pass_and_isolate_across_passes(
+        self, tmp_path: Path, deserializer, default_block_size
+    ):
+        """Same hash IDs share tokens within a copies pass and differ across passes.
+
+        ## WRITTEN BY AI ##
+        """
+        n_rows = 2
+        n_in = default_block_size * 2
+        trace = write_trace(
+            tmp_path,
+            generate_trace(
+                n_rows,
+                [
+                    TraceColumnGenerator("timestamp", lambda i: i),
+                    TraceColumnGenerator("input_length", lambda _: n_in),
+                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("hash_ids", lambda i: [0, i + 1]),
+                ],
+            ),
+        )
+        source = trace_file_source(trace)
+        baseline = deserializer(
+            config=MooncakeTraceFormatArgs(source=source),
+            processor_factory=compatible_processor,
+            random_seed=42,
+        )
+        baseline_prompts = [
+            turn.columns["text_column"][0]
+            for row in baseline
+            for turn in load_graph_turns(row)
+        ]
+        copied = deserializer(
+            config=MooncakeTraceFormatArgs(source=source, copies=2),
+            processor_factory=compatible_processor,
+            random_seed=42,
+        )
+        copied_prompts = [
+            turn.columns["text_column"][0]
+            for row in copied
+            for turn in load_graph_turns(row)
+        ]
+        assert len(copied_prompts) == n_rows * 2
+        pass0 = copied_prompts[:n_rows]
+        pass1 = copied_prompts[n_rows:]
+        assert pass0 == baseline_prompts
+        root0 = [prompt[: n_in // 2] for prompt in pass0]
+        root1 = [prompt[: n_in // 2] for prompt in pass1]
+        siblings0 = [prompt[n_in // 2 :] for prompt in pass0]
+        siblings1 = [prompt[n_in // 2 :] for prompt in pass1]
+        assert all_equal(root0)
+        assert all_equal(root1)
+        assert root0[0] != root1[0]
+        assert all_distinct(siblings0)
+        assert all_distinct(siblings1)
+        assert pass0 != pass1
