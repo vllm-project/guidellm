@@ -84,6 +84,8 @@ def _merge_sibling_columns_into_graph(
         for key, vals in items[graph_item_index].items()
         if key != "conversation_turns_column"
     }
+    if not sibling_columns:
+        return graph_data
 
     for index, item in enumerate(items):
         if index == graph_item_index or not item:
@@ -97,8 +99,6 @@ def _merge_sibling_columns_into_graph(
             "same turn index as the packed conversation, or use a dataset without "
             "its own conversation_turns_column."
         )
-    if not sibling_columns:
-        return graph_data
 
     root_turns = [turn for turn in graph_data.turns if not turn.parents]
     if len(root_turns) != 1:
