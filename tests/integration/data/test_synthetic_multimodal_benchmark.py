@@ -182,7 +182,7 @@ def _assert_video_metrics(report: dict) -> None:
 def test_synthetic_image_benchmark_against_mock(mock_backend, tmp_path):
     """A short benchmark on synthetic_image must complete cleanly.
 
-    ## AI-ASSISTED ##
+    ## WRITTEN BY AI ##
     """
     result = _run_benchmark(
         base_url=mock_backend,
@@ -207,7 +207,7 @@ def test_synthetic_image_benchmark_against_mock(mock_backend, tmp_path):
 def test_synthetic_video_benchmark_against_mock(mock_backend, tmp_path):
     """A short benchmark on synthetic_video must complete cleanly.
 
-    ## AI-ASSISTED ##
+    ## WRITTEN BY AI ##
     """
     result = _run_benchmark(
         base_url=mock_backend,
