@@ -382,6 +382,57 @@ class TestRealtimeTranscriptionWSRequestHandler:
         assert "audio_chunks" not in resp.request_args
 
 
+class TestResponseMetricsPassthrough:
+    """A backend's own per-request metrics survive into the compiled stats."""
+
+    SPEC = {
+        "speculative_decoding": {
+            "mean_acceptance_length": 2.5,
+            "draft_acceptance_rate": 0.5,
+            "num_spec_steps": 4,
+            "num_accepted_draft_tokens": 6,
+            "num_draft_tokens": 12,
+        }
+    }
+
+    def test_non_streaming(self) -> None:
+        handler = TextCompletionsRequestHandler()
+        response = handler.compile_non_streaming(
+            GenerationRequest(request_id="r1", columns={"text_column": ["hi"]}),
+            GenerationRequestArguments(),
+            {
+                "id": "c1",
+                "choices": [{"text": "hello"}],
+                "usage": {},
+                "metrics": self.SPEC,
+            },
+        )
+        assert response.response_metrics == self.SPEC
+
+    def test_streaming(self) -> None:
+        handler = TextCompletionsRequestHandler()
+        handler.add_streaming_line('data: {"id": "c1", "choices": [{"text": "hello"}]}')
+        # vLLM attaches the metrics to the closing usage event, not to a text delta.
+        closing = stdlib_json.dumps(
+            {"choices": [], "usage": {"prompt_tokens": 1}, "metrics": self.SPEC}
+        )
+        handler.add_streaming_line(f"data: {closing}")
+        response = handler.compile_streaming(
+            GenerationRequest(request_id="r1", columns={"text_column": ["hi"]}),
+            GenerationRequestArguments(),
+        )
+        assert response.response_metrics == self.SPEC
+
+    def test_absent_when_the_backend_reports_none(self) -> None:
+        handler = TextCompletionsRequestHandler()
+        response = handler.compile_non_streaming(
+            GenerationRequest(request_id="r1", columns={"text_column": ["hi"]}),
+            GenerationRequestArguments(),
+            {"id": "c1", "choices": [{"text": "hello"}], "usage": {}},
+        )
+        assert response.response_metrics is None
+
+
 class TestTextCompletionsRequestHandler:
     """Test cases for TextCompletionsRequestHandler.
 
