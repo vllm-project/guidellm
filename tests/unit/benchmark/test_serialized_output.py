@@ -242,3 +242,36 @@ class TestFinalizeFormats:
         parsed = yaml.safe_load(content)
         assert isinstance(parsed, dict)
         assert "config" in parsed
+
+
+@pytest.mark.regression
+def test_report_round_trips_profile_conclusions(minimal_report):
+    """
+    Persist and restore what each profile concluded after its run.
+
+    ## WRITTEN BY AI ##
+    """
+    report = minimal_report
+    report.conclusions = [
+        {"best_passing_streams": 26, "stop_reason": "converged"},
+        {"best_passing_streams": 12, "stop_reason": "max_probes_exhausted"},
+    ]
+    restored = GenerativeBenchmarksReport.model_validate(report.model_dump())
+
+    assert restored.conclusions == [
+        {"best_passing_streams": 26, "stop_reason": "converged"},
+        {"best_passing_streams": 12, "stop_reason": "max_probes_exhausted"},
+    ]
+
+
+@pytest.mark.regression
+def test_report_without_conclusions_still_validates(minimal_report):
+    """
+    Restore a report written before the conclusions field existed.
+
+    ## WRITTEN BY AI ##
+    """
+    payload = minimal_report.model_dump()
+    del payload["conclusions"]
+
+    assert GenerativeBenchmarksReport.model_validate(payload).conclusions == []

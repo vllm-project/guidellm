@@ -20,8 +20,10 @@ from guidellm.benchmark.profiles import (
     AsyncProfile,
     ConcurrentProfile,
     Profile,
+    ProfileFactory,
     SweepProfile,
 )
+from guidellm.benchmark.schemas import GenerativeBenchmarksReport
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
@@ -32,7 +34,9 @@ from guidellm.scheduler import (
 )
 from guidellm.schemas.benchmark import (
     AsyncProfileArgs,
+    BenchmarkScenario,
     ConcurrentProfileArgs,
+    ProfileArgs,
     SweepProfileArgs,
 )
 
@@ -453,3 +457,114 @@ class TestSweepProfileEarlyExit:
 
         assert profile.measured_rates == []
         assert next_strat is None
+
+
+# Every shipped profile that does not compute a conclusion, with the minimum
+# arguments each needs.
+NO_CONCLUSION_PROFILES = (
+    {"kind": "async", "rate": 10.0},
+    {"kind": "concurrent", "streams": 4},
+    {"kind": "constant", "rate": 10.0},
+    {"kind": "poisson", "rate": 10.0},
+    {"kind": "sweep"},
+    {"kind": "synchronous"},
+    {"kind": "throughput", "max_concurrency": 64},
+)
+
+
+class TestProfileConclusion:
+    """
+    Verify the generic hook profiles use to publish a computed outcome.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize("payload", NO_CONCLUSION_PROFILES)
+    def test_profiles_without_an_outcome_report_none(self, payload):
+        """
+        Report no conclusion for profiles that execute a planned sequence.
+
+        ## WRITTEN BY AI ##
+        """
+        profile = ProfileFactory.create(
+            ProfileArgs.model_validate(payload), random_seed=42, constraints={}
+        )
+
+        assert profile.conclusion is None
+
+    @pytest.mark.regression
+    def test_profile_computing_an_outcome_reports_it(self):
+        """
+        Return a serializable mapping from a profile that computes one.
+
+        ## WRITTEN BY AI ##
+        """
+        profile = ProfileFactory.create(
+            ProfileArgs.model_validate({"kind": "goodput"}),
+            random_seed=42,
+            constraints={},
+        )
+        conclusion = profile.conclusion
+
+        assert isinstance(conclusion, dict)
+        assert "stop_reason" in conclusion
+        assert "probes" in conclusion
+
+
+class TestReportConclusions:
+    """
+    Verify how a run collects profile conclusions into the report.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @staticmethod
+    def _collect(conclusions):
+        """Mimic how the entrypoint appends conclusions after a run."""
+        report = GenerativeBenchmarksReport(
+            config=BenchmarkScenario.model_validate(
+                {
+                    "spec": {
+                        "backend": {
+                            "kind": "openai_http",
+                            "target": "http://localhost:8000",
+                        },
+                        "data": [
+                            {
+                                "kind": "synthetic_text",
+                                "prompt_tokens": 8,
+                                "output_tokens": 8,
+                            }
+                        ],
+                        "profile": {"kind": "synchronous"},
+                    }
+                }
+            )
+        )
+        for conclusion in conclusions:
+            if conclusion is not None:
+                report.conclusions.append(conclusion)
+
+        return report
+
+    @pytest.mark.smoke
+    def test_report_starts_with_no_conclusions(self):
+        """
+        Leave the list empty when no profile computed an outcome.
+
+        ## WRITTEN BY AI ##
+        """
+        assert self._collect([None, None]).conclusions == []
+
+    @pytest.mark.regression
+    def test_report_collects_one_entry_per_computing_profile(self):
+        """
+        Append one entry per profile that computed an outcome, in order, so a
+        run using several profiles keeps them separate.
+
+        ## WRITTEN BY AI ##
+        """
+        report = self._collect([{"a": 1}, None, {"b": 2}])
+
+        assert report.conclusions == [{"a": 1}, {"b": 2}]
