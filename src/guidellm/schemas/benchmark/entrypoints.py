@@ -237,6 +237,18 @@ class BenchmarkArgs(ReloadableBaseModel):
         json_schema_extra={"argument_alias": "metrics"},
     )
 
+    @model_validator(mode="after")
+    def _check_profile_supports_metrics(self) -> BenchmarkArgs:
+        """
+        Let the profile reject a metrics configuration it cannot work with.
+
+        :return: The validated instance
+        :raises ValueError: If the profile rejects the metrics configuration
+        """
+        self.profile.validate_metrics(self.metrics)
+
+        return self
+
 
 class BenchmarkMetadata(StandardBaseModel):
     """

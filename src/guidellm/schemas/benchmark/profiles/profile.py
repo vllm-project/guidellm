@@ -71,6 +71,20 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
         examples=[0.0, 1.0, {"mode": "duration", "value": 2.0}],
     )
 
+    def validate_metrics(self, metrics: Any) -> None:
+        """
+        Check the metrics configuration supports this profile.
+
+        Called once the whole benchmark configuration has validated, so a
+        profile that needs a particular metric configured can say so before the
+        run starts rather than failing partway through. Defaults to accepting
+        any configuration.
+
+        :param metrics: Validated metrics arguments for the run
+        :raises ValueError: If the metrics configuration cannot support this
+            profile
+        """
+
     @field_validator("warmup", "cooldown", mode="before")
     @classmethod
     def _coerce_transient_phase(cls, v: Any) -> Any:
