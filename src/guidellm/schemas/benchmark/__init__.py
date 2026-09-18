@@ -25,6 +25,7 @@ from guidellm.schemas.benchmark.outputs import (
 from guidellm.schemas.benchmark.profiles import (
     AsyncProfileArgs,
     ConcurrentProfileArgs,
+    GoodputProfileArgs,
     ProfileArgs,
     ReplayProfileArgs,
     SweepProfileArgs,
@@ -46,6 +47,7 @@ __all__ = [
     "ConcurrentProfileArgs",
     "ConsoleBenchmarkOutputArgs",
     "GenerativeMetricsArgs",
+    "GoodputProfileArgs",
     "GoodputSLO",
     "HTMLBenchmarkOutputArgs",
     "JSONBenchmarkOutputArgs",

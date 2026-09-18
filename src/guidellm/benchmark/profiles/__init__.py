@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from .asynchronous import AsyncProfile
 from .concurrent import ConcurrentProfile
+from .goodput import GoodputProfile
 from .profile import Profile, ProfileFactory
 from .replay import ReplayProfile
 from .sweep import SweepProfile
@@ -22,6 +23,7 @@ from .throughput import ThroughputProfile
 __all__ = [
     "AsyncProfile",
     "ConcurrentProfile",
+    "GoodputProfile",
     "Profile",
     "ProfileFactory",
     "ReplayProfile",
