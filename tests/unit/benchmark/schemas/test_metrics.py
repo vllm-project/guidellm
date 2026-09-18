@@ -174,6 +174,36 @@ class TestToolCallMetricsAllErrored:
         assert summary.mixed_tokens.output is None
 
 
+@pytest.mark.regression
+def test_timed_metrics_exclude_missing_values_from_rates_and_concurrency():
+    """
+    Missing optional values do not become zero-valued rate or concurrency events.
+
+    Mixed workloads can contain requests where a modality-specific metric does not
+    apply. Those requests must be excluded consistently from every distribution for
+    that metric, while real zero values remain valid observations.
+
+    ## WRITTEN BY AI ##
+    """
+    summary = GenerativeMetricsSummary.compile_timed_metrics(
+        successful=[
+            (1.0, 2.0, None, 8),
+            (2.0, 3.0, None, None),
+            (5.0, 6.0, None, 8),
+        ],
+        incomplete=[],
+        errored=[],
+    )
+
+    assert summary is not None
+    assert summary.output is not None
+    assert summary.output_per_second is not None
+    assert summary.output_concurrency is not None
+    assert summary.output.successful.count == 2
+    assert summary.output_per_second.successful.median == pytest.approx(4.0)
+    assert summary.output_concurrency.successful.count == 2
+
+
 @pytest.mark.sanity
 def test_round_trip_metrics_compile():
     """
