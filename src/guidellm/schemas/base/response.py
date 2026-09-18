@@ -9,6 +9,8 @@ implementations.
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import Field
 
 from guidellm.schemas.base.base import StandardBaseModel
@@ -78,6 +80,14 @@ class GenerationResponse(StandardBaseModel):
     output_metrics: UsageMetrics = Field(
         default_factory=UsageMetrics,
         description="Token usage statistics from the generated output.",
+    )
+    response_metrics: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Per-request metrics the backend reported alongside usage, passed through "
+            "as received. vLLM populates this with its `metrics` object, which carries "
+            "server-side timings and speculative-decoding acceptance."
+        ),
     )
 
     def compile_stats(
@@ -153,4 +163,5 @@ class GenerationResponse(StandardBaseModel):
             info=info,
             input_metrics=UsageMetrics(**input_metrics_dict),
             output_metrics=UsageMetrics(**output_metrics_dict),
+            response_metrics=self.response_metrics,
         )
