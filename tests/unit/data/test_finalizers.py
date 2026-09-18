@@ -215,6 +215,67 @@ class TestGenerativeRequestFinalizerMultimodal:
         assert gen_req.input_metrics.text_tokens == 50
         assert gen_req.output_metrics.text_tokens == 25
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("media_column", "media_value"),
+        [
+            (
+                "image_column",
+                {
+                    "image": "data:image/jpeg;base64,image-data",
+                    "image_pixels": 1024,
+                    "image_bytes": 128,
+                },
+            ),
+            (
+                "video_column",
+                {
+                    "video": "data:video/mp4;base64,video-data",
+                    "video_frames": 2,
+                    "video_seconds": 2.0,
+                    "video_bytes": 256,
+                },
+            ),
+        ],
+        ids=["image", "video"],
+    )
+    def test_merge_text_and_media_turn(self, media_column, media_value):
+        """Test finalizer preserves synthetic text and media in one conversation turn.
+
+        ### WRITTEN BY AI ###
+        """
+        synthetic_text_graph = ConversationGraphData(
+            turns=[
+                ConversationTurnData(
+                    node_id="main_0",
+                    columns={
+                        "text_column": ["synthetic text prompt"],
+                        "prompt_tokens_count_column": [8],
+                        "output_tokens_count_column": [4],
+                    },
+                )
+            ]
+        )
+
+        graph = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())(
+            [
+                {
+                    "conversation_turns_column": [
+                        synthetic_text_graph.model_dump_json()
+                    ],
+                    media_column: [media_value],
+                }
+            ]
+        )
+
+        assert isinstance(graph, GenerativeConversationGraph)
+        assert list(graph.nodes) == ["main_0"]
+
+        request = graph.nodes["main_0"].request
+
+        assert request.columns["text_column"] == ["synthetic text prompt"]
+        assert request.columns[media_column] == [media_value]
+
 
 class TestFinalizerTopLevel:
     """Test cases for top-level finalizer interface.
