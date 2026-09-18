@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Callable
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -200,7 +202,8 @@ class DBFileDatasetDeserializer(DatasetDeserializer):
                 f"expected str or Path to a local .db file, got {path}"
             )
 
-        return Dataset.from_sql(con=str(path), **config.load_kwargs)
+        with closing(sqlite3.connect(path)) as connection:
+            return Dataset.from_sql(con=connection, **config.load_kwargs)
 
 
 @DatasetDeserializerFactory.register("tar_file")
