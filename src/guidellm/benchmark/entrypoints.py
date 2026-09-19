@@ -559,6 +559,7 @@ async def benchmark_generative_text(
         cooldown=cooldown,
         prefer_response_metrics=metrics_args.prefer_response_metrics,
         slo=metrics_args.slo,
+        confidence=metrics_args.confidence,
     ):
         if benchmark:
             report.benchmarks.append(benchmark)

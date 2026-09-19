@@ -18,15 +18,39 @@ from pydantic import Field
 
 import guidellm.extras.numpy as np
 from guidellm.schemas.base.base import StandardBaseModel, StatusBreakdown
+from guidellm.utils.statistics import (
+    mean_confidence_interval,
+    quantile_confidence_interval,
+)
 
 __all__ = [
+    "PERCENTILE_PROBABILITIES",
+    "ConfidenceInterval",
     "DistributionSummary",
     "FunctionObjT",
+    "PercentileIntervals",
     "Percentiles",
+    "SampleUncertainty",
     "StatusDistributionSummary",
 ]
 
 FunctionObjT = TypeVar("FunctionObjT")
+
+
+PERCENTILE_PROBABILITIES: dict[str, float] = {
+    "p001": 0.001,
+    "p01": 0.01,
+    "p05": 0.05,
+    "p10": 0.1,
+    "p25": 0.25,
+    "p50": 0.5,
+    "p75": 0.75,
+    "p90": 0.9,
+    "p95": 0.95,
+    "p99": 0.99,
+    "p999": 0.999,
+}
+"""Quantile each :class:`Percentiles` field reports, keyed by field name."""
 
 
 class Percentiles(StandardBaseModel):
@@ -74,22 +98,8 @@ class Percentiles(StandardBaseModel):
                 f"and second column is probabilities. Got {pdf.shape} instead."
             )
 
-        percentile_probs = {
-            "p001": 0.001,
-            "p01": 0.01,
-            "p05": 0.05,
-            "p10": 0.1,
-            "p25": 0.25,
-            "p50": 0.5,
-            "p75": 0.75,
-            "p90": 0.9,
-            "p95": 0.95,
-            "p99": 0.99,
-            "p999": 0.999,
-        }
-
         if pdf.shape[0] == 0:
-            return Percentiles(**dict.fromkeys(percentile_probs.keys(), 0.0))
+            return Percentiles(**dict.fromkeys(PERCENTILE_PROBABILITIES.keys(), 0.0))
 
         probabilities = pdf[:, 1]
 
@@ -106,8 +116,156 @@ class Percentiles(StandardBaseModel):
         return Percentiles(
             **{
                 key: pdf[np.searchsorted(cdf_probs, value, side="left"), 0].item()
-                for key, value in percentile_probs.items()
+                for key, value in PERCENTILE_PROBABILITIES.items()
             }
+        )
+
+
+class ConfidenceInterval(StandardBaseModel):
+    """
+    Two-sided confidence interval around an estimated statistic.
+
+    The level the bounds were computed at is recorded once per benchmark rather
+    than on each interval, since a single run uses one level throughout.
+    """
+
+    lower: float = Field(description="Lower bound of the interval")
+    upper: float = Field(description="Upper bound of the interval")
+
+
+class PercentileIntervals(StandardBaseModel):
+    """
+    Confidence intervals for each percentile reported by :class:`Percentiles`.
+
+    A field is None when the sample is too small to place two order statistics
+    around that percentile at the requested confidence. Small samples therefore
+    report the upper percentiles as None rather than as a bound the observations
+    cannot support.
+    """
+
+    p001: ConfidenceInterval | None = Field(
+        description="Interval for the 0.1th percentile", default=None
+    )
+    p01: ConfidenceInterval | None = Field(
+        description="Interval for the 1st percentile", default=None
+    )
+    p05: ConfidenceInterval | None = Field(
+        description="Interval for the 5th percentile", default=None
+    )
+    p10: ConfidenceInterval | None = Field(
+        description="Interval for the 10th percentile", default=None
+    )
+    p25: ConfidenceInterval | None = Field(
+        description="Interval for the 25th percentile", default=None
+    )
+    p50: ConfidenceInterval | None = Field(
+        description="Interval for the 50th percentile", default=None
+    )
+    p75: ConfidenceInterval | None = Field(
+        description="Interval for the 75th percentile", default=None
+    )
+    p90: ConfidenceInterval | None = Field(
+        description="Interval for the 90th percentile", default=None
+    )
+    p95: ConfidenceInterval | None = Field(
+        description="Interval for the 95th percentile", default=None
+    )
+    p99: ConfidenceInterval | None = Field(
+        description="Interval for the 99th percentile", default=None
+    )
+    p999: ConfidenceInterval | None = Field(
+        description="Interval for the 99.9th percentile", default=None
+    )
+
+    @classmethod
+    def from_sorted_values(
+        cls, sorted_values: np.ndarray, confidence: float
+    ) -> PercentileIntervals:
+        """
+        Build intervals for every reported percentile from a sorted sample.
+
+        :param sorted_values: Sample observations in ascending order
+        :param confidence: Two-sided confidence level
+        :return: Intervals for each percentile, None where unsupported
+        """
+        values = sorted_values.tolist()
+        bounds: dict[str, ConfidenceInterval | None] = {}
+
+        for name, quantile in PERCENTILE_PROBABILITIES.items():
+            interval = quantile_confidence_interval(values, quantile, confidence)
+            bounds[name] = (
+                None
+                if interval is None
+                else ConfidenceInterval(lower=interval[0], upper=interval[1])
+            )
+
+        return PercentileIntervals(**bounds)
+
+
+class SampleUncertainty(StandardBaseModel):
+    """
+    Uncertainty estimator for unweighted request-level observations.
+
+    Treats each value as one independent observation, which holds for metrics
+    recorded once per request and carrying no weight. It does not hold for
+    values carrying an exposure weight, such as time per output token, where
+    the reported statistic is a ratio of totals; this estimator reports no
+    interval for those rather than an interval whose assumptions the data does
+    not meet.
+
+    The interval describes how precisely this sample located the statistic. It
+    does not describe how far the statistic would move across repeated runs
+    when successive observations share a condition that varies between them.
+
+    Example:
+    ::
+        uncertainty = SampleUncertainty(confidence=0.95)
+        mean_ci, percentile_cis = uncertainty.estimate(weighted_values)
+    """
+
+    confidence: float = Field(
+        description="Two-sided confidence level for the estimated intervals",
+        default=0.95,
+        gt=0.0,
+        lt=1.0,
+    )
+
+    def estimate(
+        self, weighted_values: np.ndarray
+    ) -> tuple[ConfidenceInterval | None, PercentileIntervals | None]:
+        """
+        Estimate intervals for the mean and percentiles of a sample.
+
+        :param weighted_values: Array of shape (N, 2) holding values and weights
+        :return: Tuple of (mean interval, percentile intervals), each None when
+            the sample cannot support one
+        """
+        if weighted_values.shape[0] < 2:  # noqa: PLR2004
+            return None, None
+
+        values = weighted_values[:, 0]
+        weights = weighted_values[:, 1]
+
+        # Any weight other than one means the summary describes something other
+        # than a sample of per-request observations, which is the only thing the
+        # estimators below are valid for. Equality alone is not enough: a run
+        # with a fixed output length gives every token-weighted value the same
+        # weight while still measuring token exposure rather than requests.
+        if not bool(np.all(weights == 1.0)):
+            return None, None
+
+        count = int(values.shape[0])
+        mean = float(np.mean(values).item())
+        std_dev = float(np.std(values).item())
+        interval = mean_confidence_interval(count, mean, std_dev, self.confidence)
+        mean_ci = (
+            None
+            if interval is None
+            else ConfidenceInterval(lower=interval[0], upper=interval[1])
+        )
+
+        return mean_ci, PercentileIntervals.from_sorted_values(
+            np.sort(values), self.confidence
         )
 
 
@@ -135,15 +293,31 @@ class DistributionSummary(StandardBaseModel):
         description="Probability density function as (value, probability) pairs",
         default=None,
     )
+    mean_ci: ConfidenceInterval | None = Field(
+        description=(
+            "Confidence interval for the mean, or None when the observations do "
+            "not support one"
+        ),
+        default=None,
+    )
+    percentile_cis: PercentileIntervals | None = Field(
+        description=(
+            "Confidence intervals for each percentile, or None when the "
+            "observations do not support them"
+        ),
+        default=None,
+    )
 
     @classmethod
-    def from_pdf(
+    def from_pdf(  # noqa: PLR0913
         cls,
         pdf: np.ndarray,
         count: int | None = None,
         include_pdf: bool | int = False,
         epsilon: float = 1e-6,
         validate: bool = True,
+        mean_ci: ConfidenceInterval | None = None,
+        percentile_cis: PercentileIntervals | None = None,
     ) -> DistributionSummary:
         """
         Create distribution summary from a probability density function.
@@ -154,6 +328,8 @@ class DistributionSummary(StandardBaseModel):
         :param include_pdf: Whether to include PDF; True for full, int for sampled size
         :param epsilon: Tolerance for probability validation
         :param validate: Whether to validate probabilities sum to 1 and are non-negative
+        :param mean_ci: Precomputed confidence interval for the mean, if any
+        :param percentile_cis: Precomputed intervals for the percentiles, if any
         :return: Complete distribution summary with statistics
         :raises ValueError: If PDF shape is invalid or probabilities are invalid
         """
@@ -178,6 +354,8 @@ class DistributionSummary(StandardBaseModel):
                 total_sum=0.0,
                 percentiles=Percentiles.from_pdf(pdf, epsilon=epsilon),
                 pdf=None if include_pdf is False else [],
+                mean_ci=mean_ci,
+                percentile_cis=percentile_cis,
             )
 
         # Calculate stats
@@ -224,6 +402,8 @@ class DistributionSummary(StandardBaseModel):
             total_sum=total_sum,
             percentiles=percentiles,
             pdf=sampled_pdf,
+            mean_ci=mean_ci,
+            percentile_cis=percentile_cis,
         )
 
     @classmethod
@@ -255,6 +435,7 @@ class DistributionSummary(StandardBaseModel):
         count: int | None = None,
         include_pdf: bool | int = False,
         epsilon: float = 1e-6,
+        uncertainty: SampleUncertainty | None = None,
     ) -> DistributionSummary:
         """
         Create distribution summary from raw values with optional weights.
@@ -263,6 +444,8 @@ class DistributionSummary(StandardBaseModel):
         :param count: Number of original observations; defaults to sum of weights
         :param include_pdf: Whether to include PDF; True for full, int for sampled size
         :param epsilon: Tolerance for probability validation
+        :param uncertainty: Estimator for confidence intervals on the resulting
+            statistics; None reports the statistics without intervals
         :return: Distribution summary computed from the values
         :raises ValueError: If total weight is zero or invalid
         """
@@ -272,6 +455,10 @@ class DistributionSummary(StandardBaseModel):
             return DistributionSummary.from_pdf(
                 pdf=np.empty((0, 2)), count=0, include_pdf=include_pdf, epsilon=epsilon
             )
+
+        mean_ci, percentile_cis = (
+            (None, None) if uncertainty is None else uncertainty.estimate(np_values)
+        )
 
         if count is None:
             count = round(np.sum(np_values[:, 1]).item())
@@ -307,6 +494,8 @@ class DistributionSummary(StandardBaseModel):
             include_pdf=include_pdf,
             epsilon=epsilon,
             validate=False,
+            mean_ci=mean_ci,
+            percentile_cis=percentile_cis,
         )
 
     @classmethod
@@ -665,13 +854,14 @@ class StatusDistributionSummary(
         return self.total.total_sum
 
     @classmethod
-    def from_values(
+    def from_values(  # noqa: PLR0913
         cls,
         successful: Sequence[float | tuple[float, float]] | np.ndarray,
         incomplete: Sequence[float | tuple[float, float]] | np.ndarray,
         errored: Sequence[float | tuple[float, float]] | np.ndarray,
         include_pdf: bool | int = False,
         epsilon: float = 1e-6,
+        uncertainty: SampleUncertainty | None = None,
     ) -> StatusDistributionSummary:
         """
         Create status-broken-down distribution from values by status category.
@@ -681,6 +871,8 @@ class StatusDistributionSummary(
         :param errored: Values or (value, weight) tuples for errored requests
         :param include_pdf: Whether to include PDF; True for full, int for sampled size
         :param epsilon: Tolerance for probability validation
+        :param uncertainty: Estimator for confidence intervals on the resulting
+            statistics; None reports the statistics without intervals
         :return: Status breakdown of distribution summaries
         """
         total, successful_arr, incomplete_arr, errored_arr = cls._combine_status_arrays(
@@ -689,21 +881,33 @@ class StatusDistributionSummary(
 
         return StatusDistributionSummary(
             total=DistributionSummary.from_values(
-                total, include_pdf=include_pdf, epsilon=epsilon
+                total,
+                include_pdf=include_pdf,
+                epsilon=epsilon,
+                uncertainty=uncertainty,
             ),
             successful=DistributionSummary.from_values(
-                successful_arr, include_pdf=include_pdf, epsilon=epsilon
+                successful_arr,
+                include_pdf=include_pdf,
+                epsilon=epsilon,
+                uncertainty=uncertainty,
             ),
             incomplete=DistributionSummary.from_values(
-                incomplete_arr, include_pdf=include_pdf, epsilon=epsilon
+                incomplete_arr,
+                include_pdf=include_pdf,
+                epsilon=epsilon,
+                uncertainty=uncertainty,
             ),
             errored=DistributionSummary.from_values(
-                errored_arr, include_pdf=include_pdf, epsilon=epsilon
+                errored_arr,
+                include_pdf=include_pdf,
+                epsilon=epsilon,
+                uncertainty=uncertainty,
             ),
         )
 
     @classmethod
-    def from_values_function(
+    def from_values_function(  # noqa: PLR0913
         cls,
         function: Callable[
             [FunctionObjT],
@@ -714,6 +918,7 @@ class StatusDistributionSummary(
         errored: Sequence[FunctionObjT],
         include_pdf: bool | int = False,
         epsilon: float = 1e-6,
+        uncertainty: SampleUncertainty | None = None,
     ) -> StatusDistributionSummary:
         """
         Create distribution summary by extracting values from objects via function.
@@ -724,6 +929,8 @@ class StatusDistributionSummary(
         :param errored: Errored request objects
         :param include_pdf: Whether to include PDF; True for full, int for sampled size
         :param epsilon: Tolerance for probability validation
+        :param uncertainty: Estimator for confidence intervals on the resulting
+            statistics; None reports the statistics without intervals
         :return: Status breakdown of distribution summaries
         """
 
@@ -746,6 +953,7 @@ class StatusDistributionSummary(
             errored=_extract_values(errored),
             include_pdf=include_pdf,
             epsilon=epsilon,
+            uncertainty=uncertainty,
         )
 
     @classmethod

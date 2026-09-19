@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any
 
@@ -15,9 +14,9 @@ from guidellm.scheduler import (
     ConstraintInitializer,
     SchedulingStrategy,
 )
-from guidellm.scheduler.constraints.saturation import approx_t_ppf
 from guidellm.schemas.base import StandardBaseModel
 from guidellm.schemas.benchmark.profiles import GoodputProfileArgs
+from guidellm.utils.statistics import wilson_interval
 
 from .profile import Profile, ProfileFactory
 
@@ -28,53 +27,8 @@ __all__ = [
     "wilson_interval",
 ]
 
-_NORMAL_LIMIT_DF = 1.0e9
-"""Degrees of freedom at which approx_t_ppf matches the standard normal."""
-
 if TYPE_CHECKING:
     from guidellm.benchmark.schemas import Benchmark
-
-
-def wilson_interval(
-    successes: int, trials: int, confidence: float = 0.95
-) -> tuple[float, float]:
-    """
-    Compute a Wilson score interval for a binomial proportion.
-
-    Preferred over the normal approximation because attainment is measured near
-    1.0, where the normal interval extends above 1.0 and understates uncertainty
-    for the small request counts a short probe produces.
-
-    :param successes: Number of conforming requests, clamped to [0, trials]
-    :param trials: Number of requests with a determined verdict
-    :param confidence: Two-sided confidence level, clamped to [0.5, 0.999]
-    :return: Tuple of (lower bound, upper bound), both within [0.0, 1.0]
-    """
-    if trials <= 0:
-        return 0.0, 1.0
-
-    # This is public API, so keep a caller that passes an out-of-range count or
-    # confidence from reaching a domain error inside the formula below.
-    successes = min(max(successes, 0), trials)
-    confidence = min(max(confidence, 0.5), 0.999)
-
-    # The Wilson interval is defined against the standard normal quantile. The
-    # t-distribution approximation already used for slope detection converges to
-    # it, so a large degrees-of-freedom value reuses that helper rather than
-    # duplicating a second quantile routine; the residual error is under 1e-3.
-    z = approx_t_ppf((1.0 + confidence) / 2.0, _NORMAL_LIMIT_DF)
-    proportion = successes / trials
-    denominator = 1.0 + z * z / trials
-    center = (proportion + z * z / (2.0 * trials)) / denominator
-    spread = (
-        z
-        * math.sqrt(
-            proportion * (1.0 - proportion) / trials + z * z / (4.0 * trials * trials)
-        )
-        / denominator
-    )
-
-    return max(0.0, center - spread), min(1.0, center + spread)
 
 
 class GoodputProbe(StandardBaseModel):

@@ -11,8 +11,10 @@ from guidellm.schemas import (
     DistributionSummary,
     FunctionObjT,
     Percentiles,
+    SampleUncertainty,
     StatusDistributionSummary,
 )
+from guidellm.schemas.base.statistics import PERCENTILE_PROBABILITIES
 
 
 def test_function_obj_type():
@@ -1722,3 +1724,191 @@ class TestStatusDistributionSummary:
         assert summary.incomplete.count == 1
         assert summary.errored.count == 1
         assert summary.total.count == 4
+
+
+class TestSampleUncertainty:
+    """Tests for the uncertainty estimator attached to distribution summaries."""
+
+    @pytest.mark.smoke
+    def test_class_signature(self):
+        """
+        The estimator is a model carrying a confidence level.
+
+        ## WRITTEN BY AI ##
+        """
+        assert issubclass(SampleUncertainty, BaseModel)
+        assert SampleUncertainty().confidence == 0.95
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize("confidence", [0.0, 1.0, -0.5, 1.5])
+    def test_rejects_out_of_range_confidence(self, confidence: float):
+        """
+        A confidence level outside the open unit interval is rejected.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError):
+            SampleUncertainty(confidence=confidence)
+
+    @pytest.mark.smoke
+    def test_estimates_intervals_for_equally_weighted_values(self):
+        """
+        A per-request metric receives a mean and percentile intervals.
+
+        ## WRITTEN BY AI ##
+        """
+        rng = np.random.default_rng(11)
+        values = rng.normal(80.0, 20.0, size=500).tolist()
+
+        summary = DistributionSummary.from_values(
+            values, uncertainty=SampleUncertainty(confidence=0.95)
+        )
+
+        assert summary.mean_ci is not None
+        assert summary.mean_ci.lower < summary.mean < summary.mean_ci.upper
+        assert summary.percentile_cis is not None
+        assert summary.percentile_cis.p50 is not None
+
+    @pytest.mark.sanity
+    def test_percentile_intervals_bracket_the_reported_percentiles(self):
+        """
+        Each interval contains the percentile it qualifies.
+
+        The point estimate and the bounds are both order statistics of the same
+        sample, so a bound that did not bracket would mean the two disagreed on
+        which observation the percentile is.
+
+        ## WRITTEN BY AI ##
+        """
+        rng = np.random.default_rng(29)
+        values = rng.lognormal(1.0, 0.6, size=4000).tolist()
+
+        summary = DistributionSummary.from_values(
+            values, uncertainty=SampleUncertainty(confidence=0.95)
+        )
+
+        assert summary.percentile_cis is not None
+        for name in PERCENTILE_PROBABILITIES:
+            interval = getattr(summary.percentile_cis, name)
+            if interval is None:
+                continue
+            point = getattr(summary.percentiles, name)
+            assert interval.lower <= point <= interval.upper
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("label", "weight_for"),
+        [
+            ("unequal", lambda index: 1.0 + index % 7),
+            ("equal but not one", lambda index: 128.0),
+        ],
+    )
+    def test_reports_no_intervals_for_weighted_values(self, label: str, weight_for):
+        """
+        Values carrying an exposure weight receive no interval.
+
+        Time per output token and inter-token latency are weighted by output
+        tokens, so their mean is a ratio of totals rather than a mean over
+        interchangeable observations. A run with a fixed output length gives
+        every one of those values the same weight, so equality alone does not
+        make them per-request observations.
+
+        ## WRITTEN BY AI ##
+        """
+        weighted = [(float(index), weight_for(index)) for index in range(500)]
+
+        summary = DistributionSummary.from_values(
+            weighted, uncertainty=SampleUncertainty()
+        )
+
+        assert summary.mean_ci is None
+        assert summary.percentile_cis is None
+
+    @pytest.mark.sanity
+    def test_reports_no_intervals_without_an_estimator(self):
+        """
+        Omitting the estimator leaves the summary as it was before.
+
+        ## WRITTEN BY AI ##
+        """
+        summary = DistributionSummary.from_values([float(i) for i in range(500)])
+
+        assert summary.mean_ci is None
+        assert summary.percentile_cis is None
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize("count", [0, 1])
+    def test_reports_no_intervals_below_two_observations(self, count: int):
+        """
+        One observation cannot support an interval.
+
+        ## WRITTEN BY AI ##
+        """
+        summary = DistributionSummary.from_values(
+            [1.0] * count, uncertainty=SampleUncertainty()
+        )
+
+        assert summary.mean_ci is None
+        assert summary.percentile_cis is None
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(("count", "expects_interval"), [(367, False), (368, True)])
+    def test_upper_percentile_interval_requires_enough_observations(
+        self, count: int, expects_interval: bool
+    ):
+        """
+        A short run reports no p99 interval rather than an unsupported bound.
+
+        Below 368 observations the reported p99 is the largest value in the
+        sample, and no observation remains above it to form an upper bound.
+
+        ## WRITTEN BY AI ##
+        """
+        values = [float(index) for index in range(count)]
+
+        summary = DistributionSummary.from_values(
+            values, uncertainty=SampleUncertainty(confidence=0.95)
+        )
+
+        assert summary.percentile_cis is not None
+        assert (summary.percentile_cis.p99 is not None) is expects_interval
+
+    @pytest.mark.regression
+    def test_status_summary_estimates_every_status(self):
+        """
+        The estimator reaches each status breakdown, not just the total.
+
+        ## WRITTEN BY AI ##
+        """
+        rng = np.random.default_rng(13)
+        successful = rng.normal(80.0, 10.0, size=400).tolist()
+        incomplete = rng.normal(90.0, 10.0, size=400).tolist()
+        errored = rng.normal(70.0, 10.0, size=400).tolist()
+
+        summary = StatusDistributionSummary.from_values(
+            successful, incomplete, errored, uncertainty=SampleUncertainty()
+        )
+
+        for status in ("successful", "incomplete", "errored", "total"):
+            assert getattr(summary, status).mean_ci is not None
+
+    @pytest.mark.regression
+    def test_reports_without_intervals_still_deserialize(self):
+        """
+        A report written before this feature loads unchanged.
+
+        ## WRITTEN BY AI ##
+        """
+        summary = DistributionSummary.from_values(
+            [float(index) for index in range(100)],
+            uncertainty=SampleUncertainty(),
+        )
+        payload = summary.model_dump()
+        del payload["mean_ci"]
+        del payload["percentile_cis"]
+
+        restored = DistributionSummary.model_validate(payload)
+
+        assert restored.mean_ci is None
+        assert restored.percentile_cis is None
+        assert restored.mean == pytest.approx(summary.mean)

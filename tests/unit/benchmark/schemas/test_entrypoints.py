@@ -14,6 +14,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from guidellm.benchmark.schemas.base import BenchmarkConfig
+from guidellm.scheduler import ThroughputStrategy
 from guidellm.schemas.backends import (
     BackendArgs,
     OpenAIHTTPBackendArgs,
@@ -25,6 +27,7 @@ from guidellm.schemas.benchmark import (
     GenerativeMetricsArgs,
     MetricsArgs,
 )
+from guidellm.utils.arg_string import ArgStringParser
 from guidellm.utils.typing import BLANK
 
 # Conditionally import VLLM backend args if available
@@ -780,3 +783,121 @@ class TestMetricsArgsValidation:
 
         assert isinstance(scenario.spec.metrics, GenerativeMetricsArgs)
         assert scenario.spec.metrics.sample_size == 200
+
+
+class TestGenerativeMetricsConfidence:
+    """
+    Tests for the confidence level accepted through ``--metrics``.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_defaults_to_a_two_sided_95_percent_level(self):
+        """
+        Omitting the argument reports intervals at 0.95.
+
+        ## WRITTEN BY AI ##
+        """
+        args = GenerativeMetricsArgs.model_validate(
+            ArgStringParser().decode("kind=generative")
+        )
+
+        assert args.confidence == 0.95
+
+    @pytest.mark.sanity
+    def test_accepts_an_explicit_level(self):
+        """
+        A level given on the command line reaches the parsed arguments.
+
+        ## WRITTEN BY AI ##
+        """
+        args = GenerativeMetricsArgs.model_validate(
+            ArgStringParser().decode("kind=generative,confidence=0.99")
+        )
+
+        assert args.confidence == 0.99
+
+    @pytest.mark.sanity
+    def test_null_disables_intervals(self):
+        """
+        Passing null reports the metrics without intervals.
+
+        ## WRITTEN BY AI ##
+        """
+        args = GenerativeMetricsArgs.model_validate(
+            ArgStringParser().decode("kind=generative,confidence=null")
+        )
+
+        assert args.confidence is None
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize("confidence", [0.0, 1.0, 1.5, -0.2])
+    def test_rejects_a_level_outside_the_open_unit_interval(self, confidence: float):
+        """
+        A level that is not a probability is rejected at validation.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError):
+            GenerativeMetricsArgs.model_validate(
+                ArgStringParser().decode(f"kind=generative,confidence={confidence}")
+            )
+
+
+class TestBenchmarkConfigConfidence:
+    """
+    Tests for the confidence level carried on the internal benchmark config.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @staticmethod
+    def _config(**overrides):
+        """Build a minimal benchmark config.
+
+        ## WRITTEN BY AI ##
+        """
+        return BenchmarkConfig(
+            run_id="confidence",
+            run_index=0,
+            strategy=ThroughputStrategy(),
+            constraints={},
+            profile={},
+            requests={},
+            backend={},
+            environment={},
+            **overrides,
+        )
+
+    @pytest.mark.smoke
+    def test_defaults_to_a_two_sided_95_percent_level(self):
+        """
+        A config built without the field reports intervals at 0.95.
+
+        ## WRITTEN BY AI ##
+        """
+        assert self._config().confidence == 0.95
+
+    @pytest.mark.sanity
+    def test_accepts_none_to_disable_intervals(self):
+        """
+        None is a valid value and disables interval reporting.
+
+        ## WRITTEN BY AI ##
+        """
+        assert self._config(confidence=None).confidence is None
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("confidence", [0.0, 1.0, 1.5, -0.2])
+    def test_rejects_a_level_outside_the_open_unit_interval(self, confidence: float):
+        """
+        The internal config holds the same invariant as the CLI argument.
+
+        A programmatic caller that builds a config directly would otherwise
+        reach the estimators with a value that is not a probability.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError):
+            self._config(confidence=confidence)
