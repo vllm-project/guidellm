@@ -66,23 +66,16 @@ class MooncakeTraceFormat(SingleTurnTraceFormat):
     def __init__(self, config: MooncakeTraceFormatArgs, dataset: Dataset) -> None:
         self.config = config
         self.dataset = dataset
-        self._copy_index = 0
-        self._hash_id_tables: list[dict[int, tuple[int, ...]]] = [
-            {} for _ in range(config.copies)
-        ]
-        self._sibling_tables: list[dict[Any, set[tuple[int, ...]]]] = [
-            {} for _ in range(config.copies)
-        ]
+        self._hash_id_table: dict[int, tuple[int, ...]] = {}
+        self._sibling_table: dict[Any, set[tuple[int, ...]]] = {}
 
-    def set_copy_index(self, copy_index: int) -> None:
-        """Select the hash-table slot for a sequential dataset copy.
-
-        Index 0 is the original global table. Each later copy has its own
-        independently salted slot in the same lists.
+    def set_copy_index(self, copy_index: int) -> None:  # noqa: ARG002
+        """Replace hash tables so this copy does not reuse earlier tokens.
 
         :param copy_index: Zero-based sequential pass index
         """
-        self._copy_index = copy_index
+        self._hash_id_table = {}
+        self._sibling_table = {}
 
     def required_columns(self) -> Features:
         return Features({self.config.hash_ids_column: List(Value("int32"))})
@@ -109,8 +102,8 @@ class MooncakeTraceFormat(SingleTurnTraceFormat):
         """Before generating the prompt, this first generates a block of tokens for
         each hash ID that has not already been seen."""
         ids = row[self.config.hash_ids_column]
-        hash_id_table = self._hash_id_tables[self._copy_index]
-        sibling_token_blocks = self._sibling_tables[self._copy_index]
+        hash_id_table = self._hash_id_table
+        sibling_token_blocks = self._sibling_table
         fill_hash_id_table(
             ids,
             hash_id_table,

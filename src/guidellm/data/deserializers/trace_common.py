@@ -7,6 +7,7 @@ requested input_length for replay benchmarks."""
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Protocol
 
@@ -46,7 +47,6 @@ __all__ = [
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
-    "copy_faker_seed",
     "create_distinct_token_block",
     "create_prompt_from_hash_ids",
     "decode_prompt",
@@ -164,23 +164,10 @@ def fill_hash_id_table(
             sibling_token_blocks[prev_id].add(block)
 
 
-def copy_faker_seed(random_seed: int, copy_index: int) -> int:
-    """Return the Faker seed for sequential dataset copy ``copy_index``.
-
-    Copy 0 is ``random_seed``. Later copies add a large prime stride so
-    their streams do not collide with nearby seeds.
-
-    :param random_seed: Dataset deserializer seed for copy 0
-    :param copy_index: Zero-based sequential pass index
-    :return: Seed for that copy's Faker instance
-    """
-    return random_seed + copy_index * 1_000_003
-
-
 def _seeded_faker(random_seed: int, copy_index: int) -> Faker:
     """Build a Faker instance for sequential dataset copy ``copy_index``."""
     faker = Faker()
-    faker.seed_instance(copy_faker_seed(random_seed, copy_index))
+    faker.seed_instance(random_seed + copy_index * 1_000_003)
     return faker
 
 
@@ -195,14 +182,7 @@ class TraceFormatBase(Protocol):
     def reset(self) -> None:
         pass
 
-    def set_copy_index(self, copy_index: int) -> None:  # noqa: ARG002
-        """Select the hash-table cohort for a sequential dataset copy.
-
-        Formats without hash IDs leave this as a no-op. Hash formats switch
-        the active global table so each copy gets independently salted tokens.
-
-        :param copy_index: Zero-based sequential pass index
-        """
+    def set_copy_index(self, copy_index: int) -> None: ...
 
     def required_columns(self) -> Features: ...
 
@@ -338,29 +318,21 @@ class TraceExamplesIterable(_BaseExamplesIterable):
         scaler = TraceSessionTiming(time_scale=self.config.time_scale)
         for copy_index in range(self.config.copies):
             self.format.set_copy_index(copy_index)
-            copy_faker = self._copy_fakers[copy_index]
+            faker_copy = self._copy_fakers[copy_index]
             wait_timing = TraceSessionTiming(
                 max_wait=self.config.max_wait,
                 max_session_wait=self.config.max_session_wait,
             )
-            copy_min: float | None = None
-            copy_max: float | None = None
+            copy_min = math.inf
+            copy_max = -math.inf
             for conv in self.format:  # type: ignore[attr-defined]
                 graph_data = self.format.build_conversation_graph(
-                    conv, self.processor, copy_faker
+                    conv, self.processor, faker_copy
                 )
                 wait_timing.apply_wait_caps(graph_data)
                 shift_graph_timestamps(graph_data, pass_offset)
-                inner_min = graph_min_timestamp(graph_data)
-                inner_max = graph_max_timestamp(graph_data)
-                if inner_min is not None:
-                    copy_min = (
-                        inner_min if copy_min is None else min(copy_min, inner_min)
-                    )
-                if inner_max is not None:
-                    copy_max = (
-                        inner_max if copy_max is None else max(copy_max, inner_max)
-                    )
+                copy_min = min(copy_min, graph_min_timestamp(graph_data))
+                copy_max = max(copy_max, graph_max_timestamp(graph_data))
                 packer.apply_pack(graph_data)
                 scaler.apply_scale(graph_data)
                 samples_count += len(graph_data.turns)
@@ -374,8 +346,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                     },
                 )
                 self.format.reset()
-            if copy_min is not None and copy_max is not None:
-                pass_offset = copy_min + self.config.copy_offset * (copy_max - copy_min)
+            pass_offset = copy_min + self.config.copy_offset * (copy_max - copy_min)
 
     @property
     def is_typed(self) -> bool:
