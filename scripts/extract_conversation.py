@@ -258,10 +258,11 @@ def extract_conversations(
 
 
 def _info_metric_fragment(req: dict[str, Any]) -> str:
-    """Format history_len and turn_index for the request header when present.
+    """Format turn metrics for the request header when present.
 
     :param req: Request dict from the benchmark data.
-    :return: Colored `` | history_len: N | turn_index: M`` fragment, or empty.
+    :return: Colored metric fragment (``history_len``, ``turn_index``,
+        ``preceding_nodes``), or empty.
     """
     info = req.get("info", {})
     parts: list[str] = []
@@ -269,6 +270,8 @@ def _info_metric_fragment(req: dict[str, Any]) -> str:
         parts.append(f"history_len: {_bright_cyan(str(info['history_len']))}")
     if "turn_index" in info:
         parts.append(f"turn_index: {_bright_cyan(str(info['turn_index']))}")
+    if "preceding_nodes" in info:
+        parts.append(f"preceding_nodes: {_bright_cyan(str(info['preceding_nodes']))}")
     if not parts:
         return ""
     return "".join(f" {_dim('|')} {part}" for part in parts)
@@ -296,6 +299,10 @@ def _agent_context_parts(info: dict[str, Any]) -> list[str]:
         parts.append(f"{_dim('history_len:')} {_blue(str(info['history_len']))}")
     if "turn_index" in info:
         parts.append(f"{_dim('turn_index:')} {_blue(str(info['turn_index']))}")
+    if "preceding_nodes" in info:
+        parts.append(
+            f"{_dim('preceding_nodes:')} {_blue(str(info['preceding_nodes']))}"
+        )
     if graph_id:
         parts.append(f"{_dim('graph:')} {_blue(graph_id)}")
     return parts
