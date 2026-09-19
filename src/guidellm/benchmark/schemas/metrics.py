@@ -21,6 +21,7 @@ from guidellm.benchmark.schemas.accumulator import (
 from guidellm.scheduler import SchedulerState
 from guidellm.schemas import (
     GenerativeRequestStats,
+    SampleUncertainty,
     StandardBaseDict,
     StatusBreakdown,
     StatusDistributionSummary,
@@ -1196,6 +1197,15 @@ class GenerativeMetrics(StandardBaseDict):
         incomplete = accumulator.incomplete.get_within_range(start_time, end_time)
         errored = accumulator.errored.get_within_range(start_time, end_time)
 
+        # Intervals are reported only for metrics recorded once per request, so
+        # that each value is one observation. Token-weighted metrics and derived
+        # rate distributions are left without them; see docs/guides/metrics.md.
+        uncertainty = (
+            None
+            if accumulator.config.confidence is None
+            else SampleUncertainty(confidence=accumulator.config.confidence)
+        )
+
         # Schedule-relative metrics describe lag against an arrival schedule.
         # Closed-loop strategies derive each target from the system's own
         # responses, so a delay measured against them is circular rather than a
@@ -1210,12 +1220,14 @@ class GenerativeMetrics(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                uncertainty=uncertainty,
             )
             scheduled_latency = StatusDistributionSummary.from_values_function(
                 function=lambda req: req.request_scheduled_latency,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                uncertainty=uncertainty,
             )
             predecessor_delay = StatusDistributionSummary.from_values_function(
                 function=lambda req: req.turn_predecessor_delay,
@@ -1303,6 +1315,7 @@ class GenerativeMetrics(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                uncertainty=uncertainty,
             ),
             request_dispatch_delay=dispatch_delay,
             request_scheduled_latency=scheduled_latency,
@@ -1313,6 +1326,7 @@ class GenerativeMetrics(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                uncertainty=uncertainty,
             ),
             # General token stats
             prompt_token_count=StatusDistributionSummary.from_values_function(
@@ -1320,18 +1334,21 @@ class GenerativeMetrics(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                uncertainty=uncertainty,
             ),
             output_token_count=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.output_tokens or 0.0,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                uncertainty=uncertainty,
             ),
             total_token_count=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.total_tokens or 0.0,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                uncertainty=uncertainty,
             ),
             # TODO: Need to evaluate closed=False vs closed=True for first-token
             # latencies. See github.com/vllm-project/guidellm/issues/1078
@@ -1340,18 +1357,21 @@ class GenerativeMetrics(StandardBaseDict):
                 successful=first_token_requests[0],
                 incomplete=first_token_requests[1],
                 errored=first_token_requests[2],
+                uncertainty=uncertainty,
             ),
             time_to_last_round_trip_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_last_round_trip_ms or 0.0,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                uncertainty=uncertainty,
             ),
             avg_round_trip_time_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.avg_round_trip_time_ms or 0.0,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                uncertainty=uncertainty,
             ),
             time_to_first_output_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_first_output_token_ms or 0.0,
@@ -1370,6 +1390,7 @@ class GenerativeMetrics(StandardBaseDict):
                     end_time,
                     end_func=lambda req: req.first_output_token_iteration,
                 ),
+                uncertainty=uncertainty,
             ),
             time_per_output_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: (

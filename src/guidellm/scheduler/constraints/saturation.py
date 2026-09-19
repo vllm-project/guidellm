@@ -51,7 +51,6 @@ providing scheduler actions (continue/stop) based on the current over-saturation
 
 from __future__ import annotations
 
-import math
 import time
 from typing import Any, Literal
 
@@ -68,6 +67,7 @@ from guidellm.scheduler.schemas import (
 )
 from guidellm.schemas import RequestInfo
 from guidellm.schemas.scheduler.constraints import OverSaturationConstraintArgs
+from guidellm.utils.statistics import approx_t_ppf
 
 __all__ = [
     "OverSaturationConstraint",
@@ -75,64 +75,6 @@ __all__ = [
     "SlopeChecker",
     "approx_t_ppf",
 ]
-
-
-def approx_t_ppf(p: float, df: float) -> float:
-    """
-    Approximate the percent point function (PPF) for the t-distribution.
-
-    Provides a fast approximation of the t-distribution PPF using numerical
-    methods from Abramowitz & Stegun. This function is significantly faster
-    than scipy.stats.t.ppf while providing sufficient accuracy for statistical
-    slope detection in over-saturation detection. Used internally by SlopeChecker
-    for calculating confidence intervals and margin of error.
-
-    Reference:
-        Milton Abramowitz and Irene A. Stegun (Eds.). (1965).
-        Handbook of Mathematical Functions: with Formulas, Graphs,
-        and Mathematical Tables. Dover Publications.
-
-        An electronic version of this book is available at:
-        https://personal.math.ubc.ca/~cbm/aands/.
-
-    :param p: The probability value (e.g., 0.975 for a 95% confidence interval)
-    :param df: The degrees of freedom for the t-distribution
-    :return: Approximate t-distribution PPF value, or NaN if df <= 0
-    """
-    dof = df
-    if dof <= 0:
-        return float("nan")
-
-    # 1. Approximate the PPF of the Normal distribution (z-score)
-    # Uses Abramowitz & Stegun formula 26.2.23.
-    c = [2.515517, 0.802853, 0.010328]
-    d = [1.432788, 0.189269, 0.001308]
-
-    numerical_stability_threshold = 0.5
-    if p < numerical_stability_threshold:
-        t = math.sqrt(-2.0 * math.log(p))
-        z = -(
-            t
-            - ((c[2] * t + c[1]) * t + c[0])
-            / (((d[2] * t + d[1]) * t + d[0]) * t + 1.0)
-        )
-    else:
-        t = math.sqrt(-2.0 * math.log(1.0 - p))
-        z = t - ((c[2] * t + c[1]) * t + c[0]) / (
-            ((d[2] * t + d[1]) * t + d[0]) * t + 1.0
-        )
-
-    # 2. Convert the z-score to a t-score
-    # Uses the Cornish-Fisher expansion (first few terms).
-    z2 = z * z
-    z3 = z2 * z
-    z4 = z3 * z
-
-    g1 = (z3 + z) / 4.0
-    g2 = (5.0 * z4 + 16.0 * z3 + 3.0 * z2) / 96.0
-
-    # Adjust z using the degrees of freedom (dof)
-    return z + g1 / dof + g2 / (dof * dof)
 
 
 class SlopeChecker:
