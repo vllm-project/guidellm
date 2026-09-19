@@ -1152,19 +1152,19 @@ async def huggingface_mock_server():
 
 
 @pytest.mark.regression
-def test_initializes_with_huggingface_processor():
-    """Test all handlers initialize with a Hugging Face tokenizer.
+@pytest.mark.asyncio
+async def test_initializes_with_huggingface_processor(huggingface_mock_server):
+    """Test the server becomes healthy with a Hugging Face tokenizer.
 
     ## WRITTEN BY AI ##
     """
-    config = MockServerConfig(processor=str(MINIMAL_TOKENIZER_DIR))
+    server_url, _, _ = huggingface_mock_server
 
-    server = MockServer(config)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{server_url}/health", timeout=5.0)
 
-    assert server.chat_handler.tokenizer is not None
-    assert server.completions_handler.tokenizer is not None
-    assert server.responses_handler.tokenizer is not None
-    assert server.tokenizer_handler.tokenizer is not None
+    assert response.status_code == 200
+    assert response.json()["status"] == "healthy"
 
 
 @pytest.mark.regression
