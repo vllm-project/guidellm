@@ -1134,7 +1134,7 @@ class TestWorkerProcessMultiturn:
             info = RequestInfo(
                 request_id=f"id_{node_id}",
                 node_id=node_id,
-                preceding_nodes=state.compute_preceding_nodes(node_id),
+                preceding_nodes=state.preceding_nodes[node_id],
             )
             async for _ in worker_instance._execute_node(
                 state, node_id, f"r{i}", info, target_start
