@@ -522,9 +522,13 @@ class TestWEKATraceFormat:
         assert all_distinct(sibling_blocks)
 
     @pytest.mark.smoke
-    def test_multi_conversation_resets_relative_timestamp(
+    def test_multi_conversation_keeps_zero_when_traces_start_together(
         self, tmp_path: Path, deserializer
     ):
+        """Conversations that already start at t=0 stay at t=0 on the shared timeline.
+
+        ## WRITTEN BY AI ##
+        """
         n_rows = 2
         n_virtual_rows = 3
         trace = write_trace(
@@ -550,6 +554,92 @@ class TestWEKATraceFormat:
         assert timestamps1[0] == 0.0
         assert timestamps1[1] != 0.0
         assert timestamps2[0] == 0.0
+
+    @pytest.mark.smoke
+    def test_multi_conversation_keeps_later_start_on_shared_timeline(
+        self, tmp_path: Path, deserializer
+    ):
+        """A later conversation keeps its recorded offset from the dataset origin.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "stall",
+                    "requests": [
+                        {"t": 0.0, "in": 10, "out": 5, "hash_ids": []},
+                        {"t": 70.0, "in": 10, "out": 5, "hash_ids": []},
+                    ],
+                }
+            )
+            + "\n"
+            + json.dumps(
+                {
+                    "id": "quick",
+                    "requests": [
+                        {"t": 71.0, "in": 10, "out": 5, "hash_ids": []},
+                        {"t": 71.5, "in": 10, "out": 5, "hash_ids": []},
+                    ],
+                }
+            )
+            + "\n",
+        )
+        ds = self.deserialize(deserializer, trace)
+        ds_iter = iter(ds)
+        conv1 = load_graph_turns(next(ds_iter))
+        conv2 = load_graph_turns(next(ds_iter))
+        timestamps1 = [turn.columns["relative_timestamp_column"][0] for turn in conv1]
+        timestamps2 = [turn.columns["relative_timestamp_column"][0] for turn in conv2]
+        assert timestamps1 == pytest.approx([0.0, 70.0])
+        assert timestamps2 == pytest.approx([71.0, 71.5])
+
+    @pytest.mark.smoke
+    @patch("guidellm.data.deserializers.trace_weka.logger")
+    def test_earlier_conversation_warns_and_resets_origin(
+        self, mock_logger, tmp_path: Path, deserializer
+    ):
+        """An earlier later-row timestamp warns; already-emitted graphs stay put.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            json.dumps(
+                {
+                    "id": "late_first",
+                    "requests": [
+                        {"t": 100.0, "in": 10, "out": 5, "hash_ids": []},
+                        {"t": 110.0, "in": 10, "out": 5, "hash_ids": []},
+                    ],
+                }
+            )
+            + "\n"
+            + json.dumps(
+                {
+                    "id": "early_second",
+                    "requests": [
+                        {"t": 50.0, "in": 10, "out": 5, "hash_ids": []},
+                        {"t": 60.0, "in": 10, "out": 5, "hash_ids": []},
+                    ],
+                }
+            )
+            + "\n",
+        )
+        ds = self.deserialize(deserializer, trace)
+        ds_iter = iter(ds)
+        conv1 = load_graph_turns(next(ds_iter))
+        conv2 = load_graph_turns(next(ds_iter))
+        timestamps1 = [turn.columns["relative_timestamp_column"][0] for turn in conv1]
+        timestamps2 = [turn.columns["relative_timestamp_column"][0] for turn in conv2]
+        assert timestamps1 == pytest.approx([0.0, 10.0])
+        assert timestamps2 == pytest.approx([0.0, 10.0])
+        messages = [
+            call.args[0].format(*call.args[1:]) if call.args else ""
+            for call in mock_logger.warning.call_args_list
+        ]
+        assert any("not ordered chronologically" in message for message in messages)
 
     @pytest.mark.sanity
     @pytest.mark.parametrize("hash_id_scope", [None, "global"])
