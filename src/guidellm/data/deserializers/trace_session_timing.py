@@ -240,36 +240,30 @@ def shift_graph_timestamps(graph: ConversationGraphData, offset: float) -> None:
         _set_turn_timestamp(turn, relative_timestamp + offset)
 
 
-def graph_min_timestamp(graph: ConversationGraphData) -> float | None:
-    """Return the earliest relative timestamp on ``graph``, if any.
+def graph_min_timestamp(graph: ConversationGraphData) -> float:
+    """Return the earliest relative timestamp on ``graph``.
 
     :param graph: Conversation to inspect
-    :return: Minimum relative timestamp, or ``None`` when no turn is timed
+    :return: Minimum relative timestamp among timed turns
     """
-    times = [
+    return min(
         timestamp
         for timestamp in (_turn_timestamp(turn) for turn in graph.turns)
         if timestamp is not None
-    ]
-    if not times:
-        return None
-    return min(times)
+    )
 
 
-def graph_max_timestamp(graph: ConversationGraphData) -> float | None:
-    """Return the latest relative timestamp on ``graph``, if any.
+def graph_max_timestamp(graph: ConversationGraphData) -> float:
+    """Return the latest relative timestamp on ``graph``.
 
     :param graph: Conversation to inspect
-    :return: Maximum relative timestamp, or ``None`` when no turn is timed
+    :return: Maximum relative timestamp among timed turns
     """
-    times = [
+    return max(
         timestamp
         for timestamp in (_turn_timestamp(turn) for turn in graph.turns)
         if timestamp is not None
-    ]
-    if not times:
-        return None
-    return max(times)
+    )
 
 
 def _turn_timestamp(turn: ConversationTurnData) -> float | None:
