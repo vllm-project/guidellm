@@ -11,7 +11,7 @@ These are passed to the `--data` argument as `kind=format`:
 - `trace_synthetic`: A trace format that does the bare minimum needed to complete a fully functioning trace replay benchmark with synthetic prompt generation
 - `mooncake`: The trace format used by the serving platform *Mooncake*, as defined in [https://doi.org/10.48550/arXiv.2407.00079](https://doi.org/10.48550/arXiv.2407.00079)
 - `weka`: The trace format used by WEKA's *Augmented Memory Grid*, as specified [in the original research repository](https://github.com/callanjfox/agentic-coding-analysis/blob/master/docs/TRACE_FORMAT.md)
-- `otel` (aliases `opentelemetry`, `otel_trace`): OpenTelemetry GenAI spans. GuideLLM keeps successful LLM spans and replays each `trace_id` as one conversation. It sends recorded `gen_ai.input.messages` with each span's full input (`history=trace`) unless `history=runtime` is set.
+- `otel` (alias `opentelemetry`): OpenTelemetry GenAI spans. GuideLLM keeps successful LLM spans and replays each `trace_id` as one conversation. It sends recorded `gen_ai.input.messages` with each span's full input (`history=trace`) unless `history=runtime` is set.
 
 ## Loading Trace Data
 
@@ -23,7 +23,8 @@ Trace replay always uses `--profile kind=replay`. Choose a **format** (`trace_sy
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=replay \
-  --data kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,time_scale=1.0
+  --data kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,time_scale=2.0 \
+  --constraint kind=max_requests,count=30
 ```
 
 **WEKA dataset from `huggingface`:**
@@ -32,15 +33,18 @@ guidellm run \
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=replay \
-  --data kind=weka,source.kind=huggingface,source.source=semianalysisai/cc-traces-weka-no-subagents-051226,load_kwargs.split=train
+  --data kind=weka,source.kind=huggingface,source.source=semianalysisai/cc-traces-weka-no-subagents-051226 \
+  --constraint kind=max_requests,count=30
 ```
 
 **Mooncake dataset from `huggingface`**
 
 ```bash
+guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=replay \
-  --data kind=weka,source.kind=hf,source.src=valeriol29/mooncake-traces,load_kwargs.name=mooncake
+  --data kind=mooncake,source.kind=huggingface,source.source=valeriol29/mooncake-traces,load_kwargs.name=mooncake \
+  --constraint kind=max_requests,count=30
 ```
 
 **OTEL dataset from `huggingface`:**
@@ -49,8 +53,8 @@ guidellm run \
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=replay \
-  --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces,load_kwargs.split=train \
-  --data-loader kind=pytorch,samples=2
+  --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces \
+  --constraint kind=max_requests,count=30
 ```
 
 ## Format-Agnostic Data Arguments
@@ -152,7 +156,7 @@ Output length always uses the span's completion token count (`max_tokens` + `ign
 
 Spans without `gen_ai.input.messages` cannot be replayed as OTEL. Flatten token-count-only dumps to `kind=trace_synthetic` instead.
 
-Replay against `/v1/chat/completions` (the backend default). `raw_messages_column` is always chat-completions format: that handler sends it as a `messages` array. `/v1/responses` converts the same column into Responses `input` items. `/v1/completions` is a prompt string with no tool loop and does not read `raw_messages_column`.
+Replay against `/v1/chat/completions` (the backend default). OTEL replay is chat-completions only for now: `raw_messages_column` is always chat-completions format and that handler sends it as a `messages` array. `/v1/completions` is a prompt string with no tool loop and does not read `raw_messages_column`.
 
 Recorded tool loops are pre-split onto GuideLLM's client tool-call pipeline. An LLM span whose output messages contain `tool_calls` (or `gen_ai.response.finish_reasons` of `tool_calls` / `tool_call` / `tool_use` / `function_call`) becomes `client_tool_call`. The next span is consumed as `tool_response_injection` when its new messages after `input[i] + output[i]` are only `role=tool` results. Recorded result strings are rebound to **live** `tool_call_id`s by the chat handler. `gen_ai.tool.definitions` supplies `tools_column` on those turns (otherwise the default synthetic tool is used); definitions alone do not classify a turn. Injection parents always use `history_context=full`, including `history=trace`. Missing-tool policy stays `--backend tool_call_missing_behavior=...`.
 
@@ -160,7 +164,7 @@ If the next span cannot be parsed as tool results, a placeholder injection is sy
 
 Completed request stats merge response usage over the request's expected token counts, so a dedicated expected-vs-actual MAE is not reported. Compare `request.input_metrics` / `output_metrics` (span counts) with response usage before that merge if you need the deviation.
 
-ISO-8601 `start_time` values, unix seconds, milliseconds, and nanoseconds are converted to epoch seconds before scheduling. Token counts are read from span `attributes`, trying current GenAI names first and then the deprecated aliases. OTel `parts` (`text`, `tool_call`, `tool_call_response`) are converted to OpenAI chat dicts.
+ISO-8601 `start_time` values (naive, `Z`, or offset) and HuggingFace-decoded `datetime` objects are converted to epoch seconds before scheduling. Token counts are read from span `attributes`, trying current GenAI names first and then the deprecated aliases. OTel `parts` (`text`, `tool_call`, `tool_call_response`) are converted to OpenAI chat dicts.
 
 | Argument                   | Default                                                            | Description                                                                                                   |
 | -------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
@@ -172,7 +176,7 @@ ISO-8601 `start_time` values, unix seconds, milliseconds, and nanoseconds are co
 | `history`                  | `trace`                                                            | `trace` resends each span's full input; `runtime` sends only new messages with DAG history                    |
 | `tool_choice`              | `required`                                                         | `required` or `auto` on client tool-call turns. Pair `auto` with `tool_call_missing_behavior=ignore_continue` |
 
-Start from Hugging Face. `samples` counts conversations (`trace_id`s), not spans. IBM traces have 30–50 LLM calls each, so keep `samples` small at first.
+Start from Hugging Face. IBM traces have 30–50 LLM calls each, so `--constraint kind=max_requests` is a useful bound on first runs.
 
 **Default (`history=trace`):** send each span's recorded messages in full. Later turns wait on the DAG but use `history_context=new`, so live completions are not spliced into the next prompt.
 
@@ -180,8 +184,8 @@ Start from Hugging Face. `samples` counts conversations (`trace_id`s), not spans
 guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
-    --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces,load_kwargs.split=train \
-    --data-loader kind=pytorch,samples=2
+    --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces \
+    --constraint kind=max_requests,count=30
 ```
 
 **Recorded messages with DAG history (`history=runtime`):** send only the new messages; prior turns come from live completions (`history_context=full`). Requires each span's input to continue the previous span's input plus output.
@@ -190,8 +194,8 @@ guidellm run \
 guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
-    --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces,load_kwargs.split=train,history=runtime \
-    --data-loader kind=pytorch,samples=2
+    --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces,history=runtime \
+    --constraint kind=max_requests,count=30
 ```
 
 Local JSONL uses the same `history` switch with `source.kind=json_file,source.path=...`.

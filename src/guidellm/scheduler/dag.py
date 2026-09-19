@@ -14,6 +14,7 @@ import time
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Generic, TypeVar
 
 from guidellm.scheduler.schemas import (
@@ -80,10 +81,6 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         self._available_after: dict[str, float] = dict.fromkeys(graph.nodes, 0.0)
         self._in_progress: set[str] = set()
         self._aborted: bool = False
-        order = self.topological_order()
-        self._preceding_nodes: dict[str, int] = {
-            node_id: index for index, node_id in enumerate(order)
-        }
 
     @property
     def graph(self) -> ConversationGraph[_RequestT]:
@@ -297,19 +294,17 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
 
         return _depth(node_id)
 
-    def compute_preceding_nodes(self, node_id: str) -> int:
+    @cached_property
+    def preceding_nodes(self) -> dict[str, int]:
         """
-        Count graph nodes that precede ``node_id`` in topological order.
+        Map each node ID to its index in topological order.
 
         Independent of ``history_context``; reflects DAG structure only.
+        Index 0 is the first node in topological order.
 
-        :param node_id: The node to look up.
-        :return: Number of nodes before this one in topological order (0-based).
-        :raises KeyError: If ``node_id`` is not in the graph.
+        :return: ``{node_id: index}`` for every graph node.
         """
-        if node_id not in self._preceding_nodes:
-            raise KeyError(f"Unknown node_id '{node_id}'")
-        return self._preceding_nodes[node_id]
+        return {node_id: index for index, node_id in enumerate(self.topological_order)}
 
     def _find_full_parent_edge(
         self, incoming: Iterable[ConversationEdge]
@@ -415,9 +410,10 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         """
         return [nid for nid in self._graph.nodes if nid not in self._completed]
 
+    @cached_property
     def topological_order(self) -> list[str]:
         """
-        Compute topological ordering of graph nodes via BFS (Kahn's algorithm).
+        Topological ordering of graph nodes via BFS (Kahn's algorithm).
 
         :return: List of node IDs in topological order.
         """

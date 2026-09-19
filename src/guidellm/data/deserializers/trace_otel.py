@@ -40,14 +40,12 @@ __all__ = ["OTELTraceFormat", "parse_gen_ai_messages"]
 
 _LLM_OPERATIONS = frozenset({"chat", "generate", "text_completion"})
 _NON_LLM_OPERATIONS = frozenset({"invoke_agent", "execute_tool", "embeddings"})
-_FAILED_STATUS_CODES = frozenset({2, "2", "ERROR", "STATUS_CODE_ERROR"})
+_FAILED_STATUS_CODE = 2
 _TOOL_FINISH_REASONS = frozenset(
     {"tool_calls", "tool_call", "tool_use", "function_call"}
 )
-_NANOSECONDS = 1e16
-_MILLISECONDS = 1e11
 
-_OTEL_KINDS = ["otel", "opentelemetry", "otel_trace"]
+_OTEL_KINDS = ["otel", "opentelemetry"]
 
 DatasetDeserializerFactory.register_decorator(TraceDatasetDeserializer, _OTEL_KINDS)
 
@@ -61,12 +59,15 @@ def span_attributes(span: dict[str, Any]) -> dict[str, Any]:
     :param span: One OTEL span dict.
     :return: Attribute mapping, or an empty dict when absent or not a dict.
     """
-    attrs = span.get("attributes") or {}
+    attrs = span.get("attributes")
     return attrs if isinstance(attrs, dict) else {}
 
 
 def first_attribute(attributes: dict[str, Any], keys: list[str]) -> Any:
     """Return the first present, non-null attribute value from ``keys``.
+
+    Keys are tried in list order so current GenAI names can fall back to
+    deprecated aliases.
 
     :param attributes: Span attribute mapping.
     :param keys: Keys to try in order.
@@ -236,7 +237,7 @@ def _messages_from_parts(role: Any, parts: list[Any]) -> list[dict[str, Any]]:
             texts.append("" if content is None else str(content))
         elif part_type == "tool_call":
             tool_calls.append(_tool_call_from_part(part))
-        elif part_type in {"tool_call_response", "tool_result"}:
+        elif part_type == "tool_call_response":
             tool_responses.append(_tool_response_from_part(part))
     messages: list[dict[str, Any]] = []
     if texts or tool_calls:
@@ -284,10 +285,12 @@ def _tool_response_from_part(part: dict[str, Any]) -> dict[str, Any]:
 
 
 def parse_span_timestamp(value: Any) -> float:
-    """Convert an OTEL span timestamp to epoch seconds.
+    """Convert an OTEL span ``start_time`` to epoch seconds.
 
-    Accepts ISO-8601 strings, ``datetime`` objects, unix seconds, milliseconds,
-    and nanoseconds.
+    Known dumps use ISO-8601 strings: naive on IBM synthetic-conversations
+    and Exgentic-family traces, offset on IBM lmcache. A ``Z`` suffix is the
+    same ISO family. HuggingFace may decode nested ``start_time`` to
+    ``datetime``.
 
     :param value: Raw ``start_time`` (or equivalent) field.
     :return: Timestamp in seconds.
@@ -303,13 +306,6 @@ def parse_span_timestamp(value: Any) -> float:
                 f"OTEL format: unsupported timestamp string {value!r}"
             ) from exc
         return _datetime_to_epoch_seconds(parsed)
-    if isinstance(value, (int, float)):
-        number = float(value)
-        if abs(number) >= _NANOSECONDS:
-            return number / 1e9
-        if abs(number) >= _MILLISECONDS:
-            return number / 1e3
-        return number
     raise InvalidRowError(
         f"OTEL format: unsupported timestamp type {type(value).__name__}: {value!r}"
     )
@@ -333,7 +329,7 @@ def is_failed_span(span: dict[str, Any]) -> bool:
     status = span.get("status")
     if not isinstance(status, dict):
         return False
-    return status.get("code") in _FAILED_STATUS_CODES
+    return status.get("code") == _FAILED_STATUS_CODE
 
 
 def is_llm_span(span: dict[str, Any], config: OTELTraceFormatArgs) -> bool:
@@ -358,24 +354,20 @@ def is_llm_span(span: dict[str, Any], config: OTELTraceFormatArgs) -> bool:
 def is_execute_tool_span(span: dict[str, Any]) -> bool:
     """Return whether ``span`` is a tool-execution span, not an LLM request.
 
-    Matches ``gen_ai.operation.name == execute_tool``, or a span name that
-    starts with ``execute_tool`` when the operation name is missing.
+    Matches ``gen_ai.operation.name == execute_tool``.
 
     :param span: One OTEL span dict.
     :return: ``True`` when this span records a tool execution.
     """
-    attributes = span_attributes(span)
-    if attributes.get("gen_ai.operation.name") == "execute_tool":
-        return True
-    name = span.get("name")
-    return isinstance(name, str) and name.startswith("execute_tool")
+    return span_attributes(span).get("gen_ai.operation.name") == "execute_tool"
 
 
 def finish_reasons_indicate_tool_call(attributes: dict[str, Any]) -> bool:
     """Return whether ``gen_ai.response.finish_reasons`` records a tool call.
 
-    Accepts a list, a JSON string, or a single string. Recognized values are
-    ``tool_calls``, ``tool_call``, ``tool_use``, and ``function_call``.
+    Accepts a list or a JSON string of a list (nested JSON encoding used by
+    Exgentic-family dumps). Recognized values are ``tool_calls``,
+    ``tool_call``, ``tool_use``, and ``function_call``.
 
     :param attributes: Span attribute mapping.
     :return: ``True`` when any recorded finish reason is a tool-call alias.
@@ -384,13 +376,11 @@ def finish_reasons_indicate_tool_call(attributes: dict[str, Any]) -> bool:
     if raw is None or raw == "":
         return False
     parsed: Any = raw
-    if isinstance(raw, str | bytes):
+    if isinstance(raw, str):
         try:
             parsed = json.loads(raw)
         except (TypeError, ValueError):
-            parsed = [raw.decode() if isinstance(raw, bytes) else raw]
-    if isinstance(parsed, str):
-        parsed = [parsed]
+            return False
     if not isinstance(parsed, list):
         return False
     return any(str(item) in _TOOL_FINISH_REASONS for item in parsed)

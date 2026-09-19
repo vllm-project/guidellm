@@ -20,7 +20,7 @@ The following arguments configure datasets and their processing:
   - `synthetic_text` — generates synthetic prompts on the fly. Required field: `prompt_tokens`. Optional: `output_tokens`, `turns`, `prefix_tokens`, `prefix_count`, `prefix_buckets`, and distribution controls (`prompt_tokens_stdev`, `output_tokens_stdev`, etc.).
   - `huggingface` (alias `hf`) — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (for example `split`, `name`) via `load_kwargs`.
   - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `db_file`, `tar_file` — loads from a local file. Required field: `path`.
-  - `trace_synthetic`, `mooncake`, `weka`, `otel` — replay trace data with `--profile kind=replay`. Required field: `source` (a nested dataset config such as `json_file` or `huggingface`), see other supported sources for details. Optional: `timestamp_column`, `prompt_tokens_column`, `output_tokens_column`, `time_scale`, and other format-specific options. `weka` uses different column defaults (`t`, `in`, `out`). `otel` (aliases `opentelemetry`, `otel_trace`) reads GenAI span attributes and ISO-8601 timestamps. Replay sends recorded `gen_ai.input.messages` (`history=trace` by default). See [Trace File Formats](./trace_replay.md).
+  - `trace_synthetic`, `mooncake`, `weka`, `otel` — replay traces with `--profile kind=replay`. Required field: nested `source` pointing at another dataset kind, for example `source.kind=json_file,source.path=trace.jsonl` or `source.kind=huggingface,source.source=org/dataset`. Optional: `time_scale` and format-specific options. See [Trace File Formats](./trace_replay.md).
 
 In addition, you can specify additional arguments to the dataset loading with the data argument `load_kwargs`:
 
@@ -190,7 +190,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   {"prompt": "What is your name?", "output_tokens_count": 3, "additional_column": "baz", "additional_column2": "qux"}
   ```
 
-- **Trace files (`.jsonl`, `.json`, `.csv` or `.parquet` with a supported trace file format)**: Specialized files for replay. Used with `--profile kind=replay` to replay trace events using each row's timestamp and token lengths. Timestamps must be numbers expressed in seconds on a shared timeline with any consistent zero point, except `otel`, which parses ISO-8601 `start_time` values (and unix seconds, milliseconds, or nanoseconds) into epoch seconds. GuideLLM sorts them and converts them to offsets from the first event before scheduling. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
+- **Trace files (`.jsonl`, `.json`, `.csv` or `.parquet` with a supported trace file format)**: Specialized files for replay. Used with `--profile kind=replay` to replay trace events using each row's timestamp and token lengths. Timestamps must be numbers expressed in seconds on a shared timeline with any consistent zero point, except `otel`, which parses ISO-8601 `start_time` values (and HuggingFace-decoded `datetime` objects) into epoch seconds. GuideLLM sorts them and converts them to offsets from the first event before scheduling. See [Trace Replay Benchmarking](../getting-started/benchmark.md#trace-replay-benchmarking).
 
   ```json
   {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
@@ -217,14 +217,14 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
     --data kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
   ```
 
-  `otel` uses the same nested `source` field. Token counts come from span attributes rather than top-level columns. Hugging Face is the fastest way to start (`samples` counts conversations, not spans):
+  `otel` uses the same nested `source` field. Token counts come from span attributes rather than top-level columns. Hugging Face is the fastest way to start:
 
   ```bash
   guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
-    --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces,load_kwargs.split=train \
-    --data-loader kind=pytorch,samples=2
+    --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces \
+    --constraint kind=max_requests,count=30
   ```
 
   Defaults are recorded `gen_ai.input.messages` and `history=trace` (each span's full input, `history_context=new`). Pass `history=runtime` to send only new messages and attach live completions through the DAG. Spans without `gen_ai.input.messages` should use `trace_synthetic`. Local JSONL uses `source.kind=json_file,source.path=...` with the same `history` switch. See [Trace File Formats](./trace_replay.md#otel).
@@ -429,7 +429,7 @@ When your dataset uses non-standard column names, you can use `--data-column-map
 **Supported column types:**
 
 - `text_column`: The main prompt text (defaults: `prompt`, `instruction`, `question`, `input`, `context`, `content`, `text`)
-- `raw_messages_column`: Chat-completions messages for the current turn (`[{role, content}, …]`; defaults: `messages`, `chat_messages`). `/v1/chat/completions` sends them as-is. `/v1/responses` converts them to `input` items (`input_text`, `function_call`, `function_call_output`).
+- `raw_messages_column`: Chat-completions messages for the current turn (`[{role, content}, …]`; defaults: `messages`, `chat_messages`). `/v1/chat/completions` sends them as-is. OTEL replay is chat-completions only for now.
 - `prefix_column`: System prompt or prefix (defaults: `system_prompt`, `system`, `prefix`)
 - `prompt_tokens_count_column`: Column containing prompt token counts (defaults: `prompt_tokens_count`, `input_tokens_count`)
 - `output_tokens_count_column`: Column containing output token counts (defaults: `output_tokens_count`, `completion_tokens_count`)

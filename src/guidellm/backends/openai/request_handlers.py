@@ -506,72 +506,6 @@ def _recorded_chat_messages(columns: dict[str, Any]) -> list[dict[str, Any]] | N
     return None
 
 
-def _json_to_str(value: Any) -> str:
-    if isinstance(value, bytes):
-        return value.decode()
-    if isinstance(value, str):
-        return value
-    dumped = json.dumps(value)
-    if isinstance(dumped, bytes):
-        return dumped.decode()
-    return dumped
-
-
-def _chat_messages_to_responses_input(
-    messages: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """Convert chat-completions messages to Responses API ``input`` items.
-
-    ``raw_messages_column`` is stored in chat format. This mapping is one-way
-    and used only when building ``/v1/responses`` requests.
-
-    :param messages: OpenAI chat dicts.
-    :return: Responses ``input`` items.
-    """
-    items: list[dict[str, Any]] = []
-    for message in messages:
-        role = message.get("role") or "user"
-        if role == "tool":
-            items.append(
-                {
-                    "type": "function_call_output",
-                    "call_id": str(message.get("tool_call_id") or ""),
-                    "output": _json_to_str(message.get("content")),
-                }
-            )
-            continue
-        tool_calls = message.get("tool_calls") or []
-        if tool_calls:
-            text = message.get("content")
-            if isinstance(text, str) and text:
-                items.append({"role": "assistant", "content": text})
-            for call in tool_calls:
-                if not isinstance(call, dict):
-                    continue
-                function = call.get("function")
-                if not isinstance(function, dict):
-                    function = {}
-                items.append(
-                    {
-                        "type": "function_call",
-                        "call_id": str(call.get("id") or ""),
-                        "name": str(function.get("name") or ""),
-                        "arguments": _json_to_str(function.get("arguments", "")),
-                    }
-                )
-            continue
-        text = message.get("content")
-        if role in {"user", "system", "developer"}:
-            if not isinstance(text, str):
-                text = "" if text is None else str(text)
-            items.append(
-                {"role": role, "content": [{"type": "input_text", "text": text}]}
-            )
-        else:
-            items.append({"role": role, "content": "" if text is None else text})
-    return items
-
-
 @OpenAIRequestHandlerFactory.register("/v1/completions")
 class TextCompletionsRequestHandler(OpenAIRequestHandler):
     """
@@ -1911,18 +1845,13 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
     ) -> None:
         """Append current-turn content as Responses ``input`` items.
 
-        ``raw_messages_column`` is chat-completions format and is converted
-        here. Otherwise ``text_column`` / media wrap as a user message.
+        ``text_column`` / media wrap as a user message. OTEL replay of
+        ``raw_messages_column`` is chat-completions only for now.
 
         :param items: Input item list to extend in place.
         :param req: Request whose columns supply the current turn.
         :param kwargs: Forwarded format kwargs (``extras`` for multimodal).
         """
-        recorded = _recorded_chat_messages(req.columns)
-        if recorded is not None:
-            items.extend(_chat_messages_to_responses_input(recorded))
-            return
-
         extras = kwargs.get("extras")
         content_extras = extras.content if extras is not None else None
         prompts = [

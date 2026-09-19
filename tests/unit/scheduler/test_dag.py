@@ -599,7 +599,7 @@ class TestDAGExecutionStateTopologicalOrder:
         ## WRITTEN BY AI ##
         """
         state = DAGExecutionState(_linear_graph(5))
-        order = state.topological_order()
+        order = state.topological_order
         for i in range(4):
             assert order.index(f"n{i}") < order.index(f"n{i + 1}")
 
@@ -612,7 +612,7 @@ class TestDAGExecutionStateTopologicalOrder:
         ## WRITTEN BY AI ##
         """
         state = DAGExecutionState(_fork_join_graph())
-        order = state.topological_order()
+        order = state.topological_order
 
         # M1 before M2 before M3
         assert order.index("M1") < order.index("M2") < order.index("M3")
@@ -711,7 +711,7 @@ class TestDAGExecutionStateTurnIndex:
 
 
 class TestDAGExecutionStatePrecedingNodes:
-    """Test compute_preceding_nodes topological ordering rules.
+    """Test preceding_nodes topological ordering rules.
 
     ## WRITTEN BY AI ##
     """
@@ -724,7 +724,7 @@ class TestDAGExecutionStatePrecedingNodes:
         """
         state = DAGExecutionState(_linear_graph(4))
         for i in range(4):
-            assert state.compute_preceding_nodes(f"n{i}") == i
+            assert state.preceding_nodes[f"n{i}"] == i
 
     @pytest.mark.sanity
     def test_all_new_linear_increments_while_turn_index_stays_zero(self):
@@ -735,7 +735,7 @@ class TestDAGExecutionStatePrecedingNodes:
         state = DAGExecutionState(_linear_graph_new_edges(3))
         for i in range(3):
             node_id = f"main_{i}"
-            assert state.compute_preceding_nodes(node_id) == i
+            assert state.preceding_nodes[node_id] == i
             assert state.compute_turn_index(node_id) == 0
 
     @pytest.mark.sanity
@@ -745,22 +745,22 @@ class TestDAGExecutionStatePrecedingNodes:
         ## WRITTEN BY AI ##
         """
         state = DAGExecutionState(_fork_join_graph())
-        order = state.topological_order()
+        order = state.topological_order
         for node_id in order:
-            assert state.compute_preceding_nodes(node_id) == order.index(node_id)
-        assert state.compute_preceding_nodes("M1") < state.compute_preceding_nodes("M4")
-        assert state.compute_preceding_nodes("W1") < state.compute_preceding_nodes("M4")
-        assert state.compute_preceding_nodes("W2") < state.compute_preceding_nodes("M4")
+            assert state.preceding_nodes[node_id] == order.index(node_id)
+        assert state.preceding_nodes["M1"] < state.preceding_nodes["M4"]
+        assert state.preceding_nodes["W1"] < state.preceding_nodes["M4"]
+        assert state.preceding_nodes["W2"] < state.preceding_nodes["M4"]
 
     @pytest.mark.smoke
     def test_unknown_node_raises(self):
-        """compute_preceding_nodes raises KeyError for unknown node_id.
+        """preceding_nodes lookup raises KeyError for unknown node_id.
 
         ## WRITTEN BY AI ##
         """
         state = DAGExecutionState(_linear_graph(2))
-        with pytest.raises(KeyError, match="Unknown node_id"):
-            state.compute_preceding_nodes("missing")
+        with pytest.raises(KeyError):
+            _ = state.preceding_nodes["missing"]
 
 
 class TestDAGExecutionStateRequeueDelay:
