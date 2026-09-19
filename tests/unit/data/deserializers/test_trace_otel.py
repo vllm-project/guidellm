@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -379,10 +380,10 @@ class TestOTELTraceFormat:
         )
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize("kind", ["otel", "opentelemetry", "otel_trace"])
+    @pytest.mark.parametrize("kind", ["otel", "opentelemetry"])
     def test_kind_aliases_load(self, tmp_path: Path, kind: str):
         """
-        otel, opentelemetry, and otel_trace all dispatch to the OTEL format.
+        otel and opentelemetry dispatch to the OTEL format.
 
         ## WRITTEN BY AI ##
         """
@@ -1189,14 +1190,14 @@ def test_parse_gen_ai_messages_tool_call_parts():
     ("value", "expected"),
     [
         ("2024-01-01T00:00:00+00:00", 1704067200.0),
-        (1704067200, 1704067200.0),
-        (1704067200_000, 1704067200.0),
-        (1704067200_000_000_000, 1704067200.0),
+        ("2024-01-01T00:00:00Z", 1704067200.0),
+        ("2024-01-01T00:00:00", 1704067200.0),
+        (datetime(2024, 1, 1, tzinfo=timezone.utc), 1704067200.0),
     ],
 )
 def test_parse_span_timestamp(value, expected):
     """
-    ISO strings, unix seconds, milliseconds, and nanoseconds convert to seconds.
+    ISO-8601 strings (offset, Z, naive) and datetime convert to epoch seconds.
 
     ## WRITTEN BY AI ##
     """

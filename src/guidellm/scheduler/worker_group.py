@@ -635,7 +635,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 dag_state: DAGExecutionState[RequestT, ResponseT] = DAGExecutionState(
                     graph
                 )
-                topo_dag_nodes = dag_state.topological_order()
+                topo_dag_nodes = dag_state.topological_order
                 incoming_map: dict[str, list[str]] = {nid: [] for nid in graph.nodes}
                 for edge in graph.edges:
                     incoming_map[edge.target_node_id].append(edge.source_node_id)
@@ -651,7 +651,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                         node_id=node_id,
                         agent_id=node.agent_id,
                         parent_node_ids=incoming_map[node_id],
-                        preceding_nodes=dag_state.compute_preceding_nodes(node_id),
+                        preceding_nodes=dag_state.preceding_nodes[node_id],
                         status="queued",
                         scheduler_process_id=0,
                         scheduler_start_time=self.start_time,

@@ -10,9 +10,9 @@ from guidellm.schemas.data.entrypoints import DataArgs
 __all__ = ["OTELTraceFormatArgs"]
 
 
-@DataArgs.register(["otel", "opentelemetry", "otel_trace"])
+@DataArgs.register(["otel", "opentelemetry"])
 class OTELTraceFormatArgs(TraceDataArgs):
-    kind: Literal["otel", "opentelemetry", "otel_trace"] = Field(
+    kind: Literal["otel", "opentelemetry"] = Field(
         default="otel",
         description="Type identifier for the OpenTelemetry trace format.",
     )
