@@ -262,7 +262,7 @@ guidellm run \
 
 The data parameter `time_scale` acts as a scaling factor for the intervals between trace events after wait and pack caps: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast. Wait caps (`max_wait`, `max_session_wait`, `min_concurrent_sessions`) are applied in original trace seconds before `time_scale`.
 
-Raise parallelism with `min_concurrent_sessions`. Use `copies` when the packed dataset is not large enough to sustain that load for the whole benchmark. `copies` replays the full packed trace sequentially: the next pass starts at the previous pass's last scheduled request. It does not overlay duplicate conversations on the same timestamps. Synthetic data traces re-salt the synthetic data to ensure cache-unique conversations for the copies.
+Raise parallelism with `min_concurrent_sessions`. Use `copies` when the packed dataset is not large enough to sustain that load for the whole benchmark. By default (`copy_offset=1`) `copies` replays the full packed trace sequentially: the next pass starts at the previous pass's last scheduled request. `copy_offset` can overlay or gap copies relative to that prior span. Synthetic data traces re-salt the synthetic data to ensure cache-unique conversations for the copies.
 
 Strategically choose between increasing parallelism and affecting request timings for your use case. Higher parallelism increases concurrent simultaneous requests, and increases the chance of cache evictions affecting your benchmark.
 

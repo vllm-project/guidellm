@@ -30,6 +30,7 @@ from guidellm.data.deserializers.deserializer import (
 from guidellm.data.deserializers.trace_session_timing import (
     TraceSessionTiming,
     graph_max_timestamp,
+    graph_min_timestamp,
     shift_graph_timestamps,
 )
 from guidellm.data.schemas import InvalidRowError
@@ -329,25 +330,39 @@ class TraceExamplesIterable(_BaseExamplesIterable):
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
         self.iteration_count += 1
         samples_count = 0
-        last_end = 0.0
+        pass_offset = 0.0
+        # Shared across copies so packing sees the combined timeline.
+        packer = TraceSessionTiming(
+            min_concurrent_sessions=self.config.min_concurrent_sessions,
+        )
+        scaler = TraceSessionTiming(time_scale=self.config.time_scale)
         for copy_index in range(self.config.copies):
             self.format.set_copy_index(copy_index)
             copy_faker = self._copy_fakers[copy_index]
-            # Fresh packing state per copy so inner min_concurrent_sessions
-            # does not carry session-end lanes across sequential passes.
-            timing = TraceSessionTiming(
+            wait_timing = TraceSessionTiming(
                 max_wait=self.config.max_wait,
                 max_session_wait=self.config.max_session_wait,
-                min_concurrent_sessions=self.config.min_concurrent_sessions,
-                time_scale=self.config.time_scale,
             )
-            pass_offset = 0.0 if copy_index == 0 else last_end
+            copy_min: float | None = None
+            copy_max: float | None = None
             for conv in self.format:  # type: ignore[attr-defined]
                 graph_data = self.format.build_conversation_graph(
                     conv, self.processor, copy_faker
                 )
-                timing.apply(graph_data)
+                wait_timing.apply_wait_caps(graph_data)
                 shift_graph_timestamps(graph_data, pass_offset)
+                inner_min = graph_min_timestamp(graph_data)
+                inner_max = graph_max_timestamp(graph_data)
+                if inner_min is not None:
+                    copy_min = (
+                        inner_min if copy_min is None else min(copy_min, inner_min)
+                    )
+                if inner_max is not None:
+                    copy_max = (
+                        inner_max if copy_max is None else max(copy_max, inner_max)
+                    )
+                packer.apply_pack(graph_data)
+                scaler.apply_scale(graph_data)
                 samples_count += len(graph_data.turns)
                 payload = json.dumps(graph_data.model_dump(mode="json"))
                 yield (
@@ -359,9 +374,8 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                     },
                 )
                 self.format.reset()
-                pass_end = graph_max_timestamp(graph_data)
-                if pass_end is not None:
-                    last_end = max(last_end, pass_end)
+            if copy_min is not None and copy_max is not None:
+                pass_offset = copy_min + self.config.copy_offset * (copy_max - copy_min)
 
     @property
     def is_typed(self) -> bool:
