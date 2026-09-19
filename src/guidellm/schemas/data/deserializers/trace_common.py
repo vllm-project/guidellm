@@ -85,6 +85,15 @@ class TraceDataArgs(DataArgs):
             "salted global token-block table per pass."
         ),
     )
+    copy_offset: float = Field(
+        default=1.0,
+        ge=0,
+        description=(
+            "Where the next copy starts relative to the prior copy's wait-capped "
+            "span. 0 is the prior start, 1 is the prior end, values between "
+            "interpolate, and values above 1 add a gap."
+        ),
+    )
 
     @model_validator(mode="after")
     def merge_kwargs(self):

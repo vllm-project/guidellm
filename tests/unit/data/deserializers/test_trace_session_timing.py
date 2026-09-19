@@ -5,6 +5,7 @@ import pytest
 from guidellm.data.deserializers.trace_session_timing import (
     TraceSessionTiming,
     graph_max_timestamp,
+    graph_min_timestamp,
     shift_graph_timestamps,
 )
 from guidellm.data.schemas.conversation_graph_data import (
@@ -314,3 +315,57 @@ class TestShiftGraphTimestamps:
         """
         graph = _graph_with_timestamps([0.0, None, 40.0])
         assert graph_max_timestamp(graph) == pytest.approx(40.0)
+
+    @pytest.mark.smoke
+    def test_graph_min_timestamp_ignores_missing(self):
+        """Min timestamp skips turns without a relative timestamp.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = _graph_with_timestamps([10.0, None, 40.0])
+        assert graph_min_timestamp(graph) == pytest.approx(10.0)
+
+
+class TestPackAfterCopyPlacement:
+    @pytest.mark.sanity
+    def test_later_copy_fills_open_lanes(self):
+        """min_concurrent_sessions packs after copies are placed.
+
+        ## WRITTEN BY AI ##
+        """
+        first = _graph_with_timestamps([0.0, 10.0])
+        second = _graph_with_timestamps([0.0, 10.0])
+        packer = TraceSessionTiming(min_concurrent_sessions=2)
+        TraceSessionTiming().apply_wait_caps(first)
+        shift_graph_timestamps(first, 0.0)
+        packer.apply_pack(first)
+        TraceSessionTiming().apply_wait_caps(second)
+        shift_graph_timestamps(second, 10.0)
+        packer.apply_pack(second)
+        assert _relative_timestamps(first) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(second) == pytest.approx([0.0, 10.0])
+
+    @pytest.mark.sanity
+    def test_overlaid_later_sessions_fill_lanes(self):
+        """copy_offset=0 overlay is packed so later sessions fill lanes.
+
+        ## WRITTEN BY AI ##
+        """
+        copy0_first = _graph_with_timestamps([0.0, 10.0])
+        copy0_second = _graph_with_timestamps([20.0, 30.0])
+        copy1_first = _graph_with_timestamps([0.0, 10.0])
+        copy1_second = _graph_with_timestamps([20.0, 30.0])
+        packer = TraceSessionTiming(min_concurrent_sessions=2)
+        for session, offset in (
+            (copy0_first, 0.0),
+            (copy0_second, 0.0),
+            (copy1_first, 0.0),
+            (copy1_second, 0.0),
+        ):
+            TraceSessionTiming().apply_wait_caps(session)
+            shift_graph_timestamps(session, offset)
+            packer.apply_pack(session)
+        assert _relative_timestamps(copy0_first) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(copy0_second) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(copy1_first) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(copy1_second) == pytest.approx([10.0, 20.0])

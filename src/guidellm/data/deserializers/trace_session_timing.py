@@ -15,6 +15,7 @@ from guidellm.data.schemas.conversation_graph_data import (
 __all__ = [
     "TraceSessionTiming",
     "graph_max_timestamp",
+    "graph_min_timestamp",
     "shift_graph_timestamps",
 ]
 
@@ -29,8 +30,10 @@ class TraceSessionTiming:
     sessions overlap. Instantaneous sessions are left at their wait-capped
     start. ``time_scale`` multiplies the resulting timestamps.
 
-    Caps are in unscaled trace seconds. Callers should construct a new
-    instance per dataset iteration so packing state does not leak across epochs.
+    Caps are in unscaled trace seconds. Dataset copies apply wait caps per
+    copy, place the copy, then pack with shared state, then scale. Callers
+    should construct a new instance per dataset iteration so packing state
+    does not leak across epochs.
     """
 
     def __init__(
@@ -51,15 +54,45 @@ class TraceSessionTiming:
     def apply(self, graph: ConversationGraphData) -> ConversationGraphData:
         """Rewrite ``relative_timestamp`` values on ``graph`` in place.
 
+        Wait caps, then packing, then ``time_scale``. Dataset copies split
+        these steps so packing can run after copies are placed.
+
         :param graph: Conversation whose turn timestamps may be compressed
         :return: The same graph, after any timestamp rewrites
+        """
+        self.apply_wait_caps(graph)
+        self.apply_pack(graph)
+        self.apply_scale(graph)
+        return graph
+
+    def apply_wait_caps(self, graph: ConversationGraphData) -> ConversationGraphData:
+        """Clamp intra-session and inter-session waits on ``graph``.
+
+        :param graph: Conversation whose turn timestamps may be compressed
+        :return: The same graph, after any wait-cap rewrites
         """
         if self.max_wait is not None:
             self._compress_intra_session_gaps(graph)
         if self.max_session_wait is not None:
             self._compress_inter_session_gap(graph)
+        return graph
+
+    def apply_pack(self, graph: ConversationGraphData) -> ConversationGraphData:
+        """Pack ``graph`` so at least ``min_concurrent_sessions`` overlap.
+
+        :param graph: Conversation whose timestamps may be shifted earlier
+        :return: The same graph, after any packing shift
+        """
         if self.min_concurrent_sessions is not None:
             self._pack_min_concurrent_sessions(graph)
+        return graph
+
+    def apply_scale(self, graph: ConversationGraphData) -> ConversationGraphData:
+        """Multiply remaining timestamps after wait and pack caps.
+
+        :param graph: Conversation whose timestamps may be scaled
+        :return: The same graph, after any time-scale rewrite
+        """
         if self.time_scale != 1.0:
             self._apply_time_scale(graph)
         return graph
@@ -192,7 +225,7 @@ class TraceSessionTiming:
 def shift_graph_timestamps(graph: ConversationGraphData, offset: float) -> None:
     """Add ``offset`` to every turn that has a relative timestamp.
 
-    Used to place sequential dataset copies on the shared timeline.
+    Used to place dataset copies on the shared timeline.
     ``offset == 0`` is a no-op.
 
     :param graph: Conversation whose timestamps may be shifted later
@@ -205,6 +238,22 @@ def shift_graph_timestamps(graph: ConversationGraphData, offset: float) -> None:
         if relative_timestamp is None:
             continue
         _set_turn_timestamp(turn, relative_timestamp + offset)
+
+
+def graph_min_timestamp(graph: ConversationGraphData) -> float | None:
+    """Return the earliest relative timestamp on ``graph``, if any.
+
+    :param graph: Conversation to inspect
+    :return: Minimum relative timestamp, or ``None`` when no turn is timed
+    """
+    times = [
+        timestamp
+        for timestamp in (_turn_timestamp(turn) for turn in graph.turns)
+        if timestamp is not None
+    ]
+    if not times:
+        return None
+    return min(times)
 
 
 def graph_max_timestamp(graph: ConversationGraphData) -> float | None:
