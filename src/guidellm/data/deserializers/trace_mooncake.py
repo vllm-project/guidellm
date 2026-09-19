@@ -66,9 +66,16 @@ class MooncakeTraceFormat(SingleTurnTraceFormat):
     def __init__(self, config: MooncakeTraceFormatArgs, dataset: Dataset) -> None:
         self.config = config
         self.dataset = dataset
+        self._hash_id_table: dict[int, tuple[int, ...]] = {}
+        self._sibling_table: dict[Any, set[tuple[int, ...]]] = {}
 
-        self.hash_id_table: dict[int, tuple[int, ...]] = {}
-        self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
+    def set_copy_index(self, copy_index: int) -> None:  # noqa: ARG002
+        """Replace hash tables so this copy does not reuse earlier tokens.
+
+        :param copy_index: Zero-based sequential pass index
+        """
+        self._hash_id_table = {}
+        self._sibling_table = {}
 
     def required_columns(self) -> Features:
         return Features({self.config.hash_ids_column: List(Value("int32"))})
@@ -95,14 +102,16 @@ class MooncakeTraceFormat(SingleTurnTraceFormat):
         """Before generating the prompt, this first generates a block of tokens for
         each hash ID that has not already been seen."""
         ids = row[self.config.hash_ids_column]
+        hash_id_table = self._hash_id_table
+        sibling_token_blocks = self._sibling_table
         fill_hash_id_table(
             ids,
-            self.hash_id_table,
-            self.sibling_token_blocks,
+            hash_id_table,
+            sibling_token_blocks,
             processor,
             faker,
             lambda _idx, hash_id: _calculate_required_prompt_tokens(
                 self.config, row, hash_id
             ),
         )
-        return create_prompt_from_hash_ids(ids, self.hash_id_table, processor)
+        return create_prompt_from_hash_ids(ids, hash_id_table, processor)

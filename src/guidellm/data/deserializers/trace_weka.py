@@ -135,6 +135,36 @@ def _inner_timestamp_transform(
     return _absolute
 
 
+def _absolute_request_times(
+    requests: list[Any],
+    timestamp_column: str,
+    t_transform: Callable[[float], float],
+) -> list[float]:
+    """Collect API request times on the conversation-absolute timeline.
+
+    :param requests: API rows and nested subagent groups
+    :param timestamp_column: Request timestamp field name
+    :param t_transform: Maps this list's raw ``t`` onto conversation-absolute time
+    :return: Absolute timestamps for API requests in ``requests``
+    """
+    times: list[float] = []
+    for item in requests:
+        if not isinstance(item, dict):
+            continue
+        if _is_subagent_entry(item):
+            inner = [dict(row) for row in (item.get("requests") or [])]
+            if not inner:
+                continue
+            transform = _inner_timestamp_transform(item, inner, timestamp_column)
+            times.extend(_absolute_request_times(inner, timestamp_column, transform))
+            continue
+        raw = item.get(timestamp_column)
+        if raw is None:
+            continue
+        times.append(t_transform(float(raw)))
+    return times
+
+
 def _copy_api_row(row: dict[str, Any], hash_ids_column: str) -> dict[str, Any]:
     copied = dict(row)
     hash_ids = copied.get(hash_ids_column)
@@ -242,8 +272,8 @@ class WEKATraceFormat(TraceFormatBase):
         self.config = config
         self.dataset = dataset
 
-        self.hash_id_table: dict[int, tuple[int, ...]] = {}
-        self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
+        self._hash_id_table: dict[int, tuple[int, ...]] = {}
+        self._sibling_table: dict[Any, set[tuple[int, ...]]] = {}
         # Filled by each ``__iter__`` pass so mixed subagent/API schemas are
         # not forced through a single HuggingFace Arrow table.
         self._conversations: list[tuple[str, list[dict[str, Any]], str | None]] = []
@@ -254,14 +284,50 @@ class WEKATraceFormat(TraceFormatBase):
             raise DataNotSupportedError(
                 "WEKA format: Failed to find requests column or requests was empty"
             )
+        # Running min of API times seen during ``__iter__``. In-order files
+        # (published WEKA, typical captures) establish the shared origin on
+        # the first conversation without a pre-scan.
+        self._trace_origin: float | None = None
+
+    def set_copy_index(self, copy_index: int) -> None:  # noqa: ARG002
+        """Replace hash tables so this copy does not reuse earlier tokens.
+
+        Local-scope conversations still use throwaway tables in
+        ``build_conversation_graph``. The tool-response sampler is reset so
+        each pass draws remainder/tool text from that pass's faker.
+
+        :param copy_index: Zero-based sequential pass index
+        """
+        self._hash_id_table = {}
+        self._sibling_table = {}
+        self._tool_response_sampler = None
 
     def __iter__(self) -> Iterable[Dataset]:
         self._conversations = []
+        self._trace_origin = None
         for row in self.dataset:
             conv_id = str(row[self.config.conversation_id_column])
             # File order is spawn/join topology for every request list,
             # including nested subagent groups. Do not sort by timestamp.
             requests = [dict(item) for item in row[self.requests_col]]
+            times = _absolute_request_times(
+                requests, self.config.timestamp_column, float
+            )
+            if times:
+                min_t = min(times)
+                if self._trace_origin is not None and min_t < self._trace_origin:
+                    logger.warning(
+                        "WEKA conversation '{}' starts earlier than previously "
+                        "seen timestamps; the dataset is not ordered "
+                        "chronologically, so relative timestamps of "
+                        "conversations will be misaligned",
+                        conv_id,
+                    )
+                self._trace_origin = (
+                    min_t
+                    if self._trace_origin is None
+                    else min(self._trace_origin, min_t)
+                )
             raw_scope = row.get("hash_id_scope")
             hash_id_scope = str(raw_scope) if raw_scope is not None else None
             index = len(self._conversations)
@@ -328,14 +394,14 @@ class WEKATraceFormat(TraceFormatBase):
 
         :param hash_id_table: Token blocks keyed by hash ID. Instance storage for
             global scope, or a throwaway dict for local scope. Defaults to the
-            instance table.
+            current copy's table.
         :param sibling_token_blocks: Distinctness set per previous hash ID, matching
-            ``hash_id_table``'s lifetime. Defaults to the instance set.
+            ``hash_id_table``'s lifetime. Defaults to the current copy's set.
         """
         if hash_id_table is None:
-            hash_id_table = self.hash_id_table
+            hash_id_table = self._hash_id_table
         if sibling_token_blocks is None:
-            sibling_token_blocks = self.sibling_token_blocks
+            sibling_token_blocks = self._sibling_table
         ids = row[self.config.hash_ids_column]
         n_in = row[self.config.prompt_tokens_column]
         block_size = self.config.hash_id_block_size
@@ -371,8 +437,8 @@ class WEKATraceFormat(TraceFormatBase):
             hash_id_table: dict[int, tuple[int, ...]] = {}
             sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
         else:
-            hash_id_table = self.hash_id_table
-            sibling_token_blocks = self.sibling_token_blocks
+            hash_id_table = self._hash_id_table
+            sibling_token_blocks = self._sibling_table
         specs, _last = self._emit_chain(
             requests,
             agent_id="default",
@@ -387,7 +453,7 @@ class WEKATraceFormat(TraceFormatBase):
             raise InvalidRowError(
                 "WEKA format: conversation has no API requests to replay"
             )
-        min_t = min(spec.absolute_t for spec in specs)
+        origin = 0.0 if self._trace_origin is None else self._trace_origin
         turns: list[ConversationTurnData] = []
         for spec in specs:
             _validate_api_row(spec.row, self.config, self.validate_row)
@@ -406,7 +472,7 @@ class WEKATraceFormat(TraceFormatBase):
                 "output_tokens_count_column": [
                     spec.row[self.config.output_tokens_column]
                 ],
-                "relative_timestamp_column": [spec.absolute_t - min_t],
+                "relative_timestamp_column": [spec.absolute_t - origin],
             }
             if spec.turn_type is not None:
                 columns["turn_type_column"] = [spec.turn_type]
