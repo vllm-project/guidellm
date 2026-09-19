@@ -135,6 +135,36 @@ def _inner_timestamp_transform(
     return _absolute
 
 
+def _absolute_request_times(
+    requests: list[Any],
+    timestamp_column: str,
+    t_transform: Callable[[float], float],
+) -> list[float]:
+    """Collect API request times on the conversation-absolute timeline.
+
+    :param requests: API rows and nested subagent groups
+    :param timestamp_column: Request timestamp field name
+    :param t_transform: Maps this list's raw ``t`` onto conversation-absolute time
+    :return: Absolute timestamps for API requests in ``requests``
+    """
+    times: list[float] = []
+    for item in requests:
+        if not isinstance(item, dict):
+            continue
+        if _is_subagent_entry(item):
+            inner = [dict(row) for row in (item.get("requests") or [])]
+            if not inner:
+                continue
+            transform = _inner_timestamp_transform(item, inner, timestamp_column)
+            times.extend(_absolute_request_times(inner, timestamp_column, transform))
+            continue
+        raw = item.get(timestamp_column)
+        if raw is None:
+            continue
+        times.append(t_transform(float(raw)))
+    return times
+
+
 def _copy_api_row(row: dict[str, Any], hash_ids_column: str) -> dict[str, Any]:
     copied = dict(row)
     hash_ids = copied.get(hash_ids_column)
@@ -259,6 +289,10 @@ class WEKATraceFormat(TraceFormatBase):
             raise DataNotSupportedError(
                 "WEKA format: Failed to find requests column or requests was empty"
             )
+        # Running min of API times seen during ``__iter__``. In-order files
+        # (published WEKA, typical captures) establish the shared origin on
+        # the first conversation without a pre-scan.
+        self._trace_origin: float | None = None
 
     def set_copy_index(self, copy_index: int) -> None:
         """Select the hash-table slot for a sequential dataset copy.
@@ -276,11 +310,30 @@ class WEKATraceFormat(TraceFormatBase):
 
     def __iter__(self) -> Iterable[Dataset]:
         self._conversations = []
+        self._trace_origin = None
         for row in self.dataset:
             conv_id = str(row[self.config.conversation_id_column])
             # File order is spawn/join topology for every request list,
             # including nested subagent groups. Do not sort by timestamp.
             requests = [dict(item) for item in row[self.requests_col]]
+            times = _absolute_request_times(
+                requests, self.config.timestamp_column, float
+            )
+            if times:
+                min_t = min(times)
+                if self._trace_origin is not None and min_t < self._trace_origin:
+                    logger.warning(
+                        "WEKA conversation '{}' starts earlier than previously "
+                        "seen timestamps; the dataset is not ordered "
+                        "chronologically, so relative timestamps of "
+                        "conversations will be misaligned",
+                        conv_id,
+                    )
+                self._trace_origin = (
+                    min_t
+                    if self._trace_origin is None
+                    else min(self._trace_origin, min_t)
+                )
             raw_scope = row.get("hash_id_scope")
             hash_id_scope = str(raw_scope) if raw_scope is not None else None
             index = len(self._conversations)
@@ -406,7 +459,7 @@ class WEKATraceFormat(TraceFormatBase):
             raise InvalidRowError(
                 "WEKA format: conversation has no API requests to replay"
             )
-        min_t = min(spec.absolute_t for spec in specs)
+        origin = 0.0 if self._trace_origin is None else self._trace_origin
         turns: list[ConversationTurnData] = []
         for spec in specs:
             _validate_api_row(spec.row, self.config, self.validate_row)
@@ -425,7 +478,7 @@ class WEKATraceFormat(TraceFormatBase):
                 "output_tokens_count_column": [
                     spec.row[self.config.output_tokens_column]
                 ],
-                "relative_timestamp_column": [spec.absolute_t - min_t],
+                "relative_timestamp_column": [spec.absolute_t - origin],
             }
             if spec.turn_type is not None:
                 columns["turn_type_column"] = [spec.turn_type]

@@ -91,7 +91,7 @@ The WEKA format expects a column with conversation UUIDs that is not wrapped wit
 
 Similar to Mooncake, WEKA uses prefix-based cache hash IDs. The original [specification](https://github.com/callanjfox/agentic-coding-analysis/blob/master/docs/TRACE_FORMAT.md) for the trace requires hash IDs to be 1 or greater, and for trailing hash IDs to be dropped if there are not enough input tokens to fill the hash ID block size. To accommodate for datasets which may not follow the specification exactly (ex. [semianalysisai/cc-traces-weka-no-subagents-051226](https://huggingface.co/datasets/semianalysisai/cc-traces-weka-no-subagents-051226)), GuideLLM will accept any non-negative integer as a valid hash ID, and will drop partially filled hash IDs if they exist.
 
-GuideLLM will generate prompts starting from the first conversation. When the conversation ends, the next conversation will be used. Relative timestamps are local to the conversation and return to 0.0 after each conversation ends.
+GuideLLM will generate prompts starting from the first conversation. When the conversation ends, the next conversation will be used. Relative timestamps are offsets from the earliest request in the dataset, so later conversations can start later than the first.
 
 Hash IDs follow the per-row `hash_id_scope` field:
 
@@ -100,7 +100,7 @@ Hash IDs follow the per-row `hash_id_scope` field:
 
 Declared `type: "subagent"` entries become isolated child chains. Each child spawns from the preceding parent API turn with a fresh history (`history_context="new"`) and the following parent turn waits for every sibling spawned since that turn (`history_context="last"`). Multiple subagents listed between the same parent turns therefore run in parallel; the parent resumes only after all of them complete. Request-list order is preserved at every nesting level (it is the spawn/join topology) and is not sorted by timestamp.
 
-Inner request timestamps follow the spec when they are relative to spawn, and published Hugging Face corpora when they are already absolute: if the first inner `t` is less than the subagent entry's spawn `t`, inner times are treated as `spawn_t + inner_t`; otherwise they are left as-is. Conversation-relative timestamps are then `absolute_t - min_t` across all API requests in that conversation.
+Inner request timestamps follow the spec when they are relative to spawn, and published Hugging Face corpora when they are already absolute: if the first inner `t` is less than the subagent entry's spawn `t`, inner times are treated as `spawn_t + inner_t`; otherwise they are left as-is. Conversation timestamps are then `absolute_t` minus the earliest API request time in the dataset.
 
 A single agent's consecutive turns are still serialized. If those turns overlap in time (`t[i] + api_time[i] > t[i+1]`, or `t[i+1] <= t[i]` when `api_time` is absent), GuideLLM logs a debug message. Overlap between different subagents is intended parallelism and is not warned.
 
