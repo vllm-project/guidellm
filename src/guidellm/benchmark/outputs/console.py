@@ -29,7 +29,19 @@ __all__ = [
 ]
 
 
-StatTypesAlias = Literal["mean", "median", "p95"]
+StatTypesAlias = Literal["mean", "mean_moe", "median", "p95", "p95_ci"]
+
+_MAX_EXTRA_MARGIN_PRECISION = 3
+"""Extra decimal places a margin may use before it is shown as rounded away."""
+
+UNSUPPORTED_PERCENTILE_MARKER = "*"
+"""Suffix marking a percentile the sample cannot bound at both ends."""
+
+UNSUPPORTED_PERCENTILE_FOOTNOTE = (
+    f"{UNSUPPORTED_PERCENTILE_MARKER} confidence interval unavailable at this "
+    "sample size"
+)
+"""Footnote explaining the marker, printed only when a marked value appears."""
 
 
 @dataclass
@@ -121,12 +133,18 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
 
         for stat_type in types:
             col_key = f"{key}_{stat_type}"
-            col_name, col_value = self._get_stat_type_name_val(stat_type, status_stats)
+            col_name, col_value = self._get_stat_type_name_val(
+                stat_type, status_stats, precision
+            )
             if col_key not in self:
                 self[col_key] = ConsoleTableColumn(
                     group=group,
                     name=name,
                     units=col_name,
+                    # Rendered as text where a value carries a suffix: the
+                    # mean is followed by its margin, and a percentile the
+                    # sample cannot bound is marked.
+                    type_=("text" if stat_type in ("mean_moe", "p95_ci") else "number"),
                     precision=precision,
                 )
             self[col_key].values.append(col_value)
@@ -176,16 +194,79 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
 
     @classmethod
     def _get_stat_type_name_val(
-        cls, stat_type: StatTypesAlias, stats: DistributionSummary | None
-    ) -> tuple[str, float | None]:
+        cls,
+        stat_type: StatTypesAlias,
+        stats: DistributionSummary | None,
+        precision: int = 1,
+    ) -> tuple[str, str | float | None]:
         if stat_type == "mean":
             return "Mean", stats.mean if stats else None
+        elif stat_type == "mean_moe":
+            return "Mean", cls._format_mean_with_margin(stats, precision)
         elif stat_type == "median":
             return "Mdn", stats.median if stats else None
         elif stat_type == "p95":
             return "p95", stats.percentiles.p95 if stats else None
+        elif stat_type == "p95_ci":
+            return "p95", cls._format_percentile_with_marker(stats, precision)
         else:
             raise ValueError(f"Unsupported stat type: {stat_type}")
+
+    @classmethod
+    def _format_mean_with_margin(
+        cls, stats: DistributionSummary | None, precision: int
+    ) -> str:
+        """
+        Render a mean alongside the half-width of its confidence interval.
+
+        :param stats: Distribution summary to render, or None when unavailable
+        :param precision: Decimal precision for both numbers
+        :return: Formatted mean, suffixed with its margin when one was estimated
+        """
+        if stats is None:
+            return safe_format_number(None, precision=precision)
+
+        mean = safe_format_number(stats.mean, precision=precision)
+        if stats.mean_ci is None:
+            return mean
+
+        margin = (stats.mean_ci.upper - stats.mean_ci.lower) / 2.0
+
+        # A margin that rounds away at the column's precision would read as an
+        # exact measurement, so give it enough places to show one digit.
+        margin_precision = precision
+        while (
+            margin > 0.0
+            and margin_precision < precision + _MAX_EXTRA_MARGIN_PRECISION
+            and float(safe_format_number(margin, precision=margin_precision)) == 0.0
+        ):
+            margin_precision += 1
+
+        return f"{mean} ±{safe_format_number(margin, precision=margin_precision)}"
+
+    @classmethod
+    def _format_percentile_with_marker(
+        cls, stats: DistributionSummary | None, precision: int
+    ) -> str:
+        """
+        Render the 95th percentile, marked when the sample cannot bound it.
+
+        The percentile is an order statistic, so a sample too small to place
+        observations either side of it reports the value without an interval.
+        Marking that case keeps the console from presenting the two alike.
+
+        :param stats: Distribution summary to render, or None when unavailable
+        :param precision: Decimal precision for the value
+        :return: Formatted percentile, suffixed when it has no interval
+        """
+        if stats is None:
+            return safe_format_number(None, precision=precision)
+
+        value = safe_format_number(stats.percentiles.p95, precision=precision)
+        if stats.percentile_cis is None or stats.percentile_cis.p95 is not None:
+            return value
+
+        return f"{value}{UNSUPPORTED_PERCENTILE_MARKER}"
 
 
 @GenerativeBenchmarkerOutput.register("console")
@@ -459,30 +540,43 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 name="Strategy",
                 type_="text",
             )
+            # ITL and TPOT are reported without a margin because their mean is
+            # a ratio over output tokens rather than a mean over requests; the
+            # column shows the value alone for them.
+            latency_stats: tuple[StatTypesAlias, ...] = (
+                "mean_moe",
+                "median",
+                "p95_ci",
+            )
             columns.add_stats(
                 benchmark.metrics.request_latency,
                 group="Request Latency",
                 name="Sec",
+                types=latency_stats,
             )
             columns.add_stats(
                 benchmark.metrics.time_to_first_token_ms,
                 group="TTFT",
                 name="ms",
+                types=latency_stats,
             )
             columns.add_stats(
                 benchmark.metrics.time_to_first_output_token_ms,
                 group="TTFOT",
                 name="ms",
+                types=latency_stats,
             )
             columns.add_stats(
                 benchmark.metrics.inter_token_latency_ms,
                 group="ITL",
                 name="ms",
+                types=latency_stats,
             )
             columns.add_stats(
                 benchmark.metrics.time_per_output_token_ms,
                 group="TPOT",
                 name="ms",
+                types=latency_stats,
             )
         headers, values = columns.get_table_data()
         self.console.print("\n")
@@ -491,6 +585,12 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
             values,
             title="Request Latency Statistics (Completed Requests)",
         )
+        if any(
+            isinstance(value, str) and value.endswith(UNSUPPORTED_PERCENTILE_MARKER)
+            for column in values
+            for value in column
+        ):
+            self.console.print(UNSUPPORTED_PERCENTILE_FOOTNOTE)
 
     def print_server_throughput_table(self, report: GenerativeBenchmarksReport):
         """

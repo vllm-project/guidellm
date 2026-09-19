@@ -1,4 +1,5 @@
 import csv
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -6,7 +7,12 @@ import pytest
 
 from guidellm.benchmark.outputs.csv import GenerativeBenchmarkerCSV
 from guidellm.scheduler import ThroughputStrategy
-from guidellm.schemas import StatusDistributionSummary
+from guidellm.schemas import (
+    DistributionSummary,
+    SampleUncertainty,
+    StatusDistributionSummary,
+)
+from guidellm.schemas.base.statistics import PERCENTILE_PROBABILITIES
 from tests.unit.benchmark.html_report_fixtures import (
     make_benchmark,
     metric_summary,
@@ -513,3 +519,163 @@ class TestServerThroughputGoodputColumns:
         assert "Successful Goodput/Sec" in flat
         assert values[flat.index("Successful Goodput/Sec")] == ""
         assert values[flat.index("SLO Attainment")] == ""
+
+
+class TestDistributionIntervalColumns:
+    """
+    Tests for the confidence interval columns in the CSV output.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @staticmethod
+    def _emit(dist):
+        """Run one distribution through the CSV column builder.
+
+        ## WRITTEN BY AI ##
+        """
+        writer = GenerativeBenchmarkerCSV.__new__(GenerativeBenchmarkerCSV)
+        headers: list[list[str]] = []
+        values: list[str | int | float] = []
+        writer._add_distribution_stats(
+            headers, values, dist, "Group", "ms", "successful"
+        )
+
+        return dict(zip([header[-1] for header in headers], values, strict=True))
+
+    @pytest.mark.smoke
+    def test_mean_ci_column_holds_the_interval(self):
+        """
+        A metric with an interval emits its bounds in a Mean CI column.
+
+        ## WRITTEN BY AI ##
+        """
+        dist = DistributionSummary.from_values(
+            [float(index) for index in range(200)],
+            uncertainty=SampleUncertainty(confidence=0.95),
+        )
+
+        emitted = self._emit(dist)
+
+        assert "Mean CI" in emitted
+        assert emitted["Mean CI"] == f"[{dist.mean_ci.lower}, {dist.mean_ci.upper}]"
+
+    @pytest.mark.smoke
+    def test_percentile_cis_column_is_keyed_by_percentile(self):
+        """
+        Percentile intervals are emitted as one self-describing JSON object.
+
+        Keying by percentile means a reader does not have to know the ordering
+        the Percentiles column uses, and a percentile without an interval is
+        explicitly null rather than absent.
+
+        ## WRITTEN BY AI ##
+        """
+        dist = DistributionSummary.from_values(
+            [float(index) for index in range(200)],
+            uncertainty=SampleUncertainty(confidence=0.95),
+        )
+
+        emitted = json.loads(self._emit(dist)["Percentile CIs"])
+
+        assert set(emitted) == set(PERCENTILE_PROBABILITIES)
+        assert emitted["p50"] == [
+            dist.percentile_cis.p50.lower,
+            dist.percentile_cis.p50.upper,
+        ]
+        # 200 observations cannot bound p99, which needs 368.
+        assert emitted["p99"] is None
+
+    @pytest.mark.sanity
+    def test_percentile_cis_column_is_empty_without_intervals(self):
+        """
+        A metric reported without intervals leaves the column blank.
+
+        ## WRITTEN BY AI ##
+        """
+        dist = DistributionSummary.from_values([float(index) for index in range(200)])
+
+        assert self._emit(dist)["Percentile CIs"] == ""
+
+    @pytest.mark.sanity
+    def test_mean_ci_column_is_empty_without_an_interval(self):
+        """
+        A metric reported without an interval leaves the column blank.
+
+        An empty cell reads as unavailable in a spreadsheet, where a zero or a
+        repeated mean would read as a measurement.
+
+        ## WRITTEN BY AI ##
+        """
+        dist = DistributionSummary.from_values([float(index) for index in range(200)])
+
+        emitted = self._emit(dist)
+
+        assert emitted["Mean CI"] == ""
+
+    @pytest.mark.regression
+    def test_interval_columns_move_to_the_end_of_the_row(self):
+        """
+        Interval columns are reordered after every pre-existing column.
+
+        Readers that index the CSV by column number would otherwise shift by
+        one for every metric that gained an interval.
+
+        ## WRITTEN BY AI ##
+        """
+        headers = [
+            ["Benchmark", "Type", ""],
+            [GenerativeBenchmarkerCSV.INTERVAL_GROUP, "Confidence Level", ""],
+            ["Request Latency", "Successful Sec", "Mean"],
+            [
+                "Request Latency",
+                "Successful Sec",
+                GenerativeBenchmarkerCSV.INTERVAL_STATS[0],
+            ],
+            ["Request Latency", "Successful Sec", "Median"],
+            ["TTFT", "Successful ms", GenerativeBenchmarkerCSV.INTERVAL_STATS[0]],
+            ["TTFT", "Successful ms", "Mean"],
+        ]
+        values = ["generative", 0.95, 1.0, "[0.9, 1.1]", 1.0, "[80.0, 88.0]", 84.0]
+
+        moved_headers, moved_values = GenerativeBenchmarkerCSV._move_intervals_last(
+            headers, values
+        )
+
+        assert [header[-1] for header in moved_headers] == [
+            "",
+            "Mean",
+            "Median",
+            "Mean",
+            "",
+            GenerativeBenchmarkerCSV.INTERVAL_STATS[0],
+            GenerativeBenchmarkerCSV.INTERVAL_STATS[0],
+        ]
+        assert moved_values == [
+            "generative",
+            1.0,
+            1.0,
+            84.0,
+            0.95,
+            "[0.9, 1.1]",
+            "[80.0, 88.0]",
+        ]
+
+    @pytest.mark.regression
+    def test_existing_columns_are_unchanged(self):
+        """
+        The pre-existing statistics columns still carry the same values.
+
+        ## WRITTEN BY AI ##
+        """
+        dist = DistributionSummary.from_values(
+            [float(index) for index in range(200)],
+            uncertainty=SampleUncertainty(confidence=0.95),
+        )
+
+        emitted = self._emit(dist)
+
+        assert emitted["Mean"] == dist.mean
+        assert emitted["Median"] == dist.median
+        assert emitted["Std Dev"] == dist.std_dev
+        assert emitted["Percentiles"].startswith("[")
