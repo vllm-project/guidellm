@@ -105,6 +105,13 @@ plugins:
 
 extra:
   generator: false
+  alternate:
+    - name: English
+      link: /guidellm/
+      lang: en
+    - name: 简体中文
+      link: /guidellm/zh/
+      lang: zh
   version:
     provider: mike
     alias: true
@@ -116,5 +123,7 @@ extra_css:
   - stylesheets/style.css
 
 extra_javascript:
+  - scripts/translation-map.js
+  - scripts/language-switcher.js
   - scripts/mathjax.js
   - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
