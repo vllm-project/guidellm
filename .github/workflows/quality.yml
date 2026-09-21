@@ -28,6 +28,26 @@ jobs:
           python-version: ${{ inputs.python }}
           tox-env: type-check
 
+  docs-checks:
+    if: inputs.python == '3.10'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Setup Python with UV
+        uses: ./.github/actions/python-uv
+        with:
+          python-version: ${{ inputs.python }}
+      - name: Install documentation dependencies
+        run: |
+          uv sync --frozen
+          uv pip install "mkdocs<2.0.0" mkdocs-material mike \
+            mkdocs-gen-files mkdocs-nav-weight mkdocs-section-index \
+            mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
+      - name: Build documentation
+        run: |
+          uv run --no-sync python docs/scripts/check_translations.py
+          uv run --no-sync mkdocs build --clean
+
   precommit-checks:
     runs-on: ubuntu-latest
     steps:

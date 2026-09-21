@@ -48,6 +48,7 @@ jobs:
             mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
       - name: Deploy docs
         run: |
+          uv run --no-sync python docs/scripts/check_translations.py
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           uv run --no-sync mike deploy main --push --update-aliases
