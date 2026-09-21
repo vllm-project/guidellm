@@ -99,6 +99,7 @@ jobs:
             mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
       - name: Deploy docs
         run: |
+          uv run --no-sync python docs/scripts/check_translations.py
           VERSION="${{ needs.extract-version.outputs.version }}"
           VERSION="${VERSION#v}"
           git config user.name "github-actions[bot]"

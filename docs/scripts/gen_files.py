@@ -4,10 +4,16 @@ for the documentation build and site.
 Uses mkdocs-gen-files to handle the file generation and compatibility with MkDocs.
 """
 
+import json
+import runpy
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import mkdocs_gen_files
+
+TranslationRoutes = dict[str, dict[str, str | bool]]
 
 
 @dataclass
@@ -78,4 +84,27 @@ def migrate_developer_docs():
     process_files(files, project_root)
 
 
+def generate_translation_map():
+    """Expose translated routes and source currency to the documentation UI."""
+    project_root = find_project_root()
+    translation_module = runpy.run_path(
+        str(project_root / "docs/scripts/check_translations.py")
+    )
+    route_builder = cast(
+        "Callable[[Path], TranslationRoutes]",
+        translation_module["translation_routes"],
+    )
+    routes = route_builder(project_root)
+    content = (
+        "// Generated during the MkDocs build. Do not edit.\n"
+        "window.GUIDELLM_TRANSLATION_ROUTES = Object.freeze("
+        f"{json.dumps(routes, ensure_ascii=False, sort_keys=True)}"
+        ");\n"
+    )
+
+    with mkdocs_gen_files.open("scripts/translation-map.js", "w") as file_handle:
+        file_handle.write(content)
+
+
 migrate_developer_docs()
+generate_translation_map()
