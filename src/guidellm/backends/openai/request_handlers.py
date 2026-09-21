@@ -394,6 +394,7 @@ def _compile_streaming_response(
         tuple[UsageMetrics, UsageMetrics],
     ],
     streaming_reasoning_texts: list[str] | None = None,
+    response_metrics: dict[str, Any] | None = None,
 ) -> GenerationResponse:
     """Compile accumulated streaming state into a final response.
 
@@ -409,6 +410,7 @@ def _compile_streaming_response(
     :param streaming_response_id: Server-assigned response ID, if any.
     :param extract_metrics: Handler-specific metric extraction callable.
     :param streaming_reasoning_texts: Reasoning text chunks, if any.
+    :param response_metrics: Per-request metrics the backend reported, if any.
     :return: Standardized GenerationResponse with extracted metrics.
     """
     text = "".join(streaming_texts) or None
@@ -434,6 +436,7 @@ def _compile_streaming_response(
         tool_calls=tool_calls,
         input_metrics=input_metrics,
         output_metrics=output_metrics,
+        response_metrics=response_metrics,
     )
 
 
@@ -496,6 +499,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         self.streaming_texts: list[str] = []
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
         self.streaming_response_id: str | None = None
+        self.response_metrics: dict[str, Any] | None = None
 
     @property
     def last_iteration_had_content(self) -> bool:
@@ -597,6 +601,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
+            response_metrics=self.response_metrics,
         )
 
     def add_streaming_line(self, line: str) -> int | None:
@@ -647,6 +652,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
+            response_metrics=self.response_metrics,
         )
 
     def post_validation(self, response: GenerationResponse) -> None:
@@ -677,9 +683,15 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         """
         Extract choices and usage data from the API response.
 
+        A backend may report its own per-request metrics beside `usage`; vLLM does,
+        under `metrics`. Those are recorded here rather than returned, so every handler
+        picks them up without widening this signature.
+
         :param response: Complete API response containing choices and usage data
         :return: Tuple of choices list and usage dictionary
         """
+        if isinstance(metrics := response.get("metrics"), dict):
+            self.response_metrics = metrics
         return response.get("choices", []), response.get("usage", {})
 
     def extract_metrics(
@@ -1167,6 +1179,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             tool_calls=tool_calls,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
+            response_metrics=self.response_metrics,
         )
 
     def add_streaming_line(self, line: str) -> int | None:
@@ -1268,6 +1281,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             self.streaming_response_id,
             self.extract_metrics,
             streaming_reasoning_texts=self.streaming_reasoning_texts,
+            response_metrics=self.response_metrics,
         )
 
 
@@ -1378,6 +1392,7 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
             text=text,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
+            response_metrics=self.response_metrics,
         )
 
     def post_validation(self, response: GenerationResponse) -> None:

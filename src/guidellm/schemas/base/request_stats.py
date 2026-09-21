@@ -10,7 +10,7 @@ analysis of time-to-first-token, inter-token latency, and token generation rates
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, computed_field
 
@@ -65,6 +65,14 @@ class GenerativeRequestStats(StandardBaseDict):
     info: RequestInfo = Field(description="Request metadata and timing information")
     input_metrics: UsageMetrics = Field(
         description="Token usage statistics for the input prompt"
+    )
+    response_metrics: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Per-request metrics the backend reported alongside usage, passed through "
+            "as received. vLLM populates this with its `metrics` object, which carries "
+            "server-side timings and speculative-decoding acceptance."
+        ),
     )
     output_metrics: UsageMetrics = Field(
         description="Token usage statistics for the generated output"
