@@ -15,6 +15,17 @@ queue_rules:
       body: pr-body
 
 pull_request_rules:
+  - name: comment-waiting-for-second-approval
+    description: Comment on PR when waiting for a second maintainer approval
+    conditions:
+      - "#approved-reviews-by = 1"
+      - -closed
+      - -draft
+    actions:
+      comment:
+        message: |
+          Received a single approval. Will automatically queue for merge once two maintainers approve, all change requests are resolved, and DCO passes.
+
   - name: comment-dco-failure
     description: Comment on PR when DCO check fails
     conditions:
