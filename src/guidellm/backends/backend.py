@@ -88,6 +88,14 @@ class Backend(
         self.kind = args.kind
         self._args = args
 
+    def set_worker_index(self, worker_index: int) -> None:
+        """
+        Set this backend copy's worker index before process startup.
+
+        :param worker_index: Zero-based index assigned to the worker process
+        """
+        del worker_index
+
     @property
     def info(self) -> dict[str, Any]:
         """

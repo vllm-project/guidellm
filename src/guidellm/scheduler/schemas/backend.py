@@ -62,6 +62,13 @@ class BackendInterface(Protocol, Generic[RequestT, ResponseT]):
         :return: Backend metadata including model initialization and configuration
         """
 
+    def set_worker_index(self, worker_index: int) -> None:
+        """
+        Set this backend copy's worker index before process startup.
+
+        :param worker_index: Zero-based index assigned to the worker process
+        """
+
     async def process_startup(self) -> None:
         """
         Perform backend initialization and startup procedures.

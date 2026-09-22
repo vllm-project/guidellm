@@ -4,9 +4,16 @@ OpenAI HTTP backend Args schema.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
-from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 from guidellm.schemas import GenerationRequestArguments
 from guidellm.schemas.backends.backend import BackendArgs
@@ -61,6 +68,22 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         default=None,
         description="HTTP Bearer token API key for authentication to server",
         examples=["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"],
+    )
+    api_keys: list[SecretStr] | None = Field(
+        default=None,
+        description=(
+            "HTTP Bearer token API keys for round-robin authentication. "
+            "Mutually exclusive with api_key and api_key_file."
+        ),
+        examples=[["key-1", "key-2"]],
+    )
+    api_key_file: Path | None = Field(
+        default=None,
+        description=(
+            "Path to a UTF-8 file containing one HTTP Bearer token API key per "
+            "line. Mutually exclusive with api_key and api_keys."
+        ),
+        examples=["./api-keys.txt"],
     )
     api_routes: dict[str, str] = Field(
         default_factory=dict,
@@ -148,6 +171,13 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         ),
     )
 
+    @property
+    def resolved_api_keys(self) -> tuple[SecretStr, ...]:
+        """Return inline or legacy API keys without serializing their values."""
+        if self.api_keys is not None:
+            return tuple(self.api_keys)
+        return (self.api_key,) if self.api_key is not None else ()
+
     @field_validator("multiturn_reasoning", mode="after")
     @classmethod
     def validate_multiturn_reasoning(cls, value: bool | str) -> bool | str:
@@ -173,11 +203,35 @@ class OpenAIHTTPBackendArgs(BackendArgs):
 
     @model_validator(mode="after")
     def validate_server_history(self):
-        """Validate that server_history is only True with supported endpoints."""
+        """Validate that server history is used only with the Responses API."""
         if self.server_history and self.request_format != "/v1/responses":
             raise ValueError(
                 "server_history=True is only supported with the /v1/responses "
                 "request format. Current request_format: "
                 f"'{self.request_format}'"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_api_credentials(self):
+        """Validate that exactly one valid API key source is configured."""
+        api_key_sources = sum(
+            source is not None
+            for source in (self.api_key, self.api_keys, self.api_key_file)
+        )
+        if api_key_sources > 1:
+            raise ValueError(
+                "Only one of api_key, api_keys, or api_key_file may be specified."
+            )
+
+        if self.api_keys is not None:
+            normalized_keys = tuple(
+                SecretStr(key.get_secret_value().strip()) for key in self.api_keys
+            )
+            if not normalized_keys or any(
+                not key.get_secret_value() for key in normalized_keys
+            ):
+                raise ValueError("api_keys must contain at least one non-empty key.")
+            self.api_keys = list(normalized_keys)
+
         return self

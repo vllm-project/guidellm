@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from click.testing import CliRunner
 
+import guidellm.entrypoints as entry
 from guidellm.__main__ import cli
 from guidellm.benchmark.progress import (
     GenerativeConsoleBenchmarkerProgress,
@@ -180,6 +181,8 @@ def test_run_rejects_duplicate_backend_flags():
             ),
             "--data",
             "kind=synthetic_text,prompt_tokens=16,output_tokens=8",
+            "--profile",
+            "kind=constant,rate=1",
             "--constraint",
             "kind=max_requests,count=1",
         ],
@@ -188,6 +191,86 @@ def test_run_rejects_duplicate_backend_flags():
     assert result.exit_code != 0
     assert "cannot be specified multiple times" in result.output
     assert "--backend" in result.output
+
+
+@pytest.mark.sanity
+def test_run_accepts_inline_api_keys(monkeypatch):
+    """
+    JSON backend configuration passes inline API keys into the backend schema.
+
+    ## WRITTEN BY AI ##
+    """
+    captured = {}
+
+    async def fake_benchmark_generative_text(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(
+        entry, "benchmark_generative_text", fake_benchmark_generative_text
+    )
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            (
+                '{"kind":"openai_http","target":"http://127.0.0.1:8000",'
+                '"api_keys":["key-1","key-2"]}'
+            ),
+            "--data",
+            "kind=synthetic_text,prompt_tokens=16,output_tokens=8",
+            "--profile",
+            "kind=constant,rate=1",
+            "--constraint",
+            "kind=max_requests,count=1",
+            "--disable-console",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    backend = captured["args"].spec.backend
+    assert [key.get_secret_value() for key in backend.resolved_api_keys] == [
+        "key-1",
+        "key-2",
+    ]
+
+
+@pytest.mark.sanity
+def test_run_accepts_api_key_file(monkeypatch, tmp_path):
+    """
+    Compact backend configuration passes an API key file into the backend schema.
+
+    ## WRITTEN BY AI ##
+    """
+    key_file = tmp_path / "api-keys.txt"
+    key_file.write_text("key-1\nkey-2\n", encoding="utf-8")
+    captured = {}
+
+    async def fake_benchmark_generative_text(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(
+        entry, "benchmark_generative_text", fake_benchmark_generative_text
+    )
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            (f"kind=openai_http,target=http://127.0.0.1:8000,api_key_file={key_file}"),
+            "--data",
+            "kind=synthetic_text,prompt_tokens=16,output_tokens=8",
+            "--profile",
+            "kind=constant,rate=1",
+            "--constraint",
+            "kind=max_requests,count=1",
+            "--disable-console",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    backend = captured["args"].spec.backend
+    assert backend.api_key_file == key_file
 
 
 @pytest.mark.regression
@@ -220,6 +303,7 @@ def test_console_progress_selection(monkeypatch, options):
             *options,
         ],
     )
+
     assert result.exit_code == 0, result.output
     benchmark.assert_awaited_once()
     display = benchmark.call_args.kwargs["progress"]
