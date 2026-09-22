@@ -329,6 +329,8 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                 graph_data = self.format.build_conversation_graph(
                     conv, self.processor, faker_copy
                 )
+                if not graph_data.turns:
+                    continue
                 wait_timing.apply_wait_caps(graph_data)
                 shift_graph_timestamps(graph_data, pass_offset)
                 copy_min = min(copy_min, graph_min_timestamp(graph_data))
@@ -346,7 +348,10 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                     },
                 )
                 self.format.reset()
-            pass_offset = copy_min + self.config.copy_offset * (copy_max - copy_min)
+            if math.isfinite(copy_min):
+                pass_offset = copy_min + self.config.copy_offset * (
+                    copy_max - copy_min
+                )
 
     @property
     def is_typed(self) -> bool:
