@@ -36,6 +36,24 @@ GuideLLM supports running inference in the same process using the **vLLM Python 
 
 The **vLLM Python batch backend** (`vllm_python_batch`) uses vLLM's synchronous `LLM` engine for batch-oriented inference. Requests are queued and dispatched in configurable batches, removing per-request scheduling overhead. This is ideal for throughput benchmarking. For setup and examples, see [vLLM Python batch backend](vllm-python-batch-backend.md).
 
+### OrcaRouter
+
+[OrcaRouter](https://www.orcarouter.ai) is an OpenAI-compatible AI gateway that exposes a provider/model namespace across many models. GuideLLM supports it as a first-class backend (`orcarouter_http`), so you can benchmark through OrcaRouter without treating it as an anonymous custom base URL. It defaults to the `https://api.orcarouter.ai` endpoint and the `orcarouter/auto` model, which routes each request to the best provider for the workload:
+
+```bash
+guidellm run \
+  --backend kind=orcarouter_http,api_key=sk-orca-...,model=orcarouter/auto \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+```
+
+Or with JSON:
+
+```bash
+--backend '{"kind":"orcarouter_http","api_key":"sk-orca-...","model":"orcarouter/auto"}'
+```
+
+The backend accepts the same parameters as `openai_http` (`request_format`, `stream`, `timeout`, `extras`, and more).
+
 ## Examples for Spinning Up Compatible Servers
 
 ### 1. vLLM
