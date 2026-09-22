@@ -2,32 +2,66 @@
 
 GuideLLM is designed to evaluate and optimize large language model (LLM) deployments by simulating real-world inference workloads. The architecture is modular, enabling flexibility and scalability. Below is an overview of the core components and their interactions.
 
-```
-+------------------+       +------------------+       +------------------+
-|   DatasetCreator | --->  |   RequestLoader  | --->  |     Scheduler    |
-+------------------+       +------------------+       +------------------+
-                                                    /         |          \
-                                                   /          |           \
-                                                  /           |            \
-                                                 v            v             v
-                                       +------------------+ +------------------+
-                                       | RequestsWorker   | | RequestsWorker   |
-                                       +------------------+ +------------------+
-                                                 |                     |
-                                                 v                     v
-                                       +------------------+ +------------------+
-                                       |     Backend      | |     Backend      |
-                                       +------------------+ +------------------+
-                                                 |                     |
-                                                 v                     v
-                                       +---------------------------------------+
-                                       |         BenchmarkAggregator           |
-                                       +---------------------------------------+
-                                                 |
-                                                 v
-                                       +------------------+
-                                       |    Benchmarker   |
-                                       +------------------+
+```mermaid
+flowchart BT
+  subgraph benchmark [benchmark]
+    direction TB
+    BM[Benchmarker]
+    PF[profiles]
+    AC[accumulator]
+    OT[outputs]
+    PF -->|"strategy + constraints"| BM
+    BM -->|"compiled benchmark"| PF
+    BM -->|"request updates"| AC
+    AC -->|"report"| OT
+  end
+
+  subgraph pipeline [" "]
+    direction LR
+    EXT_DS(["Datasets (external)"])
+    subgraph data [data]
+      direction TB
+      LD[loaders]
+      subgraph datagen [" "]
+        direction TB
+        DS[deserializers]
+        CM[column-mapper]
+        PP[preprocessors]
+        FZ[finalizers]
+        DS --> CM --> PP --> |"N"| PP --> FZ
+      end
+      datagen --> LD
+    end
+
+    subgraph scheduler [scheduler]
+      direction TB
+      SC[Scheduler]
+      WG[worker_group]
+      CT[constraints]
+      ST[strategies]
+      WK[worker]
+      SC <--> |"1..N"| WG
+      WG -.->|"manages"| ST
+      WG -.->|"manages"| CT
+      WG <-->|"1..N"| WK
+      ST --> WK
+      CT --> WK
+    end
+
+    subgraph backends [backends]
+      BE[Backend]
+    end
+    EXT_LLM(["LLM (external)"])
+
+    EXT_DS --> data --> |"iter(conversations)"| scheduler --> |"request data"| backends <--> |"request\nresponse"| EXT_LLM
+    backends --> |"request updates"| scheduler
+  end
+
+  benchmark -.->|"manages"| pipeline
+  pipeline --> |"request updates"| benchmark
+
+classDef configurable fill:#D6E6FD,stroke:#498CF5,stroke-width:2px,color:#1a1a1a
+class LD,DS,CM,PP,FZ,PF,CT,OT,BE configurable
 ```
 
 ## Core Components
