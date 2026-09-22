@@ -36,7 +36,7 @@ CURRENT_BODY="$(cat | tr -d '\r')"
 
 MARKER_LINE="$(printf '%s\n' "$CURRENT_BODY" | grep -nF "$MARKER" | head -1 | cut -d: -f1)" || true
 if [ -n "$MARKER_LINE" ]; then
-    USER_CONTENT="$(printf '%s\n' "$CURRENT_BODY" | head -n "$((MARKER_LINE - 1))")"
+    USER_CONTENT="$(sed -n "1,$((MARKER_LINE - 1))p" <<< "$CURRENT_BODY")"
     USER_CONTENT="$(printf '%s' "$USER_CONTENT" | sed -e :a -e '/^[[:space:]]*$/{ $d; N; ba; }')"
 else
     USER_CONTENT="$CURRENT_BODY"
