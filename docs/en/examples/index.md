@@ -19,7 +19,7 @@ Currently, we do not have many specific examples available, but we welcome contr
 To contribute an example:
 
 1. Fork the [GuideLLM repository](https://github.com/vllm-project/guidellm)
-2. Create your example in the `docs/examples/` directory following our [contribution guidelines](https://github.com/vllm-project/guidellm/blob/main/CONTRIBUTING.md)
+2. Create your example in the `docs/en/examples/` directory following our [contribution guidelines](https://github.com/vllm-project/guidellm/blob/main/CONTRIBUTING.md)
 3. Submit a pull request with your contribution
 
 Your examples will help others leverage GuideLLM more effectively and contribute to the growing knowledge base around LLM deployment optimization.

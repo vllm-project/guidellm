@@ -144,13 +144,13 @@ You will see progress updates and per-benchmark summaries during the run, as giv
 
 After the benchmark completes, GuideLLM writes `benchmarks.json` and `benchmarks.csv` by default. The files are saved in the directory configured by `GUIDELLM__DEFAULT_RESULTS_DIR`, or in the current directory when the variable is not set. GuideLLM also prints a summary and the generated file locations to the console.
 
-Specifying `--output` replaces the default JSON and CSV outputs. See [output configuration](docs/guides/outputs.md#cli-output-configuration) for examples of selecting formats, including generating HTML alongside JSON and CSV.
+Specifying `--output` replaces the default JSON and CSV outputs. See [output configuration](docs/en/guides/outputs.md#cli-output-configuration) for examples of selecting formats, including generating HTML alongside JSON and CSV.
 
 ## Output Files and Reports
 
-Use JSON or YAML for detailed analysis, CSV for spreadsheet comparisons, HTML for self-contained visual reports, and PLOT for static performance graphs. See [supported file formats](docs/guides/outputs.md#supported-file-formats) for their contents and default filenames, and [configuring file outputs](docs/guides/outputs.md#configuring-file-outputs) to choose output paths.
+Use JSON or YAML for detailed analysis, CSV for spreadsheet comparisons, HTML for self-contained visual reports, and PLOT for static performance graphs. See [supported file formats](docs/en/guides/outputs.md#supported-file-formats) for their contents and default filenames, and [configuring file outputs](docs/en/guides/outputs.md#configuring-file-outputs) to choose output paths.
 
-The console provides a summary of each benchmark. Its tables can be copied into spreadsheet software using `|` as the delimiter. See [console output](docs/guides/outputs.md#console-output) for progress and display controls.
+The console provides a summary of each benchmark. Its tables can be copied into spreadsheet software using `|` as the delimiter. See [console output](docs/en/guides/outputs.md#console-output) for progress and display controls.
 
 <img alt="Sample GuideLLM benchmark output" src="https://raw.githubusercontent.com/vllm-project/guidellm/main/docs/assets/sample-output.png" />
 
@@ -198,7 +198,7 @@ guidellm run \
 
 ### Synthetic Visual Data
 
-GuideLLM can synthesize images and short videos on the fly so you can benchmark Vision-Language Model (VLM) serving configurations without bringing your own dataset. Two `--data` kinds — `synthetic_image` and `synthetic_video` — compose with `synthetic_text` for multimodal prompts. See [Synthetic Visual Data](docs/guides/multimodal/synthetic_vision.md) for example commands and the full list of configuration options.
+GuideLLM can synthesize images and short videos on the fly so you can benchmark Vision-Language Model (VLM) serving configurations without bringing your own dataset. Two `--data` kinds — `synthetic_image` and `synthetic_video` — compose with `synthetic_text` for multimodal prompts. See [Synthetic Visual Data](docs/en/guides/multimodal/synthetic_vision.md) for example commands and the full list of configuration options.
 
 ### Request Types and API Targets
 
@@ -258,12 +258,12 @@ The complete documentation provides the details that do not fit in this README. 
 
 Notable docs are given below:
 
-- [**Installation Guide**](https://github.com/vllm-project/guidellm/blob/main/docs/getting-started/install.md) - This guide provides step-by-step instructions for installing GuideLLM, including prerequisites and setup tips.
-- [**Backends Guide**](https://github.com/vllm-project/guidellm/blob/main/docs/guides/backends.md) - A comprehensive overview of supported backends and how to set them up for use with GuideLLM.
-- [**Data/Datasets Guide**](https://github.com/vllm-project/guidellm/blob/main/docs/guides/datasets.md) - Information on supported datasets, including how to use them for benchmarking.
-- [**Metrics Guide**](https://github.com/vllm-project/guidellm/blob/main/docs/guides/metrics.md) - Detailed explanations of the metrics used in GuideLLM, including definitions and how to interpret them.
-- [**Outputs Guide**](https://github.com/vllm-project/guidellm/blob/main/docs/guides/outputs.md) - Information on the different output formats supported by GuideLLM and how to use them.
-- [**Architecture Overview**](https://github.com/vllm-project/guidellm/blob/main/docs/guides/architecture.md) - A detailed look at GuideLLM's design, components, and how they interact.
+- [**Installation Guide**](https://github.com/vllm-project/guidellm/blob/main/docs/en/getting-started/install.md) - This guide provides step-by-step instructions for installing GuideLLM, including prerequisites and setup tips.
+- [**Backends Guide**](https://github.com/vllm-project/guidellm/blob/main/docs/en/guides/backends.md) - A comprehensive overview of supported backends and how to set them up for use with GuideLLM.
+- [**Data/Datasets Guide**](https://github.com/vllm-project/guidellm/blob/main/docs/en/guides/datasets.md) - Information on supported datasets, including how to use them for benchmarking.
+- [**Metrics Guide**](https://github.com/vllm-project/guidellm/blob/main/docs/en/guides/metrics.md) - Detailed explanations of the metrics used in GuideLLM, including definitions and how to interpret them.
+- [**Outputs Guide**](https://github.com/vllm-project/guidellm/blob/main/docs/en/guides/outputs.md) - Information on the different output formats supported by GuideLLM and how to use them.
+- [**Architecture Overview**](https://github.com/vllm-project/guidellm/blob/main/docs/en/guides/architecture.md) - A detailed look at GuideLLM's design, components, and how they interact.
 
 ## License
 
