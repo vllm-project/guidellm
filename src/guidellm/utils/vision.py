@@ -47,6 +47,7 @@ def encode_image(
     - PIL.Image.Image: Pillow image
     - datasets.Image: HuggingFace datasets Image object
 
+    width and height: resize dimensions, including downloaded URL images
     max_size: maximum size of the longest edge of the image
     max_width: maximum width of the image
     max_height: maximum height of the image
@@ -66,6 +67,8 @@ def encode_image(
             response.raise_for_status()
             return encode_image(
                 image=response.content,
+                width=width,
+                height=height,
                 max_size=max_size,
                 max_width=max_width,
                 max_height=max_height,
