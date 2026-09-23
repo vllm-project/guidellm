@@ -5550,6 +5550,28 @@ class TestChatCompletionsToolChoiceOverride:
         assert result.body["tool_choice"] == "required"
 
     @pytest.mark.sanity
+    def test_tool_choice_column_invalid_raises(self, handler):
+        """Invalid tool_choice_column values raise instead of defaulting.
+
+        ## WRITTEN BY AI ##
+        """
+        tools = [{"type": "function", "function": {"name": "fn"}}]
+        data = GenerationRequest(
+            columns={
+                "text_column": ["test"],
+                "tools_column": [json.dumps(tools)],
+                "tool_choice_column": ["none"],
+            },
+            turn_type="client_tool_call",
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="Unsupported tool_choice_column value 'none'",
+        ):
+            handler.format(data)
+
+    @pytest.mark.sanity
     def test_no_override_without_tools(self, handler):
         """Without tools in body, no tool_choice override happens.
 

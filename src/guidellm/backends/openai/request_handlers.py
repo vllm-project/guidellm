@@ -479,13 +479,18 @@ def _dataset_tool_choice(data: GenerationRequest) -> str:
 
     :param data: Current generation request.
     :return: ``required`` or ``auto``.
+    :raises ValueError: If ``tool_choice_column`` is set to an unsupported value.
     """
     values = data.columns.get("tool_choice_column") or []
-    if values:
-        choice = values[0]
-        if choice in ("required", "auto"):
-            return str(choice)
-    return "required"
+    if not values:
+        return "required"
+    choice = values[0]
+    if choice not in ("required", "auto"):
+        raise ValueError(
+            f"Unsupported tool_choice_column value {choice!r}; "
+            "expected 'required' or 'auto'."
+        )
+    return str(choice)
 
 
 def _recorded_chat_messages(columns: dict[str, Any]) -> list[dict[str, Any]] | None:
