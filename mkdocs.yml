@@ -3,6 +3,8 @@ site_description: Documentation for GuideLLM focused on evaluating the deployabi
 site_url: https://vllm-project.github.io/guidellm
 repo_url: https://github.com/vllm-project/guidellm
 edit_uri: https://github.com/vllm-project/guidellm/tree/main/docs
+exclude_docs: |
+  en/**/*.md
 
 theme:
   name: material

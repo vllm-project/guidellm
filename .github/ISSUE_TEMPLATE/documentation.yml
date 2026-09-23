@@ -13,7 +13,7 @@ body:
     attributes:
       label: Location
       description: What is the URL, file path, or section containing the documentation in question?
-      placeholder: e.g., docs/guides/benchmarking.md, https://github.com/vllm-project/guidellm/blob/main/README.md#installation
+      placeholder: e.g., docs/en/guides/benchmarking.md, https://github.com/vllm-project/guidellm/blob/main/README.md#installation
     validations:
       required: true
 

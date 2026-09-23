@@ -9,7 +9,7 @@ GuideLLM publishes a small, community-maintained set of Simplified Chinese pages
 
 ## Policy
 
-- English documentation under `docs/` is the source of truth.
+- English documentation under `docs/en/` is the source of truth.
 - Simplified Chinese pages live under `docs/zh/` and mirror the English paths.
 - English documentation changes do not require a matching translation update and are not blocked by translation drift.
 - A translated page that is behind its English source displays a warning and links readers to the current English page.

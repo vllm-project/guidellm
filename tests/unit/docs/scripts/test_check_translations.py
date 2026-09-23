@@ -23,10 +23,11 @@ def _create_translation_project(
     translation_content: str,
     source_sha256: str | None = None,
 ) -> Path:
-    source = project_root / "docs/index.md"
+    source = project_root / "docs/en/index.md"
     translation = project_root / "docs/zh/index.md"
     manifest = project_root / MANIFEST_PATH
     translation.parent.mkdir(parents=True)
+    source.parent.mkdir(parents=True)
     source.write_text(source_content, encoding="utf-8")
     translation.write_text(translation_content, encoding="utf-8")
     manifest.write_text(
@@ -35,7 +36,7 @@ def _create_translation_project(
                 "version": 1,
                 "translations": [
                     {
-                        "source": "docs/index.md",
+                        "source": "docs/en/index.md",
                         "translation": "docs/zh/index.md",
                         "source_sha256": source_sha256 or file_sha256(source),
                     }
@@ -84,7 +85,7 @@ def test_source_change_is_non_blocking_stale_warning(tmp_path: Path):
 
     assert status.errors == ()
     assert len(status.stale) == 1
-    assert "docs/zh/index.md is behind docs/index.md" in status.stale[0]
+    assert "docs/zh/index.md is behind docs/en/index.md" in status.stale[0]
 
 
 @pytest.mark.regression
@@ -104,7 +105,7 @@ def test_changed_code_example_is_an_error(tmp_path: Path):
 
     assert status.stale == ()
     assert status.errors == (
-        "Fenced code blocks differ between docs/index.md and docs/zh/index.md",
+        "Fenced code blocks differ between docs/en/index.md and docs/zh/index.md",
     )
 
 
