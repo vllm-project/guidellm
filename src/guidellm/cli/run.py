@@ -68,6 +68,16 @@ __all__ = [
         " [repeatable]"
     ),
 )
+@click.option(
+    "--knee-detection",
+    callback=cli_tools.parse_arguments,
+    help=(
+        "Configure cross-benchmark knee detection and adaptive refinement "
+        "(disabled by default). "
+        "Example: `--knee-detection enabled=true,adaptive=true,"
+        "points_each_side=5,max_step=5`."
+    ),
+)
 @registry_options_from_model(model=BenchmarkArgs, group_key="spec")
 @click.option(
     "--override",
@@ -139,6 +149,7 @@ def run(**kwargs):  # noqa: C901, PLR0915
             spec=kwargs.get("spec", {}),
             benchmarks=kwargs.get("benchmarks") or BLANK,
             metadata={"labels": dict(kwargs.get("labels", []))},
+            knee_detection=kwargs.get("knee_detection", BLANK),
             scenario=kwargs.get("config"),
         )
     except ValidationError as err:

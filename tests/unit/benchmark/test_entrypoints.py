@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from guidellm.benchmark import entrypoints as entrypoints_module
+from guidellm.benchmark.analysis import (
+    KneeAnalysis,
+    KneeResult,
+    SaturationAssessment,
+    SaturationBoundary,
+)
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.entrypoints import resolve_backend, resolve_output_formats
 from guidellm.benchmark.outputs import GenerativeBenchmarkerOutput
 from guidellm.benchmark.profiles import ProfileFactory
+from guidellm.benchmark.schemas import GenerativeBenchmark
+from guidellm.scheduler import ConcurrentStrategy, SchedulerState, SchedulerUpdateAction
 from guidellm.schemas.backends import (
     OpenAIHTTPBackendArgs,
     VLLMPythonAsyncBackendArgs,
@@ -19,6 +29,7 @@ from guidellm.schemas.benchmark import (
     BenchmarkScenario,
     GoodputSLO,
     JSONBenchmarkOutputArgs,
+    KneeDetectionArgs,
     SynchronousProfileArgs,
     TransientPhaseConfig,
 )
@@ -312,3 +323,249 @@ async def test_entrypoint_passes_configured_objectives_to_benchmarker():
         await entrypoints_module.benchmark_generative_text(args=args)
 
     assert captured.get("slo") == slo
+
+
+def _knee_analysis(center: float) -> KneeAnalysis:
+    return KneeAnalysis(
+        throughput=KneeResult(status="ok", reason="test", knee=center),
+        saturation=SaturationBoundary(
+            status="not_detected",
+            reason="test",
+            points=(),
+        ),
+        assessment=SaturationAssessment(
+            status="throughput_only",
+            reason="test",
+            selection_center=center,
+        ),
+    )
+
+
+def _concurrent_benchmark(streams: int) -> GenerativeBenchmark:
+    return cast(
+        "GenerativeBenchmark",
+        SimpleNamespace(
+            config=SimpleNamespace(strategy=ConcurrentStrategy(streams=streams)),
+            scheduler_state=SchedulerState(),
+        ),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+@pytest.mark.parametrize("progress_enabled", [True, False])
+@pytest.mark.parametrize(
+    ("knee_config", "stop_group", "stop_scope", "expected_runs"),
+    [
+        (None, None, "current", 1),
+        ({"enabled": False}, None, "current", 1),
+        ({"enabled": True}, None, "current", 1),
+        ({"enabled": True, "adaptive": True}, None, "current", 2),
+        ({"enabled": True, "adaptive": True}, "end_queuing_constraints", "all", 1),
+        ({"enabled": True, "adaptive": True}, "end_processing_constraints", "all", 1),
+        ({"enabled": True, "adaptive": True}, "end_queuing_constraints", "current", 2),
+        ({"enabled": True, "adaptive": True}, "scheduler_constraints", "all", 2),
+    ],
+)
+async def test_entrypoint_runs_adaptive_concurrencies_and_reports_analysis(
+    knee_config, stop_group, stop_scope, expected_runs, progress_enabled
+):
+    """Preserve execution, stopping constraints, and progress during refinement.
+
+    ## WRITTEN BY AI ##
+    """
+    initial_benchmarks = [
+        _concurrent_benchmark(streams) for streams in [10, 20, 30, 40, 50]
+    ]
+    adaptive_benchmarks = [_concurrent_benchmark(streams) for streams in [25, 35]]
+    run_calls: list[dict] = []
+    logging_tracker = AsyncMock(
+        spec=entrypoints_module.GenerativeLoggingBenchmarkerProgress
+    )
+    console_tracker = AsyncMock(
+        spec=entrypoints_module.GenerativeConsoleBenchmarkerProgress
+    )
+    if stop_group is not None:
+        action = SchedulerUpdateAction(stopping_scope=stop_scope)
+        initial_benchmarks[-1].scheduler_state = SchedulerState.model_validate(
+            {stop_group: {"test_constraint": action}}
+        )
+
+    async def _fake_run(self, **kwargs):
+        _ = self
+        run_calls.append(kwargs)
+        await kwargs["progress"].on_initialize(kwargs["profile"])
+        benchmarks = initial_benchmarks if len(run_calls) == 1 else adaptive_benchmarks
+        for benchmark in benchmarks:
+            yield benchmark
+        await kwargs["progress"].on_finalize()
+
+    initial_profile = MagicMock()
+    initial_profile.conclusion = {"kind": "existing_profile_conclusion"}
+    adaptive_profile = MagicMock()
+    adaptive_profile.conclusion = None
+    resolve_profile_mock = AsyncMock(side_effect=[initial_profile, adaptive_profile])
+    initial_analysis = _knee_analysis(30)
+    final_analysis = _knee_analysis(30)
+    analyze_mock = MagicMock(side_effect=[initial_analysis, final_analysis])
+    output = MagicMock()
+    output.finalize = AsyncMock(return_value="saved-report")
+    backend = MagicMock()
+    loader = MagicMock()
+    args = BenchmarkScenario(
+        spec=BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "data": [
+                    {"kind": "synthetic_text", "prompt_tokens": 8, "output_tokens": 8}
+                ],
+                "profile": {
+                    "kind": "concurrent",
+                    "streams": [10, 20, 30, 40, 50],
+                },
+                "outputs": [{"kind": "json"}],
+            }
+        ),
+    )
+    if knee_config is not None:
+        args.knee_detection = KneeDetectionArgs(
+            **knee_config, points_each_side=1, max_step=5
+        )
+
+    with (
+        patch.object(entrypoints_module.Benchmarker, "run", _fake_run),
+        patch.object(
+            entrypoints_module,
+            "resolve_backend",
+            AsyncMock(return_value=(backend, "model")),
+        ),
+        patch.object(
+            entrypoints_module, "resolve_tokenizer", AsyncMock(return_value=None)
+        ),
+        patch.object(
+            entrypoints_module,
+            "create_data_loader",
+            AsyncMock(return_value=loader),
+        ),
+        patch.object(entrypoints_module, "resolve_profile", resolve_profile_mock),
+        patch.object(
+            entrypoints_module,
+            "resolve_output_formats",
+            AsyncMock(return_value=[output]),
+        ),
+        patch.object(entrypoints_module, "analyze_knee", analyze_mock),
+        patch.object(
+            entrypoints_module,
+            "GenerativeLoggingBenchmarkerProgress",
+            return_value=logging_tracker,
+        ) as logging_factory,
+        patch.object(
+            entrypoints_module,
+            "GenerativeConsoleBenchmarkerProgress",
+            return_value=console_tracker,
+        ) as console_factory,
+    ):
+        report, outputs = await entrypoints_module.benchmark_generative_text(
+            args=args, progress=progress_enabled
+        )
+
+    assert len(run_calls) == expected_runs
+    assert resolve_profile_mock.await_count == expected_runs
+    logging_factory.assert_called_once_with()
+    assert logging_tracker.on_initialize.await_count == expected_runs
+    assert logging_tracker.on_finalize.await_count == expected_runs
+    assert [call.args[0] for call in logging_tracker.on_initialize.await_args_list] == [
+        initial_profile,
+        adaptive_profile,
+    ][:expected_runs]
+    if progress_enabled:
+        console_factory.assert_called_once_with()
+        assert console_tracker.on_initialize.await_count == expected_runs
+        assert console_tracker.on_finalize.await_count == expected_runs
+        assert [
+            call.args[0] for call in console_tracker.on_initialize.await_args_list
+        ] == [initial_profile, adaptive_profile][:expected_runs]
+    else:
+        console_factory.assert_not_called()
+        console_tracker.on_initialize.assert_not_awaited()
+        console_tracker.on_finalize.assert_not_awaited()
+    assert report.conclusions[0] == initial_profile.conclusion
+    assert report.benchmarks[:5] == initial_benchmarks
+    output.finalize.assert_awaited_once_with(report)
+    assert outputs == [("json", "saved-report")]
+    for call in run_calls:
+        assert call["backend"] is backend
+        assert call["requests"] is loader
+        assert call["warmup"] == args.spec.profile.warmup
+        assert call["cooldown"] == args.spec.profile.cooldown
+
+    if not args.knee_detection.enabled:
+        analyze_mock.assert_not_called()
+        assert report.benchmarks == initial_benchmarks
+        assert report.conclusions == [initial_profile.conclusion]
+    else:
+        assert analyze_mock.call_args_list[0].args[0] == initial_benchmarks
+        assert analyze_mock.call_args_list[1].args[0] == report.benchmarks
+        knee_conclusion = report.conclusions[-1]
+        assert knee_conclusion["kind"] == "knee_detection"
+        if expected_runs == 2:
+            adaptive_args = resolve_profile_mock.await_args_list[1].kwargs["profile"]
+            assert adaptive_args.streams == [25, 35]
+            assert report.benchmarks == initial_benchmarks + adaptive_benchmarks
+            assert knee_conclusion["adaptive_plan"]["concurrencies"] == [25, 35]
+        else:
+            assert report.benchmarks == initial_benchmarks
+            assert knee_conclusion["adaptive_plan"]["status"] == "skipped"
+            if stop_group is not None:
+                assert "stopping_scope" in knee_conclusion["adaptive_plan"]["reason"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.sanity
+async def test_entrypoint_rejects_knee_detection_for_nonconcurrent_profile():
+    """Reject knee detection before backend setup for another profile kind.
+
+    ## WRITTEN BY AI ##
+    """
+    args = BenchmarkScenario(
+        knee_detection={"enabled": True},
+        spec=BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "data": [{"kind": "synthetic_text", "prompt_tokens": 8}],
+                "profile": {"kind": "synchronous"},
+                "outputs": [],
+            }
+        ),
+    )
+
+    with pytest.raises(ValueError, match="requires a concurrent profile"):
+        await entrypoints_module.benchmark_generative_text(args=args)
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+async def test_knee_rejects_repeated_streams_before_starting_backend():
+    """Reject ambiguous detector measurements before spending time on benchmarks.
+
+    ## WRITTEN BY AI ##
+    """
+    args = BenchmarkScenario.create(
+        scenario=None,
+        knee_detection={"enabled": True},
+        spec={
+            "backend": {"kind": "openai_http", "target": "http://localhost:8000"},
+            "profile": {"kind": "concurrent", "streams": [1, 5, 5, 10, 20, 40]},
+            "data": [{"kind": "synthetic_text", "prompt_tokens": 8}],
+        },
+    )
+    with patch.object(entrypoints_module, "resolve_backend", AsyncMock()) as backend:
+        with pytest.raises(ValueError, match="distinct concurrency points"):
+            await entrypoints_module.benchmark_generative_text(args=args)
+        backend.assert_not_awaited()
