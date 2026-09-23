@@ -351,17 +351,6 @@ def is_llm_span(span: dict[str, Any], config: OTELTraceFormatArgs) -> bool:
     return usage_tokens(attributes, config) is not None
 
 
-def is_execute_tool_span(span: dict[str, Any]) -> bool:
-    """Return whether ``span`` is a tool-execution span, not an LLM request.
-
-    Matches ``gen_ai.operation.name == execute_tool``.
-
-    :param span: One OTEL span dict.
-    :return: ``True`` when this span records a tool execution.
-    """
-    return span_attributes(span).get("gen_ai.operation.name") == "execute_tool"
-
-
 def finish_reasons_indicate_tool_call(attributes: dict[str, Any]) -> bool:
     """Return whether ``gen_ai.response.finish_reasons`` records a tool call.
 
@@ -441,7 +430,7 @@ def execute_tool_spans_between(
     """
     matched: list[tuple[float, dict[str, Any]]] = []
     for span in spans:
-        if not is_execute_tool_span(span):
+        if not span_attributes(span).get("gen_ai.operation.name") == "execute_tool":
             continue
         try:
             timestamp = parse_span_timestamp(span.get(config.span_timestamp_field))
