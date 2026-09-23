@@ -160,7 +160,7 @@ Output length always uses the span's completion token count (`max_tokens` + `ign
 
 Spans without `gen_ai.input.messages` cannot be replayed as OTEL. Flatten token-count-only dumps to `kind=trace_synthetic` instead.
 
-Replay against `/v1/chat/completions` (the backend default). OTEL replay is chat-completions only for now: `raw_messages_column` is always chat-completions format and that handler sends it as a `messages` array. `/v1/completions` is a prompt string with no tool loop and does not read `raw_messages_column`.
+Replay against `/v1/chat/completions` (the backend default). OTEL stores chat-completions message dicts in `raw_messages_column`. That handler sends them as a `messages` array. `/v1/completions` and `/v1/responses` do not read that column; they abort with a missing `prompt` or `input` error rather than posting an empty body.
 
 Recorded tool loops are pre-split onto GuideLLM's client tool-call pipeline. An LLM span whose output messages contain `tool_calls` (or `gen_ai.response.finish_reasons` of `tool_calls` / `tool_call` / `tool_use` / `function_call`) becomes `client_tool_call`. The next span is consumed as `tool_response_injection` when its new messages after `input[i] + output[i]` are only `role=tool` results. Recorded result strings are rebound to **live** `tool_call_id`s by the chat handler. `gen_ai.tool.definitions` supplies `tools_column` on those turns (otherwise the default synthetic tool is used); definitions alone do not classify a turn. Injection parents always use `history_context=full`, including `history=trace`. Missing-tool policy stays `--backend tool_call_missing_behavior=...`.
 
