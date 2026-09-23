@@ -289,14 +289,12 @@ class WEKATraceFormat(TraceFormatBase):
         # the first conversation without a pre-scan.
         self._trace_origin: float | None = None
 
-    def set_copy_index(self, copy_index: int) -> None:  # noqa: ARG002
+    def reset_hash_tables(self) -> None:
         """Replace hash tables so this copy does not reuse earlier tokens.
 
         Local-scope conversations still use throwaway tables in
         ``build_conversation_graph``. The tool-response sampler is reset so
         each pass draws remainder/tool text from that pass's faker.
-
-        :param copy_index: Zero-based sequential pass index
         """
         self._hash_id_table = {}
         self._sibling_table = {}

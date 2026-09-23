@@ -182,7 +182,7 @@ class TraceFormatBase(Protocol):
     def reset(self) -> None:
         pass
 
-    def set_copy_index(self, copy_index: int) -> None: ...
+    def reset_hash_tables(self) -> None: ...
 
     def required_columns(self) -> Features: ...
 
@@ -317,7 +317,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
         )
         scaler = TraceSessionTiming(time_scale=self.config.time_scale)
         for copy_index in range(self.config.copies):
-            self.format.set_copy_index(copy_index)
+            self.format.reset_hash_tables()
             faker_copy = self._copy_fakers[copy_index]
             wait_timing = TraceSessionTiming(
                 max_wait=self.config.max_wait,
