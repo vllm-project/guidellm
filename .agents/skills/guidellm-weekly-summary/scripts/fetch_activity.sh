@@ -177,6 +177,15 @@ releases_raw="$(
 
 fetched_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date '+%Y-%m-%dT%H:%M:%SZ')"
 
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT
+prs_file="${tmpdir}/prs.json"
+issues_file="${tmpdir}/issues.json"
+releases_file="${tmpdir}/releases.json"
+printf '%s' "$prs_raw" >"$prs_file"
+printf '%s' "$issues_raw" >"$issues_file"
+printf '%s' "$releases_raw" >"$releases_file"
+
 jq -n \
   --arg repo "$REPO" \
   --arg since "$SINCE" \
@@ -185,9 +194,9 @@ jq -n \
   --arg fetched_at "$fetched_at" \
   --argjson body_max "$BODY_MAX" \
   --argjson include_prereleases "$INCLUDE_PRERELEASES" \
-  --argjson prs "$prs_raw" \
-  --argjson issues "$issues_raw" \
-  --argjson releases "$releases_raw" \
+  --slurpfile prs "$prs_file" \
+  --slurpfile issues "$issues_file" \
+  --slurpfile releases "$releases_file" \
   '
   def null_epoch:
     if . == null or . == "" or . == "0001-01-01T00:00:00Z" then null else . end;
@@ -264,7 +273,7 @@ jq -n \
     };
 
   def window_releases:
-    [ $releases[]
+    [ $releases[0][]
       | select(.draft == false)
       | select(in_window(.published_at))
       | select(($include_prereleases == 1) or (.prerelease != true))
@@ -282,24 +291,24 @@ jq -n \
     fetched_at: $fetched_at,
     counts: {
       releases: (window_releases | length),
-      pull_requests: ($prs | length),
-      issues: ([ $issues[] | select(.isPullRequest == false) ] | length)
+      pull_requests: ($prs[0] | length),
+      issues: ([ $issues[0][] | select(.isPullRequest == false) ] | length)
     },
     releases: window_releases,
-    pull_requests: [ $prs[] | simplify_item ],
-    issues: [ $issues[] | select(.isPullRequest == false) | simplify_item ]
+    pull_requests: [ $prs[0][] | simplify_item ],
+    issues: [ $issues[0][] | select(.isPullRequest == false) | simplify_item ]
   }
   '
 
 printf 'Fetched %s releases, %s pull requests, and %s issues.\n' \
-  "$(jq -n --argjson releases "$releases_raw" --arg since "$SINCE" --arg until "$UNTIL" --argjson include_prereleases "$INCLUDE_PRERELEASES" '
-      [ $releases[]
+  "$(jq -n --slurpfile releases "$releases_file" --arg since "$SINCE" --arg until "$UNTIL" --argjson include_prereleases "$INCLUDE_PRERELEASES" '
+      [ $releases[0][]
         | select(.draft == false)
         | select(.published_at != null)
         | select((.published_at[0:10] >= $since) and (.published_at[0:10] <= $until))
         | select(($include_prereleases == 1) or (.prerelease != true))
       ] | length
     ')" \
-  "$(jq -n --argjson prs "$prs_raw" '$prs | length')" \
-  "$(jq -n --argjson issues "$issues_raw" '[ $issues[] | select(.isPullRequest == false) ] | length')" \
+  "$(jq 'length' "$prs_file")" \
+  "$(jq '[ .[] | select(.isPullRequest == false) ] | length' "$issues_file")" \
   >&2
