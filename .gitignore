@@ -191,6 +191,9 @@ cython_debug/
 !src/guidellm/schemas/benchmark/scenarios/*.json
 !src/guidellm/schemas/benchmark/scenarios/**/*.json
 
+# Documentation scenario examples
+!docs/examples/*.yaml
+
 # HTML report Node smoke-test manifests (needed by tox -e test-html-js)
 !tests/js/package.json
 !tests/js/package-lock.json

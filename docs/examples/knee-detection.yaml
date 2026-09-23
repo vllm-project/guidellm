@@ -1,0 +1,35 @@
+metadata:
+  labels:
+    name: adaptive-knee-detection
+    description: Find and refine the throughput knee of a concurrent workload
+
+knee_detection:
+  enabled: true
+  adaptive: true
+  points_each_side: 5
+  max_step: 3
+
+spec:
+  backend:
+    kind: openai_http
+    target: http://localhost:8000/v1
+
+  profile:
+    kind: concurrent
+    streams: [1, 5, 10, 20, 40, 80, 160]
+
+  data:
+    - kind: synthetic_text
+      prompt_tokens: 1000
+      output_tokens: 1000
+
+  constraints:
+    - kind: max_duration
+      seconds: 60
+    - kind: over_saturation
+      mode: monitor
+      min_seconds: 30
+
+  outputs:
+    - kind: json
+      path: knee-benchmark.json

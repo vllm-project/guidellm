@@ -1,5 +1,6 @@
 """Tests for ``guidellm run`` CLI error translation."""
 
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -224,3 +225,71 @@ def test_console_progress_selection(monkeypatch, options):
         assert not display
     else:
         assert display
+
+
+@pytest.mark.sanity
+def test_run_accepts_knee_detection_configuration(monkeypatch):
+    """
+    The knee detection CLI option populates the scenario-level configuration.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = AsyncMock()
+    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            "kind=openai_http,target=http://localhost:8000",
+            "--data",
+            "kind=synthetic_text,prompt_tokens=8",
+            "--profile",
+            '{"kind":"concurrent","streams":[1,2,4,8]}',
+            "--knee-detection",
+            "enabled=true,adaptive=true,points_each_side=3,max_step=2",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    benchmark.assert_awaited_once()
+    scenario = benchmark.call_args.kwargs["args"]
+    assert scenario.knee_detection.enabled is True
+    assert scenario.knee_detection.adaptive is True
+    assert scenario.knee_detection.points_each_side == 3
+    assert scenario.knee_detection.max_step == 2
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("options", "enabled", "adaptive"),
+    [
+        ([], True, True),
+        (["--knee-detection", "adaptive=false"], True, False),
+        (["--knee-detection", "enabled=false,adaptive=false"], False, False),
+    ],
+)
+def test_knee_yaml_example_loads_through_cli(monkeypatch, options, enabled, adaptive):
+    """Keep the documented YAML runnable and preserve CLI override behavior.
+
+    ## WRITTEN BY AI ##
+    """
+    scenario_path = (
+        Path(__file__).resolve().parents[3] / "docs/examples/knee-detection.yaml"
+    )
+    benchmark = AsyncMock()
+    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
+
+    result = CliRunner().invoke(cli, ["run", "--config", str(scenario_path), *options])
+
+    assert result.exit_code == 0, result.output
+    benchmark.assert_awaited_once()
+    scenario = benchmark.call_args.kwargs["args"]
+    assert scenario.knee_detection.enabled is enabled
+    assert scenario.knee_detection.adaptive is adaptive
+    assert scenario.knee_detection.points_each_side == 5
+    assert scenario.knee_detection.max_step == 3
+    assert scenario.spec.profile.streams == [1, 5, 10, 20, 40, 80, 160]
+    assert scenario.spec.constraints[1].mode == "monitor"
+    assert scenario.spec.outputs[0].path == Path("knee-benchmark.json")
