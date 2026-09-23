@@ -55,6 +55,7 @@ def ibm_chat_span(
     tools: list[dict] | str | None = None,
     finish_reasons: list[str] | str | None = None,
     omit_messages: bool = False,
+    parent_span_id: str | None = None,
 ) -> dict:
     span = {
         "span_id": span_id,
@@ -67,6 +68,8 @@ def ibm_chat_span(
             "gen_ai.usage.completion_tokens": completion_tokens,
         },
     }
+    if parent_span_id is not None:
+        span["parent_span_id"] = parent_span_id
     if status_code is not None:
         span["status"] = {"code": status_code, "message": ""}
     if not omit_messages:
@@ -150,19 +153,23 @@ def execute_tool_span(
     result: Any = None,
     operation: bool = True,
     name: str = "execute_tool get_weather",
+    parent_span_id: str | None = None,
 ) -> dict:
     attributes: dict[str, Any] = {}
     if operation:
         attributes["gen_ai.operation.name"] = "execute_tool"
     if result is not None:
         attributes["gen_ai.tool.call.result"] = result
-    return {
+    span = {
         "span_id": span_id,
         "trace_id": trace_id,
         "start_time": start_time,
         "name": name,
         "attributes": attributes,
     }
+    if parent_span_id is not None:
+        span["parent_span_id"] = parent_span_id
+    return span
 
 
 USER_HELLO = {"role": "user", "content": "hello"}
@@ -1117,6 +1124,415 @@ class TestOTELTraceFormat:
             ASSISTANT_HI,
             USER_AGAIN,
         ]
+
+    @pytest.mark.sanity
+    def test_descendant_execute_tool_stamps_injection_time(self, tmp_path: Path):
+        """
+        Fallback injection uses the child execute_tool start, not the call time.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_jsonl(
+            tmp_path,
+            [
+                ibm_session_line(
+                    "t0",
+                    [
+                        ibm_chat_span(
+                            span_id="s0",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00+00:00",
+                            prompt_tokens=10,
+                            completion_tokens=8,
+                            messages=[USER_WEATHER],
+                            output_messages=[ASSISTANT_WEATHER_CALL],
+                            tools=WEATHER_TOOLS,
+                        ),
+                        execute_tool_span(
+                            span_id="tool",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:01.500000+00:00",
+                            result="rainy, 57F",
+                            parent_span_id="s0",
+                        ),
+                        ibm_chat_span(
+                            span_id="s1",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:02+00:00",
+                            prompt_tokens=4,
+                            completion_tokens=2,
+                            messages=[USER_HELLO],
+                            output_messages=[ASSISTANT_OK],
+                        ),
+                    ],
+                )
+            ],
+        )
+        turns = load_graph_turns(next(iter(deserialize(trace))))
+        assert turns[1].columns["turn_type_column"] == ["tool_response_injection"]
+        assert turns[1].columns["tool_response_column"] == ["rainy, 57F"]
+        assert turns[1].columns["relative_timestamp_column"][0] == pytest.approx(1.5)
+        assert "turn_type_column" not in turns[2].columns
+
+    @pytest.mark.sanity
+    def test_earliest_descendant_execute_tool_timestamp(self, tmp_path: Path):
+        """
+        Several descendant tools inject in start-time order at the earliest start.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_jsonl(
+            tmp_path,
+            [
+                ibm_session_line(
+                    "t0",
+                    [
+                        ibm_chat_span(
+                            span_id="s0",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00+00:00",
+                            prompt_tokens=10,
+                            completion_tokens=8,
+                            messages=[USER_WEATHER],
+                            output_messages=[ASSISTANT_WEATHER_CALL],
+                            tools=WEATHER_TOOLS,
+                        ),
+                        execute_tool_span(
+                            span_id="tool_b",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:02+00:00",
+                            result="second",
+                            parent_span_id="s0",
+                        ),
+                        execute_tool_span(
+                            span_id="tool_a",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:01+00:00",
+                            result="first",
+                            parent_span_id="s0",
+                        ),
+                    ],
+                )
+            ],
+        )
+        turns = load_graph_turns(next(iter(deserialize(trace))))
+        assert turns[1].columns["tool_response_column"] == ["first", "second"]
+        assert turns[1].columns["relative_timestamp_column"][0] == pytest.approx(1.0)
+
+    @pytest.mark.regression
+    def test_descendant_execute_tool_not_stolen_by_later_llm(self, tmp_path: Path):
+        """
+        Each LLM keeps its own child execute_tool even when starts overlap globally.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_jsonl(
+            tmp_path,
+            [
+                ibm_session_line(
+                    "t0",
+                    [
+                        ibm_chat_span(
+                            span_id="a",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00+00:00",
+                            prompt_tokens=10,
+                            completion_tokens=8,
+                            messages=[USER_WEATHER],
+                            output_messages=[ASSISTANT_WEATHER_CALL],
+                            tools=WEATHER_TOOLS,
+                        ),
+                        ibm_chat_span(
+                            span_id="b",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:01+00:00",
+                            prompt_tokens=4,
+                            completion_tokens=8,
+                            messages=[USER_HELLO],
+                            output_messages=[ASSISTANT_WEATHER_CALL],
+                            tools=WEATHER_TOOLS,
+                        ),
+                        execute_tool_span(
+                            span_id="tool_b",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00.500000+00:00",
+                            result="from_b",
+                            parent_span_id="b",
+                        ),
+                        execute_tool_span(
+                            span_id="tool_a",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:03+00:00",
+                            result="from_a",
+                            parent_span_id="a",
+                        ),
+                    ],
+                )
+            ],
+        )
+        turns = load_graph_turns(next(iter(deserialize(trace))))
+        injections = [
+            turn
+            for turn in turns
+            if turn.columns.get("turn_type_column") == ["tool_response_injection"]
+        ]
+        assert [turn.columns["tool_response_column"] for turn in injections] == [
+            ["from_a"],
+            ["from_b"],
+        ]
+        assert injections[0].columns["relative_timestamp_column"][0] == pytest.approx(
+            3.0
+        )
+        assert injections[1].columns["relative_timestamp_column"][0] == pytest.approx(
+            0.5
+        )
+
+    @pytest.mark.sanity
+    def test_nested_execute_tool_descendant_is_attributed(self, tmp_path: Path):
+        """
+        An execute_tool nested under another execute_tool still belongs to the LLM.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_jsonl(
+            tmp_path,
+            [
+                ibm_session_line(
+                    "t0",
+                    [
+                        ibm_chat_span(
+                            span_id="s0",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00+00:00",
+                            prompt_tokens=10,
+                            completion_tokens=8,
+                            messages=[USER_WEATHER],
+                            output_messages=[ASSISTANT_WEATHER_CALL],
+                            tools=WEATHER_TOOLS,
+                        ),
+                        execute_tool_span(
+                            span_id="mid",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:01+00:00",
+                            parent_span_id="s0",
+                        ),
+                        execute_tool_span(
+                            span_id="inner",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:01.500000+00:00",
+                            result="nested",
+                            parent_span_id="mid",
+                        ),
+                    ],
+                )
+            ],
+        )
+        turns = load_graph_turns(next(iter(deserialize(trace))))
+        assert turns[1].columns["tool_response_column"] == ["nested"]
+        assert turns[1].columns["relative_timestamp_column"][0] == pytest.approx(1.5)
+
+    @pytest.mark.sanity
+    def test_same_parent_sibling_execute_tools(self, tmp_path: Path):
+        """
+        Sibling execute_tool spans under invoke_agent attach until the next LLM sibling.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_jsonl(
+            tmp_path,
+            [
+                ibm_session_line(
+                    "t0",
+                    [
+                        invoke_agent_span(
+                            span_id="agent",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00+00:00",
+                        ),
+                        ibm_chat_span(
+                            span_id="s0",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00+00:00",
+                            prompt_tokens=10,
+                            completion_tokens=8,
+                            messages=[USER_WEATHER],
+                            output_messages=[ASSISTANT_WEATHER_CALL],
+                            tools=WEATHER_TOOLS,
+                            parent_span_id="agent",
+                        ),
+                        execute_tool_span(
+                            span_id="tool1",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:01+00:00",
+                            result="r1",
+                            parent_span_id="agent",
+                        ),
+                        ibm_chat_span(
+                            span_id="s1",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:02+00:00",
+                            prompt_tokens=4,
+                            completion_tokens=8,
+                            messages=[USER_HELLO],
+                            output_messages=[ASSISTANT_WEATHER_CALL],
+                            tools=WEATHER_TOOLS,
+                            parent_span_id="agent",
+                        ),
+                        execute_tool_span(
+                            span_id="tool2",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:03+00:00",
+                            result="r2",
+                            parent_span_id="agent",
+                        ),
+                    ],
+                )
+            ],
+        )
+        turns = load_graph_turns(next(iter(deserialize(trace))))
+        injections = [
+            turn
+            for turn in turns
+            if turn.columns.get("turn_type_column") == ["tool_response_injection"]
+        ]
+        assert [turn.columns["tool_response_column"] for turn in injections] == [
+            ["r1"],
+            ["r2"],
+        ]
+        assert injections[0].columns["relative_timestamp_column"][0] == pytest.approx(
+            1.0
+        )
+        assert injections[1].columns["relative_timestamp_column"][0] == pytest.approx(
+            3.0
+        )
+
+    @pytest.mark.regression
+    def test_concurrent_parents_keep_their_execute_tools(self, tmp_path: Path):
+        """
+        Interleaved tools attach by shared parent, not by global LLM order.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_jsonl(
+            tmp_path,
+            [
+                ibm_session_line(
+                    "t0",
+                    [
+                        invoke_agent_span(
+                            span_id="p1",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00+00:00",
+                        ),
+                        invoke_agent_span(
+                            span_id="p2",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00+00:00",
+                        ),
+                        ibm_chat_span(
+                            span_id="a",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00+00:00",
+                            prompt_tokens=10,
+                            completion_tokens=8,
+                            messages=[USER_WEATHER],
+                            output_messages=[ASSISTANT_WEATHER_CALL],
+                            tools=WEATHER_TOOLS,
+                            parent_span_id="p1",
+                        ),
+                        ibm_chat_span(
+                            span_id="b",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00.500000+00:00",
+                            prompt_tokens=4,
+                            completion_tokens=8,
+                            messages=[USER_HELLO],
+                            output_messages=[ASSISTANT_WEATHER_CALL],
+                            tools=WEATHER_TOOLS,
+                            parent_span_id="p2",
+                        ),
+                        execute_tool_span(
+                            span_id="tb",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:01+00:00",
+                            result="from_b",
+                            parent_span_id="p2",
+                        ),
+                        execute_tool_span(
+                            span_id="ta",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:02+00:00",
+                            result="from_a",
+                            parent_span_id="p1",
+                        ),
+                    ],
+                )
+            ],
+        )
+        turns = load_graph_turns(next(iter(deserialize(trace))))
+        injections = [
+            turn
+            for turn in turns
+            if turn.columns.get("turn_type_column") == ["tool_response_injection"]
+        ]
+        assert [turn.columns["tool_response_column"] for turn in injections] == [
+            ["from_a"],
+            ["from_b"],
+        ]
+        assert injections[0].columns["relative_timestamp_column"][0] == pytest.approx(
+            2.0
+        )
+        assert injections[1].columns["relative_timestamp_column"][0] == pytest.approx(
+            1.0
+        )
+
+    @pytest.mark.sanity
+    def test_unparented_execute_tool_is_ignored(self, tmp_path: Path):
+        """
+        execute_tool without parent_span_id is not harvested as a shared parent.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_jsonl(
+            tmp_path,
+            [
+                ibm_session_line(
+                    "t0",
+                    [
+                        ibm_chat_span(
+                            span_id="s0",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:00+00:00",
+                            prompt_tokens=10,
+                            completion_tokens=8,
+                            messages=[USER_WEATHER],
+                            output_messages=[ASSISTANT_WEATHER_CALL],
+                            tools=WEATHER_TOOLS,
+                        ),
+                        execute_tool_span(
+                            span_id="tool",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:01+00:00",
+                            result="should_ignore",
+                        ),
+                        ibm_chat_span(
+                            span_id="s1",
+                            trace_id="t0",
+                            start_time="2024-01-01T12:00:02+00:00",
+                            prompt_tokens=4,
+                            completion_tokens=2,
+                            messages=[USER_HELLO],
+                            output_messages=[ASSISTANT_OK],
+                        ),
+                    ],
+                )
+            ],
+        )
+        turns = load_graph_turns(next(iter(deserialize(trace))))
+        assert turns[1].columns["tool_response_column"] == [
+            settings.default_synthetic_tool_response
+        ]
+        assert turns[1].columns["relative_timestamp_column"][0] == pytest.approx(0.0)
 
 
 @pytest.mark.parametrize(
