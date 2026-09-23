@@ -411,35 +411,140 @@ def execute_tool_result_text(span: dict[str, Any]) -> str | None:
     return stringify_tool_result(result)
 
 
-def execute_tool_spans_between(
-    spans: list[dict[str, Any]],
-    start_ts: float,
-    end_ts: float,
-    config: OTELTraceFormatArgs,
-) -> list[dict[str, Any]]:
-    """Return execute-tool spans with start times in ``(start_ts, end_ts)``.
+def _span_id(span: dict[str, Any]) -> str | None:
+    value = span.get("span_id")
+    if value is None or value == "":
+        return None
+    return str(value)
 
-    Pairing is by timestamp order in the conversation group, not
-    ``parent_span_id``. Spans whose timestamps cannot be parsed are skipped.
 
-    :param spans: Raw spans in one ``trace_id`` group.
-    :param start_ts: Exclusive lower bound (typically the LLM span start).
-    :param end_ts: Exclusive upper bound (next LLM span start, or infinity).
-    :param config: Format args for the timestamp field name.
-    :return: Matching execute-tool spans, sorted by start time.
+def _span_parent_id(span: dict[str, Any]) -> str | None:
+    """Return ``parent_span_id`` as a string, or ``None`` if missing or empty.
+
+    Null and omitted parents are not treated as a shared parent. Matching
+    unparented tools by that empty value would recreate a global time window.
     """
-    matched: list[tuple[float, dict[str, Any]]] = []
+    value = span.get("parent_span_id")
+    if value is None or value == "":
+        return None
+    return str(value)
+
+
+def _span_parent_map(spans: list[dict[str, Any]]) -> dict[str, str]:
+    mapping: dict[str, str] = {}
     for span in spans:
-        if not span_attributes(span).get("gen_ai.operation.name") == "execute_tool":
+        span_id = _span_id(span)
+        parent_id = _span_parent_id(span)
+        if span_id is not None and parent_id is not None:
+            mapping[span_id] = parent_id
+    return mapping
+
+
+def _is_descendant(
+    span: dict[str, Any],
+    ancestor_id: str,
+    parent_of: dict[str, str],
+) -> bool:
+    """Return True if ``ancestor_id`` is on the parent chain of ``span``.
+
+    Starts from ``parent_span_id`` so a direct child still matches when the
+    child has no ``span_id``. Nested hops use the parent map, which requires
+    intermediate spans to have ids.
+    """
+    current = _span_parent_id(span)
+    visited: set[str] = set()
+    while current is not None and current not in visited:
+        if current == ancestor_id:
+            return True
+        visited.add(current)
+        current = parent_of.get(current)
+    return False
+
+
+def _timed_execute_tool_spans(
+    spans: list[dict[str, Any]],
+    config: OTELTraceFormatArgs,
+) -> list[tuple[float, dict[str, Any]]]:
+    timed: list[tuple[float, dict[str, Any]]] = []
+    for span in spans:
+        if span_attributes(span).get("gen_ai.operation.name") != "execute_tool":
             continue
         try:
             timestamp = parse_span_timestamp(span.get(config.span_timestamp_field))
         except InvalidRowError:
             continue
-        if start_ts < timestamp < end_ts:
-            matched.append((timestamp, span))
-    matched.sort(key=lambda item: item[0])
-    return [span for _, span in matched]
+        timed.append((timestamp, span))
+    return timed
+
+
+def _next_llm_sibling_timestamp(
+    llm_start: float,
+    llm_parent: str,
+    llm_rows: list[dict[str, Any]],
+) -> float:
+    """Return the start of the next LLM row that shares ``llm_parent``."""
+    for row in llm_rows:
+        if row["timestamp"] <= llm_start:
+            continue
+        if _span_parent_id(row["span"]) == llm_parent:
+            return float(row["timestamp"])
+    return float("inf")
+
+
+def execute_tool_spans_for_call(
+    spans: list[dict[str, Any]],
+    llm_span: dict[str, Any],
+    llm_start: float,
+    llm_rows: list[dict[str, Any]],
+    config: OTELTraceFormatArgs,
+) -> list[tuple[float, dict[str, Any]]]:
+    """Return execute-tool spans attributable to ``llm_span``.
+
+    Prefers descendants of the LLM span (``parent_span_id`` chain includes
+    that span). Descendants are not clipped by other LLM timestamps, so
+    overlapping tool activity still stays with the issuing call.
+
+    If there are no descendants, match siblings that share a non-null
+    parent, with start times after this LLM and before the next LLM that
+    shares that parent. Typical GenAI traces parent ``execute_tool`` as a
+    sibling of ``chat`` under ``invoke_agent`` rather than as a child of
+    the chat span.
+
+    Concurrent subagents remain one linear conversation chain; this only
+    chooses which tool results attach to which already-linearized loop.
+    Overlapping LLM calls that share one parent still share one sibling
+    window.
+
+    :param spans: Raw spans in one ``trace_id`` group.
+    :param llm_span: The tool-call LLM span.
+    :param llm_start: Parsed start time of ``llm_span``.
+    :param llm_rows: Timestamp-sorted LLM replay rows in this group.
+    :param config: Format args for the timestamp field name.
+    :return: Matching execute-tool spans with start times, sorted by start.
+    """
+    timed = _timed_execute_tool_spans(spans, config)
+    parent_of = _span_parent_map(spans)
+    llm_id = _span_id(llm_span)
+    descendants: list[tuple[float, dict[str, Any]]] = []
+    if llm_id is not None:
+        descendants = [
+            item for item in timed if _is_descendant(item[1], llm_id, parent_of)
+        ]
+        descendants.sort(key=lambda item: item[0])
+        if descendants:
+            return descendants
+
+    llm_parent = _span_parent_id(llm_span)
+    if llm_parent is None:
+        return []
+    end_ts = _next_llm_sibling_timestamp(llm_start, llm_parent, llm_rows)
+    siblings = [
+        item
+        for item in timed
+        if _span_parent_id(item[1]) == llm_parent and llm_start < item[0] < end_ts
+    ]
+    siblings.sort(key=lambda item: item[0])
+    return siblings
 
 
 def tool_result_delta(prev: dict[str, Any], curr: dict[str, Any]) -> list[str] | None:
@@ -768,8 +873,10 @@ class OTELTraceFormat(TraceFormatBase):
 
         When the following span is a pure tool-result continuation, consume it
         as the injection (and keep consuming while that injection also called
-        tools). Otherwise synthesize a placeholder and leave the next span for
-        the outer walk.
+        tools). Otherwise synthesize a placeholder from descendant or
+        same-parent sibling ``execute_tool`` spans and leave the next span
+        for the outer walk. Fallback injection pacing uses the earliest
+        matched tool span start, not the tool-call span start.
         """
         call = rows[index]
         self._append_turn(
@@ -803,12 +910,14 @@ class OTELTraceFormat(TraceFormatBase):
                 if include_tools:
                     continue
                 return current + 1
-            responses = self._placeholder_or_execute_results(all_spans, rows, current)
+            responses, relative_timestamp = self._placeholder_or_execute_results(
+                all_spans, rows, current, start_ts
+            )
             self._append_turn(
                 turns,
                 self._injection_columns(
                     responses=responses,
-                    relative_timestamp=rows[current]["timestamp"] - start_ts,
+                    relative_timestamp=relative_timestamp,
                     output_tokens=None,
                     tools_span=None,
                 ),
@@ -822,20 +931,33 @@ class OTELTraceFormat(TraceFormatBase):
         all_spans: list[dict[str, Any]],
         rows: list[dict[str, Any]],
         index: int,
-    ) -> list[str]:
-        next_ts = (
-            rows[index + 1]["timestamp"] if index + 1 < len(rows) else float("inf")
-        )
+        start_ts: float,
+    ) -> tuple[list[str], float]:
+        """Return injection strings and a conversation-relative timestamp.
+
+        Matched ``execute_tool`` results keep the earliest tool span's start.
+        The synthetic placeholder uses the tool-call span time because no
+        recorded tool execution exists.
+        """
+        call_ts = rows[index]["timestamp"]
         results: list[str] = []
-        for span in execute_tool_spans_between(
-            all_spans, rows[index]["timestamp"], next_ts, self.config
+        earliest: float | None = None
+        for timestamp, span in execute_tool_spans_for_call(
+            all_spans,
+            rows[index]["span"],
+            call_ts,
+            rows,
+            self.config,
         ):
             text = execute_tool_result_text(span)
-            if text is not None:
-                results.append(text)
-        if results:
-            return results
-        return [settings.default_synthetic_tool_response]
+            if text is None:
+                continue
+            results.append(text)
+            if earliest is None:
+                earliest = timestamp
+        if results and earliest is not None:
+            return results, earliest - start_ts
+        return [settings.default_synthetic_tool_response], call_ts - start_ts
 
     def _tools_for_call(self, span: dict[str, Any]) -> Any:
         tools = span_tool_definitions(span_attributes(span))
