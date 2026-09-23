@@ -1012,7 +1012,7 @@ class GenerativeMetrics(StandardBaseDict):
 
         # Intervals are reported only for metrics recorded once per request, so
         # that each value is one observation. Token-weighted metrics and derived
-        # rate distributions are left without them; see docs/guides/metrics.md.
+        # rate distributions are left without them; see docs/en/guides/metrics.md.
         uncertainty = (
             None
             if accumulator.config.confidence is None

@@ -160,7 +160,7 @@ Each summary statistic above is an estimate made from a finite number of request
 
 Set the level with `--metrics kind=generative,confidence=0.95`. It defaults to 0.95, and `null` reports the metrics without intervals. The level is recorded once per benchmark as `config.confidence`.
 
-The console shows the mean and the half-width of its interval together, for example `80.5 ±3.9`, and marks a percentile the sample cannot bound with `*`. The CSV appends a `Mean CI` and a `Percentile CIs` column per metric, the latter keyed by percentile, plus the confidence level. Those columns go at the end of each row so that existing column positions are unchanged.
+The console shows the mean and the half-width of its interval together, for example `80.5 ±3.9`, and marks a percentile the sample cannot bound with `*`. The CSV appends a `Mean CI` and a `Percentile CIs` column for each metric that carries intervals, the latter keyed by percentile, plus the confidence level. Those columns go at the end of each row so that existing column positions are unchanged.
 
 #### Which metrics report intervals
 

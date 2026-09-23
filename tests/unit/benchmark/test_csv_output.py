@@ -8,7 +8,6 @@ import pytest
 from guidellm.benchmark.outputs.csv import GenerativeBenchmarkerCSV
 from guidellm.scheduler import ThroughputStrategy
 from guidellm.schemas import (
-    DistributionSummary,
     SampleUncertainty,
     StatusDistributionSummary,
 )
@@ -259,6 +258,7 @@ async def test_finalize_aligns_columns_in_written_csv(tmp_path: Path):
         "_add_modality_metrics",
         "_add_scheduler_info",
         "_add_runtime_info",
+        "_add_interval_columns",
     ]:
         setattr(out, name, lambda *a, **k: None)
 
@@ -521,161 +521,202 @@ class TestServerThroughputGoodputColumns:
         assert values[flat.index("SLO Attainment")] == ""
 
 
-class TestDistributionIntervalColumns:
+async def _write_interval_csv(tmp_path: Path, benchmark) -> list[list[str]]:
+    """Write one benchmark through the CSV output and read the rows back.
+
+    ## WRITTEN BY AI ##
     """
-    Tests for the confidence interval columns in the CSV output.
+    output = GenerativeBenchmarkerCSV(output_path=tmp_path / "intervals.csv")
+    path = await output.finalize(report(benchmark))
+
+    return list(csv.reader(path.open()))
+
+
+def _interval_benchmark():
+    """Build a benchmark whose TTFT carries intervals from 200 observations.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = make_benchmark(strategy=ThroughputStrategy(), rps=1.0, tps=10.0)
+    benchmark.metrics.time_to_first_token_ms = StatusDistributionSummary.from_values(
+        [float(index) for index in range(200)],
+        [],
+        [],
+        uncertainty=SampleUncertainty(confidence=0.95),
+    )
+
+    return benchmark
+
+
+def _is_interval_column(group: str, stat: str) -> bool:
+    """Report whether a CSV column belongs to the interval section.
+
+    ## WRITTEN BY AI ##
+    """
+    return group == "Measurement Uncertainty" or stat in ("Mean CI", "Percentile CIs")
+
+
+class TestIntervalColumns:
+    """
+    Tests for the confidence interval section of the CSV output.
 
     ## WRITTEN BY AI ##
     """
 
-    @staticmethod
-    def _emit(dist):
-        """Run one distribution through the CSV column builder.
+    @pytest.mark.asyncio
+    @pytest.mark.regression
+    async def test_follow_every_existing_column(self, tmp_path: Path):
+        """
+        The interval section is written after every other column.
+
+        Every column the file emitted before intervals existed keeps its
+        position, so readers that index by column number still work.
 
         ## WRITTEN BY AI ##
         """
-        writer = GenerativeBenchmarkerCSV.__new__(GenerativeBenchmarkerCSV)
-        headers: list[list[str]] = []
-        values: list[str | int | float] = []
-        writer._add_distribution_stats(
-            headers, values, dist, "Group", "ms", "successful"
-        )
+        rows = await _write_interval_csv(tmp_path, _interval_benchmark())
 
-        return dict(zip([header[-1] for header in headers], values, strict=True))
+        flags = [
+            _is_interval_column(group, stat)
+            for group, stat in zip(rows[0], rows[2], strict=True)
+        ]
+        first = flags.index(True)
+        assert all(flags[first:])
+        assert not any(flags[:first])
 
+    @pytest.mark.asyncio
+    @pytest.mark.regression
+    async def test_labels_match_the_metric_columns(self, tmp_path: Path):
+        """
+        Each interval column shares its labels with a metric column in the row.
+
+        The section lists its metrics separately from the columns written for
+        them earlier in the row, so this fails if a label is renamed in one
+        place and not the other.
+
+        ## WRITTEN BY AI ##
+        """
+        rows = await _write_interval_csv(tmp_path, _interval_benchmark())
+
+        metric_columns = {
+            (group, name)
+            for group, name, stat in zip(rows[0], rows[1], rows[2], strict=True)
+            if stat == "Mean"
+        }
+        interval_columns = [
+            (group, name)
+            for group, name, stat in zip(rows[0], rows[1], rows[2], strict=True)
+            if stat in ("Mean CI", "Percentile CIs")
+        ]
+
+        assert interval_columns
+        assert set(interval_columns) <= metric_columns
+
+    @pytest.mark.asyncio
+    @pytest.mark.sanity
+    async def test_metrics_without_intervals_get_no_columns(self, tmp_path: Path):
+        """
+        Metrics that never carry an interval add no interval columns.
+
+        Token-weighted and rate metrics are reported without intervals, so
+        columns for them would always be empty.
+
+        ## WRITTEN BY AI ##
+        """
+        rows = await _write_interval_csv(tmp_path, _interval_benchmark())
+
+        interval_groups = {
+            group
+            for group, stat in zip(rows[0], rows[2], strict=True)
+            if stat in ("Mean CI", "Percentile CIs")
+        }
+        for group in (
+            "Inter Token Latency",
+            "Time per Output Token",
+            "Server Throughput",
+            "Token Throughput",
+            "Token Streaming",
+        ):
+            assert group not in interval_groups
+
+    @pytest.mark.asyncio
     @pytest.mark.smoke
-    def test_mean_ci_column_holds_the_interval(self):
+    async def test_values_hold_the_intervals(self, tmp_path: Path):
         """
-        A metric with an interval emits its bounds in a Mean CI column.
+        The mean and percentile intervals reach their columns.
+
+        Percentile intervals are one JSON object keyed by percentile, so a
+        reader does not need the ordering the Percentiles column uses, and a
+        percentile without an interval is explicitly null.
 
         ## WRITTEN BY AI ##
         """
-        dist = DistributionSummary.from_values(
-            [float(index) for index in range(200)],
-            uncertainty=SampleUncertainty(confidence=0.95),
+        benchmark = _interval_benchmark()
+        distribution = benchmark.metrics.time_to_first_token_ms.successful
+        rows = await _write_interval_csv(tmp_path, benchmark)
+
+        def cell(stat: str) -> str:
+            index = next(
+                index
+                for index, (group, name, leaf) in enumerate(
+                    zip(rows[0], rows[1], rows[2], strict=True)
+                )
+                if group == "Time to First Token"
+                and name == "Successful ms"
+                and leaf == stat
+            )
+            return rows[3][index]
+
+        assert cell("Mean CI") == (
+            f"[{distribution.mean_ci.lower}, {distribution.mean_ci.upper}]"
         )
-
-        emitted = self._emit(dist)
-
-        assert "Mean CI" in emitted
-        assert emitted["Mean CI"] == f"[{dist.mean_ci.lower}, {dist.mean_ci.upper}]"
-
-    @pytest.mark.smoke
-    def test_percentile_cis_column_is_keyed_by_percentile(self):
-        """
-        Percentile intervals are emitted as one self-describing JSON object.
-
-        Keying by percentile means a reader does not have to know the ordering
-        the Percentiles column uses, and a percentile without an interval is
-        explicitly null rather than absent.
-
-        ## WRITTEN BY AI ##
-        """
-        dist = DistributionSummary.from_values(
-            [float(index) for index in range(200)],
-            uncertainty=SampleUncertainty(confidence=0.95),
-        )
-
-        emitted = json.loads(self._emit(dist)["Percentile CIs"])
-
-        assert set(emitted) == set(PERCENTILE_PROBABILITIES)
-        assert emitted["p50"] == [
-            dist.percentile_cis.p50.lower,
-            dist.percentile_cis.p50.upper,
+        percentile_cis = json.loads(cell("Percentile CIs"))
+        assert set(percentile_cis) == set(PERCENTILE_PROBABILITIES)
+        assert percentile_cis["p50"] == [
+            distribution.percentile_cis.p50.lower,
+            distribution.percentile_cis.p50.upper,
         ]
         # 200 observations cannot bound p99, which needs 368.
-        assert emitted["p99"] is None
+        assert percentile_cis["p99"] is None
 
+    @pytest.mark.asyncio
     @pytest.mark.sanity
-    def test_percentile_cis_column_is_empty_without_intervals(self):
+    async def test_cells_are_empty_without_intervals(self, tmp_path: Path):
         """
-        A metric reported without intervals leaves the column blank.
-
-        ## WRITTEN BY AI ##
-        """
-        dist = DistributionSummary.from_values([float(index) for index in range(200)])
-
-        assert self._emit(dist)["Percentile CIs"] == ""
-
-    @pytest.mark.sanity
-    def test_mean_ci_column_is_empty_without_an_interval(self):
-        """
-        A metric reported without an interval leaves the column blank.
+        A supported metric compiled without an estimator leaves its cells blank.
 
         An empty cell reads as unavailable in a spreadsheet, where a zero or a
         repeated mean would read as a measurement.
 
         ## WRITTEN BY AI ##
         """
-        dist = DistributionSummary.from_values([float(index) for index in range(200)])
+        rows = await _write_interval_csv(
+            tmp_path, make_benchmark(strategy=ThroughputStrategy(), rps=1.0, tps=10.0)
+        )
 
-        emitted = self._emit(dist)
+        cells = [
+            value
+            for stat, value in zip(rows[2], rows[3], strict=True)
+            if stat in ("Mean CI", "Percentile CIs")
+        ]
+        assert cells
+        assert all(value == "" for value in cells)
 
-        assert emitted["Mean CI"] == ""
-
-    @pytest.mark.regression
-    def test_interval_columns_move_to_the_end_of_the_row(self):
+    @pytest.mark.asyncio
+    @pytest.mark.sanity
+    async def test_records_the_confidence_level(self, tmp_path: Path):
         """
-        Interval columns are reordered after every pre-existing column.
-
-        Readers that index the CSV by column number would otherwise shift by
-        one for every metric that gained an interval.
+        The confidence level the intervals were computed at is exported.
 
         ## WRITTEN BY AI ##
         """
-        headers = [
-            ["Benchmark", "Type", ""],
-            [GenerativeBenchmarkerCSV.INTERVAL_GROUP, "Confidence Level", ""],
-            ["Request Latency", "Successful Sec", "Mean"],
-            [
-                "Request Latency",
-                "Successful Sec",
-                GenerativeBenchmarkerCSV.INTERVAL_STATS[0],
-            ],
-            ["Request Latency", "Successful Sec", "Median"],
-            ["TTFT", "Successful ms", GenerativeBenchmarkerCSV.INTERVAL_STATS[0]],
-            ["TTFT", "Successful ms", "Mean"],
-        ]
-        values = ["generative", 0.95, 1.0, "[0.9, 1.1]", 1.0, "[80.0, 88.0]", 84.0]
+        benchmark = _interval_benchmark()
+        benchmark.config.confidence = 0.9
+        rows = await _write_interval_csv(tmp_path, benchmark)
 
-        moved_headers, moved_values = GenerativeBenchmarkerCSV._move_intervals_last(
-            headers, values
+        index = next(
+            index
+            for index, (group, name) in enumerate(zip(rows[0], rows[1], strict=True))
+            if group == "Measurement Uncertainty" and name == "Confidence Level"
         )
-
-        assert [header[-1] for header in moved_headers] == [
-            "",
-            "Mean",
-            "Median",
-            "Mean",
-            "",
-            GenerativeBenchmarkerCSV.INTERVAL_STATS[0],
-            GenerativeBenchmarkerCSV.INTERVAL_STATS[0],
-        ]
-        assert moved_values == [
-            "generative",
-            1.0,
-            1.0,
-            84.0,
-            0.95,
-            "[0.9, 1.1]",
-            "[80.0, 88.0]",
-        ]
-
-    @pytest.mark.regression
-    def test_existing_columns_are_unchanged(self):
-        """
-        The pre-existing statistics columns still carry the same values.
-
-        ## WRITTEN BY AI ##
-        """
-        dist = DistributionSummary.from_values(
-            [float(index) for index in range(200)],
-            uncertainty=SampleUncertainty(confidence=0.95),
-        )
-
-        emitted = self._emit(dist)
-
-        assert emitted["Mean"] == dist.mean
-        assert emitted["Median"] == dist.median
-        assert emitted["Std Dev"] == dist.std_dev
-        assert emitted["Percentiles"].startswith("[")
+        assert rows[3][index] == "0.9"

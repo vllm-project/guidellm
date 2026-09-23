@@ -23,7 +23,6 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmarksReport,
 )
 from guidellm.schemas import DistributionSummary, StatusDistributionSummary
-from guidellm.schemas.base.statistics import PERCENTILE_PROBABILITIES
 from guidellm.schemas.benchmark import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.outputs import CSVBenchmarkOutputArgs
 from guidellm.utils.functions import safe_format_timestamp
@@ -87,12 +86,6 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
 
     DEFAULT_FILE: ClassVar[str] = "benchmarks.csv"
 
-    INTERVAL_STATS: ClassVar[tuple[str, ...]] = ("Mean CI", "Percentile CIs")
-    """Header leaves marking columns moved to the end of the row."""
-
-    INTERVAL_GROUP: ClassVar[str] = "Measurement Uncertainty"
-    """Header group marking a column moved to the end of the row."""
-
     @classmethod
     def from_args(cls, args: BenchmarkOutputArgs) -> GenerativeBenchmarkerCSV:
         """
@@ -154,8 +147,8 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                     )
                 self._add_scheduler_info(benchmark, benchmark_headers, benchmark_values)
                 self._add_runtime_info(report, benchmark_headers, benchmark_values)
-                benchmark_headers, benchmark_values = self._move_intervals_last(
-                    benchmark_headers, benchmark_values
+                self._add_interval_columns(
+                    benchmark, benchmark_headers, benchmark_values
                 )
 
                 all_headers.append(benchmark_headers)
@@ -169,14 +162,83 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
 
         return output_path
 
+    def _add_interval_columns(
+        self,
+        benchmark: GenerativeBenchmark,
+        headers: list[list[str]],
+        values: list[str | int | float],
+    ) -> None:
+        """
+        Add confidence interval columns for the metrics that carry them.
+
+        Written after every other column so that existing column positions are
+        unchanged. Only metrics recorded once per request carry intervals, so
+        only those are listed, under the same labels the row already uses for
+        them.
+
+        :param benchmark: Benchmark data to extract intervals from
+        :param headers: List of header hierarchies to append to
+        :param values: List of values to append to
+        """
+        self._add_field(
+            headers,
+            values,
+            "Measurement Uncertainty",
+            "Confidence Level",
+            "" if benchmark.config.confidence is None else benchmark.config.confidence,
+        )
+
+        metrics = benchmark.metrics
+        interval_metrics: list[tuple[StatusDistributionSummary | None, str, str]] = [
+            (metrics.request_latency, "Request Latency", "Sec"),
+            (metrics.request_dispatch_delay, "Dispatch Delay", "Sec"),
+            (metrics.request_scheduled_latency, "Scheduled Latency", "Sec"),
+            (
+                metrics.request_streaming_iterations_count,
+                "Streaming Iterations",
+                "Count",
+            ),
+            (metrics.time_to_first_token_ms, "Time to First Token", "ms"),
+            (
+                metrics.time_to_first_output_token_ms,
+                "Time to First Output Token",
+                "ms",
+            ),
+            (metrics.time_to_last_round_trip_ms, "Time To Last Round Trip", "ms"),
+            (metrics.avg_round_trip_time_ms, "Avg Round Trip Time", "ms"),
+            (metrics.prompt_token_count, "Token Metrics", "Input Tokens"),
+            (metrics.output_token_count, "Token Metrics", "Output Tokens"),
+            (metrics.total_token_count, "Token Metrics", "Total Tokens"),
+        ]
+
+        for metric, group, units in interval_metrics:
+            if metric is None:
+                continue
+            for status, dist in (
+                ("Successful", metric.successful),
+                ("Incomplete", metric.incomplete),
+                ("Errored", metric.errored),
+            ):
+                # Skip the statuses the metric columns skip, so each interval
+                # column has a matching set of statistics earlier in the row.
+                if dist.total_sum == 0.0:
+                    continue
+                headers.append([group, f"{status} {units}", "Mean CI"])
+                values.append(
+                    ""
+                    if dist.mean_ci is None
+                    else f"[{dist.mean_ci.lower}, {dist.mean_ci.upper}]"
+                )
+                headers.append([group, f"{status} {units}", "Percentile CIs"])
+                values.append(self._format_percentile_intervals(dist))
+
     @staticmethod
     def _format_percentile_intervals(dist: DistributionSummary) -> str:
         """
-        Render the percentile intervals as one self-describing JSON object.
+        Render the percentile intervals as one JSON object keyed by percentile.
 
-        Keyed by percentile so a reader does not have to know the ordering the
-        rest of this file uses, and every percentile is present so that one
-        without an interval reads as null rather than as missing.
+        Every percentile is present, so one without an interval reads as null
+        rather than as missing.
 
         :param dist: Distribution summary to read the intervals from
         :return: JSON object of percentile to [lower, upper] or null, or an
@@ -185,54 +247,13 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         if dist.percentile_cis is None:
             return ""
 
-        intervals: dict[str, list[float] | None] = {}
-        for name in PERCENTILE_PROBABILITIES:
-            interval = getattr(dist.percentile_cis, name)
-            intervals[name] = (
-                None if interval is None else [interval.lower, interval.upper]
-            )
-
-        return json.dumps(intervals, separators=(",", ":"))
-
-    @classmethod
-    def _is_interval_column(cls, header: list[str]) -> bool:
-        """
-        Report whether a column belongs to the appended interval block.
-
-        :param header: Header hierarchy for one column
-        :return: True when the column is an interval column
-        """
-        return header[-1] in cls.INTERVAL_STATS or header[0] == cls.INTERVAL_GROUP
-
-    @classmethod
-    def _move_intervals_last(
-        cls,
-        headers: list[list[str]],
-        values: list[str | int | float],
-    ) -> tuple[list[list[str]], list[str | int | float]]:
-        """
-        Move the interval columns to the end of the row, keeping their order.
-
-        Every column this file emitted before intervals existed then keeps the
-        position it had, so a reader that indexes by column number still works.
-
-        :param headers: Header hierarchies for one benchmark row
-        :param values: Values for one benchmark row
-        :return: Tuple of (reordered headers, reordered values)
-        """
-        kept = [
-            (header, value)
-            for header, value in zip(headers, values, strict=True)
-            if not cls._is_interval_column(header)
-        ]
-        moved = [
-            (header, value)
-            for header, value in zip(headers, values, strict=True)
-            if cls._is_interval_column(header)
-        ]
-        reordered = kept + moved
-
-        return [header for header, _ in reordered], [value for _, value in reordered]
+        return json.dumps(
+            {
+                name: None if bounds is None else [bounds["lower"], bounds["upper"]]
+                for name, bounds in dist.percentile_cis.model_dump().items()
+            },
+            separators=(",", ":"),
+        )
 
     @staticmethod
     def _align_columns(
@@ -393,13 +414,6 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         self._add_field(headers, values, "Benchmark", "ID", benchmark.config.id_)
         self._add_field(
             headers, values, "Benchmark", "Strategy", benchmark.config.strategy.type_
-        )
-        self._add_field(
-            headers,
-            values,
-            self.INTERVAL_GROUP,
-            "Confidence Level",
-            "" if benchmark.config.confidence is None else benchmark.config.confidence,
         )
         self._add_field(
             headers,
@@ -898,19 +912,6 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
 
         headers.append([group, f"{status_prefix}{units}", "Std Dev"])
         values.append(dist.std_dev)
-
-        # Written here so they stay next to the metric they belong to, then
-        # moved to the end of the row by _move_intervals_last before the row is
-        # emitted, which keeps every pre-existing column in place.
-        headers.append([group, f"{status_prefix}{units}", self.INTERVAL_STATS[0]])
-        values.append(
-            ""
-            if dist.mean_ci is None
-            else f"[{dist.mean_ci.lower}, {dist.mean_ci.upper}]"
-        )
-
-        headers.append([group, f"{status_prefix}{units}", self.INTERVAL_STATS[1]])
-        values.append(self._format_percentile_intervals(dist))
 
         headers.append([group, f"{status_prefix}{units}", "Percentiles"])
         percentiles_str = (
