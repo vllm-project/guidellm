@@ -514,6 +514,38 @@ def _recorded_chat_messages(columns: dict[str, Any]) -> list[dict[str, Any]] | N
     return None
 
 
+def _require_request_payload(
+    arguments: GenerationRequestArguments,
+    *,
+    endpoint: str,
+    field: str,
+    sources: str,
+    columns: dict[str, Any],
+) -> None:
+    """Raise if the endpoint's required body field is missing or empty.
+
+    Called after ``format()`` has merged extras, history, and the current
+    turn so a payload supplied that way still counts as present.
+
+    :param arguments: Formatted request arguments.
+    :param endpoint: Request path shown in the error (e.g. ``/v1/completions``).
+    :param field: Body key that must be non-empty (``prompt``, ``messages``,
+        ``input``).
+    :param sources: Human-readable column names that can fill ``field``.
+    :param columns: Request columns, listed in the error when present.
+    :raises ValueError: If ``field`` is missing or empty.
+    """
+    body = arguments.body or {}
+    if body.get(field):
+        return
+    present = sorted(key for key, value in columns.items() if value)
+    present_names = ", ".join(present) if present else "none"
+    raise ValueError(
+        f"Cannot build {endpoint} {field}: missing {sources}. "
+        f"Present columns: {present_names}."
+    )
+
+
 @OpenAIRequestHandlerFactory.register("/v1/completions")
 class TextCompletionsRequestHandler(OpenAIRequestHandler):
     """
@@ -566,6 +598,8 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         :param data: The generation request to format
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
+        :raises ValueError: If ``prompt`` cannot be built from columns, extras,
+            or history.
         """
         arguments: GenerationRequestArguments = GenerationRequestArguments()
         arguments.body = {}  # The type checker works better setting this field here
@@ -614,6 +648,13 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         if prompts:
             arguments.body["prompt"] = " ".join(prompts)
 
+        _require_request_payload(
+            arguments,
+            endpoint="/v1/completions",
+            field="prompt",
+            sources="text_column or prefix_column",
+            columns=data.columns,
+        )
         return arguments
 
     def compile_non_streaming(
@@ -1116,6 +1157,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         :param history: Prior (request, response) pairs in the conversation
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
+        :raises ValueError: If ``messages`` cannot be built from columns, extras,
+            history, or a tool-injection turn.
         """
         arguments = GenerationRequestArguments()
         arguments.body = {}  # The type checker works best with body assigned here
@@ -1175,6 +1218,15 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # Inject tool definitions and apply tool-call-specific overrides.
         self._apply_tool_call_overrides(arguments.body, data)
 
+        _require_request_payload(
+            arguments,
+            endpoint="/v1/chat/completions",
+            field="messages",
+            sources=(
+                "raw_messages_column, text_column, prefix_column, or media columns"
+            ),
+            columns=data.columns,
+        )
         return arguments
 
     def compile_non_streaming(
@@ -1865,8 +1917,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
     ) -> None:
         """Append current-turn content as Responses ``input`` items.
 
-        ``text_column`` / media wrap as a user message. OTEL replay of
-        ``raw_messages_column`` is chat-completions only for now.
+        ``text_column`` / media wrap as a user message. ``raw_messages_column``
+        is ignored here; a missing ``input`` after format raises.
 
         :param items: Input item list to extend in place.
         :param req: Request whose columns supply the current turn.
@@ -1963,6 +2015,13 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
         self._apply_tool_call_overrides(arguments.body, data)
 
+        _require_request_payload(
+            arguments,
+            endpoint="/v1/responses",
+            field="input",
+            sources="text_column or media columns",
+            columns=data.columns,
+        )
         return arguments
 
     @staticmethod
@@ -2415,6 +2474,7 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
         :param history: Request/response history (unused for embeddings)
         :param **kwargs: Additional keyword arguments (model, encoding_format, etc.)
         :return: The formatted request arguments
+        :raises ValueError: If ``input`` cannot be built from ``text_column`` or extras.
         """
         arguments = GenerationRequestArguments()
         arguments.body = {}
@@ -2440,6 +2500,13 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
         if kwargs.get("extras"):
             arguments.model_combine(kwargs["extras"])
 
+        _require_request_payload(
+            arguments,
+            endpoint="/v1/embeddings",
+            field="input",
+            sources="text_column",
+            columns=data.columns,
+        )
         return arguments
 
     def compile_non_streaming(

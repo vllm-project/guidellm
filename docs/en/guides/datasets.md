@@ -429,7 +429,7 @@ When your dataset uses non-standard column names, you can use `--data-column-map
 **Supported column types:**
 
 - `text_column`: The main prompt text (defaults: `prompt`, `instruction`, `question`, `input`, `context`, `content`, `text`)
-- `raw_messages_column`: Chat-completions messages for the current turn (`[{role, content}, …]`; defaults: `messages`, `chat_messages`). `/v1/chat/completions` sends them as-is. OTEL replay is chat-completions only for now.
+- `raw_messages_column`: Chat-completions messages for the current turn (`[{role, content}, …]`; defaults: `messages`, `chat_messages`). `/v1/chat/completions` sends them as-is. Other request formats abort if they cannot build `prompt`/`input` from these messages.
 - `prefix_column`: System prompt or prefix (defaults: `system_prompt`, `system`, `prefix`)
 - `prompt_tokens_count_column`: Column containing prompt token counts (defaults: `prompt_tokens_count`, `input_tokens_count`)
 - `output_tokens_count_column`: Column containing output token counts (defaults: `output_tokens_count`, `completion_tokens_count`)
