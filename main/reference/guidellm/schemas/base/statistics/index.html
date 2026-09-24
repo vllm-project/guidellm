@@ -519,27 +519,27 @@
 <span class=normal><a href=#__codelineno-0-632>632</a></span>
 <span class=normal><a href=#__codelineno-0-633>633</a></span>
 <span class=normal><a href=#__codelineno-0-634>634</a></span></pre></div></td><td class=code><div><pre><span></span><code><span id=__span-0-114><a id=__codelineno-0-114 name=__codelineno-0-114></a><span class=k>class</span><span class=w> </span><span class=nc>DistributionSummary</span><span class=p>(</span><span class=n>StandardBaseModel</span><span class=p>):</span>
-</span><span id=__span-0-115><a id=__codelineno-0-115 name=__codelineno-0-115></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-115><a id=__codelineno-0-115 name=__codelineno-0-115></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-116><a id=__codelineno-0-116 name=__codelineno-0-116></a><span class=sd>    Comprehensive statistical summary of a probability distribution.</span>
 </span><span id=__span-0-117><a id=__codelineno-0-117 name=__codelineno-0-117></a>
 </span><span id=__span-0-118><a id=__codelineno-0-118 name=__codelineno-0-118></a><span class=sd>    Captures central tendency (mean, median, mode), spread (variance, std_dev),</span>
 </span><span id=__span-0-119><a id=__codelineno-0-119 name=__codelineno-0-119></a><span class=sd>    extrema (min, max), and percentile information with optional probability density</span>
 </span><span id=__span-0-120><a id=__codelineno-0-120 name=__codelineno-0-120></a><span class=sd>    function. Supports creation from raw values, PDFs, or time-based event data for</span>
 </span><span id=__span-0-121><a id=__codelineno-0-121 name=__codelineno-0-121></a><span class=sd>    rate and concurrency analysis in benchmark metrics.</span>
-</span><span id=__span-0-122><a id=__codelineno-0-122 name=__codelineno-0-122></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-122><a id=__codelineno-0-122 name=__codelineno-0-122></a><span class=sd>    """</span>
 </span><span id=__span-0-123><a id=__codelineno-0-123 name=__codelineno-0-123></a>
-</span><span id=__span-0-124><a id=__codelineno-0-124 name=__codelineno-0-124></a>    <span class=n>mean</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;Mean/average value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-125><a id=__codelineno-0-125 name=__codelineno-0-125></a>    <span class=n>median</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;Median (50th percentile) value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-126><a id=__codelineno-0-126 name=__codelineno-0-126></a>    <span class=n>mode</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;Mode (most probable) value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-127><a id=__codelineno-0-127 name=__codelineno-0-127></a>    <span class=n>variance</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;Variance of the distribution&quot;</span><span class=p>)</span>
-</span><span id=__span-0-128><a id=__codelineno-0-128 name=__codelineno-0-128></a>    <span class=n>std_dev</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;Standard deviation&quot;</span><span class=p>)</span>
-</span><span id=__span-0-129><a id=__codelineno-0-129 name=__codelineno-0-129></a>    <span class=nb>min</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;Minimum value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-130><a id=__codelineno-0-130 name=__codelineno-0-130></a>    <span class=nb>max</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;Maximum value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-131><a id=__codelineno-0-131 name=__codelineno-0-131></a>    <span class=n>count</span><span class=p>:</span> <span class=nb>int</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;Number of observations&quot;</span><span class=p>)</span>
-</span><span id=__span-0-132><a id=__codelineno-0-132 name=__codelineno-0-132></a>    <span class=n>total_sum</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;Sum of all values&quot;</span><span class=p>)</span>
-</span><span id=__span-0-133><a id=__codelineno-0-133 name=__codelineno-0-133></a>    <span class=n>percentiles</span><span class=p>:</span> <span class=n>Percentiles</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;Standard percentile values&quot;</span><span class=p>)</span>
+</span><span id=__span-0-124><a id=__codelineno-0-124 name=__codelineno-0-124></a>    <span class=n>mean</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"Mean/average value"</span><span class=p>)</span>
+</span><span id=__span-0-125><a id=__codelineno-0-125 name=__codelineno-0-125></a>    <span class=n>median</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"Median (50th percentile) value"</span><span class=p>)</span>
+</span><span id=__span-0-126><a id=__codelineno-0-126 name=__codelineno-0-126></a>    <span class=n>mode</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"Mode (most probable) value"</span><span class=p>)</span>
+</span><span id=__span-0-127><a id=__codelineno-0-127 name=__codelineno-0-127></a>    <span class=n>variance</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"Variance of the distribution"</span><span class=p>)</span>
+</span><span id=__span-0-128><a id=__codelineno-0-128 name=__codelineno-0-128></a>    <span class=n>std_dev</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"Standard deviation"</span><span class=p>)</span>
+</span><span id=__span-0-129><a id=__codelineno-0-129 name=__codelineno-0-129></a>    <span class=nb>min</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"Minimum value"</span><span class=p>)</span>
+</span><span id=__span-0-130><a id=__codelineno-0-130 name=__codelineno-0-130></a>    <span class=nb>max</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"Maximum value"</span><span class=p>)</span>
+</span><span id=__span-0-131><a id=__codelineno-0-131 name=__codelineno-0-131></a>    <span class=n>count</span><span class=p>:</span> <span class=nb>int</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"Number of observations"</span><span class=p>)</span>
+</span><span id=__span-0-132><a id=__codelineno-0-132 name=__codelineno-0-132></a>    <span class=n>total_sum</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"Sum of all values"</span><span class=p>)</span>
+</span><span id=__span-0-133><a id=__codelineno-0-133 name=__codelineno-0-133></a>    <span class=n>percentiles</span><span class=p>:</span> <span class=n>Percentiles</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"Standard percentile values"</span><span class=p>)</span>
 </span><span id=__span-0-134><a id=__codelineno-0-134 name=__codelineno-0-134></a>    <span class=n>pdf</span><span class=p>:</span> <span class=nb>list</span><span class=p>[</span><span class=nb>tuple</span><span class=p>[</span><span class=nb>float</span><span class=p>,</span> <span class=nb>float</span><span class=p>]]</span> <span class=o>|</span> <span class=kc>None</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span>
-</span><span id=__span-0-135><a id=__codelineno-0-135 name=__codelineno-0-135></a>        <span class=n>description</span><span class=o>=</span><span class=s2>&quot;Probability density function as (value, probability) pairs&quot;</span><span class=p>,</span>
+</span><span id=__span-0-135><a id=__codelineno-0-135 name=__codelineno-0-135></a>        <span class=n>description</span><span class=o>=</span><span class=s2>"Probability density function as (value, probability) pairs"</span><span class=p>,</span>
 </span><span id=__span-0-136><a id=__codelineno-0-136 name=__codelineno-0-136></a>        <span class=n>default</span><span class=o>=</span><span class=kc>None</span><span class=p>,</span>
 </span><span id=__span-0-137><a id=__codelineno-0-137 name=__codelineno-0-137></a>    <span class=p>)</span>
 </span><span id=__span-0-138><a id=__codelineno-0-138 name=__codelineno-0-138></a>
@@ -552,7 +552,7 @@
 </span><span id=__span-0-145><a id=__codelineno-0-145 name=__codelineno-0-145></a>        <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-146><a id=__codelineno-0-146 name=__codelineno-0-146></a>        <span class=n>validate</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>=</span> <span class=kc>True</span><span class=p>,</span>
 </span><span id=__span-0-147><a id=__codelineno-0-147 name=__codelineno-0-147></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=n>DistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-148><a id=__codelineno-0-148 name=__codelineno-0-148></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-148><a id=__codelineno-0-148 name=__codelineno-0-148></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-149><a id=__codelineno-0-149 name=__codelineno-0-149></a><span class=sd>        Create distribution summary from a probability density function.</span>
 </span><span id=__span-0-150><a id=__codelineno-0-150 name=__codelineno-0-150></a>
 </span><span id=__span-0-151><a id=__codelineno-0-151 name=__codelineno-0-151></a><span class=sd>        :param pdf: 2D array (N, 2) with values in column 0 and probabilities in</span>
@@ -563,13 +563,13 @@
 </span><span id=__span-0-156><a id=__codelineno-0-156 name=__codelineno-0-156></a><span class=sd>        :param validate: Whether to validate probabilities sum to 1 and are non-negative</span>
 </span><span id=__span-0-157><a id=__codelineno-0-157 name=__codelineno-0-157></a><span class=sd>        :return: Complete distribution summary with statistics</span>
 </span><span id=__span-0-158><a id=__codelineno-0-158 name=__codelineno-0-158></a><span class=sd>        :raises ValueError: If PDF shape is invalid or probabilities are invalid</span>
-</span><span id=__span-0-159><a id=__codelineno-0-159 name=__codelineno-0-159></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-159><a id=__codelineno-0-159 name=__codelineno-0-159></a><span class=sd>        """</span>
 </span><span id=__span-0-160><a id=__codelineno-0-160 name=__codelineno-0-160></a>        <span class=n>expected_shape</span> <span class=o>=</span> <span class=p>(</span><span class=kc>None</span><span class=p>,</span> <span class=mi>2</span><span class=p>)</span>
 </span><span id=__span-0-161><a id=__codelineno-0-161 name=__codelineno-0-161></a>
 </span><span id=__span-0-162><a id=__codelineno-0-162 name=__codelineno-0-162></a>        <span class=k>if</span> <span class=nb>len</span><span class=p>(</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>)</span> <span class=o>!=</span> <span class=nb>len</span><span class=p>(</span><span class=n>expected_shape</span><span class=p>)</span> <span class=ow>or</span> <span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span> <span class=o>!=</span> <span class=n>expected_shape</span><span class=p>[</span><span class=mi>1</span><span class=p>]:</span>
 </span><span id=__span-0-163><a id=__codelineno-0-163 name=__codelineno-0-163></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span>
-</span><span id=__span-0-164><a id=__codelineno-0-164 name=__codelineno-0-164></a>                <span class=s2>&quot;PDF must be a 2D array of shape (N, 2) where first column is values &quot;</span>
-</span><span id=__span-0-165><a id=__codelineno-0-165 name=__codelineno-0-165></a>                <span class=sa>f</span><span class=s2>&quot;and second column is probabilities. Got </span><span class=si>{</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=si>}</span><span class=s2> instead.&quot;</span>
+</span><span id=__span-0-164><a id=__codelineno-0-164 name=__codelineno-0-164></a>                <span class=s2>"PDF must be a 2D array of shape (N, 2) where first column is values "</span>
+</span><span id=__span-0-165><a id=__codelineno-0-165 name=__codelineno-0-165></a>                <span class=sa>f</span><span class=s2>"and second column is probabilities. Got </span><span class=si>{</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=si>}</span><span class=s2> instead."</span>
 </span><span id=__span-0-166><a id=__codelineno-0-166 name=__codelineno-0-166></a>            <span class=p>)</span>
 </span><span id=__span-0-167><a id=__codelineno-0-167 name=__codelineno-0-167></a>
 </span><span id=__span-0-168><a id=__codelineno-0-168 name=__codelineno-0-168></a>        <span class=k>if</span> <span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=mi>0</span><span class=p>]</span> <span class=o>==</span> <span class=mi>0</span><span class=p>:</span>
@@ -592,17 +592,17 @@
 </span><span id=__span-0-185><a id=__codelineno-0-185 name=__codelineno-0-185></a>        <span class=n>probabilities</span> <span class=o>=</span> <span class=n>pdf</span><span class=p>[:,</span> <span class=mi>1</span><span class=p>]</span>
 </span><span id=__span-0-186><a id=__codelineno-0-186 name=__codelineno-0-186></a>
 </span><span id=__span-0-187><a id=__codelineno-0-187 name=__codelineno-0-187></a>        <span class=k>if</span> <span class=n>validate</span><span class=p>:</span>
-</span><span id=__span-0-188><a id=__codelineno-0-188 name=__codelineno-0-188></a>            <span class=c1># Fail if probabilities don&#39;t sum to 1 or are negative</span>
+</span><span id=__span-0-188><a id=__codelineno-0-188 name=__codelineno-0-188></a>            <span class=c1># Fail if probabilities don't sum to 1 or are negative</span>
 </span><span id=__span-0-189><a id=__codelineno-0-189 name=__codelineno-0-189></a>            <span class=k>if</span> <span class=n>np</span><span class=o>.</span><span class=n>any</span><span class=p>(</span><span class=n>probabilities</span> <span class=o>&lt;</span> <span class=mi>0</span><span class=p>):</span>
-</span><span id=__span-0-190><a id=__codelineno-0-190 name=__codelineno-0-190></a>                <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>&quot;Probabilities must be non-negative.&quot;</span><span class=p>)</span>
+</span><span id=__span-0-190><a id=__codelineno-0-190 name=__codelineno-0-190></a>                <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>"Probabilities must be non-negative."</span><span class=p>)</span>
 </span><span id=__span-0-191><a id=__codelineno-0-191 name=__codelineno-0-191></a>
 </span><span id=__span-0-192><a id=__codelineno-0-192 name=__codelineno-0-192></a>            <span class=n>prob_sum</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>sum</span><span class=p>(</span><span class=n>probabilities</span><span class=p>)</span>
 </span><span id=__span-0-193><a id=__codelineno-0-193 name=__codelineno-0-193></a>            <span class=k>if</span> <span class=ow>not</span> <span class=n>np</span><span class=o>.</span><span class=n>isclose</span><span class=p>(</span><span class=n>prob_sum</span><span class=p>,</span> <span class=mf>1.0</span><span class=p>,</span> <span class=n>atol</span><span class=o>=</span><span class=n>epsilon</span><span class=p>):</span>
-</span><span id=__span-0-194><a id=__codelineno-0-194 name=__codelineno-0-194></a>                <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=sa>f</span><span class=s2>&quot;Probabilities must sum to 1.0 (sum=</span><span class=si>{</span><span class=n>prob_sum</span><span class=si>}</span><span class=s2>).&quot;</span><span class=p>)</span>
+</span><span id=__span-0-194><a id=__codelineno-0-194 name=__codelineno-0-194></a>                <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=sa>f</span><span class=s2>"Probabilities must sum to 1.0 (sum=</span><span class=si>{</span><span class=n>prob_sum</span><span class=si>}</span><span class=s2>)."</span><span class=p>)</span>
 </span><span id=__span-0-195><a id=__codelineno-0-195 name=__codelineno-0-195></a>
 </span><span id=__span-0-196><a id=__codelineno-0-196 name=__codelineno-0-196></a>            <span class=c1># Fail if values are not sorted</span>
 </span><span id=__span-0-197><a id=__codelineno-0-197 name=__codelineno-0-197></a>            <span class=k>if</span> <span class=ow>not</span> <span class=n>np</span><span class=o>.</span><span class=n>all</span><span class=p>(</span><span class=n>values</span><span class=p>[:</span><span class=o>-</span><span class=mi>1</span><span class=p>]</span> <span class=o>&lt;=</span> <span class=n>values</span><span class=p>[</span><span class=mi>1</span><span class=p>:]):</span>
-</span><span id=__span-0-198><a id=__codelineno-0-198 name=__codelineno-0-198></a>                <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>&quot;Values in PDF must be sorted in ascending order.&quot;</span><span class=p>)</span>
+</span><span id=__span-0-198><a id=__codelineno-0-198 name=__codelineno-0-198></a>                <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>"Values in PDF must be sorted in ascending order."</span><span class=p>)</span>
 </span><span id=__span-0-199><a id=__codelineno-0-199 name=__codelineno-0-199></a>
 </span><span id=__span-0-200><a id=__codelineno-0-200 name=__codelineno-0-200></a>        <span class=n>percentiles</span> <span class=o>=</span> <span class=n>Percentiles</span><span class=o>.</span><span class=n>from_pdf</span><span class=p>(</span><span class=n>pdf</span><span class=p>,</span> <span class=n>epsilon</span><span class=o>=</span><span class=n>epsilon</span><span class=p>,</span> <span class=n>validate</span><span class=o>=</span><span class=kc>False</span><span class=p>)</span>
 </span><span id=__span-0-201><a id=__codelineno-0-201 name=__codelineno-0-201></a>        <span class=n>median</span> <span class=o>=</span> <span class=n>percentiles</span><span class=o>.</span><span class=n>p50</span>
@@ -637,13 +637,13 @@
 </span><span id=__span-0-230><a id=__codelineno-0-230 name=__codelineno-0-230></a>    <span class=k>def</span><span class=w> </span><span class=nf>_sample_pdf</span><span class=p>(</span>
 </span><span id=__span-0-231><a id=__codelineno-0-231 name=__codelineno-0-231></a>        <span class=bp>cls</span><span class=p>,</span> <span class=n>pdf</span><span class=p>:</span> <span class=n>np</span><span class=o>.</span><span class=n>ndarray</span><span class=p>,</span> <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span>
 </span><span id=__span-0-232><a id=__codelineno-0-232 name=__codelineno-0-232></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=nb>list</span><span class=p>[</span><span class=nb>tuple</span><span class=p>[</span><span class=nb>float</span><span class=p>,</span> <span class=nb>float</span><span class=p>]]</span> <span class=o>|</span> <span class=kc>None</span><span class=p>:</span>
-</span><span id=__span-0-233><a id=__codelineno-0-233 name=__codelineno-0-233></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-233><a id=__codelineno-0-233 name=__codelineno-0-233></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-234><a id=__codelineno-0-234 name=__codelineno-0-234></a><span class=sd>        Sample PDF based on include_pdf parameter.</span>
 </span><span id=__span-0-235><a id=__codelineno-0-235 name=__codelineno-0-235></a>
 </span><span id=__span-0-236><a id=__codelineno-0-236 name=__codelineno-0-236></a><span class=sd>        :param pdf: PDF array to sample</span>
 </span><span id=__span-0-237><a id=__codelineno-0-237 name=__codelineno-0-237></a><span class=sd>        :param include_pdf: False for None, True for full, int for sampled size</span>
 </span><span id=__span-0-238><a id=__codelineno-0-238 name=__codelineno-0-238></a><span class=sd>        :return: Sampled PDF as list of tuples or None</span>
-</span><span id=__span-0-239><a id=__codelineno-0-239 name=__codelineno-0-239></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-239><a id=__codelineno-0-239 name=__codelineno-0-239></a><span class=sd>        """</span>
 </span><span id=__span-0-240><a id=__codelineno-0-240 name=__codelineno-0-240></a>        <span class=k>if</span> <span class=n>include_pdf</span> <span class=ow>is</span> <span class=kc>False</span><span class=p>:</span>
 </span><span id=__span-0-241><a id=__codelineno-0-241 name=__codelineno-0-241></a>            <span class=k>return</span> <span class=kc>None</span>
 </span><span id=__span-0-242><a id=__codelineno-0-242 name=__codelineno-0-242></a>        <span class=k>if</span> <span class=n>include_pdf</span> <span class=ow>is</span> <span class=kc>True</span><span class=p>:</span>
@@ -663,7 +663,7 @@
 </span><span id=__span-0-256><a id=__codelineno-0-256 name=__codelineno-0-256></a>        <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-257><a id=__codelineno-0-257 name=__codelineno-0-257></a>        <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-258><a id=__codelineno-0-258 name=__codelineno-0-258></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=n>DistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-259><a id=__codelineno-0-259 name=__codelineno-0-259></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-259><a id=__codelineno-0-259 name=__codelineno-0-259></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-260><a id=__codelineno-0-260 name=__codelineno-0-260></a><span class=sd>        Create distribution summary from raw values with optional weights.</span>
 </span><span id=__span-0-261><a id=__codelineno-0-261 name=__codelineno-0-261></a>
 </span><span id=__span-0-262><a id=__codelineno-0-262 name=__codelineno-0-262></a><span class=sd>        :param values: Values or (value, weight) tuples, or numpy array</span>
@@ -672,7 +672,7 @@
 </span><span id=__span-0-265><a id=__codelineno-0-265 name=__codelineno-0-265></a><span class=sd>        :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-266><a id=__codelineno-0-266 name=__codelineno-0-266></a><span class=sd>        :return: Distribution summary computed from the values</span>
 </span><span id=__span-0-267><a id=__codelineno-0-267 name=__codelineno-0-267></a><span class=sd>        :raises ValueError: If total weight is zero or invalid</span>
-</span><span id=__span-0-268><a id=__codelineno-0-268 name=__codelineno-0-268></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-268><a id=__codelineno-0-268 name=__codelineno-0-268></a><span class=sd>        """</span>
 </span><span id=__span-0-269><a id=__codelineno-0-269 name=__codelineno-0-269></a>        <span class=n>np_values</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_to_weighted_ndarray</span><span class=p>(</span><span class=n>values</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>2</span><span class=p>)</span>
 </span><span id=__span-0-270><a id=__codelineno-0-270 name=__codelineno-0-270></a>
 </span><span id=__span-0-271><a id=__codelineno-0-271 name=__codelineno-0-271></a>        <span class=k>if</span> <span class=n>np_values</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=mi>0</span><span class=p>]</span> <span class=o>==</span> <span class=mi>0</span><span class=p>:</span>
@@ -726,7 +726,7 @@
 </span><span id=__span-0-319><a id=__codelineno-0-319 name=__codelineno-0-319></a>        <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-320><a id=__codelineno-0-320 name=__codelineno-0-320></a>        <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-321><a id=__codelineno-0-321 name=__codelineno-0-321></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=n>DistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-322><a id=__codelineno-0-322 name=__codelineno-0-322></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-322><a id=__codelineno-0-322 name=__codelineno-0-322></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-323><a id=__codelineno-0-323 name=__codelineno-0-323></a><span class=sd>        Create rate distribution from event timestamps.</span>
 </span><span id=__span-0-324><a id=__codelineno-0-324 name=__codelineno-0-324></a>
 </span><span id=__span-0-325><a id=__codelineno-0-325 name=__codelineno-0-325></a><span class=sd>        Computes event rates over time intervals weighted by interval duration for</span>
@@ -739,7 +739,7 @@
 </span><span id=__span-0-332><a id=__codelineno-0-332 name=__codelineno-0-332></a><span class=sd>        :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-333><a id=__codelineno-0-333 name=__codelineno-0-333></a><span class=sd>        :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-334><a id=__codelineno-0-334 name=__codelineno-0-334></a><span class=sd>        :return: Distribution summary of event rates over time</span>
-</span><span id=__span-0-335><a id=__codelineno-0-335 name=__codelineno-0-335></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-335><a id=__codelineno-0-335 name=__codelineno-0-335></a><span class=sd>        """</span>
 </span><span id=__span-0-336><a id=__codelineno-0-336 name=__codelineno-0-336></a>        <span class=n>weighted_times</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_to_weighted_ndarray</span><span class=p>(</span><span class=n>event_times</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>2</span><span class=p>)</span>
 </span><span id=__span-0-337><a id=__codelineno-0-337 name=__codelineno-0-337></a>
 </span><span id=__span-0-338><a id=__codelineno-0-338 name=__codelineno-0-338></a>        <span class=k>if</span> <span class=n>start_time</span> <span class=ow>is</span> <span class=ow>not</span> <span class=kc>None</span><span class=p>:</span>
@@ -806,7 +806,7 @@
 </span><span id=__span-0-399><a id=__codelineno-0-399 name=__codelineno-0-399></a>        <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-400><a id=__codelineno-0-400 name=__codelineno-0-400></a>        <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-401><a id=__codelineno-0-401 name=__codelineno-0-401></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=n>DistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-402><a id=__codelineno-0-402 name=__codelineno-0-402></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-402><a id=__codelineno-0-402 name=__codelineno-0-402></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-403><a id=__codelineno-0-403 name=__codelineno-0-403></a><span class=sd>        Create concurrency distribution from event time intervals.</span>
 </span><span id=__span-0-404><a id=__codelineno-0-404 name=__codelineno-0-404></a>
 </span><span id=__span-0-405><a id=__codelineno-0-405 name=__codelineno-0-405></a><span class=sd>        Tracks overlapping events to compute concurrency levels over time for analyzing</span>
@@ -820,7 +820,7 @@
 </span><span id=__span-0-413><a id=__codelineno-0-413 name=__codelineno-0-413></a><span class=sd>        :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-414><a id=__codelineno-0-414 name=__codelineno-0-414></a><span class=sd>        :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-415><a id=__codelineno-0-415 name=__codelineno-0-415></a><span class=sd>        :return: Distribution summary of concurrency levels over time</span>
-</span><span id=__span-0-416><a id=__codelineno-0-416 name=__codelineno-0-416></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-416><a id=__codelineno-0-416 name=__codelineno-0-416></a><span class=sd>        """</span>
 </span><span id=__span-0-417><a id=__codelineno-0-417 name=__codelineno-0-417></a>        <span class=n>weighted_intervals</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_to_weighted_ndarray</span><span class=p>(</span>
 </span><span id=__span-0-418><a id=__codelineno-0-418 name=__codelineno-0-418></a>            <span class=n>event_intervals</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>3</span>
 </span><span id=__span-0-419><a id=__codelineno-0-419 name=__codelineno-0-419></a>        <span class=p>)</span>
@@ -870,7 +870,7 @@
 </span><span id=__span-0-463><a id=__codelineno-0-463 name=__codelineno-0-463></a>
 </span><span id=__span-0-464><a id=__codelineno-0-464 name=__codelineno-0-464></a>        <span class=c1># If start_time, ensure included (if any before, add final concurrency at start)</span>
 </span><span id=__span-0-465><a id=__codelineno-0-465 name=__codelineno-0-465></a>        <span class=k>if</span> <span class=n>start_time</span> <span class=ow>is</span> <span class=ow>not</span> <span class=kc>None</span> <span class=ow>and</span> <span class=nb>len</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>)</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>:</span>
-</span><span id=__span-0-466><a id=__codelineno-0-466 name=__codelineno-0-466></a>            <span class=n>start_ind</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>[:,</span> <span class=mi>0</span><span class=p>],</span> <span class=n>start_time</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>&quot;left&quot;</span><span class=p>)</span>
+</span><span id=__span-0-466><a id=__codelineno-0-466 name=__codelineno-0-466></a>            <span class=n>start_ind</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>[:,</span> <span class=mi>0</span><span class=p>],</span> <span class=n>start_time</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>"left"</span><span class=p>)</span>
 </span><span id=__span-0-467><a id=__codelineno-0-467 name=__codelineno-0-467></a>            <span class=n>prior_delta</span> <span class=o>=</span> <span class=p>(</span>
 </span><span id=__span-0-468><a id=__codelineno-0-468 name=__codelineno-0-468></a>                <span class=n>np</span><span class=o>.</span><span class=n>sum</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>[:</span><span class=n>start_ind</span><span class=p>,</span> <span class=mi>1</span><span class=p>])</span> <span class=k>if</span> <span class=n>start_ind</span> <span class=o>&gt;</span> <span class=mi>0</span> <span class=k>else</span> <span class=mf>0.0</span>
 </span><span id=__span-0-469><a id=__codelineno-0-469 name=__codelineno-0-469></a>            <span class=p>)</span>
@@ -880,7 +880,7 @@
 </span><span id=__span-0-473><a id=__codelineno-0-473 name=__codelineno-0-473></a>
 </span><span id=__span-0-474><a id=__codelineno-0-474 name=__codelineno-0-474></a>        <span class=c1># If end_time, ensure included (if any after, filter out)</span>
 </span><span id=__span-0-475><a id=__codelineno-0-475 name=__codelineno-0-475></a>        <span class=k>if</span> <span class=n>end_time</span> <span class=ow>is</span> <span class=ow>not</span> <span class=kc>None</span> <span class=ow>and</span> <span class=nb>len</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>)</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>:</span>
-</span><span id=__span-0-476><a id=__codelineno-0-476 name=__codelineno-0-476></a>            <span class=n>end_ind</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>[:,</span> <span class=mi>0</span><span class=p>],</span> <span class=n>end_time</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>&quot;right&quot;</span><span class=p>)</span>
+</span><span id=__span-0-476><a id=__codelineno-0-476 name=__codelineno-0-476></a>            <span class=n>end_ind</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>[:,</span> <span class=mi>0</span><span class=p>],</span> <span class=n>end_time</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>"right"</span><span class=p>)</span>
 </span><span id=__span-0-477><a id=__codelineno-0-477 name=__codelineno-0-477></a>            <span class=n>weighted_times</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>append</span><span class=p>(</span>
 </span><span id=__span-0-478><a id=__codelineno-0-478 name=__codelineno-0-478></a>                <span class=n>weighted_times</span><span class=p>[:</span><span class=n>end_ind</span><span class=p>],</span> <span class=p>[[</span><span class=n>end_time</span><span class=p>,</span> <span class=mf>0.0</span><span class=p>]],</span> <span class=n>axis</span><span class=o>=</span><span class=mi>0</span>
 </span><span id=__span-0-479><a id=__codelineno-0-479 name=__codelineno-0-479></a>            <span class=p>)</span>
@@ -952,9 +952,9 @@
 </span><span id=__span-0-545><a id=__codelineno-0-545 name=__codelineno-0-545></a>            <span class=k>return</span> <span class=n>inputs</span>
 </span><span id=__span-0-546><a id=__codelineno-0-546 name=__codelineno-0-546></a>
 </span><span id=__span-0-547><a id=__codelineno-0-547 name=__codelineno-0-547></a>        <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span>
-</span><span id=__span-0-548><a id=__codelineno-0-548 name=__codelineno-0-548></a>            <span class=s2>&quot;inputs must be a numpy array of shape (N,), &quot;</span>
-</span><span id=__span-0-549><a id=__codelineno-0-549 name=__codelineno-0-549></a>            <span class=sa>f</span><span class=s2>&quot;(N, </span><span class=si>{</span><span class=n>num_values_per_item</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=si>}</span><span class=s2>), or (N, </span><span class=si>{</span><span class=n>num_values_per_item</span><span class=si>}</span><span class=s2>). &quot;</span>
-</span><span id=__span-0-550><a id=__codelineno-0-550 name=__codelineno-0-550></a>            <span class=sa>f</span><span class=s2>&quot;Got shape </span><span class=si>{</span><span class=n>inputs</span><span class=o>.</span><span class=n>shape</span><span class=si>}</span><span class=s2>.&quot;</span>
+</span><span id=__span-0-548><a id=__codelineno-0-548 name=__codelineno-0-548></a>            <span class=s2>"inputs must be a numpy array of shape (N,), "</span>
+</span><span id=__span-0-549><a id=__codelineno-0-549 name=__codelineno-0-549></a>            <span class=sa>f</span><span class=s2>"(N, </span><span class=si>{</span><span class=n>num_values_per_item</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=si>}</span><span class=s2>), or (N, </span><span class=si>{</span><span class=n>num_values_per_item</span><span class=si>}</span><span class=s2>). "</span>
+</span><span id=__span-0-550><a id=__codelineno-0-550 name=__codelineno-0-550></a>            <span class=sa>f</span><span class=s2>"Got shape </span><span class=si>{</span><span class=n>inputs</span><span class=o>.</span><span class=n>shape</span><span class=si>}</span><span class=s2>."</span>
 </span><span id=__span-0-551><a id=__codelineno-0-551 name=__codelineno-0-551></a>        <span class=p>)</span>
 </span><span id=__span-0-552><a id=__codelineno-0-552 name=__codelineno-0-552></a>
 </span><span id=__span-0-553><a id=__codelineno-0-553 name=__codelineno-0-553></a>    <span class=nd>@classmethod</span>
@@ -979,9 +979,9 @@
 </span><span id=__span-0-572><a id=__codelineno-0-572 name=__codelineno-0-572></a>                <span class=p>)</span>
 </span><span id=__span-0-573><a id=__codelineno-0-573 name=__codelineno-0-573></a>            <span class=k>else</span><span class=p>:</span>
 </span><span id=__span-0-574><a id=__codelineno-0-574 name=__codelineno-0-574></a>                <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span>
-</span><span id=__span-0-575><a id=__codelineno-0-575 name=__codelineno-0-575></a>                    <span class=s2>&quot;Each item must be a float or a tuple of &quot;</span>
-</span><span id=__span-0-576><a id=__codelineno-0-576 name=__codelineno-0-576></a>                    <span class=sa>f</span><span class=s2>&quot;</span><span class=si>{</span><span class=n>num_values_per_item</span><span class=si>}</span><span class=s2> or </span><span class=si>{</span><span class=n>num_values_per_item</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=si>}</span><span class=s2> &quot;</span>
-</span><span id=__span-0-577><a id=__codelineno-0-577 name=__codelineno-0-577></a>                    <span class=s2>&quot;elements.&quot;</span>
+</span><span id=__span-0-575><a id=__codelineno-0-575 name=__codelineno-0-575></a>                    <span class=s2>"Each item must be a float or a tuple of "</span>
+</span><span id=__span-0-576><a id=__codelineno-0-576 name=__codelineno-0-576></a>                    <span class=sa>f</span><span class=s2>"</span><span class=si>{</span><span class=n>num_values_per_item</span><span class=si>}</span><span class=s2> or </span><span class=si>{</span><span class=n>num_values_per_item</span><span class=w> </span><span class=o>-</span><span class=w> </span><span class=mi>1</span><span class=si>}</span><span class=s2> "</span>
+</span><span id=__span-0-577><a id=__codelineno-0-577 name=__codelineno-0-577></a>                    <span class=s2>"elements."</span>
 </span><span id=__span-0-578><a id=__codelineno-0-578 name=__codelineno-0-578></a>                <span class=p>)</span>
 </span><span id=__span-0-579><a id=__codelineno-0-579 name=__codelineno-0-579></a>
 </span><span id=__span-0-580><a id=__codelineno-0-580 name=__codelineno-0-580></a>        <span class=k>return</span> <span class=n>ndarray</span>
@@ -1015,7 +1015,7 @@
 </span><span id=__span-0-608><a id=__codelineno-0-608 name=__codelineno-0-608></a>            <span class=c1># End indices found by searching for last time within threshold from start</span>
 </span><span id=__span-0-609><a id=__codelineno-0-609 name=__codelineno-0-609></a>            <span class=n>starts</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>where</span><span class=p>(</span><span class=n>np</span><span class=o>.</span><span class=n>diff</span><span class=p>(</span><span class=n>np</span><span class=o>.</span><span class=n>insert</span><span class=p>(</span><span class=n>within</span><span class=o>.</span><span class=n>astype</span><span class=p>(</span><span class=nb>int</span><span class=p>),</span> <span class=mi>0</span><span class=p>,</span> <span class=mi>0</span><span class=p>))</span> <span class=o>==</span> <span class=mi>1</span><span class=p>)[</span><span class=mi>0</span><span class=p>]</span>
 </span><span id=__span-0-610><a id=__codelineno-0-610 name=__codelineno-0-610></a>            <span class=n>start_end_times</span> <span class=o>=</span> <span class=n>times</span><span class=p>[</span><span class=n>starts</span><span class=p>]</span> <span class=o>+</span> <span class=n>threshold</span>
-</span><span id=__span-0-611><a id=__codelineno-0-611 name=__codelineno-0-611></a>            <span class=n>ends</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>times</span><span class=p>,</span> <span class=n>start_end_times</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>&quot;right&quot;</span><span class=p>)</span> <span class=o>-</span> <span class=mi>1</span>
+</span><span id=__span-0-611><a id=__codelineno-0-611 name=__codelineno-0-611></a>            <span class=n>ends</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>times</span><span class=p>,</span> <span class=n>start_end_times</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>"right"</span><span class=p>)</span> <span class=o>-</span> <span class=mi>1</span>
 </span><span id=__span-0-612><a id=__codelineno-0-612 name=__codelineno-0-612></a>
 </span><span id=__span-0-613><a id=__codelineno-0-613 name=__codelineno-0-613></a>            <span class=c1># Collapse overlapping or chained merge groups</span>
 </span><span id=__span-0-614><a id=__codelineno-0-614 name=__codelineno-0-614></a>            <span class=k>if</span> <span class=nb>len</span><span class=p>(</span><span class=n>starts</span><span class=p>)</span> <span class=o>&gt;</span> <span class=mi>1</span><span class=p>:</span>
@@ -1172,7 +1172,7 @@
 </span><span id=__span-0-399><a id=__codelineno-0-399 name=__codelineno-0-399></a>    <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-400><a id=__codelineno-0-400 name=__codelineno-0-400></a>    <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-401><a id=__codelineno-0-401 name=__codelineno-0-401></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>DistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-402><a id=__codelineno-0-402 name=__codelineno-0-402></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-402><a id=__codelineno-0-402 name=__codelineno-0-402></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-403><a id=__codelineno-0-403 name=__codelineno-0-403></a><span class=sd>    Create concurrency distribution from event time intervals.</span>
 </span><span id=__span-0-404><a id=__codelineno-0-404 name=__codelineno-0-404></a>
 </span><span id=__span-0-405><a id=__codelineno-0-405 name=__codelineno-0-405></a><span class=sd>    Tracks overlapping events to compute concurrency levels over time for analyzing</span>
@@ -1186,7 +1186,7 @@
 </span><span id=__span-0-413><a id=__codelineno-0-413 name=__codelineno-0-413></a><span class=sd>    :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-414><a id=__codelineno-0-414 name=__codelineno-0-414></a><span class=sd>    :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-415><a id=__codelineno-0-415 name=__codelineno-0-415></a><span class=sd>    :return: Distribution summary of concurrency levels over time</span>
-</span><span id=__span-0-416><a id=__codelineno-0-416 name=__codelineno-0-416></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-416><a id=__codelineno-0-416 name=__codelineno-0-416></a><span class=sd>    """</span>
 </span><span id=__span-0-417><a id=__codelineno-0-417 name=__codelineno-0-417></a>    <span class=n>weighted_intervals</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_to_weighted_ndarray</span><span class=p>(</span>
 </span><span id=__span-0-418><a id=__codelineno-0-418 name=__codelineno-0-418></a>        <span class=n>event_intervals</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>3</span>
 </span><span id=__span-0-419><a id=__codelineno-0-419 name=__codelineno-0-419></a>    <span class=p>)</span>
@@ -1236,7 +1236,7 @@
 </span><span id=__span-0-463><a id=__codelineno-0-463 name=__codelineno-0-463></a>
 </span><span id=__span-0-464><a id=__codelineno-0-464 name=__codelineno-0-464></a>    <span class=c1># If start_time, ensure included (if any before, add final concurrency at start)</span>
 </span><span id=__span-0-465><a id=__codelineno-0-465 name=__codelineno-0-465></a>    <span class=k>if</span> <span class=n>start_time</span> <span class=ow>is</span> <span class=ow>not</span> <span class=kc>None</span> <span class=ow>and</span> <span class=nb>len</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>)</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>:</span>
-</span><span id=__span-0-466><a id=__codelineno-0-466 name=__codelineno-0-466></a>        <span class=n>start_ind</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>[:,</span> <span class=mi>0</span><span class=p>],</span> <span class=n>start_time</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>&quot;left&quot;</span><span class=p>)</span>
+</span><span id=__span-0-466><a id=__codelineno-0-466 name=__codelineno-0-466></a>        <span class=n>start_ind</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>[:,</span> <span class=mi>0</span><span class=p>],</span> <span class=n>start_time</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>"left"</span><span class=p>)</span>
 </span><span id=__span-0-467><a id=__codelineno-0-467 name=__codelineno-0-467></a>        <span class=n>prior_delta</span> <span class=o>=</span> <span class=p>(</span>
 </span><span id=__span-0-468><a id=__codelineno-0-468 name=__codelineno-0-468></a>            <span class=n>np</span><span class=o>.</span><span class=n>sum</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>[:</span><span class=n>start_ind</span><span class=p>,</span> <span class=mi>1</span><span class=p>])</span> <span class=k>if</span> <span class=n>start_ind</span> <span class=o>&gt;</span> <span class=mi>0</span> <span class=k>else</span> <span class=mf>0.0</span>
 </span><span id=__span-0-469><a id=__codelineno-0-469 name=__codelineno-0-469></a>        <span class=p>)</span>
@@ -1246,7 +1246,7 @@
 </span><span id=__span-0-473><a id=__codelineno-0-473 name=__codelineno-0-473></a>
 </span><span id=__span-0-474><a id=__codelineno-0-474 name=__codelineno-0-474></a>    <span class=c1># If end_time, ensure included (if any after, filter out)</span>
 </span><span id=__span-0-475><a id=__codelineno-0-475 name=__codelineno-0-475></a>    <span class=k>if</span> <span class=n>end_time</span> <span class=ow>is</span> <span class=ow>not</span> <span class=kc>None</span> <span class=ow>and</span> <span class=nb>len</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>)</span> <span class=o>&gt;</span> <span class=mi>0</span><span class=p>:</span>
-</span><span id=__span-0-476><a id=__codelineno-0-476 name=__codelineno-0-476></a>        <span class=n>end_ind</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>[:,</span> <span class=mi>0</span><span class=p>],</span> <span class=n>end_time</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>&quot;right&quot;</span><span class=p>)</span>
+</span><span id=__span-0-476><a id=__codelineno-0-476 name=__codelineno-0-476></a>        <span class=n>end_ind</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>weighted_times</span><span class=p>[:,</span> <span class=mi>0</span><span class=p>],</span> <span class=n>end_time</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>"right"</span><span class=p>)</span>
 </span><span id=__span-0-477><a id=__codelineno-0-477 name=__codelineno-0-477></a>        <span class=n>weighted_times</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>append</span><span class=p>(</span>
 </span><span id=__span-0-478><a id=__codelineno-0-478 name=__codelineno-0-478></a>            <span class=n>weighted_times</span><span class=p>[:</span><span class=n>end_ind</span><span class=p>],</span> <span class=p>[[</span><span class=n>end_time</span><span class=p>,</span> <span class=mf>0.0</span><span class=p>]],</span> <span class=n>axis</span><span class=o>=</span><span class=mi>0</span>
 </span><span id=__span-0-479><a id=__codelineno-0-479 name=__codelineno-0-479></a>        <span class=p>)</span>
@@ -1379,7 +1379,7 @@
 </span><span id=__span-0-145><a id=__codelineno-0-145 name=__codelineno-0-145></a>    <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-146><a id=__codelineno-0-146 name=__codelineno-0-146></a>    <span class=n>validate</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>=</span> <span class=kc>True</span><span class=p>,</span>
 </span><span id=__span-0-147><a id=__codelineno-0-147 name=__codelineno-0-147></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>DistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-148><a id=__codelineno-0-148 name=__codelineno-0-148></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-148><a id=__codelineno-0-148 name=__codelineno-0-148></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-149><a id=__codelineno-0-149 name=__codelineno-0-149></a><span class=sd>    Create distribution summary from a probability density function.</span>
 </span><span id=__span-0-150><a id=__codelineno-0-150 name=__codelineno-0-150></a>
 </span><span id=__span-0-151><a id=__codelineno-0-151 name=__codelineno-0-151></a><span class=sd>    :param pdf: 2D array (N, 2) with values in column 0 and probabilities in</span>
@@ -1390,13 +1390,13 @@
 </span><span id=__span-0-156><a id=__codelineno-0-156 name=__codelineno-0-156></a><span class=sd>    :param validate: Whether to validate probabilities sum to 1 and are non-negative</span>
 </span><span id=__span-0-157><a id=__codelineno-0-157 name=__codelineno-0-157></a><span class=sd>    :return: Complete distribution summary with statistics</span>
 </span><span id=__span-0-158><a id=__codelineno-0-158 name=__codelineno-0-158></a><span class=sd>    :raises ValueError: If PDF shape is invalid or probabilities are invalid</span>
-</span><span id=__span-0-159><a id=__codelineno-0-159 name=__codelineno-0-159></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-159><a id=__codelineno-0-159 name=__codelineno-0-159></a><span class=sd>    """</span>
 </span><span id=__span-0-160><a id=__codelineno-0-160 name=__codelineno-0-160></a>    <span class=n>expected_shape</span> <span class=o>=</span> <span class=p>(</span><span class=kc>None</span><span class=p>,</span> <span class=mi>2</span><span class=p>)</span>
 </span><span id=__span-0-161><a id=__codelineno-0-161 name=__codelineno-0-161></a>
 </span><span id=__span-0-162><a id=__codelineno-0-162 name=__codelineno-0-162></a>    <span class=k>if</span> <span class=nb>len</span><span class=p>(</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>)</span> <span class=o>!=</span> <span class=nb>len</span><span class=p>(</span><span class=n>expected_shape</span><span class=p>)</span> <span class=ow>or</span> <span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span> <span class=o>!=</span> <span class=n>expected_shape</span><span class=p>[</span><span class=mi>1</span><span class=p>]:</span>
 </span><span id=__span-0-163><a id=__codelineno-0-163 name=__codelineno-0-163></a>        <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span>
-</span><span id=__span-0-164><a id=__codelineno-0-164 name=__codelineno-0-164></a>            <span class=s2>&quot;PDF must be a 2D array of shape (N, 2) where first column is values &quot;</span>
-</span><span id=__span-0-165><a id=__codelineno-0-165 name=__codelineno-0-165></a>            <span class=sa>f</span><span class=s2>&quot;and second column is probabilities. Got </span><span class=si>{</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=si>}</span><span class=s2> instead.&quot;</span>
+</span><span id=__span-0-164><a id=__codelineno-0-164 name=__codelineno-0-164></a>            <span class=s2>"PDF must be a 2D array of shape (N, 2) where first column is values "</span>
+</span><span id=__span-0-165><a id=__codelineno-0-165 name=__codelineno-0-165></a>            <span class=sa>f</span><span class=s2>"and second column is probabilities. Got </span><span class=si>{</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=si>}</span><span class=s2> instead."</span>
 </span><span id=__span-0-166><a id=__codelineno-0-166 name=__codelineno-0-166></a>        <span class=p>)</span>
 </span><span id=__span-0-167><a id=__codelineno-0-167 name=__codelineno-0-167></a>
 </span><span id=__span-0-168><a id=__codelineno-0-168 name=__codelineno-0-168></a>    <span class=k>if</span> <span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=mi>0</span><span class=p>]</span> <span class=o>==</span> <span class=mi>0</span><span class=p>:</span>
@@ -1419,17 +1419,17 @@
 </span><span id=__span-0-185><a id=__codelineno-0-185 name=__codelineno-0-185></a>    <span class=n>probabilities</span> <span class=o>=</span> <span class=n>pdf</span><span class=p>[:,</span> <span class=mi>1</span><span class=p>]</span>
 </span><span id=__span-0-186><a id=__codelineno-0-186 name=__codelineno-0-186></a>
 </span><span id=__span-0-187><a id=__codelineno-0-187 name=__codelineno-0-187></a>    <span class=k>if</span> <span class=n>validate</span><span class=p>:</span>
-</span><span id=__span-0-188><a id=__codelineno-0-188 name=__codelineno-0-188></a>        <span class=c1># Fail if probabilities don&#39;t sum to 1 or are negative</span>
+</span><span id=__span-0-188><a id=__codelineno-0-188 name=__codelineno-0-188></a>        <span class=c1># Fail if probabilities don't sum to 1 or are negative</span>
 </span><span id=__span-0-189><a id=__codelineno-0-189 name=__codelineno-0-189></a>        <span class=k>if</span> <span class=n>np</span><span class=o>.</span><span class=n>any</span><span class=p>(</span><span class=n>probabilities</span> <span class=o>&lt;</span> <span class=mi>0</span><span class=p>):</span>
-</span><span id=__span-0-190><a id=__codelineno-0-190 name=__codelineno-0-190></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>&quot;Probabilities must be non-negative.&quot;</span><span class=p>)</span>
+</span><span id=__span-0-190><a id=__codelineno-0-190 name=__codelineno-0-190></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>"Probabilities must be non-negative."</span><span class=p>)</span>
 </span><span id=__span-0-191><a id=__codelineno-0-191 name=__codelineno-0-191></a>
 </span><span id=__span-0-192><a id=__codelineno-0-192 name=__codelineno-0-192></a>        <span class=n>prob_sum</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>sum</span><span class=p>(</span><span class=n>probabilities</span><span class=p>)</span>
 </span><span id=__span-0-193><a id=__codelineno-0-193 name=__codelineno-0-193></a>        <span class=k>if</span> <span class=ow>not</span> <span class=n>np</span><span class=o>.</span><span class=n>isclose</span><span class=p>(</span><span class=n>prob_sum</span><span class=p>,</span> <span class=mf>1.0</span><span class=p>,</span> <span class=n>atol</span><span class=o>=</span><span class=n>epsilon</span><span class=p>):</span>
-</span><span id=__span-0-194><a id=__codelineno-0-194 name=__codelineno-0-194></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=sa>f</span><span class=s2>&quot;Probabilities must sum to 1.0 (sum=</span><span class=si>{</span><span class=n>prob_sum</span><span class=si>}</span><span class=s2>).&quot;</span><span class=p>)</span>
+</span><span id=__span-0-194><a id=__codelineno-0-194 name=__codelineno-0-194></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=sa>f</span><span class=s2>"Probabilities must sum to 1.0 (sum=</span><span class=si>{</span><span class=n>prob_sum</span><span class=si>}</span><span class=s2>)."</span><span class=p>)</span>
 </span><span id=__span-0-195><a id=__codelineno-0-195 name=__codelineno-0-195></a>
 </span><span id=__span-0-196><a id=__codelineno-0-196 name=__codelineno-0-196></a>        <span class=c1># Fail if values are not sorted</span>
 </span><span id=__span-0-197><a id=__codelineno-0-197 name=__codelineno-0-197></a>        <span class=k>if</span> <span class=ow>not</span> <span class=n>np</span><span class=o>.</span><span class=n>all</span><span class=p>(</span><span class=n>values</span><span class=p>[:</span><span class=o>-</span><span class=mi>1</span><span class=p>]</span> <span class=o>&lt;=</span> <span class=n>values</span><span class=p>[</span><span class=mi>1</span><span class=p>:]):</span>
-</span><span id=__span-0-198><a id=__codelineno-0-198 name=__codelineno-0-198></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>&quot;Values in PDF must be sorted in ascending order.&quot;</span><span class=p>)</span>
+</span><span id=__span-0-198><a id=__codelineno-0-198 name=__codelineno-0-198></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>"Values in PDF must be sorted in ascending order."</span><span class=p>)</span>
 </span><span id=__span-0-199><a id=__codelineno-0-199 name=__codelineno-0-199></a>
 </span><span id=__span-0-200><a id=__codelineno-0-200 name=__codelineno-0-200></a>    <span class=n>percentiles</span> <span class=o>=</span> <span class=n>Percentiles</span><span class=o>.</span><span class=n>from_pdf</span><span class=p>(</span><span class=n>pdf</span><span class=p>,</span> <span class=n>epsilon</span><span class=o>=</span><span class=n>epsilon</span><span class=p>,</span> <span class=n>validate</span><span class=o>=</span><span class=kc>False</span><span class=p>)</span>
 </span><span id=__span-0-201><a id=__codelineno-0-201 name=__codelineno-0-201></a>    <span class=n>median</span> <span class=o>=</span> <span class=n>percentiles</span><span class=o>.</span><span class=n>p50</span>
@@ -1526,7 +1526,7 @@
 </span><span id=__span-0-256><a id=__codelineno-0-256 name=__codelineno-0-256></a>    <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-257><a id=__codelineno-0-257 name=__codelineno-0-257></a>    <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-258><a id=__codelineno-0-258 name=__codelineno-0-258></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>DistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-259><a id=__codelineno-0-259 name=__codelineno-0-259></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-259><a id=__codelineno-0-259 name=__codelineno-0-259></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-260><a id=__codelineno-0-260 name=__codelineno-0-260></a><span class=sd>    Create distribution summary from raw values with optional weights.</span>
 </span><span id=__span-0-261><a id=__codelineno-0-261 name=__codelineno-0-261></a>
 </span><span id=__span-0-262><a id=__codelineno-0-262 name=__codelineno-0-262></a><span class=sd>    :param values: Values or (value, weight) tuples, or numpy array</span>
@@ -1535,7 +1535,7 @@
 </span><span id=__span-0-265><a id=__codelineno-0-265 name=__codelineno-0-265></a><span class=sd>    :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-266><a id=__codelineno-0-266 name=__codelineno-0-266></a><span class=sd>    :return: Distribution summary computed from the values</span>
 </span><span id=__span-0-267><a id=__codelineno-0-267 name=__codelineno-0-267></a><span class=sd>    :raises ValueError: If total weight is zero or invalid</span>
-</span><span id=__span-0-268><a id=__codelineno-0-268 name=__codelineno-0-268></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-268><a id=__codelineno-0-268 name=__codelineno-0-268></a><span class=sd>    """</span>
 </span><span id=__span-0-269><a id=__codelineno-0-269 name=__codelineno-0-269></a>    <span class=n>np_values</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_to_weighted_ndarray</span><span class=p>(</span><span class=n>values</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>2</span><span class=p>)</span>
 </span><span id=__span-0-270><a id=__codelineno-0-270 name=__codelineno-0-270></a>
 </span><span id=__span-0-271><a id=__codelineno-0-271 name=__codelineno-0-271></a>    <span class=k>if</span> <span class=n>np_values</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=mi>0</span><span class=p>]</span> <span class=o>==</span> <span class=mi>0</span><span class=p>:</span>
@@ -1664,7 +1664,7 @@
 </span><span id=__span-0-319><a id=__codelineno-0-319 name=__codelineno-0-319></a>    <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-320><a id=__codelineno-0-320 name=__codelineno-0-320></a>    <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-321><a id=__codelineno-0-321 name=__codelineno-0-321></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>DistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-322><a id=__codelineno-0-322 name=__codelineno-0-322></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-322><a id=__codelineno-0-322 name=__codelineno-0-322></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-323><a id=__codelineno-0-323 name=__codelineno-0-323></a><span class=sd>    Create rate distribution from event timestamps.</span>
 </span><span id=__span-0-324><a id=__codelineno-0-324 name=__codelineno-0-324></a>
 </span><span id=__span-0-325><a id=__codelineno-0-325 name=__codelineno-0-325></a><span class=sd>    Computes event rates over time intervals weighted by interval duration for</span>
@@ -1677,7 +1677,7 @@
 </span><span id=__span-0-332><a id=__codelineno-0-332 name=__codelineno-0-332></a><span class=sd>    :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-333><a id=__codelineno-0-333 name=__codelineno-0-333></a><span class=sd>    :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-334><a id=__codelineno-0-334 name=__codelineno-0-334></a><span class=sd>    :return: Distribution summary of event rates over time</span>
-</span><span id=__span-0-335><a id=__codelineno-0-335 name=__codelineno-0-335></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-335><a id=__codelineno-0-335 name=__codelineno-0-335></a><span class=sd>    """</span>
 </span><span id=__span-0-336><a id=__codelineno-0-336 name=__codelineno-0-336></a>    <span class=n>weighted_times</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_to_weighted_ndarray</span><span class=p>(</span><span class=n>event_times</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>2</span><span class=p>)</span>
 </span><span id=__span-0-337><a id=__codelineno-0-337 name=__codelineno-0-337></a>
 </span><span id=__span-0-338><a id=__codelineno-0-338 name=__codelineno-0-338></a>    <span class=k>if</span> <span class=n>start_time</span> <span class=ow>is</span> <span class=ow>not</span> <span class=kc>None</span><span class=p>:</span>
@@ -1811,31 +1811,31 @@
 <span class=normal><a href=#__codelineno-0-109>109</a></span>
 <span class=normal><a href=#__codelineno-0-110>110</a></span>
 <span class=normal><a href=#__codelineno-0-111>111</a></span></pre></div></td><td class=code><div><pre><span></span><code><span id=__span-0-32><a id=__codelineno-0-32 name=__codelineno-0-32></a><span class=k>class</span><span class=w> </span><span class=nc>Percentiles</span><span class=p>(</span><span class=n>StandardBaseModel</span><span class=p>):</span>
-</span><span id=__span-0-33><a id=__codelineno-0-33 name=__codelineno-0-33></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-33><a id=__codelineno-0-33 name=__codelineno-0-33></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-34><a id=__codelineno-0-34 name=__codelineno-0-34></a><span class=sd>    Standard percentile values for probability distributions.</span>
 </span><span id=__span-0-35><a id=__codelineno-0-35 name=__codelineno-0-35></a>
 </span><span id=__span-0-36><a id=__codelineno-0-36 name=__codelineno-0-36></a><span class=sd>    Captures key percentile points from 0.1th to 99.9th percentile for comprehensive</span>
 </span><span id=__span-0-37><a id=__codelineno-0-37 name=__codelineno-0-37></a><span class=sd>    distribution analysis, enabling assessment of central tendency, spread, and tail</span>
 </span><span id=__span-0-38><a id=__codelineno-0-38 name=__codelineno-0-38></a><span class=sd>    behavior in benchmark metrics.</span>
-</span><span id=__span-0-39><a id=__codelineno-0-39 name=__codelineno-0-39></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-39><a id=__codelineno-0-39 name=__codelineno-0-39></a><span class=sd>    """</span>
 </span><span id=__span-0-40><a id=__codelineno-0-40 name=__codelineno-0-40></a>
-</span><span id=__span-0-41><a id=__codelineno-0-41 name=__codelineno-0-41></a>    <span class=n>p001</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;0.1th percentile value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-42><a id=__codelineno-0-42 name=__codelineno-0-42></a>    <span class=n>p01</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;1st percentile value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-43><a id=__codelineno-0-43 name=__codelineno-0-43></a>    <span class=n>p05</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;5th percentile value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-44><a id=__codelineno-0-44 name=__codelineno-0-44></a>    <span class=n>p10</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;10th percentile value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-45><a id=__codelineno-0-45 name=__codelineno-0-45></a>    <span class=n>p25</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;25th percentile value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-46><a id=__codelineno-0-46 name=__codelineno-0-46></a>    <span class=n>p50</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;50th percentile (median) value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-47><a id=__codelineno-0-47 name=__codelineno-0-47></a>    <span class=n>p75</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;75th percentile value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-48><a id=__codelineno-0-48 name=__codelineno-0-48></a>    <span class=n>p90</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;90th percentile value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-49><a id=__codelineno-0-49 name=__codelineno-0-49></a>    <span class=n>p95</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;95th percentile value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-50><a id=__codelineno-0-50 name=__codelineno-0-50></a>    <span class=n>p99</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;99th percentile value&quot;</span><span class=p>)</span>
-</span><span id=__span-0-51><a id=__codelineno-0-51 name=__codelineno-0-51></a>    <span class=n>p999</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>&quot;99.9th percentile value&quot;</span><span class=p>)</span>
+</span><span id=__span-0-41><a id=__codelineno-0-41 name=__codelineno-0-41></a>    <span class=n>p001</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"0.1th percentile value"</span><span class=p>)</span>
+</span><span id=__span-0-42><a id=__codelineno-0-42 name=__codelineno-0-42></a>    <span class=n>p01</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"1st percentile value"</span><span class=p>)</span>
+</span><span id=__span-0-43><a id=__codelineno-0-43 name=__codelineno-0-43></a>    <span class=n>p05</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"5th percentile value"</span><span class=p>)</span>
+</span><span id=__span-0-44><a id=__codelineno-0-44 name=__codelineno-0-44></a>    <span class=n>p10</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"10th percentile value"</span><span class=p>)</span>
+</span><span id=__span-0-45><a id=__codelineno-0-45 name=__codelineno-0-45></a>    <span class=n>p25</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"25th percentile value"</span><span class=p>)</span>
+</span><span id=__span-0-46><a id=__codelineno-0-46 name=__codelineno-0-46></a>    <span class=n>p50</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"50th percentile (median) value"</span><span class=p>)</span>
+</span><span id=__span-0-47><a id=__codelineno-0-47 name=__codelineno-0-47></a>    <span class=n>p75</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"75th percentile value"</span><span class=p>)</span>
+</span><span id=__span-0-48><a id=__codelineno-0-48 name=__codelineno-0-48></a>    <span class=n>p90</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"90th percentile value"</span><span class=p>)</span>
+</span><span id=__span-0-49><a id=__codelineno-0-49 name=__codelineno-0-49></a>    <span class=n>p95</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"95th percentile value"</span><span class=p>)</span>
+</span><span id=__span-0-50><a id=__codelineno-0-50 name=__codelineno-0-50></a>    <span class=n>p99</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"99th percentile value"</span><span class=p>)</span>
+</span><span id=__span-0-51><a id=__codelineno-0-51 name=__codelineno-0-51></a>    <span class=n>p999</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=n>Field</span><span class=p>(</span><span class=n>description</span><span class=o>=</span><span class=s2>"99.9th percentile value"</span><span class=p>)</span>
 </span><span id=__span-0-52><a id=__codelineno-0-52 name=__codelineno-0-52></a>
 </span><span id=__span-0-53><a id=__codelineno-0-53 name=__codelineno-0-53></a>    <span class=nd>@classmethod</span>
 </span><span id=__span-0-54><a id=__codelineno-0-54 name=__codelineno-0-54></a>    <span class=k>def</span><span class=w> </span><span class=nf>from_pdf</span><span class=p>(</span>
 </span><span id=__span-0-55><a id=__codelineno-0-55 name=__codelineno-0-55></a>        <span class=bp>cls</span><span class=p>,</span> <span class=n>pdf</span><span class=p>:</span> <span class=n>np</span><span class=o>.</span><span class=n>ndarray</span><span class=p>,</span> <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span> <span class=n>validate</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>=</span> <span class=kc>True</span>
 </span><span id=__span-0-56><a id=__codelineno-0-56 name=__codelineno-0-56></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=n>Percentiles</span><span class=p>:</span>
-</span><span id=__span-0-57><a id=__codelineno-0-57 name=__codelineno-0-57></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-57><a id=__codelineno-0-57 name=__codelineno-0-57></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-58><a id=__codelineno-0-58 name=__codelineno-0-58></a><span class=sd>        Create percentiles from a probability density function.</span>
 </span><span id=__span-0-59><a id=__codelineno-0-59 name=__codelineno-0-59></a>
 </span><span id=__span-0-60><a id=__codelineno-0-60 name=__codelineno-0-60></a><span class=sd>        :param pdf: 2D array (N, 2) with values in column 0 and probabilities in</span>
@@ -1845,28 +1845,28 @@
 </span><span id=__span-0-64><a id=__codelineno-0-64 name=__codelineno-0-64></a><span class=sd>            non-negative</span>
 </span><span id=__span-0-65><a id=__codelineno-0-65 name=__codelineno-0-65></a><span class=sd>        :return: Percentiles object with computed values</span>
 </span><span id=__span-0-66><a id=__codelineno-0-66 name=__codelineno-0-66></a><span class=sd>        :raises ValueError: If PDF shape is invalid, probabilities are negative,</span>
-</span><span id=__span-0-67><a id=__codelineno-0-67 name=__codelineno-0-67></a><span class=sd>            or probabilities don&#39;t sum to 1</span>
-</span><span id=__span-0-68><a id=__codelineno-0-68 name=__codelineno-0-68></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-67><a id=__codelineno-0-67 name=__codelineno-0-67></a><span class=sd>            or probabilities don't sum to 1</span>
+</span><span id=__span-0-68><a id=__codelineno-0-68 name=__codelineno-0-68></a><span class=sd>        """</span>
 </span><span id=__span-0-69><a id=__codelineno-0-69 name=__codelineno-0-69></a>        <span class=n>expected_shape</span> <span class=o>=</span> <span class=p>(</span><span class=kc>None</span><span class=p>,</span> <span class=mi>2</span><span class=p>)</span>
 </span><span id=__span-0-70><a id=__codelineno-0-70 name=__codelineno-0-70></a>
 </span><span id=__span-0-71><a id=__codelineno-0-71 name=__codelineno-0-71></a>        <span class=k>if</span> <span class=nb>len</span><span class=p>(</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>)</span> <span class=o>!=</span> <span class=nb>len</span><span class=p>(</span><span class=n>expected_shape</span><span class=p>)</span> <span class=ow>or</span> <span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span> <span class=o>!=</span> <span class=n>expected_shape</span><span class=p>[</span><span class=mi>1</span><span class=p>]:</span>
 </span><span id=__span-0-72><a id=__codelineno-0-72 name=__codelineno-0-72></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span>
-</span><span id=__span-0-73><a id=__codelineno-0-73 name=__codelineno-0-73></a>                <span class=s2>&quot;PDF must be a 2D array of shape (N, 2) where first column is values &quot;</span>
-</span><span id=__span-0-74><a id=__codelineno-0-74 name=__codelineno-0-74></a>                <span class=sa>f</span><span class=s2>&quot;and second column is probabilities. Got </span><span class=si>{</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=si>}</span><span class=s2> instead.&quot;</span>
+</span><span id=__span-0-73><a id=__codelineno-0-73 name=__codelineno-0-73></a>                <span class=s2>"PDF must be a 2D array of shape (N, 2) where first column is values "</span>
+</span><span id=__span-0-74><a id=__codelineno-0-74 name=__codelineno-0-74></a>                <span class=sa>f</span><span class=s2>"and second column is probabilities. Got </span><span class=si>{</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=si>}</span><span class=s2> instead."</span>
 </span><span id=__span-0-75><a id=__codelineno-0-75 name=__codelineno-0-75></a>            <span class=p>)</span>
 </span><span id=__span-0-76><a id=__codelineno-0-76 name=__codelineno-0-76></a>
 </span><span id=__span-0-77><a id=__codelineno-0-77 name=__codelineno-0-77></a>        <span class=n>percentile_probs</span> <span class=o>=</span> <span class=p>{</span>
-</span><span id=__span-0-78><a id=__codelineno-0-78 name=__codelineno-0-78></a>            <span class=s2>&quot;p001&quot;</span><span class=p>:</span> <span class=mf>0.001</span><span class=p>,</span>
-</span><span id=__span-0-79><a id=__codelineno-0-79 name=__codelineno-0-79></a>            <span class=s2>&quot;p01&quot;</span><span class=p>:</span> <span class=mf>0.01</span><span class=p>,</span>
-</span><span id=__span-0-80><a id=__codelineno-0-80 name=__codelineno-0-80></a>            <span class=s2>&quot;p05&quot;</span><span class=p>:</span> <span class=mf>0.05</span><span class=p>,</span>
-</span><span id=__span-0-81><a id=__codelineno-0-81 name=__codelineno-0-81></a>            <span class=s2>&quot;p10&quot;</span><span class=p>:</span> <span class=mf>0.1</span><span class=p>,</span>
-</span><span id=__span-0-82><a id=__codelineno-0-82 name=__codelineno-0-82></a>            <span class=s2>&quot;p25&quot;</span><span class=p>:</span> <span class=mf>0.25</span><span class=p>,</span>
-</span><span id=__span-0-83><a id=__codelineno-0-83 name=__codelineno-0-83></a>            <span class=s2>&quot;p50&quot;</span><span class=p>:</span> <span class=mf>0.5</span><span class=p>,</span>
-</span><span id=__span-0-84><a id=__codelineno-0-84 name=__codelineno-0-84></a>            <span class=s2>&quot;p75&quot;</span><span class=p>:</span> <span class=mf>0.75</span><span class=p>,</span>
-</span><span id=__span-0-85><a id=__codelineno-0-85 name=__codelineno-0-85></a>            <span class=s2>&quot;p90&quot;</span><span class=p>:</span> <span class=mf>0.9</span><span class=p>,</span>
-</span><span id=__span-0-86><a id=__codelineno-0-86 name=__codelineno-0-86></a>            <span class=s2>&quot;p95&quot;</span><span class=p>:</span> <span class=mf>0.95</span><span class=p>,</span>
-</span><span id=__span-0-87><a id=__codelineno-0-87 name=__codelineno-0-87></a>            <span class=s2>&quot;p99&quot;</span><span class=p>:</span> <span class=mf>0.99</span><span class=p>,</span>
-</span><span id=__span-0-88><a id=__codelineno-0-88 name=__codelineno-0-88></a>            <span class=s2>&quot;p999&quot;</span><span class=p>:</span> <span class=mf>0.999</span><span class=p>,</span>
+</span><span id=__span-0-78><a id=__codelineno-0-78 name=__codelineno-0-78></a>            <span class=s2>"p001"</span><span class=p>:</span> <span class=mf>0.001</span><span class=p>,</span>
+</span><span id=__span-0-79><a id=__codelineno-0-79 name=__codelineno-0-79></a>            <span class=s2>"p01"</span><span class=p>:</span> <span class=mf>0.01</span><span class=p>,</span>
+</span><span id=__span-0-80><a id=__codelineno-0-80 name=__codelineno-0-80></a>            <span class=s2>"p05"</span><span class=p>:</span> <span class=mf>0.05</span><span class=p>,</span>
+</span><span id=__span-0-81><a id=__codelineno-0-81 name=__codelineno-0-81></a>            <span class=s2>"p10"</span><span class=p>:</span> <span class=mf>0.1</span><span class=p>,</span>
+</span><span id=__span-0-82><a id=__codelineno-0-82 name=__codelineno-0-82></a>            <span class=s2>"p25"</span><span class=p>:</span> <span class=mf>0.25</span><span class=p>,</span>
+</span><span id=__span-0-83><a id=__codelineno-0-83 name=__codelineno-0-83></a>            <span class=s2>"p50"</span><span class=p>:</span> <span class=mf>0.5</span><span class=p>,</span>
+</span><span id=__span-0-84><a id=__codelineno-0-84 name=__codelineno-0-84></a>            <span class=s2>"p75"</span><span class=p>:</span> <span class=mf>0.75</span><span class=p>,</span>
+</span><span id=__span-0-85><a id=__codelineno-0-85 name=__codelineno-0-85></a>            <span class=s2>"p90"</span><span class=p>:</span> <span class=mf>0.9</span><span class=p>,</span>
+</span><span id=__span-0-86><a id=__codelineno-0-86 name=__codelineno-0-86></a>            <span class=s2>"p95"</span><span class=p>:</span> <span class=mf>0.95</span><span class=p>,</span>
+</span><span id=__span-0-87><a id=__codelineno-0-87 name=__codelineno-0-87></a>            <span class=s2>"p99"</span><span class=p>:</span> <span class=mf>0.99</span><span class=p>,</span>
+</span><span id=__span-0-88><a id=__codelineno-0-88 name=__codelineno-0-88></a>            <span class=s2>"p999"</span><span class=p>:</span> <span class=mf>0.999</span><span class=p>,</span>
 </span><span id=__span-0-89><a id=__codelineno-0-89 name=__codelineno-0-89></a>        <span class=p>}</span>
 </span><span id=__span-0-90><a id=__codelineno-0-90 name=__codelineno-0-90></a>
 </span><span id=__span-0-91><a id=__codelineno-0-91 name=__codelineno-0-91></a>        <span class=k>if</span> <span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=mi>0</span><span class=p>]</span> <span class=o>==</span> <span class=mi>0</span><span class=p>:</span>
@@ -1876,17 +1876,17 @@
 </span><span id=__span-0-95><a id=__codelineno-0-95 name=__codelineno-0-95></a>
 </span><span id=__span-0-96><a id=__codelineno-0-96 name=__codelineno-0-96></a>        <span class=k>if</span> <span class=n>validate</span><span class=p>:</span>
 </span><span id=__span-0-97><a id=__codelineno-0-97 name=__codelineno-0-97></a>            <span class=k>if</span> <span class=n>np</span><span class=o>.</span><span class=n>any</span><span class=p>(</span><span class=n>probabilities</span> <span class=o>&lt;</span> <span class=mi>0</span><span class=p>):</span>
-</span><span id=__span-0-98><a id=__codelineno-0-98 name=__codelineno-0-98></a>                <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>&quot;Probabilities must be non-negative.&quot;</span><span class=p>)</span>
+</span><span id=__span-0-98><a id=__codelineno-0-98 name=__codelineno-0-98></a>                <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>"Probabilities must be non-negative."</span><span class=p>)</span>
 </span><span id=__span-0-99><a id=__codelineno-0-99 name=__codelineno-0-99></a>
 </span><span id=__span-0-100><a id=__codelineno-0-100 name=__codelineno-0-100></a>            <span class=n>prob_sum</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>sum</span><span class=p>(</span><span class=n>probabilities</span><span class=p>)</span>
 </span><span id=__span-0-101><a id=__codelineno-0-101 name=__codelineno-0-101></a>            <span class=k>if</span> <span class=nb>abs</span><span class=p>(</span><span class=n>prob_sum</span> <span class=o>-</span> <span class=mf>1.0</span><span class=p>)</span> <span class=o>&gt;</span> <span class=n>epsilon</span><span class=p>:</span>
-</span><span id=__span-0-102><a id=__codelineno-0-102 name=__codelineno-0-102></a>                <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=sa>f</span><span class=s2>&quot;Probabilities must sum to 1, got </span><span class=si>{</span><span class=n>prob_sum</span><span class=si>}</span><span class=s2>.&quot;</span><span class=p>)</span>
+</span><span id=__span-0-102><a id=__codelineno-0-102 name=__codelineno-0-102></a>                <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=sa>f</span><span class=s2>"Probabilities must sum to 1, got </span><span class=si>{</span><span class=n>prob_sum</span><span class=si>}</span><span class=s2>."</span><span class=p>)</span>
 </span><span id=__span-0-103><a id=__codelineno-0-103 name=__codelineno-0-103></a>
 </span><span id=__span-0-104><a id=__codelineno-0-104 name=__codelineno-0-104></a>        <span class=n>cdf_probs</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>cumsum</span><span class=p>(</span><span class=n>probabilities</span><span class=p>)</span>
 </span><span id=__span-0-105><a id=__codelineno-0-105 name=__codelineno-0-105></a>
 </span><span id=__span-0-106><a id=__codelineno-0-106 name=__codelineno-0-106></a>        <span class=k>return</span> <span class=n>Percentiles</span><span class=p>(</span>
 </span><span id=__span-0-107><a id=__codelineno-0-107 name=__codelineno-0-107></a>            <span class=o>**</span><span class=p>{</span>
-</span><span id=__span-0-108><a id=__codelineno-0-108 name=__codelineno-0-108></a>                <span class=n>key</span><span class=p>:</span> <span class=n>pdf</span><span class=p>[</span><span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>cdf_probs</span><span class=p>,</span> <span class=n>value</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>&quot;left&quot;</span><span class=p>),</span> <span class=mi>0</span><span class=p>]</span><span class=o>.</span><span class=n>item</span><span class=p>()</span>
+</span><span id=__span-0-108><a id=__codelineno-0-108 name=__codelineno-0-108></a>                <span class=n>key</span><span class=p>:</span> <span class=n>pdf</span><span class=p>[</span><span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>cdf_probs</span><span class=p>,</span> <span class=n>value</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>"left"</span><span class=p>),</span> <span class=mi>0</span><span class=p>]</span><span class=o>.</span><span class=n>item</span><span class=p>()</span>
 </span><span id=__span-0-109><a id=__codelineno-0-109 name=__codelineno-0-109></a>                <span class=k>for</span> <span class=n>key</span><span class=p>,</span> <span class=n>value</span> <span class=ow>in</span> <span class=n>percentile_probs</span><span class=o>.</span><span class=n>items</span><span class=p>()</span>
 </span><span id=__span-0-110><a id=__codelineno-0-110 name=__codelineno-0-110></a>            <span class=p>}</span>
 </span><span id=__span-0-111><a id=__codelineno-0-111 name=__codelineno-0-111></a>        <span class=p>)</span>
@@ -1952,7 +1952,7 @@
 </span><span id=__span-0-54><a id=__codelineno-0-54 name=__codelineno-0-54></a><span class=k>def</span><span class=w> </span><span class=nf>from_pdf</span><span class=p>(</span>
 </span><span id=__span-0-55><a id=__codelineno-0-55 name=__codelineno-0-55></a>    <span class=bp>cls</span><span class=p>,</span> <span class=n>pdf</span><span class=p>:</span> <span class=n>np</span><span class=o>.</span><span class=n>ndarray</span><span class=p>,</span> <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span> <span class=n>validate</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>=</span> <span class=kc>True</span>
 </span><span id=__span-0-56><a id=__codelineno-0-56 name=__codelineno-0-56></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>Percentiles</span><span class=p>:</span>
-</span><span id=__span-0-57><a id=__codelineno-0-57 name=__codelineno-0-57></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-57><a id=__codelineno-0-57 name=__codelineno-0-57></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-58><a id=__codelineno-0-58 name=__codelineno-0-58></a><span class=sd>    Create percentiles from a probability density function.</span>
 </span><span id=__span-0-59><a id=__codelineno-0-59 name=__codelineno-0-59></a>
 </span><span id=__span-0-60><a id=__codelineno-0-60 name=__codelineno-0-60></a><span class=sd>    :param pdf: 2D array (N, 2) with values in column 0 and probabilities in</span>
@@ -1962,28 +1962,28 @@
 </span><span id=__span-0-64><a id=__codelineno-0-64 name=__codelineno-0-64></a><span class=sd>        non-negative</span>
 </span><span id=__span-0-65><a id=__codelineno-0-65 name=__codelineno-0-65></a><span class=sd>    :return: Percentiles object with computed values</span>
 </span><span id=__span-0-66><a id=__codelineno-0-66 name=__codelineno-0-66></a><span class=sd>    :raises ValueError: If PDF shape is invalid, probabilities are negative,</span>
-</span><span id=__span-0-67><a id=__codelineno-0-67 name=__codelineno-0-67></a><span class=sd>        or probabilities don&#39;t sum to 1</span>
-</span><span id=__span-0-68><a id=__codelineno-0-68 name=__codelineno-0-68></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-67><a id=__codelineno-0-67 name=__codelineno-0-67></a><span class=sd>        or probabilities don't sum to 1</span>
+</span><span id=__span-0-68><a id=__codelineno-0-68 name=__codelineno-0-68></a><span class=sd>    """</span>
 </span><span id=__span-0-69><a id=__codelineno-0-69 name=__codelineno-0-69></a>    <span class=n>expected_shape</span> <span class=o>=</span> <span class=p>(</span><span class=kc>None</span><span class=p>,</span> <span class=mi>2</span><span class=p>)</span>
 </span><span id=__span-0-70><a id=__codelineno-0-70 name=__codelineno-0-70></a>
 </span><span id=__span-0-71><a id=__codelineno-0-71 name=__codelineno-0-71></a>    <span class=k>if</span> <span class=nb>len</span><span class=p>(</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>)</span> <span class=o>!=</span> <span class=nb>len</span><span class=p>(</span><span class=n>expected_shape</span><span class=p>)</span> <span class=ow>or</span> <span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=mi>1</span><span class=p>]</span> <span class=o>!=</span> <span class=n>expected_shape</span><span class=p>[</span><span class=mi>1</span><span class=p>]:</span>
 </span><span id=__span-0-72><a id=__codelineno-0-72 name=__codelineno-0-72></a>        <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span>
-</span><span id=__span-0-73><a id=__codelineno-0-73 name=__codelineno-0-73></a>            <span class=s2>&quot;PDF must be a 2D array of shape (N, 2) where first column is values &quot;</span>
-</span><span id=__span-0-74><a id=__codelineno-0-74 name=__codelineno-0-74></a>            <span class=sa>f</span><span class=s2>&quot;and second column is probabilities. Got </span><span class=si>{</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=si>}</span><span class=s2> instead.&quot;</span>
+</span><span id=__span-0-73><a id=__codelineno-0-73 name=__codelineno-0-73></a>            <span class=s2>"PDF must be a 2D array of shape (N, 2) where first column is values "</span>
+</span><span id=__span-0-74><a id=__codelineno-0-74 name=__codelineno-0-74></a>            <span class=sa>f</span><span class=s2>"and second column is probabilities. Got </span><span class=si>{</span><span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=si>}</span><span class=s2> instead."</span>
 </span><span id=__span-0-75><a id=__codelineno-0-75 name=__codelineno-0-75></a>        <span class=p>)</span>
 </span><span id=__span-0-76><a id=__codelineno-0-76 name=__codelineno-0-76></a>
 </span><span id=__span-0-77><a id=__codelineno-0-77 name=__codelineno-0-77></a>    <span class=n>percentile_probs</span> <span class=o>=</span> <span class=p>{</span>
-</span><span id=__span-0-78><a id=__codelineno-0-78 name=__codelineno-0-78></a>        <span class=s2>&quot;p001&quot;</span><span class=p>:</span> <span class=mf>0.001</span><span class=p>,</span>
-</span><span id=__span-0-79><a id=__codelineno-0-79 name=__codelineno-0-79></a>        <span class=s2>&quot;p01&quot;</span><span class=p>:</span> <span class=mf>0.01</span><span class=p>,</span>
-</span><span id=__span-0-80><a id=__codelineno-0-80 name=__codelineno-0-80></a>        <span class=s2>&quot;p05&quot;</span><span class=p>:</span> <span class=mf>0.05</span><span class=p>,</span>
-</span><span id=__span-0-81><a id=__codelineno-0-81 name=__codelineno-0-81></a>        <span class=s2>&quot;p10&quot;</span><span class=p>:</span> <span class=mf>0.1</span><span class=p>,</span>
-</span><span id=__span-0-82><a id=__codelineno-0-82 name=__codelineno-0-82></a>        <span class=s2>&quot;p25&quot;</span><span class=p>:</span> <span class=mf>0.25</span><span class=p>,</span>
-</span><span id=__span-0-83><a id=__codelineno-0-83 name=__codelineno-0-83></a>        <span class=s2>&quot;p50&quot;</span><span class=p>:</span> <span class=mf>0.5</span><span class=p>,</span>
-</span><span id=__span-0-84><a id=__codelineno-0-84 name=__codelineno-0-84></a>        <span class=s2>&quot;p75&quot;</span><span class=p>:</span> <span class=mf>0.75</span><span class=p>,</span>
-</span><span id=__span-0-85><a id=__codelineno-0-85 name=__codelineno-0-85></a>        <span class=s2>&quot;p90&quot;</span><span class=p>:</span> <span class=mf>0.9</span><span class=p>,</span>
-</span><span id=__span-0-86><a id=__codelineno-0-86 name=__codelineno-0-86></a>        <span class=s2>&quot;p95&quot;</span><span class=p>:</span> <span class=mf>0.95</span><span class=p>,</span>
-</span><span id=__span-0-87><a id=__codelineno-0-87 name=__codelineno-0-87></a>        <span class=s2>&quot;p99&quot;</span><span class=p>:</span> <span class=mf>0.99</span><span class=p>,</span>
-</span><span id=__span-0-88><a id=__codelineno-0-88 name=__codelineno-0-88></a>        <span class=s2>&quot;p999&quot;</span><span class=p>:</span> <span class=mf>0.999</span><span class=p>,</span>
+</span><span id=__span-0-78><a id=__codelineno-0-78 name=__codelineno-0-78></a>        <span class=s2>"p001"</span><span class=p>:</span> <span class=mf>0.001</span><span class=p>,</span>
+</span><span id=__span-0-79><a id=__codelineno-0-79 name=__codelineno-0-79></a>        <span class=s2>"p01"</span><span class=p>:</span> <span class=mf>0.01</span><span class=p>,</span>
+</span><span id=__span-0-80><a id=__codelineno-0-80 name=__codelineno-0-80></a>        <span class=s2>"p05"</span><span class=p>:</span> <span class=mf>0.05</span><span class=p>,</span>
+</span><span id=__span-0-81><a id=__codelineno-0-81 name=__codelineno-0-81></a>        <span class=s2>"p10"</span><span class=p>:</span> <span class=mf>0.1</span><span class=p>,</span>
+</span><span id=__span-0-82><a id=__codelineno-0-82 name=__codelineno-0-82></a>        <span class=s2>"p25"</span><span class=p>:</span> <span class=mf>0.25</span><span class=p>,</span>
+</span><span id=__span-0-83><a id=__codelineno-0-83 name=__codelineno-0-83></a>        <span class=s2>"p50"</span><span class=p>:</span> <span class=mf>0.5</span><span class=p>,</span>
+</span><span id=__span-0-84><a id=__codelineno-0-84 name=__codelineno-0-84></a>        <span class=s2>"p75"</span><span class=p>:</span> <span class=mf>0.75</span><span class=p>,</span>
+</span><span id=__span-0-85><a id=__codelineno-0-85 name=__codelineno-0-85></a>        <span class=s2>"p90"</span><span class=p>:</span> <span class=mf>0.9</span><span class=p>,</span>
+</span><span id=__span-0-86><a id=__codelineno-0-86 name=__codelineno-0-86></a>        <span class=s2>"p95"</span><span class=p>:</span> <span class=mf>0.95</span><span class=p>,</span>
+</span><span id=__span-0-87><a id=__codelineno-0-87 name=__codelineno-0-87></a>        <span class=s2>"p99"</span><span class=p>:</span> <span class=mf>0.99</span><span class=p>,</span>
+</span><span id=__span-0-88><a id=__codelineno-0-88 name=__codelineno-0-88></a>        <span class=s2>"p999"</span><span class=p>:</span> <span class=mf>0.999</span><span class=p>,</span>
 </span><span id=__span-0-89><a id=__codelineno-0-89 name=__codelineno-0-89></a>    <span class=p>}</span>
 </span><span id=__span-0-90><a id=__codelineno-0-90 name=__codelineno-0-90></a>
 </span><span id=__span-0-91><a id=__codelineno-0-91 name=__codelineno-0-91></a>    <span class=k>if</span> <span class=n>pdf</span><span class=o>.</span><span class=n>shape</span><span class=p>[</span><span class=mi>0</span><span class=p>]</span> <span class=o>==</span> <span class=mi>0</span><span class=p>:</span>
@@ -1993,17 +1993,17 @@
 </span><span id=__span-0-95><a id=__codelineno-0-95 name=__codelineno-0-95></a>
 </span><span id=__span-0-96><a id=__codelineno-0-96 name=__codelineno-0-96></a>    <span class=k>if</span> <span class=n>validate</span><span class=p>:</span>
 </span><span id=__span-0-97><a id=__codelineno-0-97 name=__codelineno-0-97></a>        <span class=k>if</span> <span class=n>np</span><span class=o>.</span><span class=n>any</span><span class=p>(</span><span class=n>probabilities</span> <span class=o>&lt;</span> <span class=mi>0</span><span class=p>):</span>
-</span><span id=__span-0-98><a id=__codelineno-0-98 name=__codelineno-0-98></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>&quot;Probabilities must be non-negative.&quot;</span><span class=p>)</span>
+</span><span id=__span-0-98><a id=__codelineno-0-98 name=__codelineno-0-98></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>"Probabilities must be non-negative."</span><span class=p>)</span>
 </span><span id=__span-0-99><a id=__codelineno-0-99 name=__codelineno-0-99></a>
 </span><span id=__span-0-100><a id=__codelineno-0-100 name=__codelineno-0-100></a>        <span class=n>prob_sum</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>sum</span><span class=p>(</span><span class=n>probabilities</span><span class=p>)</span>
 </span><span id=__span-0-101><a id=__codelineno-0-101 name=__codelineno-0-101></a>        <span class=k>if</span> <span class=nb>abs</span><span class=p>(</span><span class=n>prob_sum</span> <span class=o>-</span> <span class=mf>1.0</span><span class=p>)</span> <span class=o>&gt;</span> <span class=n>epsilon</span><span class=p>:</span>
-</span><span id=__span-0-102><a id=__codelineno-0-102 name=__codelineno-0-102></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=sa>f</span><span class=s2>&quot;Probabilities must sum to 1, got </span><span class=si>{</span><span class=n>prob_sum</span><span class=si>}</span><span class=s2>.&quot;</span><span class=p>)</span>
+</span><span id=__span-0-102><a id=__codelineno-0-102 name=__codelineno-0-102></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=sa>f</span><span class=s2>"Probabilities must sum to 1, got </span><span class=si>{</span><span class=n>prob_sum</span><span class=si>}</span><span class=s2>."</span><span class=p>)</span>
 </span><span id=__span-0-103><a id=__codelineno-0-103 name=__codelineno-0-103></a>
 </span><span id=__span-0-104><a id=__codelineno-0-104 name=__codelineno-0-104></a>    <span class=n>cdf_probs</span> <span class=o>=</span> <span class=n>np</span><span class=o>.</span><span class=n>cumsum</span><span class=p>(</span><span class=n>probabilities</span><span class=p>)</span>
 </span><span id=__span-0-105><a id=__codelineno-0-105 name=__codelineno-0-105></a>
 </span><span id=__span-0-106><a id=__codelineno-0-106 name=__codelineno-0-106></a>    <span class=k>return</span> <span class=n>Percentiles</span><span class=p>(</span>
 </span><span id=__span-0-107><a id=__codelineno-0-107 name=__codelineno-0-107></a>        <span class=o>**</span><span class=p>{</span>
-</span><span id=__span-0-108><a id=__codelineno-0-108 name=__codelineno-0-108></a>            <span class=n>key</span><span class=p>:</span> <span class=n>pdf</span><span class=p>[</span><span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>cdf_probs</span><span class=p>,</span> <span class=n>value</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>&quot;left&quot;</span><span class=p>),</span> <span class=mi>0</span><span class=p>]</span><span class=o>.</span><span class=n>item</span><span class=p>()</span>
+</span><span id=__span-0-108><a id=__codelineno-0-108 name=__codelineno-0-108></a>            <span class=n>key</span><span class=p>:</span> <span class=n>pdf</span><span class=p>[</span><span class=n>np</span><span class=o>.</span><span class=n>searchsorted</span><span class=p>(</span><span class=n>cdf_probs</span><span class=p>,</span> <span class=n>value</span><span class=p>,</span> <span class=n>side</span><span class=o>=</span><span class=s2>"left"</span><span class=p>),</span> <span class=mi>0</span><span class=p>]</span><span class=o>.</span><span class=n>item</span><span class=p>()</span>
 </span><span id=__span-0-109><a id=__codelineno-0-109 name=__codelineno-0-109></a>            <span class=k>for</span> <span class=n>key</span><span class=p>,</span> <span class=n>value</span> <span class=ow>in</span> <span class=n>percentile_probs</span><span class=o>.</span><span class=n>items</span><span class=p>()</span>
 </span><span id=__span-0-110><a id=__codelineno-0-110 name=__codelineno-0-110></a>        <span class=p>}</span>
 </span><span id=__span-0-111><a id=__codelineno-0-111 name=__codelineno-0-111></a>    <span class=p>)</span>
@@ -2396,26 +2396,26 @@
 </span><span id=__span-0-642><a id=__codelineno-0-642 name=__codelineno-0-642></a>        <span class=n>DistributionSummary</span><span class=p>,</span>
 </span><span id=__span-0-643><a id=__codelineno-0-643 name=__codelineno-0-643></a>    <span class=p>]</span>
 </span><span id=__span-0-644><a id=__codelineno-0-644 name=__codelineno-0-644></a><span class=p>):</span>
-</span><span id=__span-0-645><a id=__codelineno-0-645 name=__codelineno-0-645></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-645><a id=__codelineno-0-645 name=__codelineno-0-645></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-646><a id=__codelineno-0-646 name=__codelineno-0-646></a><span class=sd>    Distribution summaries broken down by request status categories.</span>
 </span><span id=__span-0-647><a id=__codelineno-0-647 name=__codelineno-0-647></a>
 </span><span id=__span-0-648><a id=__codelineno-0-648 name=__codelineno-0-648></a><span class=sd>    Provides separate statistical analysis for successful, incomplete, and errored</span>
 </span><span id=__span-0-649><a id=__codelineno-0-649 name=__codelineno-0-649></a><span class=sd>    requests with total aggregate statistics. Enables status-aware performance analysis</span>
 </span><span id=__span-0-650><a id=__codelineno-0-650 name=__codelineno-0-650></a><span class=sd>    and SLO validation across different request outcomes in benchmark results.</span>
-</span><span id=__span-0-651><a id=__codelineno-0-651 name=__codelineno-0-651></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-651><a id=__codelineno-0-651 name=__codelineno-0-651></a><span class=sd>    """</span>
 </span><span id=__span-0-652><a id=__codelineno-0-652 name=__codelineno-0-652></a>
 </span><span id=__span-0-653><a id=__codelineno-0-653 name=__codelineno-0-653></a>    <span class=nd>@property</span>
 </span><span id=__span-0-654><a id=__codelineno-0-654 name=__codelineno-0-654></a>    <span class=k>def</span><span class=w> </span><span class=nf>count</span><span class=p>(</span><span class=bp>self</span><span class=p>)</span> <span class=o>-&gt;</span> <span class=nb>int</span><span class=p>:</span>
-</span><span id=__span-0-655><a id=__codelineno-0-655 name=__codelineno-0-655></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-655><a id=__codelineno-0-655 name=__codelineno-0-655></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-656><a id=__codelineno-0-656 name=__codelineno-0-656></a><span class=sd>        :return: Total count of samples across all status categories</span>
-</span><span id=__span-0-657><a id=__codelineno-0-657 name=__codelineno-0-657></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-657><a id=__codelineno-0-657 name=__codelineno-0-657></a><span class=sd>        """</span>
 </span><span id=__span-0-658><a id=__codelineno-0-658 name=__codelineno-0-658></a>        <span class=k>return</span> <span class=bp>self</span><span class=o>.</span><span class=n>total</span><span class=o>.</span><span class=n>count</span>
 </span><span id=__span-0-659><a id=__codelineno-0-659 name=__codelineno-0-659></a>
 </span><span id=__span-0-660><a id=__codelineno-0-660 name=__codelineno-0-660></a>    <span class=nd>@property</span>
 </span><span id=__span-0-661><a id=__codelineno-0-661 name=__codelineno-0-661></a>    <span class=k>def</span><span class=w> </span><span class=nf>total_sum</span><span class=p>(</span><span class=bp>self</span><span class=p>)</span> <span class=o>-&gt;</span> <span class=nb>float</span><span class=p>:</span>
-</span><span id=__span-0-662><a id=__codelineno-0-662 name=__codelineno-0-662></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-662><a id=__codelineno-0-662 name=__codelineno-0-662></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-663><a id=__codelineno-0-663 name=__codelineno-0-663></a><span class=sd>        :return: Total sum of values across all status categories</span>
-</span><span id=__span-0-664><a id=__codelineno-0-664 name=__codelineno-0-664></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-664><a id=__codelineno-0-664 name=__codelineno-0-664></a><span class=sd>        """</span>
 </span><span id=__span-0-665><a id=__codelineno-0-665 name=__codelineno-0-665></a>        <span class=k>return</span> <span class=bp>self</span><span class=o>.</span><span class=n>total</span><span class=o>.</span><span class=n>total_sum</span>
 </span><span id=__span-0-666><a id=__codelineno-0-666 name=__codelineno-0-666></a>
 </span><span id=__span-0-667><a id=__codelineno-0-667 name=__codelineno-0-667></a>    <span class=nd>@classmethod</span>
@@ -2427,7 +2427,7 @@
 </span><span id=__span-0-673><a id=__codelineno-0-673 name=__codelineno-0-673></a>        <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-674><a id=__codelineno-0-674 name=__codelineno-0-674></a>        <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-675><a id=__codelineno-0-675 name=__codelineno-0-675></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-676><a id=__codelineno-0-676 name=__codelineno-0-676></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-676><a id=__codelineno-0-676 name=__codelineno-0-676></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-677><a id=__codelineno-0-677 name=__codelineno-0-677></a><span class=sd>        Create status-broken-down distribution from values by status category.</span>
 </span><span id=__span-0-678><a id=__codelineno-0-678 name=__codelineno-0-678></a>
 </span><span id=__span-0-679><a id=__codelineno-0-679 name=__codelineno-0-679></a><span class=sd>        :param successful: Values or (value, weight) tuples for successful requests</span>
@@ -2436,7 +2436,7 @@
 </span><span id=__span-0-682><a id=__codelineno-0-682 name=__codelineno-0-682></a><span class=sd>        :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-683><a id=__codelineno-0-683 name=__codelineno-0-683></a><span class=sd>        :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-684><a id=__codelineno-0-684 name=__codelineno-0-684></a><span class=sd>        :return: Status breakdown of distribution summaries</span>
-</span><span id=__span-0-685><a id=__codelineno-0-685 name=__codelineno-0-685></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-685><a id=__codelineno-0-685 name=__codelineno-0-685></a><span class=sd>        """</span>
 </span><span id=__span-0-686><a id=__codelineno-0-686 name=__codelineno-0-686></a>        <span class=n>total</span><span class=p>,</span> <span class=n>successful_arr</span><span class=p>,</span> <span class=n>incomplete_arr</span><span class=p>,</span> <span class=n>errored_arr</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_combine_status_arrays</span><span class=p>(</span>
 </span><span id=__span-0-687><a id=__codelineno-0-687 name=__codelineno-0-687></a>            <span class=n>successful</span><span class=p>,</span> <span class=n>incomplete</span><span class=p>,</span> <span class=n>errored</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>2</span>
 </span><span id=__span-0-688><a id=__codelineno-0-688 name=__codelineno-0-688></a>        <span class=p>)</span>
@@ -2469,7 +2469,7 @@
 </span><span id=__span-0-715><a id=__codelineno-0-715 name=__codelineno-0-715></a>        <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-716><a id=__codelineno-0-716 name=__codelineno-0-716></a>        <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-717><a id=__codelineno-0-717 name=__codelineno-0-717></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-718><a id=__codelineno-0-718 name=__codelineno-0-718></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-718><a id=__codelineno-0-718 name=__codelineno-0-718></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-719><a id=__codelineno-0-719 name=__codelineno-0-719></a><span class=sd>        Create distribution summary by extracting values from objects via function.</span>
 </span><span id=__span-0-720><a id=__codelineno-0-720 name=__codelineno-0-720></a>
 </span><span id=__span-0-721><a id=__codelineno-0-721 name=__codelineno-0-721></a><span class=sd>        :param function: Function to extract value(s) from each object</span>
@@ -2479,7 +2479,7 @@
 </span><span id=__span-0-725><a id=__codelineno-0-725 name=__codelineno-0-725></a><span class=sd>        :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-726><a id=__codelineno-0-726 name=__codelineno-0-726></a><span class=sd>        :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-727><a id=__codelineno-0-727 name=__codelineno-0-727></a><span class=sd>        :return: Status breakdown of distribution summaries</span>
-</span><span id=__span-0-728><a id=__codelineno-0-728 name=__codelineno-0-728></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-728><a id=__codelineno-0-728 name=__codelineno-0-728></a><span class=sd>        """</span>
 </span><span id=__span-0-729><a id=__codelineno-0-729 name=__codelineno-0-729></a>
 </span><span id=__span-0-730><a id=__codelineno-0-730 name=__codelineno-0-730></a>        <span class=k>def</span><span class=w> </span><span class=nf>_extract_values</span><span class=p>(</span>
 </span><span id=__span-0-731><a id=__codelineno-0-731 name=__codelineno-0-731></a>            <span class=n>_objs</span><span class=p>:</span> <span class=n>Sequence</span><span class=p>[</span><span class=n>FunctionObjT</span><span class=p>],</span>
@@ -2514,7 +2514,7 @@
 </span><span id=__span-0-760><a id=__codelineno-0-760 name=__codelineno-0-760></a>        <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-761><a id=__codelineno-0-761 name=__codelineno-0-761></a>        <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-762><a id=__codelineno-0-762 name=__codelineno-0-762></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-763><a id=__codelineno-0-763 name=__codelineno-0-763></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-763><a id=__codelineno-0-763 name=__codelineno-0-763></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-764><a id=__codelineno-0-764 name=__codelineno-0-764></a><span class=sd>        Create status-broken-down rate distribution from event timestamps.</span>
 </span><span id=__span-0-765><a id=__codelineno-0-765 name=__codelineno-0-765></a>
 </span><span id=__span-0-766><a id=__codelineno-0-766 name=__codelineno-0-766></a><span class=sd>        :param successful: Timestamps for successful request events</span>
@@ -2526,7 +2526,7 @@
 </span><span id=__span-0-772><a id=__codelineno-0-772 name=__codelineno-0-772></a><span class=sd>        :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-773><a id=__codelineno-0-773 name=__codelineno-0-773></a><span class=sd>        :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-774><a id=__codelineno-0-774 name=__codelineno-0-774></a><span class=sd>        :return: Status breakdown of rate distribution summaries</span>
-</span><span id=__span-0-775><a id=__codelineno-0-775 name=__codelineno-0-775></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-775><a id=__codelineno-0-775 name=__codelineno-0-775></a><span class=sd>        """</span>
 </span><span id=__span-0-776><a id=__codelineno-0-776 name=__codelineno-0-776></a>        <span class=n>total</span><span class=p>,</span> <span class=n>successful_arr</span><span class=p>,</span> <span class=n>incomplete_arr</span><span class=p>,</span> <span class=n>errored_arr</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_combine_status_arrays</span><span class=p>(</span>
 </span><span id=__span-0-777><a id=__codelineno-0-777 name=__codelineno-0-777></a>            <span class=n>successful</span><span class=p>,</span> <span class=n>incomplete</span><span class=p>,</span> <span class=n>errored</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>2</span>
 </span><span id=__span-0-778><a id=__codelineno-0-778 name=__codelineno-0-778></a>        <span class=p>)</span>
@@ -2582,7 +2582,7 @@
 </span><span id=__span-0-828><a id=__codelineno-0-828 name=__codelineno-0-828></a>        <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-829><a id=__codelineno-0-829 name=__codelineno-0-829></a>        <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-830><a id=__codelineno-0-830 name=__codelineno-0-830></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-831><a id=__codelineno-0-831 name=__codelineno-0-831></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-831><a id=__codelineno-0-831 name=__codelineno-0-831></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-832><a id=__codelineno-0-832 name=__codelineno-0-832></a><span class=sd>        Create rate distribution by extracting timestamps from objects via function.</span>
 </span><span id=__span-0-833><a id=__codelineno-0-833 name=__codelineno-0-833></a>
 </span><span id=__span-0-834><a id=__codelineno-0-834 name=__codelineno-0-834></a><span class=sd>        :param function: Function to extract timestamp(s) from each object</span>
@@ -2595,7 +2595,7 @@
 </span><span id=__span-0-841><a id=__codelineno-0-841 name=__codelineno-0-841></a><span class=sd>        :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-842><a id=__codelineno-0-842 name=__codelineno-0-842></a><span class=sd>        :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-843><a id=__codelineno-0-843 name=__codelineno-0-843></a><span class=sd>        :return: Status breakdown of rate distribution summaries</span>
-</span><span id=__span-0-844><a id=__codelineno-0-844 name=__codelineno-0-844></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-844><a id=__codelineno-0-844 name=__codelineno-0-844></a><span class=sd>        """</span>
 </span><span id=__span-0-845><a id=__codelineno-0-845 name=__codelineno-0-845></a>
 </span><span id=__span-0-846><a id=__codelineno-0-846 name=__codelineno-0-846></a>        <span class=k>def</span><span class=w> </span><span class=nf>_extract_values</span><span class=p>(</span>
 </span><span id=__span-0-847><a id=__codelineno-0-847 name=__codelineno-0-847></a>            <span class=n>_objs</span><span class=p>:</span> <span class=n>Sequence</span><span class=p>[</span><span class=n>FunctionObjT</span><span class=p>],</span>
@@ -2636,7 +2636,7 @@
 </span><span id=__span-0-882><a id=__codelineno-0-882 name=__codelineno-0-882></a>        <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-883><a id=__codelineno-0-883 name=__codelineno-0-883></a>        <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-884><a id=__codelineno-0-884 name=__codelineno-0-884></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-885><a id=__codelineno-0-885 name=__codelineno-0-885></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-885><a id=__codelineno-0-885 name=__codelineno-0-885></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-886><a id=__codelineno-0-886 name=__codelineno-0-886></a><span class=sd>        Create status-broken-down concurrency distribution from event intervals.</span>
 </span><span id=__span-0-887><a id=__codelineno-0-887 name=__codelineno-0-887></a>
 </span><span id=__span-0-888><a id=__codelineno-0-888 name=__codelineno-0-888></a><span class=sd>        :param successful: Event intervals for successful requests</span>
@@ -2648,7 +2648,7 @@
 </span><span id=__span-0-894><a id=__codelineno-0-894 name=__codelineno-0-894></a><span class=sd>        :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-895><a id=__codelineno-0-895 name=__codelineno-0-895></a><span class=sd>        :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-896><a id=__codelineno-0-896 name=__codelineno-0-896></a><span class=sd>        :return: Status breakdown of concurrency distribution summaries</span>
-</span><span id=__span-0-897><a id=__codelineno-0-897 name=__codelineno-0-897></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-897><a id=__codelineno-0-897 name=__codelineno-0-897></a><span class=sd>        """</span>
 </span><span id=__span-0-898><a id=__codelineno-0-898 name=__codelineno-0-898></a>        <span class=n>total</span><span class=p>,</span> <span class=n>successful_arr</span><span class=p>,</span> <span class=n>incomplete_arr</span><span class=p>,</span> <span class=n>errored_arr</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_combine_status_arrays</span><span class=p>(</span>
 </span><span id=__span-0-899><a id=__codelineno-0-899 name=__codelineno-0-899></a>            <span class=n>successful</span><span class=p>,</span> <span class=n>incomplete</span><span class=p>,</span> <span class=n>errored</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>3</span>
 </span><span id=__span-0-900><a id=__codelineno-0-900 name=__codelineno-0-900></a>        <span class=p>)</span>
@@ -2707,7 +2707,7 @@
 </span><span id=__span-0-953><a id=__codelineno-0-953 name=__codelineno-0-953></a>        <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-954><a id=__codelineno-0-954 name=__codelineno-0-954></a>        <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-955><a id=__codelineno-0-955 name=__codelineno-0-955></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-956><a id=__codelineno-0-956 name=__codelineno-0-956></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-956><a id=__codelineno-0-956 name=__codelineno-0-956></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-957><a id=__codelineno-0-957 name=__codelineno-0-957></a><span class=sd>        Create concurrency distribution by extracting intervals from objects.</span>
 </span><span id=__span-0-958><a id=__codelineno-0-958 name=__codelineno-0-958></a>
 </span><span id=__span-0-959><a id=__codelineno-0-959 name=__codelineno-0-959></a><span class=sd>        :param function: Function to extract time interval(s) from each object</span>
@@ -2720,7 +2720,7 @@
 </span><span id=__span-0-966><a id=__codelineno-0-966 name=__codelineno-0-966></a><span class=sd>        :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-967><a id=__codelineno-0-967 name=__codelineno-0-967></a><span class=sd>        :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-968><a id=__codelineno-0-968 name=__codelineno-0-968></a><span class=sd>        :return: Status breakdown of concurrency distribution summaries</span>
-</span><span id=__span-0-969><a id=__codelineno-0-969 name=__codelineno-0-969></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-969><a id=__codelineno-0-969 name=__codelineno-0-969></a><span class=sd>        """</span>
 </span><span id=__span-0-970><a id=__codelineno-0-970 name=__codelineno-0-970></a>
 </span><span id=__span-0-971><a id=__codelineno-0-971 name=__codelineno-0-971></a>        <span class=k>def</span><span class=w> </span><span class=nf>_extract_values</span><span class=p>(</span>
 </span><span id=__span-0-972><a id=__codelineno-0-972 name=__codelineno-0-972></a>            <span class=n>_objs</span><span class=p>:</span> <span class=n>Sequence</span><span class=p>[</span><span class=n>FunctionObjT</span><span class=p>],</span>
@@ -2850,7 +2850,7 @@
 </span><span id=__span-0-882><a id=__codelineno-0-882 name=__codelineno-0-882></a>    <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-883><a id=__codelineno-0-883 name=__codelineno-0-883></a>    <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-884><a id=__codelineno-0-884 name=__codelineno-0-884></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-885><a id=__codelineno-0-885 name=__codelineno-0-885></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-885><a id=__codelineno-0-885 name=__codelineno-0-885></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-886><a id=__codelineno-0-886 name=__codelineno-0-886></a><span class=sd>    Create status-broken-down concurrency distribution from event intervals.</span>
 </span><span id=__span-0-887><a id=__codelineno-0-887 name=__codelineno-0-887></a>
 </span><span id=__span-0-888><a id=__codelineno-0-888 name=__codelineno-0-888></a><span class=sd>    :param successful: Event intervals for successful requests</span>
@@ -2862,7 +2862,7 @@
 </span><span id=__span-0-894><a id=__codelineno-0-894 name=__codelineno-0-894></a><span class=sd>    :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-895><a id=__codelineno-0-895 name=__codelineno-0-895></a><span class=sd>    :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-896><a id=__codelineno-0-896 name=__codelineno-0-896></a><span class=sd>    :return: Status breakdown of concurrency distribution summaries</span>
-</span><span id=__span-0-897><a id=__codelineno-0-897 name=__codelineno-0-897></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-897><a id=__codelineno-0-897 name=__codelineno-0-897></a><span class=sd>    """</span>
 </span><span id=__span-0-898><a id=__codelineno-0-898 name=__codelineno-0-898></a>    <span class=n>total</span><span class=p>,</span> <span class=n>successful_arr</span><span class=p>,</span> <span class=n>incomplete_arr</span><span class=p>,</span> <span class=n>errored_arr</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_combine_status_arrays</span><span class=p>(</span>
 </span><span id=__span-0-899><a id=__codelineno-0-899 name=__codelineno-0-899></a>        <span class=n>successful</span><span class=p>,</span> <span class=n>incomplete</span><span class=p>,</span> <span class=n>errored</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>3</span>
 </span><span id=__span-0-900><a id=__codelineno-0-900 name=__codelineno-0-900></a>    <span class=p>)</span>
@@ -2976,7 +2976,7 @@
 </span><span id=__span-0-953><a id=__codelineno-0-953 name=__codelineno-0-953></a>    <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-954><a id=__codelineno-0-954 name=__codelineno-0-954></a>    <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-955><a id=__codelineno-0-955 name=__codelineno-0-955></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-956><a id=__codelineno-0-956 name=__codelineno-0-956></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-956><a id=__codelineno-0-956 name=__codelineno-0-956></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-957><a id=__codelineno-0-957 name=__codelineno-0-957></a><span class=sd>    Create concurrency distribution by extracting intervals from objects.</span>
 </span><span id=__span-0-958><a id=__codelineno-0-958 name=__codelineno-0-958></a>
 </span><span id=__span-0-959><a id=__codelineno-0-959 name=__codelineno-0-959></a><span class=sd>    :param function: Function to extract time interval(s) from each object</span>
@@ -2989,7 +2989,7 @@
 </span><span id=__span-0-966><a id=__codelineno-0-966 name=__codelineno-0-966></a><span class=sd>    :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-967><a id=__codelineno-0-967 name=__codelineno-0-967></a><span class=sd>    :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-968><a id=__codelineno-0-968 name=__codelineno-0-968></a><span class=sd>    :return: Status breakdown of concurrency distribution summaries</span>
-</span><span id=__span-0-969><a id=__codelineno-0-969 name=__codelineno-0-969></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-969><a id=__codelineno-0-969 name=__codelineno-0-969></a><span class=sd>    """</span>
 </span><span id=__span-0-970><a id=__codelineno-0-970 name=__codelineno-0-970></a>
 </span><span id=__span-0-971><a id=__codelineno-0-971 name=__codelineno-0-971></a>    <span class=k>def</span><span class=w> </span><span class=nf>_extract_values</span><span class=p>(</span>
 </span><span id=__span-0-972><a id=__codelineno-0-972 name=__codelineno-0-972></a>        <span class=n>_objs</span><span class=p>:</span> <span class=n>Sequence</span><span class=p>[</span><span class=n>FunctionObjT</span><span class=p>],</span>
@@ -3059,7 +3059,7 @@
 </span><span id=__span-0-673><a id=__codelineno-0-673 name=__codelineno-0-673></a>    <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-674><a id=__codelineno-0-674 name=__codelineno-0-674></a>    <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-675><a id=__codelineno-0-675 name=__codelineno-0-675></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-676><a id=__codelineno-0-676 name=__codelineno-0-676></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-676><a id=__codelineno-0-676 name=__codelineno-0-676></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-677><a id=__codelineno-0-677 name=__codelineno-0-677></a><span class=sd>    Create status-broken-down distribution from values by status category.</span>
 </span><span id=__span-0-678><a id=__codelineno-0-678 name=__codelineno-0-678></a>
 </span><span id=__span-0-679><a id=__codelineno-0-679 name=__codelineno-0-679></a><span class=sd>    :param successful: Values or (value, weight) tuples for successful requests</span>
@@ -3068,7 +3068,7 @@
 </span><span id=__span-0-682><a id=__codelineno-0-682 name=__codelineno-0-682></a><span class=sd>    :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-683><a id=__codelineno-0-683 name=__codelineno-0-683></a><span class=sd>    :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-684><a id=__codelineno-0-684 name=__codelineno-0-684></a><span class=sd>    :return: Status breakdown of distribution summaries</span>
-</span><span id=__span-0-685><a id=__codelineno-0-685 name=__codelineno-0-685></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-685><a id=__codelineno-0-685 name=__codelineno-0-685></a><span class=sd>    """</span>
 </span><span id=__span-0-686><a id=__codelineno-0-686 name=__codelineno-0-686></a>    <span class=n>total</span><span class=p>,</span> <span class=n>successful_arr</span><span class=p>,</span> <span class=n>incomplete_arr</span><span class=p>,</span> <span class=n>errored_arr</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_combine_status_arrays</span><span class=p>(</span>
 </span><span id=__span-0-687><a id=__codelineno-0-687 name=__codelineno-0-687></a>        <span class=n>successful</span><span class=p>,</span> <span class=n>incomplete</span><span class=p>,</span> <span class=n>errored</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>2</span>
 </span><span id=__span-0-688><a id=__codelineno-0-688 name=__codelineno-0-688></a>    <span class=p>)</span>
@@ -3144,7 +3144,7 @@
 </span><span id=__span-0-715><a id=__codelineno-0-715 name=__codelineno-0-715></a>    <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-716><a id=__codelineno-0-716 name=__codelineno-0-716></a>    <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-717><a id=__codelineno-0-717 name=__codelineno-0-717></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-718><a id=__codelineno-0-718 name=__codelineno-0-718></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-718><a id=__codelineno-0-718 name=__codelineno-0-718></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-719><a id=__codelineno-0-719 name=__codelineno-0-719></a><span class=sd>    Create distribution summary by extracting values from objects via function.</span>
 </span><span id=__span-0-720><a id=__codelineno-0-720 name=__codelineno-0-720></a>
 </span><span id=__span-0-721><a id=__codelineno-0-721 name=__codelineno-0-721></a><span class=sd>    :param function: Function to extract value(s) from each object</span>
@@ -3154,7 +3154,7 @@
 </span><span id=__span-0-725><a id=__codelineno-0-725 name=__codelineno-0-725></a><span class=sd>    :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-726><a id=__codelineno-0-726 name=__codelineno-0-726></a><span class=sd>    :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-727><a id=__codelineno-0-727 name=__codelineno-0-727></a><span class=sd>    :return: Status breakdown of distribution summaries</span>
-</span><span id=__span-0-728><a id=__codelineno-0-728 name=__codelineno-0-728></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-728><a id=__codelineno-0-728 name=__codelineno-0-728></a><span class=sd>    """</span>
 </span><span id=__span-0-729><a id=__codelineno-0-729 name=__codelineno-0-729></a>
 </span><span id=__span-0-730><a id=__codelineno-0-730 name=__codelineno-0-730></a>    <span class=k>def</span><span class=w> </span><span class=nf>_extract_values</span><span class=p>(</span>
 </span><span id=__span-0-731><a id=__codelineno-0-731 name=__codelineno-0-731></a>        <span class=n>_objs</span><span class=p>:</span> <span class=n>Sequence</span><span class=p>[</span><span class=n>FunctionObjT</span><span class=p>],</span>
@@ -3250,7 +3250,7 @@
 </span><span id=__span-0-760><a id=__codelineno-0-760 name=__codelineno-0-760></a>    <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-761><a id=__codelineno-0-761 name=__codelineno-0-761></a>    <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-762><a id=__codelineno-0-762 name=__codelineno-0-762></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-763><a id=__codelineno-0-763 name=__codelineno-0-763></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-763><a id=__codelineno-0-763 name=__codelineno-0-763></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-764><a id=__codelineno-0-764 name=__codelineno-0-764></a><span class=sd>    Create status-broken-down rate distribution from event timestamps.</span>
 </span><span id=__span-0-765><a id=__codelineno-0-765 name=__codelineno-0-765></a>
 </span><span id=__span-0-766><a id=__codelineno-0-766 name=__codelineno-0-766></a><span class=sd>    :param successful: Timestamps for successful request events</span>
@@ -3262,7 +3262,7 @@
 </span><span id=__span-0-772><a id=__codelineno-0-772 name=__codelineno-0-772></a><span class=sd>    :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-773><a id=__codelineno-0-773 name=__codelineno-0-773></a><span class=sd>    :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-774><a id=__codelineno-0-774 name=__codelineno-0-774></a><span class=sd>    :return: Status breakdown of rate distribution summaries</span>
-</span><span id=__span-0-775><a id=__codelineno-0-775 name=__codelineno-0-775></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-775><a id=__codelineno-0-775 name=__codelineno-0-775></a><span class=sd>    """</span>
 </span><span id=__span-0-776><a id=__codelineno-0-776 name=__codelineno-0-776></a>    <span class=n>total</span><span class=p>,</span> <span class=n>successful_arr</span><span class=p>,</span> <span class=n>incomplete_arr</span><span class=p>,</span> <span class=n>errored_arr</span> <span class=o>=</span> <span class=bp>cls</span><span class=o>.</span><span class=n>_combine_status_arrays</span><span class=p>(</span>
 </span><span id=__span-0-777><a id=__codelineno-0-777 name=__codelineno-0-777></a>        <span class=n>successful</span><span class=p>,</span> <span class=n>incomplete</span><span class=p>,</span> <span class=n>errored</span><span class=p>,</span> <span class=n>num_values_per_item</span><span class=o>=</span><span class=mi>2</span>
 </span><span id=__span-0-778><a id=__codelineno-0-778 name=__codelineno-0-778></a>    <span class=p>)</span>
@@ -3370,7 +3370,7 @@
 </span><span id=__span-0-828><a id=__codelineno-0-828 name=__codelineno-0-828></a>    <span class=n>include_pdf</span><span class=p>:</span> <span class=nb>bool</span> <span class=o>|</span> <span class=nb>int</span> <span class=o>=</span> <span class=kc>False</span><span class=p>,</span>
 </span><span id=__span-0-829><a id=__codelineno-0-829 name=__codelineno-0-829></a>    <span class=n>epsilon</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>1e-6</span><span class=p>,</span>
 </span><span id=__span-0-830><a id=__codelineno-0-830 name=__codelineno-0-830></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=n>StatusDistributionSummary</span><span class=p>:</span>
-</span><span id=__span-0-831><a id=__codelineno-0-831 name=__codelineno-0-831></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-831><a id=__codelineno-0-831 name=__codelineno-0-831></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-832><a id=__codelineno-0-832 name=__codelineno-0-832></a><span class=sd>    Create rate distribution by extracting timestamps from objects via function.</span>
 </span><span id=__span-0-833><a id=__codelineno-0-833 name=__codelineno-0-833></a>
 </span><span id=__span-0-834><a id=__codelineno-0-834 name=__codelineno-0-834></a><span class=sd>    :param function: Function to extract timestamp(s) from each object</span>
@@ -3383,7 +3383,7 @@
 </span><span id=__span-0-841><a id=__codelineno-0-841 name=__codelineno-0-841></a><span class=sd>    :param include_pdf: Whether to include PDF; True for full, int for sampled size</span>
 </span><span id=__span-0-842><a id=__codelineno-0-842 name=__codelineno-0-842></a><span class=sd>    :param epsilon: Tolerance for probability validation</span>
 </span><span id=__span-0-843><a id=__codelineno-0-843 name=__codelineno-0-843></a><span class=sd>    :return: Status breakdown of rate distribution summaries</span>
-</span><span id=__span-0-844><a id=__codelineno-0-844 name=__codelineno-0-844></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-844><a id=__codelineno-0-844 name=__codelineno-0-844></a><span class=sd>    """</span>
 </span><span id=__span-0-845><a id=__codelineno-0-845 name=__codelineno-0-845></a>
 </span><span id=__span-0-846><a id=__codelineno-0-846 name=__codelineno-0-846></a>    <span class=k>def</span><span class=w> </span><span class=nf>_extract_values</span><span class=p>(</span>
 </span><span id=__span-0-847><a id=__codelineno-0-847 name=__codelineno-0-847></a>        <span class=n>_objs</span><span class=p>:</span> <span class=n>Sequence</span><span class=p>[</span><span class=n>FunctionObjT</span><span class=p>],</span>

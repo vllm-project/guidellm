@@ -14,7 +14,7 @@ async for response, request, info, state in scheduler.run(
     env=NonDistributedEnvironment(),
     max_requests=1000
 ):
-    print(f&quot;Processed: {request}&quot;)
+    print(f"Processed: {request}")
 </code></pre></div> <details class=mkdocstrings-source> <summary>Source code in <code>src/guidellm/scheduler/scheduler.py</code></summary> <div class="language-python highlight"><table class=highlighttable><tr><td class=linenos><div class=linenodiv><pre><span></span><span class=normal><a href=#__codelineno-0-35> 35</a></span>
 <span class=normal><a href=#__codelineno-0-36> 36</a></span>
 <span class=normal><a href=#__codelineno-0-37> 37</a></span>
@@ -143,7 +143,7 @@ async for response, request, info, state in scheduler.run(
 </span><span id=__span-0-36><a id=__codelineno-0-36 name=__codelineno-0-36></a>    <span class=n>Generic</span><span class=p>[</span><span class=n>RequestT</span><span class=p>,</span> <span class=n>ResponseT</span><span class=p>],</span>
 </span><span id=__span-0-37><a id=__codelineno-0-37 name=__codelineno-0-37></a>    <span class=n>ThreadSafeSingletonMixin</span><span class=p>,</span>
 </span><span id=__span-0-38><a id=__codelineno-0-38 name=__codelineno-0-38></a><span class=p>):</span>
-</span><span id=__span-0-39><a id=__codelineno-0-39 name=__codelineno-0-39></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-39><a id=__codelineno-0-39 name=__codelineno-0-39></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-40><a id=__codelineno-0-40 name=__codelineno-0-40></a><span class=sd>    Thread-safe singleton scheduler for distributed benchmarking workload coordination.</span>
 </span><span id=__span-0-41><a id=__codelineno-0-41 name=__codelineno-0-41></a>
 </span><span id=__span-0-42><a id=__codelineno-0-42 name=__codelineno-0-42></a><span class=sd>    Orchestrates request processing across worker processes with distributed timing</span>
@@ -165,8 +165,8 @@ async for response, request, info, state in scheduler.run(
 </span><span id=__span-0-58><a id=__codelineno-0-58 name=__codelineno-0-58></a><span class=sd>            env=NonDistributedEnvironment(),</span>
 </span><span id=__span-0-59><a id=__codelineno-0-59 name=__codelineno-0-59></a><span class=sd>            max_requests=1000</span>
 </span><span id=__span-0-60><a id=__codelineno-0-60 name=__codelineno-0-60></a><span class=sd>        ):</span>
-</span><span id=__span-0-61><a id=__codelineno-0-61 name=__codelineno-0-61></a><span class=sd>            print(f&quot;Processed: {request}&quot;)</span>
-</span><span id=__span-0-62><a id=__codelineno-0-62 name=__codelineno-0-62></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-61><a id=__codelineno-0-61 name=__codelineno-0-61></a><span class=sd>            print(f"Processed: {request}")</span>
+</span><span id=__span-0-62><a id=__codelineno-0-62 name=__codelineno-0-62></a><span class=sd>    """</span>
 </span><span id=__span-0-63><a id=__codelineno-0-63 name=__codelineno-0-63></a>
 </span><span id=__span-0-64><a id=__codelineno-0-64 name=__codelineno-0-64></a>    <span class=k>async</span> <span class=k>def</span><span class=w> </span><span class=nf>run</span><span class=p>(</span>
 </span><span id=__span-0-65><a id=__codelineno-0-65 name=__codelineno-0-65></a>        <span class=bp>self</span><span class=p>,</span>
@@ -183,7 +183,7 @@ async for response, request, info, state in scheduler.run(
 </span><span id=__span-0-76><a id=__codelineno-0-76 name=__codelineno-0-76></a>            <span class=n>SchedulerState</span><span class=p>,</span>
 </span><span id=__span-0-77><a id=__codelineno-0-77 name=__codelineno-0-77></a>        <span class=p>]</span>
 </span><span id=__span-0-78><a id=__codelineno-0-78 name=__codelineno-0-78></a>    <span class=p>]:</span>
-</span><span id=__span-0-79><a id=__codelineno-0-79 name=__codelineno-0-79></a><span class=w>        </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-79><a id=__codelineno-0-79 name=__codelineno-0-79></a><span class=w>        </span><span class=sd>"""</span>
 </span><span id=__span-0-80><a id=__codelineno-0-80 name=__codelineno-0-80></a><span class=sd>        Execute distributed request processing with coordinated timing and constraints.</span>
 </span><span id=__span-0-81><a id=__codelineno-0-81 name=__codelineno-0-81></a>
 </span><span id=__span-0-82><a id=__codelineno-0-82 name=__codelineno-0-82></a><span class=sd>        Orchestrates the complete benchmarking workflow across worker processes with</span>
@@ -205,7 +205,7 @@ async for response, request, info, state in scheduler.run(
 </span><span id=__span-0-98><a id=__codelineno-0-98 name=__codelineno-0-98></a><span class=sd>            completed | errored | cancelled</span>
 </span><span id=__span-0-99><a id=__codelineno-0-99 name=__codelineno-0-99></a><span class=sd>        :raises Exception: Worker process errors, environment synchronization failures,</span>
 </span><span id=__span-0-100><a id=__codelineno-0-100 name=__codelineno-0-100></a><span class=sd>            or constraint evaluation errors are propagated after cleanup</span>
-</span><span id=__span-0-101><a id=__codelineno-0-101 name=__codelineno-0-101></a><span class=sd>        &quot;&quot;&quot;</span>
+</span><span id=__span-0-101><a id=__codelineno-0-101 name=__codelineno-0-101></a><span class=sd>        """</span>
 </span><span id=__span-0-102><a id=__codelineno-0-102 name=__codelineno-0-102></a>        <span class=k>with</span> <span class=bp>self</span><span class=o>.</span><span class=n>thread_lock</span><span class=p>:</span>
 </span><span id=__span-0-103><a id=__codelineno-0-103 name=__codelineno-0-103></a>            <span class=k>if</span> <span class=n>env</span> <span class=ow>is</span> <span class=kc>None</span><span class=p>:</span>
 </span><span id=__span-0-104><a id=__codelineno-0-104 name=__codelineno-0-104></a>                <span class=n>env</span> <span class=o>=</span> <span class=n>NonDistributedEnvironment</span><span class=p>[</span><span class=n>RequestT</span><span class=p>,</span> <span class=n>ResponseT</span><span class=p>]()</span>
@@ -398,7 +398,7 @@ async for response, request, info, state in scheduler.run(
 </span><span id=__span-0-76><a id=__codelineno-0-76 name=__codelineno-0-76></a>        <span class=n>SchedulerState</span><span class=p>,</span>
 </span><span id=__span-0-77><a id=__codelineno-0-77 name=__codelineno-0-77></a>    <span class=p>]</span>
 </span><span id=__span-0-78><a id=__codelineno-0-78 name=__codelineno-0-78></a><span class=p>]:</span>
-</span><span id=__span-0-79><a id=__codelineno-0-79 name=__codelineno-0-79></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-79><a id=__codelineno-0-79 name=__codelineno-0-79></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-80><a id=__codelineno-0-80 name=__codelineno-0-80></a><span class=sd>    Execute distributed request processing with coordinated timing and constraints.</span>
 </span><span id=__span-0-81><a id=__codelineno-0-81 name=__codelineno-0-81></a>
 </span><span id=__span-0-82><a id=__codelineno-0-82 name=__codelineno-0-82></a><span class=sd>    Orchestrates the complete benchmarking workflow across worker processes with</span>
@@ -420,7 +420,7 @@ async for response, request, info, state in scheduler.run(
 </span><span id=__span-0-98><a id=__codelineno-0-98 name=__codelineno-0-98></a><span class=sd>        completed | errored | cancelled</span>
 </span><span id=__span-0-99><a id=__codelineno-0-99 name=__codelineno-0-99></a><span class=sd>    :raises Exception: Worker process errors, environment synchronization failures,</span>
 </span><span id=__span-0-100><a id=__codelineno-0-100 name=__codelineno-0-100></a><span class=sd>        or constraint evaluation errors are propagated after cleanup</span>
-</span><span id=__span-0-101><a id=__codelineno-0-101 name=__codelineno-0-101></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-101><a id=__codelineno-0-101 name=__codelineno-0-101></a><span class=sd>    """</span>
 </span><span id=__span-0-102><a id=__codelineno-0-102 name=__codelineno-0-102></a>    <span class=k>with</span> <span class=bp>self</span><span class=o>.</span><span class=n>thread_lock</span><span class=p>:</span>
 </span><span id=__span-0-103><a id=__codelineno-0-103 name=__codelineno-0-103></a>        <span class=k>if</span> <span class=n>env</span> <span class=ow>is</span> <span class=kc>None</span><span class=p>:</span>
 </span><span id=__span-0-104><a id=__codelineno-0-104 name=__codelineno-0-104></a>            <span class=n>env</span> <span class=o>=</span> <span class=n>NonDistributedEnvironment</span><span class=p>[</span><span class=n>RequestT</span><span class=p>,</span> <span class=n>ResponseT</span><span class=p>]()</span>

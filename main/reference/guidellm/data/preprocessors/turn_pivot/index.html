@@ -2,8 +2,8 @@
 turns = preprocessor(turns)
 
 # Resulting turns:
-# turns[0] = {&quot;prompt&quot;: [&quot;P1a&quot;, &quot;P2a&quot;], &quot;output_tokens_count&quot;: [11, 21]}
-# turns[1] = {&quot;prompt&quot;: [&quot;P1b&quot;, &quot;P2b&quot;], &quot;output_tokens_count&quot;: [12, 22]}
+# turns[0] = {"prompt": ["P1a", "P2a"], "output_tokens_count": [11, 21]}
+# turns[1] = {"prompt": ["P1b", "P2b"], "output_tokens_count": [12, 22]}
 </code></pre></div> <details class=mkdocstrings-source> <summary>Source code in <code>src/guidellm/data/preprocessors/turn_pivot.py</code></summary> <div class="language-python highlight"><table class=highlighttable><tr><td class=linenos><div class=linenodiv><pre><span></span><span class=normal><a href=#__codelineno-0-15>15</a></span>
 <span class=normal><a href=#__codelineno-0-16>16</a></span>
 <span class=normal><a href=#__codelineno-0-17>17</a></span>
@@ -40,26 +40,26 @@ turns = preprocessor(turns)
 <span class=normal><a href=#__codelineno-0-48>48</a></span>
 <span class=normal><a href=#__codelineno-0-49>49</a></span>
 <span class=normal><a href=#__codelineno-0-50>50</a></span>
-<span class=normal><a href=#__codelineno-0-51>51</a></span></pre></div></td><td class=code><div><pre><span></span><code><span id=__span-0-15><a id=__codelineno-0-15 name=__codelineno-0-15></a><span class=nd>@PreprocessorRegistry</span><span class=o>.</span><span class=n>register</span><span class=p>(</span><span class=s2>&quot;turn_pivot&quot;</span><span class=p>)</span>
+<span class=normal><a href=#__codelineno-0-51>51</a></span></pre></div></td><td class=code><div><pre><span></span><code><span id=__span-0-15><a id=__codelineno-0-15 name=__codelineno-0-15></a><span class=nd>@PreprocessorRegistry</span><span class=o>.</span><span class=n>register</span><span class=p>(</span><span class=s2>"turn_pivot"</span><span class=p>)</span>
 </span><span id=__span-0-16><a id=__codelineno-0-16 name=__codelineno-0-16></a><span class=k>class</span><span class=w> </span><span class=nc>TurnPivot</span><span class=p>(</span><span class=n>DatasetPreprocessor</span><span class=p>):</span>
-</span><span id=__span-0-17><a id=__codelineno-0-17 name=__codelineno-0-17></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-17><a id=__codelineno-0-17 name=__codelineno-0-17></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-18><a id=__codelineno-0-18 name=__codelineno-0-18></a><span class=sd>    Swaps the turn and batch dimensions in a multi-turn dataset.</span>
 </span><span id=__span-0-19><a id=__codelineno-0-19 name=__codelineno-0-19></a>
 </span><span id=__span-0-20><a id=__codelineno-0-20 name=__codelineno-0-20></a><span class=sd>    Example:</span>
 </span><span id=__span-0-21><a id=__codelineno-0-21 name=__codelineno-0-21></a><span class=sd>    ::</span>
 </span><span id=__span-0-22><a id=__codelineno-0-22 name=__codelineno-0-22></a><span class=sd>        # Input: 2 turns, each with 2 batches</span>
 </span><span id=__span-0-23><a id=__codelineno-0-23 name=__codelineno-0-23></a><span class=sd>        turns = [</span>
-</span><span id=__span-0-24><a id=__codelineno-0-24 name=__codelineno-0-24></a><span class=sd>            {&quot;prompt&quot;: [&quot;P1a&quot;, &quot;P1b&quot;], &quot;output_tokens_count&quot;: [11, 12]},  # Turn 1</span>
-</span><span id=__span-0-25><a id=__codelineno-0-25 name=__codelineno-0-25></a><span class=sd>            {&quot;prompt&quot;: [&quot;P2a&quot;, &quot;P2b&quot;], &quot;output_tokens_count&quot;: [21, 22]},  # Turn 2</span>
+</span><span id=__span-0-24><a id=__codelineno-0-24 name=__codelineno-0-24></a><span class=sd>            {"prompt": ["P1a", "P1b"], "output_tokens_count": [11, 12]},  # Turn 1</span>
+</span><span id=__span-0-25><a id=__codelineno-0-25 name=__codelineno-0-25></a><span class=sd>            {"prompt": ["P2a", "P2b"], "output_tokens_count": [21, 22]},  # Turn 2</span>
 </span><span id=__span-0-26><a id=__codelineno-0-26 name=__codelineno-0-26></a><span class=sd>        ]</span>
 </span><span id=__span-0-27><a id=__codelineno-0-27 name=__codelineno-0-27></a>
 </span><span id=__span-0-28><a id=__codelineno-0-28 name=__codelineno-0-28></a><span class=sd>        preprocessor = TurnPivot()</span>
 </span><span id=__span-0-29><a id=__codelineno-0-29 name=__codelineno-0-29></a><span class=sd>        turns = preprocessor(turns)</span>
 </span><span id=__span-0-30><a id=__codelineno-0-30 name=__codelineno-0-30></a>
 </span><span id=__span-0-31><a id=__codelineno-0-31 name=__codelineno-0-31></a><span class=sd>        # Resulting turns:</span>
-</span><span id=__span-0-32><a id=__codelineno-0-32 name=__codelineno-0-32></a><span class=sd>        # turns[0] = {&quot;prompt&quot;: [&quot;P1a&quot;, &quot;P2a&quot;], &quot;output_tokens_count&quot;: [11, 21]}</span>
-</span><span id=__span-0-33><a id=__codelineno-0-33 name=__codelineno-0-33></a><span class=sd>        # turns[1] = {&quot;prompt&quot;: [&quot;P1b&quot;, &quot;P2b&quot;], &quot;output_tokens_count&quot;: [12, 22]}</span>
-</span><span id=__span-0-34><a id=__codelineno-0-34 name=__codelineno-0-34></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-32><a id=__codelineno-0-32 name=__codelineno-0-32></a><span class=sd>        # turns[0] = {"prompt": ["P1a", "P2a"], "output_tokens_count": [11, 21]}</span>
+</span><span id=__span-0-33><a id=__codelineno-0-33 name=__codelineno-0-33></a><span class=sd>        # turns[1] = {"prompt": ["P1b", "P2b"], "output_tokens_count": [12, 22]}</span>
+</span><span id=__span-0-34><a id=__codelineno-0-34 name=__codelineno-0-34></a><span class=sd>    """</span>
 </span><span id=__span-0-35><a id=__codelineno-0-35 name=__codelineno-0-35></a>
 </span><span id=__span-0-36><a id=__codelineno-0-36 name=__codelineno-0-36></a>    <span class=k>def</span><span class=w> </span><span class=fm>__init__</span><span class=p>(</span>
 </span><span id=__span-0-37><a id=__codelineno-0-37 name=__codelineno-0-37></a>        <span class=bp>self</span><span class=p>,</span>

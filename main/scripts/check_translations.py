@@ -11,6 +11,9 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST_PATH = Path("docs/zh/.translation-sources.json")
+DOCS_ROOT = Path("docs")
+ENGLISH_DOCS_ROOT = DOCS_ROOT / "en"
+TRANSLATIONS_ROOT = DOCS_ROOT / "zh"
 
 
 @dataclass(frozen=True)
@@ -145,8 +148,8 @@ def validate_translations(
 def _validate_entry(project_root: Path, entry: TranslationSource) -> TranslationStatus:
     errors: list[str] = []
     stale: list[str] = []
-    docs_root = (project_root / "docs").resolve()
-    translations_root = (docs_root / "zh").resolve()
+    english_root = (project_root / ENGLISH_DOCS_ROOT).resolve()
+    translations_root = (project_root / TRANSLATIONS_ROOT).resolve()
 
     try:
         source = _repository_path(project_root, entry.source.as_posix())
@@ -154,8 +157,8 @@ def _validate_entry(project_root: Path, entry: TranslationSource) -> Translation
     except ValueError as error:
         return TranslationStatus(errors=(str(error),), stale=())
 
-    if not source.is_relative_to(docs_root) or source.is_relative_to(translations_root):
-        errors.append(f"English source must be under docs/: {entry.source}")
+    if not source.is_relative_to(english_root):
+        errors.append(f"English source must be under docs/en/: {entry.source}")
     if not translation.is_relative_to(translations_root):
         errors.append(f"Translation must be under docs/zh/: {entry.translation}")
     if not source.is_file():
@@ -184,7 +187,7 @@ def _validate_entry(project_root: Path, entry: TranslationSource) -> Translation
 def _find_unregistered_pages(
     project_root: Path, registered_paths: set[Path]
 ) -> tuple[str, ...]:
-    translations_root = (project_root / "docs/zh").resolve()
+    translations_root = (project_root / TRANSLATIONS_ROOT).resolve()
     registered = {path.as_posix() for path in registered_paths}
     errors: list[str] = []
 
@@ -238,8 +241,8 @@ def translation_routes(
         if not source.is_file() or not translation.is_file():
             continue
 
-        source_route = _documentation_route(entry.source, Path("docs"))
-        translation_route = _documentation_route(entry.translation, Path("docs"))
+        source_route = _documentation_route(entry.source, DOCS_ROOT)
+        translation_route = _documentation_route(entry.translation, DOCS_ROOT)
         routes[source_route] = {
             "translation": translation_route,
             "current": file_sha256(source) == entry.source_sha256,
@@ -250,6 +253,9 @@ def translation_routes(
 
 def _documentation_route(path: Path, docs_root: Path) -> str:
     relative_path = path.relative_to(docs_root)
+    if relative_path.is_relative_to(Path("en")):
+        relative_path = relative_path.relative_to("en")
+
     if relative_path.name == "index.md":
         route = relative_path.parent
     else:

@@ -63,9 +63,9 @@
 <span class=normal><a href=#__codelineno-0-93>93</a></span>
 <span class=normal><a href=#__codelineno-0-94>94</a></span>
 <span class=normal><a href=#__codelineno-0-95>95</a></span>
-<span class=normal><a href=#__codelineno-0-96>96</a></span></pre></div></td><td class=code><div><pre><span></span><code><span id=__span-0-31><a id=__codelineno-0-31 name=__codelineno-0-31></a><span class=nd>@DatasetDeserializerFactory</span><span class=o>.</span><span class=n>register</span><span class=p>([</span><span class=s2>&quot;huggingface&quot;</span><span class=p>,</span> <span class=s2>&quot;hf&quot;</span><span class=p>])</span>
+<span class=normal><a href=#__codelineno-0-96>96</a></span></pre></div></td><td class=code><div><pre><span></span><code><span id=__span-0-31><a id=__codelineno-0-31 name=__codelineno-0-31></a><span class=nd>@DatasetDeserializerFactory</span><span class=o>.</span><span class=n>register</span><span class=p>([</span><span class=s2>"huggingface"</span><span class=p>,</span> <span class=s2>"hf"</span><span class=p>])</span>
 </span><span id=__span-0-32><a id=__codelineno-0-32 name=__codelineno-0-32></a><span class=k>class</span><span class=w> </span><span class=nc>HuggingFaceDatasetDeserializer</span><span class=p>(</span><span class=n>DatasetDeserializer</span><span class=p>):</span>
-</span><span id=__span-0-33><a id=__codelineno-0-33 name=__codelineno-0-33></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;Deserializer for Hugging Face datasets.&quot;&quot;&quot;</span>
+</span><span id=__span-0-33><a id=__codelineno-0-33 name=__codelineno-0-33></a><span class=w>    </span><span class=sd>"""Deserializer for Hugging Face datasets."""</span>
 </span><span id=__span-0-34><a id=__codelineno-0-34 name=__codelineno-0-34></a>
 </span><span id=__span-0-35><a id=__codelineno-0-35 name=__codelineno-0-35></a>    <span class=k>def</span><span class=w> </span><span class=fm>__call__</span><span class=p>(</span>
 </span><span id=__span-0-36><a id=__codelineno-0-36 name=__codelineno-0-36></a>        <span class=bp>self</span><span class=p>,</span>
@@ -86,7 +86,7 @@
 </span><span id=__span-0-51><a id=__codelineno-0-51 name=__codelineno-0-51></a>        <span class=k>if</span> <span class=p>(</span>
 </span><span id=__span-0-52><a id=__codelineno-0-52 name=__codelineno-0-52></a>            <span class=nb>isinstance</span><span class=p>(</span><span class=n>data</span><span class=p>,</span> <span class=nb>str</span> <span class=o>|</span> <span class=n>Path</span><span class=p>)</span>
 </span><span id=__span-0-53><a id=__codelineno-0-53 name=__codelineno-0-53></a>            <span class=ow>and</span> <span class=p>(</span><span class=n>path</span> <span class=o>:=</span> <span class=n>Path</span><span class=p>(</span><span class=n>data</span><span class=p>))</span><span class=o>.</span><span class=n>exists</span><span class=p>()</span>
-</span><span id=__span-0-54><a id=__codelineno-0-54 name=__codelineno-0-54></a>            <span class=ow>and</span> <span class=p>((</span><span class=n>path</span><span class=o>.</span><span class=n>is_file</span><span class=p>()</span> <span class=ow>and</span> <span class=n>path</span><span class=o>.</span><span class=n>suffix</span> <span class=o>==</span> <span class=s2>&quot;.py&quot;</span><span class=p>)</span> <span class=ow>or</span> <span class=n>path</span><span class=o>.</span><span class=n>is_dir</span><span class=p>())</span>
+</span><span id=__span-0-54><a id=__codelineno-0-54 name=__codelineno-0-54></a>            <span class=ow>and</span> <span class=p>((</span><span class=n>path</span><span class=o>.</span><span class=n>is_file</span><span class=p>()</span> <span class=ow>and</span> <span class=n>path</span><span class=o>.</span><span class=n>suffix</span> <span class=o>==</span> <span class=s2>".py"</span><span class=p>)</span> <span class=ow>or</span> <span class=n>path</span><span class=o>.</span><span class=n>is_dir</span><span class=p>())</span>
 </span><span id=__span-0-55><a id=__codelineno-0-55 name=__codelineno-0-55></a>        <span class=p>):</span>
 </span><span id=__span-0-56><a id=__codelineno-0-56 name=__codelineno-0-56></a>            <span class=c1># Handle python script or nested python script in a directory</span>
 </span><span id=__span-0-57><a id=__codelineno-0-57 name=__codelineno-0-57></a>            <span class=k>try</span><span class=p>:</span>
@@ -119,10 +119,10 @@
 </span><span id=__span-0-84><a id=__codelineno-0-84 name=__codelineno-0-84></a>            <span class=n>load_error</span> <span class=o>=</span> <span class=n>err</span>
 </span><span id=__span-0-85><a id=__codelineno-0-85 name=__codelineno-0-85></a>
 </span><span id=__span-0-86><a id=__codelineno-0-86 name=__codelineno-0-86></a>        <span class=n>not_supported</span> <span class=o>=</span> <span class=n>DataNotSupportedError</span><span class=p>(</span>
-</span><span id=__span-0-87><a id=__codelineno-0-87 name=__codelineno-0-87></a>            <span class=s2>&quot;Unsupported data for HuggingFaceDatasetDeserializer, &quot;</span>
-</span><span id=__span-0-88><a id=__codelineno-0-88 name=__codelineno-0-88></a>            <span class=s2>&quot;expected Dataset, IterableDataset, DatasetDict, IterableDatasetDict, &quot;</span>
-</span><span id=__span-0-89><a id=__codelineno-0-89 name=__codelineno-0-89></a>            <span class=s2>&quot;str or Path to a local dataset directory or a local .py dataset script, &quot;</span>
-</span><span id=__span-0-90><a id=__codelineno-0-90 name=__codelineno-0-90></a>            <span class=sa>f</span><span class=s2>&quot;got </span><span class=si>{</span><span class=n>data</span><span class=si>}</span><span class=s2> and HF load error: </span><span class=si>{</span><span class=n>load_error</span><span class=si>}</span><span class=s2>&quot;</span>
+</span><span id=__span-0-87><a id=__codelineno-0-87 name=__codelineno-0-87></a>            <span class=s2>"Unsupported data for HuggingFaceDatasetDeserializer, "</span>
+</span><span id=__span-0-88><a id=__codelineno-0-88 name=__codelineno-0-88></a>            <span class=s2>"expected Dataset, IterableDataset, DatasetDict, IterableDatasetDict, "</span>
+</span><span id=__span-0-89><a id=__codelineno-0-89 name=__codelineno-0-89></a>            <span class=s2>"str or Path to a local dataset directory or a local .py dataset script, "</span>
+</span><span id=__span-0-90><a id=__codelineno-0-90 name=__codelineno-0-90></a>            <span class=sa>f</span><span class=s2>"got </span><span class=si>{</span><span class=n>data</span><span class=si>}</span><span class=s2> and HF load error: </span><span class=si>{</span><span class=n>load_error</span><span class=si>}</span><span class=s2>"</span>
 </span><span id=__span-0-91><a id=__codelineno-0-91 name=__codelineno-0-91></a>        <span class=p>)</span>
 </span><span id=__span-0-92><a id=__codelineno-0-92 name=__codelineno-0-92></a>
 </span><span id=__span-0-93><a id=__codelineno-0-93 name=__codelineno-0-93></a>        <span class=k>if</span> <span class=n>load_error</span> <span class=ow>is</span> <span class=ow>not</span> <span class=kc>None</span><span class=p>:</span>

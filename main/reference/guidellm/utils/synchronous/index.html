@@ -45,7 +45,7 @@
 </span><span id=__span-0-68><a id=__codelineno-0-68 name=__codelineno-0-68></a>    <span class=n>barrier</span><span class=p>:</span> <span class=n>ThreadingBarrier</span> <span class=o>|</span> <span class=n>ProcessingBarrier</span><span class=p>,</span>
 </span><span id=__span-0-69><a id=__codelineno-0-69 name=__codelineno-0-69></a>    <span class=n>poll_interval</span><span class=p>:</span> <span class=nb>float</span><span class=p>,</span>
 </span><span id=__span-0-70><a id=__codelineno-0-70 name=__codelineno-0-70></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=kc>None</span><span class=p>:</span>
-</span><span id=__span-0-71><a id=__codelineno-0-71 name=__codelineno-0-71></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-71><a id=__codelineno-0-71 name=__codelineno-0-71></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-72><a id=__codelineno-0-72 name=__codelineno-0-72></a><span class=sd>    Asynchronously wait for a threading or multiprocessing Barrier to be reached.</span>
 </span><span id=__span-0-73><a id=__codelineno-0-73 name=__codelineno-0-73></a>
 </span><span id=__span-0-74><a id=__codelineno-0-74 name=__codelineno-0-74></a><span class=sd>    This function polls the barrier at regular intervals without blocking the async</span>
@@ -54,7 +54,7 @@
 </span><span id=__span-0-77><a id=__codelineno-0-77 name=__codelineno-0-77></a><span class=sd>    :param barrier: The Barrier object to wait for (threading or multiprocessing)</span>
 </span><span id=__span-0-78><a id=__codelineno-0-78 name=__codelineno-0-78></a><span class=sd>    :param poll_interval: Time in seconds between polling checks</span>
 </span><span id=__span-0-79><a id=__codelineno-0-79 name=__codelineno-0-79></a><span class=sd>    :raises asyncio.CancelledError: If the async task is cancelled</span>
-</span><span id=__span-0-80><a id=__codelineno-0-80 name=__codelineno-0-80></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-80><a id=__codelineno-0-80 name=__codelineno-0-80></a><span class=sd>    """</span>
 </span><span id=__span-0-81><a id=__codelineno-0-81 name=__codelineno-0-81></a>    <span class=n>stop</span> <span class=o>=</span> <span class=n>ThreadingEvent</span><span class=p>()</span>
 </span><span id=__span-0-82><a id=__codelineno-0-82 name=__codelineno-0-82></a>    <span class=n>barrier_broken</span> <span class=o>=</span> <span class=n>ThreadingEvent</span><span class=p>()</span>
 </span><span id=__span-0-83><a id=__codelineno-0-83 name=__codelineno-0-83></a>
@@ -119,7 +119,7 @@
 </span><span id=__span-0-35><a id=__codelineno-0-35 name=__codelineno-0-35></a>    <span class=n>event</span><span class=p>:</span> <span class=n>ThreadingEvent</span> <span class=o>|</span> <span class=n>ProcessingEvent</span><span class=p>,</span>
 </span><span id=__span-0-36><a id=__codelineno-0-36 name=__codelineno-0-36></a>    <span class=n>poll_interval</span><span class=p>:</span> <span class=nb>float</span><span class=p>,</span>
 </span><span id=__span-0-37><a id=__codelineno-0-37 name=__codelineno-0-37></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=kc>None</span><span class=p>:</span>
-</span><span id=__span-0-38><a id=__codelineno-0-38 name=__codelineno-0-38></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-38><a id=__codelineno-0-38 name=__codelineno-0-38></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-39><a id=__codelineno-0-39 name=__codelineno-0-39></a><span class=sd>    Asynchronously wait for a threading or multiprocessing Event to be set.</span>
 </span><span id=__span-0-40><a id=__codelineno-0-40 name=__codelineno-0-40></a>
 </span><span id=__span-0-41><a id=__codelineno-0-41 name=__codelineno-0-41></a><span class=sd>    This function polls the event at regular intervals without blocking the async</span>
@@ -128,7 +128,7 @@
 </span><span id=__span-0-44><a id=__codelineno-0-44 name=__codelineno-0-44></a><span class=sd>    :param event: The Event object to wait for (threading or multiprocessing)</span>
 </span><span id=__span-0-45><a id=__codelineno-0-45 name=__codelineno-0-45></a><span class=sd>    :param poll_interval: Time in seconds between polling checks</span>
 </span><span id=__span-0-46><a id=__codelineno-0-46 name=__codelineno-0-46></a><span class=sd>    :raises asyncio.CancelledError: If the async task is cancelled</span>
-</span><span id=__span-0-47><a id=__codelineno-0-47 name=__codelineno-0-47></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-47><a id=__codelineno-0-47 name=__codelineno-0-47></a><span class=sd>    """</span>
 </span><span id=__span-0-48><a id=__codelineno-0-48 name=__codelineno-0-48></a>    <span class=n>stop</span> <span class=o>=</span> <span class=n>ThreadingEvent</span><span class=p>()</span>
 </span><span id=__span-0-49><a id=__codelineno-0-49 name=__codelineno-0-49></a>
 </span><span id=__span-0-50><a id=__codelineno-0-50 name=__codelineno-0-50></a>    <span class=k>def</span><span class=w> </span><span class=nf>_watch</span><span class=p>():</span>
@@ -198,7 +198,7 @@
 </span><span id=__span-0-116><a id=__codelineno-0-116 name=__codelineno-0-116></a>    <span class=o>|</span> <span class=nb>dict</span><span class=p>[</span><span class=nb>str</span><span class=p>,</span> <span class=n>SyncObjectTypesAlias</span><span class=p>],</span>
 </span><span id=__span-0-117><a id=__codelineno-0-117 name=__codelineno-0-117></a>    <span class=n>poll_interval</span><span class=p>:</span> <span class=nb>float</span> <span class=o>=</span> <span class=mf>0.1</span><span class=p>,</span>
 </span><span id=__span-0-118><a id=__codelineno-0-118 name=__codelineno-0-118></a><span class=p>)</span> <span class=o>-&gt;</span> <span class=nb>int</span> <span class=o>|</span> <span class=nb>str</span><span class=p>:</span>
-</span><span id=__span-0-119><a id=__codelineno-0-119 name=__codelineno-0-119></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-119><a id=__codelineno-0-119 name=__codelineno-0-119></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-120><a id=__codelineno-0-120 name=__codelineno-0-120></a><span class=sd>    Asynchronously wait for the first synchronization object to complete.</span>
 </span><span id=__span-0-121><a id=__codelineno-0-121 name=__codelineno-0-121></a>
 </span><span id=__span-0-122><a id=__codelineno-0-122 name=__codelineno-0-122></a><span class=sd>    This function waits for the first Event to be set or Barrier to be reached</span>
@@ -211,7 +211,7 @@
 </span><span id=__span-0-129><a id=__codelineno-0-129 name=__codelineno-0-129></a><span class=sd>    :return: Index (for list/single) or key name (for dict) of the first</span>
 </span><span id=__span-0-130><a id=__codelineno-0-130 name=__codelineno-0-130></a><span class=sd>        completed object</span>
 </span><span id=__span-0-131><a id=__codelineno-0-131 name=__codelineno-0-131></a><span class=sd>    :raises asyncio.CancelledError: If the async task is canceled</span>
-</span><span id=__span-0-132><a id=__codelineno-0-132 name=__codelineno-0-132></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-132><a id=__codelineno-0-132 name=__codelineno-0-132></a><span class=sd>    """</span>
 </span><span id=__span-0-133><a id=__codelineno-0-133 name=__codelineno-0-133></a>    <span class=n>keys</span><span class=p>:</span> <span class=nb>list</span><span class=p>[</span><span class=nb>int</span> <span class=o>|</span> <span class=nb>str</span><span class=p>]</span>
 </span><span id=__span-0-134><a id=__codelineno-0-134 name=__codelineno-0-134></a>    <span class=k>if</span> <span class=nb>isinstance</span><span class=p>(</span><span class=n>objects</span><span class=p>,</span> <span class=nb>dict</span><span class=p>):</span>
 </span><span id=__span-0-135><a id=__codelineno-0-135 name=__codelineno-0-135></a>        <span class=n>keys</span> <span class=o>=</span> <span class=nb>list</span><span class=p>(</span><span class=n>objects</span><span class=o>.</span><span class=n>keys</span><span class=p>())</span>

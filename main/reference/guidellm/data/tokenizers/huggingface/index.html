@@ -21,16 +21,16 @@
 <span class=normal><a href=#__codelineno-0-31>31</a></span>
 <span class=normal><a href=#__codelineno-0-32>32</a></span>
 <span class=normal><a href=#__codelineno-0-33>33</a></span>
-<span class=normal><a href=#__codelineno-0-34>34</a></span></pre></div></td><td class=code><div><pre><span></span><code><span id=__span-0-11><a id=__codelineno-0-11 name=__codelineno-0-11></a><span class=nd>@TokenizerRegistry</span><span class=o>.</span><span class=n>register</span><span class=p>([</span><span class=s2>&quot;huggingface_auto&quot;</span><span class=p>,</span> <span class=s2>&quot;hf_auto&quot;</span><span class=p>])</span>
+<span class=normal><a href=#__codelineno-0-34>34</a></span></pre></div></td><td class=code><div><pre><span></span><code><span id=__span-0-11><a id=__codelineno-0-11 name=__codelineno-0-11></a><span class=nd>@TokenizerRegistry</span><span class=o>.</span><span class=n>register</span><span class=p>([</span><span class=s2>"huggingface_auto"</span><span class=p>,</span> <span class=s2>"hf_auto"</span><span class=p>])</span>
 </span><span id=__span-0-12><a id=__codelineno-0-12 name=__codelineno-0-12></a><span class=k>class</span><span class=w> </span><span class=nc>HuggingFaceTokenizer</span><span class=p>(</span><span class=n>DataTokenizer</span><span class=p>):</span>
-</span><span id=__span-0-13><a id=__codelineno-0-13 name=__codelineno-0-13></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;Tokenizer for Hugging Face models.&quot;&quot;&quot;</span>
+</span><span id=__span-0-13><a id=__codelineno-0-13 name=__codelineno-0-13></a><span class=w>    </span><span class=sd>"""Tokenizer for Hugging Face models."""</span>
 </span><span id=__span-0-14><a id=__codelineno-0-14 name=__codelineno-0-14></a>
 </span><span id=__span-0-15><a id=__codelineno-0-15 name=__codelineno-0-15></a>    <span class=k>def</span><span class=w> </span><span class=fm>__init__</span><span class=p>(</span>
 </span><span id=__span-0-16><a id=__codelineno-0-16 name=__codelineno-0-16></a>        <span class=bp>self</span><span class=p>,</span>
 </span><span id=__span-0-17><a id=__codelineno-0-17 name=__codelineno-0-17></a>        <span class=n>config</span><span class=p>:</span> <span class=n>HuggingFaceTokenizerArgs</span><span class=p>,</span>
 </span><span id=__span-0-18><a id=__codelineno-0-18 name=__codelineno-0-18></a>    <span class=p>)</span> <span class=o>-&gt;</span> <span class=kc>None</span><span class=p>:</span>
 </span><span id=__span-0-19><a id=__codelineno-0-19 name=__codelineno-0-19></a>        <span class=k>if</span> <span class=n>config</span><span class=o>.</span><span class=n>model</span> <span class=ow>is</span> <span class=kc>None</span><span class=p>:</span>
-</span><span id=__span-0-20><a id=__codelineno-0-20 name=__codelineno-0-20></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>&quot;The &#39;name&#39; field must be provided&quot;</span><span class=p>)</span>
+</span><span id=__span-0-20><a id=__codelineno-0-20 name=__codelineno-0-20></a>            <span class=k>raise</span> <span class=ne>ValueError</span><span class=p>(</span><span class=s2>"The 'name' field must be provided"</span><span class=p>)</span>
 </span><span id=__span-0-21><a id=__codelineno-0-21 name=__codelineno-0-21></a>
 </span><span id=__span-0-22><a id=__codelineno-0-22 name=__codelineno-0-22></a>        <span class=bp>self</span><span class=o>.</span><span class=n>_config</span> <span class=o>=</span> <span class=n>config</span>
 </span><span id=__span-0-23><a id=__codelineno-0-23 name=__codelineno-0-23></a>        <span class=bp>self</span><span class=o>.</span><span class=n>_tokenizer</span><span class=p>:</span> <span class=kc>None</span> <span class=o>|</span> <span class=n>PreTrainedTokenizerBase</span> <span class=o>=</span> <span class=kc>None</span>

@@ -16,7 +16,7 @@
 <span class=normal><a href=#__codelineno-0-39>39</a></span>
 <span class=normal><a href=#__codelineno-0-40>40</a></span></pre></div></td><td class=code><div><pre><span></span><code><span id=__span-0-24><a id=__codelineno-0-24 name=__codelineno-0-24></a><span class=nd>@cache</span>
 </span><span id=__span-0-25><a id=__codelineno-0-25 name=__codelineno-0-25></a><span class=k>def</span><span class=w> </span><span class=nf>get_builtin_scenarios</span><span class=p>()</span> <span class=o>-&gt;</span> <span class=nb>dict</span><span class=p>[</span><span class=nb>str</span><span class=p>,</span> <span class=n>Path</span><span class=p>]:</span>
-</span><span id=__span-0-26><a id=__codelineno-0-26 name=__codelineno-0-26></a><span class=w>    </span><span class=sd>&quot;&quot;&quot;</span>
+</span><span id=__span-0-26><a id=__codelineno-0-26 name=__codelineno-0-26></a><span class=w>    </span><span class=sd>"""</span>
 </span><span id=__span-0-27><a id=__codelineno-0-27 name=__codelineno-0-27></a><span class=sd>    Retrieve all builtin scenario definitions from the scenarios directory.</span>
 </span><span id=__span-0-28><a id=__codelineno-0-28 name=__codelineno-0-28></a>
 </span><span id=__span-0-29><a id=__codelineno-0-29 name=__codelineno-0-29></a><span class=sd>    Scans the scenarios directory for JSON files and returns a mapping of scenario</span>
@@ -24,10 +24,10 @@
 </span><span id=__span-0-31><a id=__codelineno-0-31 name=__codelineno-0-31></a><span class=sd>    (filename without extension) for convenient lookup.</span>
 </span><span id=__span-0-32><a id=__codelineno-0-32 name=__codelineno-0-32></a>
 </span><span id=__span-0-33><a id=__codelineno-0-33 name=__codelineno-0-33></a><span class=sd>    :return: Dictionary mapping scenario names and filenames to their Path objects</span>
-</span><span id=__span-0-34><a id=__codelineno-0-34 name=__codelineno-0-34></a><span class=sd>    &quot;&quot;&quot;</span>
+</span><span id=__span-0-34><a id=__codelineno-0-34 name=__codelineno-0-34></a><span class=sd>    """</span>
 </span><span id=__span-0-35><a id=__codelineno-0-35 name=__codelineno-0-35></a>    <span class=n>builtin</span> <span class=o>=</span> <span class=p>{}</span>
-</span><span id=__span-0-36><a id=__codelineno-0-36 name=__codelineno-0-36></a>    <span class=k>for</span> <span class=n>path</span> <span class=ow>in</span> <span class=n>SCENARIO_DIR</span><span class=o>.</span><span class=n>rglob</span><span class=p>(</span><span class=s2>&quot;*.json&quot;</span><span class=p>):</span>
-</span><span id=__span-0-37><a id=__codelineno-0-37 name=__codelineno-0-37></a>        <span class=n>shorthand</span> <span class=o>=</span> <span class=nb>str</span><span class=p>(</span><span class=n>path</span><span class=o>.</span><span class=n>relative_to</span><span class=p>(</span><span class=n>SCENARIO_DIR</span><span class=p>)</span><span class=o>.</span><span class=n>with_suffix</span><span class=p>(</span><span class=s2>&quot;&quot;</span><span class=p>))</span>
+</span><span id=__span-0-36><a id=__codelineno-0-36 name=__codelineno-0-36></a>    <span class=k>for</span> <span class=n>path</span> <span class=ow>in</span> <span class=n>SCENARIO_DIR</span><span class=o>.</span><span class=n>rglob</span><span class=p>(</span><span class=s2>"*.json"</span><span class=p>):</span>
+</span><span id=__span-0-37><a id=__codelineno-0-37 name=__codelineno-0-37></a>        <span class=n>shorthand</span> <span class=o>=</span> <span class=nb>str</span><span class=p>(</span><span class=n>path</span><span class=o>.</span><span class=n>relative_to</span><span class=p>(</span><span class=n>SCENARIO_DIR</span><span class=p>)</span><span class=o>.</span><span class=n>with_suffix</span><span class=p>(</span><span class=s2>""</span><span class=p>))</span>
 </span><span id=__span-0-38><a id=__codelineno-0-38 name=__codelineno-0-38></a>        <span class=n>builtin</span><span class=p>[</span><span class=n>shorthand</span><span class=p>]</span> <span class=o>=</span> <span class=n>path</span>
 </span><span id=__span-0-39><a id=__codelineno-0-39 name=__codelineno-0-39></a>
 </span><span id=__span-0-40><a id=__codelineno-0-40 name=__codelineno-0-40></a>    <span class=k>return</span> <span class=n>builtin</span>
