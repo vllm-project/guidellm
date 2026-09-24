@@ -66,9 +66,13 @@ class MooncakeTraceFormat(SingleTurnTraceFormat):
     def __init__(self, config: MooncakeTraceFormatArgs, dataset: Dataset) -> None:
         self.config = config
         self.dataset = dataset
+        self._hash_id_table: dict[int, tuple[int, ...]] = {}
+        self._sibling_table: dict[Any, set[tuple[int, ...]]] = {}
 
-        self.hash_id_table: dict[int, tuple[int, ...]] = {}
-        self.sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
+    def reset_hash_tables(self) -> None:
+        """Replace hash tables so this copy does not reuse earlier tokens."""
+        self._hash_id_table = {}
+        self._sibling_table = {}
 
     def required_columns(self) -> Features:
         return Features({self.config.hash_ids_column: List(Value("int32"))})
@@ -97,12 +101,12 @@ class MooncakeTraceFormat(SingleTurnTraceFormat):
         ids = row[self.config.hash_ids_column]
         fill_hash_id_table(
             ids,
-            self.hash_id_table,
-            self.sibling_token_blocks,
+            self._hash_id_table,
+            self._sibling_table,
             processor,
             faker,
             lambda _idx, hash_id: _calculate_required_prompt_tokens(
                 self.config, row, hash_id
             ),
         )
-        return create_prompt_from_hash_ids(ids, self.hash_id_table, processor)
+        return create_prompt_from_hash_ids(ids, self._hash_id_table, processor)
