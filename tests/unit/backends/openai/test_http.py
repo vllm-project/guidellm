@@ -8,7 +8,7 @@ import asyncio
 import json
 from contextlib import nullcontext
 from typing import Literal
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import httpx
 import pytest
@@ -207,6 +207,103 @@ class TestOpenAIHTTPBackend:
             await backend._prepare_resolve_request(GenerationRequest())
 
         assert mock_handler.format.call_args.kwargs["extras"] == extras
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_prepare_resolve_request_overrides_model_from_column(
+        self,
+        mock_request_handler,
+    ):
+        """Use model_column when the dataset model is listed by the server.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = _make_backend(
+            target="http://localhost:8000",
+            model="test-model",
+        )
+        mock_handler, handler_patch = mock_request_handler
+        request = GenerationRequest(columns={"model_column": ["dataset-model"]})
+
+        with (
+            handler_patch,
+            patch.object(
+                backend,
+                "available_models",
+                new_callable=AsyncMock,
+                return_value=["dataset-model", "other-model"],
+            ) as mock_available,
+        ):
+            await backend._prepare_resolve_request(request)
+
+        assert mock_handler.format.call_args.kwargs["model"] == "dataset-model"
+        mock_available.assert_awaited_once()
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_prepare_resolve_request_warns_when_dataset_model_missing(
+        self,
+        mock_request_handler,
+    ):
+        """Keep the backend model and warn when model_column is not listed.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = _make_backend(
+            target="http://localhost:8000",
+            model="test-model",
+        )
+        mock_handler, handler_patch = mock_request_handler
+        request = GenerationRequest(columns={"model_column": ["missing-model"]})
+
+        with (
+            handler_patch,
+            patch.object(
+                backend,
+                "available_models",
+                new_callable=AsyncMock,
+                return_value=["test-model", "other-model"],
+            ),
+            patch("guidellm.backends.openai.http.logger") as mock_logger,
+        ):
+            await backend._prepare_resolve_request(request)
+
+        assert mock_handler.format.call_args.kwargs["model"] == "test-model"
+        mock_logger.warning.assert_called_once()
+        warning_args = mock_logger.warning.call_args.args
+        assert "was not found in the server's available models" in warning_args[0]
+        assert warning_args[1] == "missing-model"
+        assert warning_args[2] == ["test-model", "other-model"]
+        assert warning_args[3] == "test-model"
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_prepare_resolve_request_skips_catalog_without_model_column(
+        self,
+        mock_request_handler,
+    ):
+        """Leave the backend model unchanged when model_column is absent.
+
+        ## WRITTEN BY AI ##
+        """
+        backend = _make_backend(
+            target="http://localhost:8000",
+            model="test-model",
+        )
+        mock_handler, handler_patch = mock_request_handler
+
+        with (
+            handler_patch,
+            patch.object(
+                backend,
+                "available_models",
+                new_callable=AsyncMock,
+            ) as mock_available,
+        ):
+            await backend._prepare_resolve_request(GenerationRequest())
+
+        assert mock_handler.format.call_args.kwargs["model"] == "test-model"
+        mock_available.assert_not_called()
 
     @pytest.mark.smoke
     def test_factory_registration(self):

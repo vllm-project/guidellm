@@ -439,6 +439,7 @@ When your dataset uses non-standard column names, you can use `--data-column-map
 - `image_column`: Image data column
 - `video_column`: Video data column
 - `audio_column`: Audio data column
+- `model_column`: Model identifier to send with the request (defaults: `model`). The OpenAI HTTP backend uses this value when it appears in the server's available models list.
 
 **Example: Mapping custom column names**
 
