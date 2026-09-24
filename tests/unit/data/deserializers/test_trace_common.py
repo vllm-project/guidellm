@@ -125,6 +125,60 @@ class TestTraceDataArgsSessionDuration:
         assert args.max_session_wait is None
         assert args.min_concurrent_sessions is None
         assert args.time_scale == 1.0
+        assert args.copies == 1
+        assert args.copy_offset == 1.0
+
+    @pytest.mark.smoke
+    def test_accepts_copies(self, tmp_path: Path):
+        """copies is a valid format-agnostic trace data argument.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        args = MinimalTraceFormatArgs(source=trace_file_source(path), copies=3)
+        assert args.copies == 3
+
+    @pytest.mark.smoke
+    def test_rejects_copies_below_one(self, tmp_path: Path):
+        """copies must be at least 1.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        with pytest.raises(ValidationError):
+            MinimalTraceFormatArgs(source=trace_file_source(path), copies=0)
+
+    @pytest.mark.smoke
+    def test_accepts_copy_offset(self, tmp_path: Path):
+        """copy_offset is a valid format-agnostic trace data argument.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        args = MinimalTraceFormatArgs(source=trace_file_source(path), copy_offset=0.5)
+        assert args.copy_offset == 0.5
+
+    @pytest.mark.smoke
+    def test_rejects_copy_offset_below_zero(self, tmp_path: Path):
+        """copy_offset must be at least 0.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        with pytest.raises(ValidationError):
+            MinimalTraceFormatArgs(source=trace_file_source(path), copy_offset=-0.1)
 
 
 @dataclasses.dataclass
@@ -179,6 +233,8 @@ class TestTraceDatasetDeserializer:
                 "max_session_wait",
                 "min_concurrent_sessions",
                 "time_scale",
+                "copies",
+                "copy_offset",
             ),
             kwargs,
         )
@@ -311,6 +367,295 @@ class TestTraceDatasetDeserializer:
         conv = [turn for row in ds for turn in load_graph_turns(row)]
         timestamps = [turn.columns["relative_timestamp_column"][0] for turn in conv]
         assert timestamps == pytest.approx([0.0, 20.0, 80.0])
+
+    @pytest.mark.smoke
+    def test_copies_replays_full_dataset_sequentially(
+        self, tmp_path: Path, deserializer
+    ):
+        """copies=N emits N full passes of the original conversations.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 10, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 20, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(deserializer, trace, copies=3)
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        assert timestamps == pytest.approx(
+            [0.0, 10.0, 20.0, 20.0, 30.0, 40.0, 40.0, 50.0, 60.0]
+        )
+
+    @pytest.mark.smoke
+    def test_copies_next_pass_starts_at_previous_last_timestamp(
+        self, tmp_path: Path, deserializer
+    ):
+        """Pass k+1's first request is scheduled at pass k's last timestamp.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 5, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 15, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(deserializer, trace, copies=2)
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        assert timestamps[:2] == pytest.approx([0.0, 10.0])
+        assert timestamps[2] == pytest.approx(timestamps[1])
+        assert timestamps[2:] == pytest.approx([10.0, 20.0])
+
+    @pytest.mark.sanity
+    def test_copies_preserve_packed_shape_across_passes(
+        self, tmp_path: Path, deserializer
+    ):
+        """Each copies pass is packed independently, then shifted by the previous end.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 10, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 1450, "input_length": 10, "output_length": 1}\n',
+        )
+        packed = self.deserialize(deserializer, trace, max_session_wait=30.0)
+        packed_ts = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in packed
+            for turn in load_graph_turns(row)
+        ]
+        copied = self.deserialize(deserializer, trace, max_session_wait=30.0, copies=2)
+        copied_ts = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in copied
+            for turn in load_graph_turns(row)
+        ]
+        assert packed_ts == pytest.approx([0.0, 10.0, 40.0])
+        offset = packed_ts[-1]
+        assert copied_ts[:3] == pytest.approx(packed_ts)
+        assert copied_ts[3:] == pytest.approx([ts + offset for ts in packed_ts])
+
+    @pytest.mark.regression
+    def test_copies_stay_sequential_when_min_concurrent_sessions_set(
+        self, tmp_path: Path, deserializer
+    ):
+        """Packing must not overlay copies or collapse single-turn arrivals to t=0.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 10, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 20, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(deserializer, trace, copies=4, min_concurrent_sessions=4)
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        inner = [0.0, 10.0, 20.0]
+        expected = []
+        offset = 0.0
+        for _ in range(4):
+            expected.extend(ts + offset for ts in inner)
+            offset += inner[-1]
+        assert timestamps == pytest.approx(expected)
+
+    @pytest.mark.regression
+    def test_wait_capped_single_turn_keeps_spacing_across_copies(
+        self, tmp_path: Path, deserializer
+    ):
+        """max_session_wait spacing survives min_concurrent_sessions and copies.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 0.5, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 60.0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 60.5, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 61.0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 65.0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 70.0, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(
+            deserializer,
+            trace,
+            copies=4,
+            min_concurrent_sessions=4,
+            max_session_wait=1.0,
+        )
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        inner = [0.0, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
+        expected = []
+        offset = 0.0
+        for _ in range(4):
+            expected.extend(ts + offset for ts in inner)
+            offset += inner[-1]
+        assert timestamps == pytest.approx(expected)
+
+    @pytest.mark.smoke
+    def test_min_concurrent_sessions_does_not_collapse_single_turn_rows(
+        self, tmp_path: Path, deserializer
+    ):
+        """Inner packing leaves single-request arrivals in place.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 0.5, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 60.0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 60.5, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(deserializer, trace, min_concurrent_sessions=4)
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        assert timestamps == pytest.approx([0.0, 0.5, 60.0, 60.5])
+
+    @pytest.mark.smoke
+    def test_copy_offset_zero_overlays_inner_timestamps(
+        self, tmp_path: Path, deserializer
+    ):
+        """copy_offset=0 starts each copy at the prior copy's first timestamp.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 10, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 20, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(deserializer, trace, copies=3, copy_offset=0.0)
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        inner = [0.0, 10.0, 20.0]
+        assert timestamps == pytest.approx(inner * 3)
+
+    @pytest.mark.sanity
+    def test_copy_offset_half_starts_at_prior_midpoint(
+        self, tmp_path: Path, deserializer
+    ):
+        """copy_offset=0.5 starts the next copy halfway through the prior span.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 10, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 20, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(deserializer, trace, copies=2, copy_offset=0.5)
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        assert timestamps == pytest.approx([0.0, 10.0, 20.0, 10.0, 20.0, 30.0])
+
+    @pytest.mark.sanity
+    def test_copy_offset_above_one_adds_gap(self, tmp_path: Path, deserializer):
+        """copy_offset>1 inserts a gap after the prior copy ends.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 10, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 20, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(deserializer, trace, copies=2, copy_offset=1.5)
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        assert timestamps == pytest.approx([0.0, 10.0, 20.0, 30.0, 40.0, 50.0])
+
+    @pytest.mark.regression
+    def test_copy_offset_gap_not_clamped_by_max_session_wait(
+        self, tmp_path: Path, deserializer
+    ):
+        """Wait caps stay per copy, so copy_offset gaps are not shortened.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 100, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(
+            deserializer,
+            trace,
+            copies=2,
+            copy_offset=3.0,
+            max_session_wait=1.0,
+        )
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        assert timestamps == pytest.approx([0.0, 1.0, 3.0, 4.0])
+
+    @pytest.mark.smoke
+    def test_copy_offset_zero_does_not_collapse_single_turn_rows(
+        self, tmp_path: Path, deserializer
+    ):
+        """Packing after overlay still leaves single-request arrivals in place.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 0.5, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 60.0, "input_length": 10, "output_length": 1}\n'
+            '{"timestamp": 60.5, "input_length": 10, "output_length": 1}\n',
+        )
+        ds = self.deserialize(
+            deserializer,
+            trace,
+            copies=2,
+            copy_offset=0.0,
+            min_concurrent_sessions=4,
+        )
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        inner = [0.0, 0.5, 60.0, 60.5]
+        assert timestamps == pytest.approx(inner * 2)
 
     @pytest.mark.regression
     def test_accepts_columns_beyond_the_required_ones(

@@ -7,6 +7,7 @@ requested input_length for replay benchmarks."""
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Protocol
 
@@ -27,7 +28,12 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
-from guidellm.data.deserializers.trace_session_timing import TraceSessionTiming
+from guidellm.data.deserializers.trace_session_timing import (
+    TraceSessionTiming,
+    graph_max_timestamp,
+    graph_min_timestamp,
+    shift_graph_timestamps,
+)
 from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
@@ -158,6 +164,13 @@ def fill_hash_id_table(
             sibling_token_blocks[prev_id].add(block)
 
 
+def _seeded_faker(random_seed: int, copy_index: int) -> Faker:
+    """Build a Faker instance for sequential dataset copy ``copy_index``."""
+    faker = Faker()
+    faker.seed_instance(random_seed + copy_index * 1_000_003)
+    return faker
+
+
 class TraceFormatBase(Protocol):
     config: TraceDataArgs
 
@@ -168,6 +181,8 @@ class TraceFormatBase(Protocol):
 
     def reset(self) -> None:
         pass
+
+    def reset_hash_tables(self) -> None: ...
 
     def required_columns(self) -> Features: ...
 
@@ -286,36 +301,52 @@ class TraceExamplesIterable(_BaseExamplesIterable):
         self.config = config
         self.format = trace_format
         self.processor = processor
-        self.faker = Faker()
-        self.faker.seed_instance(random_seed)
+        self._copy_fakers = [
+            _seeded_faker(random_seed, copy_index)
+            for copy_index in range(config.copies)
+        ]
         self.iteration_count = 0
 
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
         self.iteration_count += 1
         samples_count = 0
-        # Fresh instance per iteration so packing state does not leak across epochs.
-        timing = TraceSessionTiming(
-            max_wait=self.config.max_wait,
-            max_session_wait=self.config.max_session_wait,
+        pass_offset = 0.0
+        # Shared across copies so packing sees the combined timeline.
+        packer = TraceSessionTiming(
             min_concurrent_sessions=self.config.min_concurrent_sessions,
-            time_scale=self.config.time_scale,
         )
-        for conv in self.format:  # type: ignore[attr-defined]
-            graph_data = self.format.build_conversation_graph(
-                conv, self.processor, self.faker
+        scaler = TraceSessionTiming(time_scale=self.config.time_scale)
+        for copy_index in range(self.config.copies):
+            self.format.reset_hash_tables()
+            faker_copy = self._copy_fakers[copy_index]
+            wait_timing = TraceSessionTiming(
+                max_wait=self.config.max_wait,
+                max_session_wait=self.config.max_session_wait,
             )
-            timing.apply(graph_data)
-            samples_count += len(graph_data.turns)
-            payload = json.dumps(graph_data.model_dump(mode="json"))
-            yield (
-                samples_count,
-                {
-                    "conversation_turns": (
-                        payload.decode() if isinstance(payload, bytes) else payload
-                    )
-                },
-            )
-            self.format.reset()
+            copy_min = math.inf
+            copy_max = -math.inf
+            for conv in self.format:  # type: ignore[attr-defined]
+                graph_data = self.format.build_conversation_graph(
+                    conv, self.processor, faker_copy
+                )
+                wait_timing.apply_wait_caps(graph_data)
+                shift_graph_timestamps(graph_data, pass_offset)
+                copy_min = min(copy_min, graph_min_timestamp(graph_data))
+                copy_max = max(copy_max, graph_max_timestamp(graph_data))
+                packer.apply_pack(graph_data)
+                scaler.apply_scale(graph_data)
+                samples_count += len(graph_data.turns)
+                payload = json.dumps(graph_data.model_dump(mode="json"))
+                yield (
+                    samples_count,
+                    {
+                        "conversation_turns": (
+                            payload.decode() if isinstance(payload, bytes) else payload
+                        )
+                    },
+                )
+                self.format.reset()
+            pass_offset = copy_min + self.config.copy_offset * (copy_max - copy_min)
 
     @property
     def is_typed(self) -> bool:

@@ -55,6 +55,8 @@ All trace formats can accept the following optional data arguments:
 | `max_wait`                | unset           | Maximum gap in original trace seconds between consecutive requests in one session               |
 | `max_session_wait`        | unset           | Maximum idle in original trace seconds from the previous session's last request to this session |
 | `min_concurrent_sessions` | unset           | Pack sessions so at least this many overlap during steady state                                 |
+| `copies`                  | 1               | Sequential full-dataset replays; pass k+1 starts at pass k's last scheduled request             |
+| `copy_offset`             | 1.0             | Where the next copy starts relative to the prior span: 0 at the start, 1 at the end, >1 a gap   |
 
 These are passed through the `--data` argument like below:
 
@@ -67,7 +69,9 @@ guidellm run \
 
 `trace_synthetic` can be thought of as the format-agnostic option, only looking for the timestamp, prompt token count and output token count columns and ignoring all other features contained in a dataset. While primarily used for testing, `trace_synthetic` may be used as a fallback for trace formats not currently supported by GuideLLM.
 
-`trace_synthetic` and `mooncake` replay each row as an independent, single-request conversation. Rows are sorted by timestamp and keep their offsets from the first request in the trace. Prompts are generated as rows are consumed, and Mooncake hash IDs remain shared across rows. Use `max_session_wait` to cap gaps between these independent requests; `max_wait` only caps gaps within multi-request conversations, such as WEKA sessions.
+`trace_synthetic` and `mooncake` replay each row as an independent, single-request conversation. Rows are sorted by timestamp and keep their offsets from the first request in the trace. Prompts are generated as rows are consumed, and Mooncake hash IDs remain shared across rows within one `copies` pass. Use `max_session_wait` to cap gaps between these independent requests; `max_wait` only caps gaps within multi-request conversations, such as WEKA sessions.
+
+Raise parallelism with `min_concurrent_sessions`, wait caps, and `time_scale` first. Use `copies` only when that packed pass is too short for the benchmark (`max_duration` / `max_requests`). By default (`copy_offset=1`) `copies` replays the entire packed dataset back-to-back: the next pass starts at the previous pass's last request timestamp. `copy_offset=0` starts at the prior pass's first timestamp; values between 0 and 1 interpolate; values above 1 add a gap. Hash-id formats (`mooncake`, `weka`) use a separately salted global token-block table per pass so later passes do not reuse earlier tokens and inflate prefix-cache hits.
 
 ## Format-Specific Data Arguments
 
@@ -88,16 +92,16 @@ The WEKA format expects a column with conversation UUIDs that is not wrapped wit
 
 Similar to Mooncake, WEKA uses prefix-based cache hash IDs. The original [specification](https://github.com/callanjfox/agentic-coding-analysis/blob/master/docs/TRACE_FORMAT.md) for the trace requires hash IDs to be 1 or greater, and for trailing hash IDs to be dropped if there are not enough input tokens to fill the hash ID block size. To accommodate for datasets which may not follow the specification exactly (ex. [semianalysisai/cc-traces-weka-no-subagents-051226](https://huggingface.co/datasets/semianalysisai/cc-traces-weka-no-subagents-051226)), GuideLLM will accept any non-negative integer as a valid hash ID, and will drop partially filled hash IDs if they exist.
 
-GuideLLM will generate prompts starting from the first conversation. When the conversation ends, the next conversation will be used. Relative timestamps are local to the conversation and return to 0.0 after each conversation ends.
+GuideLLM will generate prompts starting from the first conversation. When the conversation ends, the next conversation will be used. Relative timestamps are offsets from the earliest request in the dataset, so later conversations can start later than the first.
 
 Hash IDs follow the per-row `hash_id_scope` field:
 
-- `"global"` or omitted: hash IDs share one token-block table across conversations, matching Mooncake. The same hash ID in a later conversation reuses the earlier token block so prefix-cache hit rate stays close to the original trace.
-- `"local"`: hash IDs apply only within that conversation. The table is discarded after the conversation is emitted.
+- `"global"` or omitted: hash IDs share one token-block table across conversations, matching Mooncake. The same hash ID in a later conversation reuses the earlier token block so prefix-cache hit rate stays close to the original trace. Each `copies` pass uses a separately salted global table.
+- `"local"`: hash IDs apply only within that conversation. The table is discarded after the conversation is emitted. Local isolation also applies independently on each `copies` pass.
 
 Declared `type: "subagent"` entries become isolated child chains. Each child spawns from the preceding parent API turn with a fresh history (`history_context="new"`) and the following parent turn waits for every sibling spawned since that turn (`history_context="last"`). Multiple subagents listed between the same parent turns therefore run in parallel; the parent resumes only after all of them complete. Request-list order is preserved at every nesting level (it is the spawn/join topology) and is not sorted by timestamp.
 
-Inner request timestamps follow the spec when they are relative to spawn, and published Hugging Face corpora when they are already absolute: if the first inner `t` is less than the subagent entry's spawn `t`, inner times are treated as `spawn_t + inner_t`; otherwise they are left as-is. Conversation-relative timestamps are then `absolute_t - min_t` across all API requests in that conversation.
+Inner request timestamps follow the spec when they are relative to spawn, and published Hugging Face corpora when they are already absolute: if the first inner `t` is less than the subagent entry's spawn `t`, inner times are treated as `spawn_t + inner_t`; otherwise they are left as-is. Conversation timestamps are then `absolute_t` minus the earliest API request time in the dataset.
 
 A single agent's consecutive turns are still serialized. If those turns overlap in time (`t[i] + api_time[i] > t[i+1]`, or `t[i+1] <= t[i]` when `api_time` is absent), GuideLLM logs a debug message. Overlap between different subagents is intended parallelism and is not warned.
 
