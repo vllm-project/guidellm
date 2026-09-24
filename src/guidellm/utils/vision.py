@@ -51,13 +51,14 @@ def encode_image(
     :param max_size: Maximum length in pixels of the longest image edge.
     :param max_width: Maximum output width in pixels.
     :param max_height: Maximum output height in pixels.
-    :param encode_type: Output representation. ``"base64"`` encodes the image,
-        ``"url"`` returns the URL unchanged, and ``None`` selects a supported
-        representation for the input.
+    :param encode_type: For URL inputs, ``"base64"`` downloads and processes
+        the image; any other value returns the URL unchanged unless resize
+        options are set. For non-URL inputs, this parameter is ignored and the
+        image is encoded as base64.
     :return: A mapping with the image representation type, encoded image, and
-        optional pixel and byte counts.
-    :raises ValueError: If the input type is unsupported or resize dimensions
-        are requested while returning a URL.
+        pixel and byte counts when known (``None`` for an unprocessed URL).
+    :raises ValueError: If the input type is unsupported or resize options are
+        set while returning a URL.
     """
     if isinstance(image, str) and is_url(image):
         if encode_type == "base64":
