@@ -38,27 +38,27 @@ def encode_image(
     max_height: int | None = None,
     encode_type: Literal["base64", "url"] | None = "base64",
 ) -> dict[Literal["type", "image", "image_pixels", "image_bytes"], str | int | None]:
-    """
-    Input image types:
-    - bytes: raw image bytes, decoded with Pillow
-    - str: file path on disk, url, or already base64 encoded image string
-    - pathlib.Path: file path on disk
-    - np.ndarray: image array, decoded with Pillow
-    - PIL.Image.Image: Pillow image
-    - datasets.Image: HuggingFace datasets Image object
+    """Encode an image as a URL or base64 data URI.
 
-    max_size: maximum size of the longest edge of the image
-    max_width: maximum width of the image
-    max_height: maximum height of the image
+    Supported inputs include raw bytes, a file path, a URL, a base64 data URI,
+    a NumPy array, a Pillow image, and a Hugging Face ``datasets.Image``.
 
-    encode_type: None to return the supported format
-        (url for url, base64 string for others)
-        "base64" to return base64 encoded string (or download URL and encode)
-        "url" to return url (only if input is url, otherwise fails)
-
-    Returns a str of either:
-    - image url
-    - "data:image/{type};base64, {data}" string
+    :param image: Image input to encode.
+    :param width: Requested output width in pixels. Applies to downloaded URL
+        images when ``encode_type`` is ``"base64"``.
+    :param height: Requested output height in pixels. Applies to downloaded URL
+        images when ``encode_type`` is ``"base64"``.
+    :param max_size: Maximum length in pixels of the longest image edge.
+    :param max_width: Maximum output width in pixels.
+    :param max_height: Maximum output height in pixels.
+    :param encode_type: For URL inputs, ``"base64"`` downloads and processes
+        the image; any other value returns the URL unchanged unless resize
+        options are set. For non-URL inputs, this parameter is ignored and the
+        image is encoded as base64.
+    :return: A mapping with the image representation type, encoded image, and
+        pixel and byte counts when known (``None`` for an unprocessed URL).
+    :raises ValueError: If the input type is unsupported or resize options are
+        set while returning a URL.
     """
     if isinstance(image, str) and is_url(image):
         if encode_type == "base64":
@@ -66,6 +66,8 @@ def encode_image(
             response.raise_for_status()
             return encode_image(
                 image=response.content,
+                width=width,
+                height=height,
                 max_size=max_size,
                 max_width=max_width,
                 max_height=max_height,
