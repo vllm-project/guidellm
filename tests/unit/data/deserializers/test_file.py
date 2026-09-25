@@ -349,7 +349,7 @@ def test_hdf5_file_deserializer_success(tmp_path):
 def test_db_file_deserializer_success(tmp_path):
     """DBFileDatasetDeserializer reads .db file into Dataset.
 
-    ### WRITTEN BY AI ###
+    ## WRITTEN BY AI ##
     """
 
     def create_sqlite_db(path: Path):
@@ -385,7 +385,7 @@ def test_db_file_deserializer_success(tmp_path):
 def test_db_file_deserializer_rejects_unsupported_uri_scheme():
     """DBFileDatasetDeserializer only supports SQLite database URIs.
 
-    ### WRITTEN BY AI ###
+    ## WRITTEN BY AI ##
     """
     config = DBFileDataArgs(
         kind="db_file",

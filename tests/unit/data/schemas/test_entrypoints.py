@@ -100,7 +100,7 @@ class TestDataArgsPolymorphicDispatch:
     def test_db_file_dispatch_accepts_sqlite_uri(self):
         """DataArgs.model_validate dispatches db_file configs to DBFileDataArgs.
 
-        ### WRITTEN BY AI ###
+        ## WRITTEN BY AI ##
         """
         result = DataArgs.model_validate(
             {"kind": "db_file", "uri": "sqlite:///prompts.db"}
