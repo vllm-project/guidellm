@@ -19,14 +19,15 @@ The following arguments configure datasets and their processing:
 - Dataset source and type. Accepted types:
   - `synthetic_text` — generates synthetic prompts on the fly. Required field: `prompt_tokens`. Optional: `output_tokens`, `turns`, `prefix_tokens`, `prefix_count`, `prefix_buckets`, and distribution controls (`prompt_tokens_stdev`, `output_tokens_stdev`, etc.).
   - `huggingface` (alias `hf`) — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (for example `split`, `name`) via `load_kwargs`.
-  - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `db_file`, `tar_file` — loads from a local file. Required field: `path`.
+  - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `tar_file` — loads from a local file. Required field: `path`.
+  - `db_file` — loads rows from a database using `load_kwargs.sql`. Required field: `uri`, using a SQLAlchemy-style URI. GuideLLM currently supports only SQLite URIs, such as `sqlite:///prompts.db`.
   - `trace_synthetic`, `mooncake`, `weka` — replay trace data with `--profile kind=replay`. Required field: `source` (a nested dataset config such as `json_file` or `huggingface`), see other supported sources for details. Optional: `timestamp_column`, `prompt_tokens_column`, `output_tokens_column`, `time_scale`, `copies`, and other format-specific options. For more information, see [Trace File Formats](./trace_replay.md).
 
 In addition, you can specify additional arguments to the dataset loading with the data argument `load_kwargs`:
 
 - load_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}'`. Trace kinds accept `load_kwargs` the same way and forward them to the source loader.
 
-For SQLite `.db` files, provide the query through `load_kwargs.sql`, for example `--data '{"kind":"db_file","path":"prompts.db","load_kwargs":{"sql":"SELECT text FROM samples"}}'`.
+For SQLite databases, provide the query through `load_kwargs.sql`, for example `--data '{"kind":"db_file","uri":"sqlite:///prompts.db","load_kwargs":{"sql":"SELECT text FROM samples"}}'`.
 
 ### Data Loader
 

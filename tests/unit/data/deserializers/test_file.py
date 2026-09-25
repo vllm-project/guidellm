@@ -9,6 +9,7 @@ import io
 import sqlite3
 import tarfile
 from pathlib import Path
+from urllib.parse import quote
 
 import pandas as pd
 import pyarrow as pa
@@ -28,7 +29,7 @@ from guidellm.data.deserializers.file import (
     TarFileDatasetDeserializer,
     TextFileDatasetDeserializer,
 )
-from guidellm.schemas.data import FileDataArgs
+from guidellm.schemas.data import DBFileDataArgs, FileDataArgs
 
 
 def processor_factory():
@@ -348,7 +349,7 @@ def test_hdf5_file_deserializer_success(tmp_path):
 def test_db_file_deserializer_success(tmp_path):
     """DBFileDatasetDeserializer reads .db file into Dataset.
 
-    ## WRITTEN BY AI ##
+    ### WRITTEN BY AI ###
     """
 
     def create_sqlite_db(path: Path):
@@ -360,13 +361,14 @@ def test_db_file_deserializer_success(tmp_path):
         conn.commit()
         conn.close()
 
-    db_path = tmp_path / "sample.db"
+    db_path = tmp_path / "sample #1.db"
     create_sqlite_db(db_path)
+    database_uri = f"sqlite:///{quote(db_path.as_posix(), safe='/')}"
 
     deserializer = DBFileDatasetDeserializer()
-    config = FileDataArgs(
+    config = DBFileDataArgs(
         kind="db_file",
-        path=db_path,
+        uri=database_uri,
         load_kwargs={"sql": "SELECT * FROM samples"},
     )
 
@@ -377,6 +379,26 @@ def test_db_file_deserializer_success(tmp_path):
     assert isinstance(dataset, Dataset)
     assert dataset.num_rows == 2
     assert dataset["text"] == ["hello", "world"]
+
+
+@pytest.mark.sanity
+def test_db_file_deserializer_rejects_unsupported_uri_scheme():
+    """DBFileDatasetDeserializer only supports SQLite database URIs.
+
+    ### WRITTEN BY AI ###
+    """
+    config = DBFileDataArgs(
+        kind="db_file",
+        uri="postgresql://localhost/prompts",
+        load_kwargs={"sql": "SELECT * FROM samples"},
+    )
+
+    with pytest.raises(ValueError, match="only 'sqlite' is supported"):
+        DBFileDatasetDeserializer()(
+            config=config,
+            processor_factory=processor_factory(),
+            random_seed=1,
+        )
 
 
 ##################

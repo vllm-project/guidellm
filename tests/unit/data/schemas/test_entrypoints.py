@@ -22,6 +22,7 @@ from guidellm.schemas.data import (
     DataLoaderArgs,
     DataPreprocessorArgs,
     DataTokenizerArgs,
+    DBFileDataArgs,
     GenerativeColumnMapperArgs,
     GenerativeRequestFinalizerArgs,
     HuggingFaceDataArgs,
@@ -94,6 +95,19 @@ class TestDataArgsPolymorphicDispatch:
         assert isinstance(result, HuggingFaceDataArgs)
         assert result.kind == "huggingface"
         assert result.source == "my_dataset"
+
+    @pytest.mark.sanity
+    def test_db_file_dispatch_accepts_sqlite_uri(self):
+        """DataArgs.model_validate dispatches db_file configs to DBFileDataArgs.
+
+        ### WRITTEN BY AI ###
+        """
+        result = DataArgs.model_validate(
+            {"kind": "db_file", "uri": "sqlite:///prompts.db"}
+        )
+
+        assert isinstance(result, DBFileDataArgs)
+        assert str(result.uri) == "sqlite:///prompts.db"
 
     @pytest.mark.sanity
     def test_unknown_kind_raises(self):

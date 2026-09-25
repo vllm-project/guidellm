@@ -5,6 +5,7 @@ from collections.abc import Callable
 from contextlib import closing
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import pandas as pd
 from datasets import Dataset, load_dataset
@@ -16,7 +17,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.schemas import DatasetDictType
-from guidellm.schemas.data.deserializers import FileDataArgs
+from guidellm.schemas.data.deserializers import DBFileDataArgs, FileDataArgs
 
 __all__ = [
     "ArrowFileDatasetDeserializer",
@@ -187,22 +188,25 @@ class HDF5FileDatasetDeserializer(DatasetDeserializer):
 class DBFileDatasetDeserializer(DatasetDeserializer):
     def __call__(
         self,
-        config: FileDataArgs,
+        config: DBFileDataArgs,
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
     ) -> DatasetDictType:
         _ = (processor_factory, random_seed)
-        if (
-            not (path := config.path).exists()
-            or not path.is_file()
-            or path.suffix.lower() != ".db"
-        ):
-            raise DataNotSupportedError(
-                f"Unsupported data for DBFileDatasetDeserializer, "
-                f"expected str or Path to a local .db file, got {path}"
-            )
 
-        with closing(sqlite3.connect(path)) as connection:
+        if config.uri.scheme != "sqlite":
+            raise ValueError(
+                "Unsupported database URI scheme "
+                f"{config.uri.scheme!r}; only 'sqlite' is supported."
+            )
+        if config.uri.host is not None:
+            raise ValueError("SQLite database URIs must not include a host.")
+
+        if not config.uri.path:
+            raise ValueError("SQLite database URI must include a path.")
+        database_path = unquote(config.uri.path.removeprefix("/"))
+
+        with closing(sqlite3.connect(database_path)) as connection:
             return Dataset.from_sql(con=connection, **config.load_kwargs)
 
 
