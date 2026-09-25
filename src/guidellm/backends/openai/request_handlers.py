@@ -532,17 +532,17 @@ def _require_request_payload(
     :param field: Body key that must be non-empty (``prompt``, ``messages``,
         ``input``).
     :param sources: Human-readable column names that can fill ``field``.
-    :param columns: Request columns, listed in the error when present.
+    :param columns: Request columns, listed in the error when present and non-empty.
     :raises ValueError: If ``field`` is missing or empty.
     """
     body = arguments.body or {}
     if body.get(field):
         return
-    present = sorted(key for key, value in columns.items() if value)
-    present_names = ", ".join(present) if present else "none"
+    nonempty = sorted(key for key, value in columns.items() if value)
+    nonempty_names = ", ".join(nonempty) if nonempty else "none"
     raise ValueError(
         f"Cannot build {endpoint} {field}: missing {sources}. "
-        f"Present columns: {present_names}."
+        f"Present, non-empty columns: {nonempty_names}."
     )
 
 
