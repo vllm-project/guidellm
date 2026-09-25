@@ -349,9 +349,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                 )
                 self.format.reset()
             if math.isfinite(copy_min):
-                pass_offset = copy_min + self.config.copy_offset * (
-                    copy_max - copy_min
-                )
+                pass_offset = copy_min + self.config.copy_offset * (copy_max - copy_min)
 
     @property
     def is_typed(self) -> bool:

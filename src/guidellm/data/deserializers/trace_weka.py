@@ -455,12 +455,30 @@ class WEKATraceFormat(TraceFormatBase):
             raise InvalidRowError(
                 "WEKA format: conversation has no API requests to replay"
             )
-        specs = self._apply_max_context_len(specs, conv_id)
-        if not specs:
-            return ConversationGraphData(turns=[])
+        # One pass builds turns and stops at the first turn that would exceed
+        # the context budget, before prompt generation. The dataset origin is
+        # already known, so relative timestamps are written in this same pass.
+        max_len = self.config.max_context_len
+        prompt_col = self.config.prompt_tokens_column
+        output_col = self.config.output_tokens_column
         origin = 0.0 if self._trace_origin is None else self._trace_origin
+        running_tokens = 0
         turns: list[ConversationTurnData] = []
-        for spec in specs:
+        for index, spec in enumerate(specs):
+            if max_len is not None:
+                turn_tokens = int(spec.row[prompt_col]) + int(spec.row[output_col])
+                if running_tokens + turn_tokens > max_len:
+                    discarded = self._record_context_overflow(
+                        conv_id,
+                        spec,
+                        running_tokens,
+                        len(specs) - index,
+                        kept_any=bool(turns),
+                    )
+                    if discarded:
+                        return ConversationGraphData(turns=[])
+                    break
+                running_tokens += turn_tokens
             _validate_api_row(spec.row, self.config, self.validate_row)
             prompt = self.create_prompt(
                 spec.row,
@@ -471,12 +489,8 @@ class WEKATraceFormat(TraceFormatBase):
             )
             columns: dict[str, Any] = {
                 "text_column": [prompt],
-                "prompt_tokens_count_column": [
-                    spec.row[self.config.prompt_tokens_column]
-                ],
-                "output_tokens_count_column": [
-                    spec.row[self.config.output_tokens_column]
-                ],
+                "prompt_tokens_count_column": [spec.row[prompt_col]],
+                "output_tokens_count_column": [spec.row[output_col]],
                 "relative_timestamp_column": [spec.absolute_t - origin],
             }
             if spec.turn_type is not None:
@@ -497,63 +511,58 @@ class WEKATraceFormat(TraceFormatBase):
             )
         return ConversationGraphData(turns=turns)
 
-    def _apply_max_context_len(
-        self, specs: list[_TurnSpec], conversation_id: str
-    ) -> list[_TurnSpec]:
-        """Drop turns that would exceed ``max_context_len``, or the whole row.
+    def _record_context_overflow(
+        self,
+        conversation_id: str,
+        spec: _TurnSpec,
+        running_tokens: int,
+        remaining: int,
+        *,
+        kept_any: bool,
+    ) -> bool:
+        """Log a context-length overflow and update discard counters.
 
-        Walks specs in emit order and accumulates each turn's input+output
-        tokens. The overflowing turn and every later spec are discarded. If
-        the first turn already exceeds the budget, all specs are dropped so
-        the conversation can be skipped.
+        Called only when ``max_context_len`` is set. ``remaining`` counts
+        ``spec`` and every later spec without walking them.
 
-        :param specs: API turn specs from ``_emit_chain``.
         :param conversation_id: Conversation UUID used in discard logs.
-        :return: Kept prefix, or an empty list when the conversation is
-            discarded.
+        :param spec: Turn that would exceed the budget.
+        :param running_tokens: Tokens already accepted before ``spec``.
+        :param remaining: ``spec`` plus every later spec.
+        :param kept_any: Whether any earlier turn was kept.
+        :return: True when the conversation is discarded entirely.
         """
         max_len = self.config.max_context_len
-        if max_len is None:
-            return specs
-
-        total = 0
-        kept: list[_TurnSpec] = []
-        prompt_col = self.config.prompt_tokens_column
-        output_col = self.config.output_tokens_column
-        for spec in specs:
-            turn_tokens = int(spec.row[prompt_col]) + int(spec.row[output_col])
-            if total + turn_tokens > max_len:
-                remaining = len(specs) - len(kept)
-                if not kept:
-                    logger.info(
-                        "WEKA conversation '{}' discarded: first turn at "
-                        "node '{}' input+output tokens {} exceed "
-                        "max_context_len {} (running={}, dropping {} turn(s))",
-                        conversation_id,
-                        spec.node_id,
-                        turn_tokens,
-                        max_len,
-                        total,
-                        remaining,
-                    )
-                    self.discarded_rows += 1
-                    return []
-                logger.info(
-                    "WEKA conversation '{}' truncated: discarding {} "
-                    "turn(s) starting at node '{}' (turn tokens={}, "
-                    "running={}, max_context_len={})",
-                    conversation_id,
-                    remaining,
-                    spec.node_id,
-                    turn_tokens,
-                    total,
-                    max_len,
-                )
-                self.discarded_turns += remaining
-                break
-            total += turn_tokens
-            kept.append(spec)
-        return kept
+        turn_tokens = int(spec.row[self.config.prompt_tokens_column]) + int(
+            spec.row[self.config.output_tokens_column]
+        )
+        if not kept_any:
+            logger.info(
+                "WEKA conversation '{}' discarded: first turn at "
+                "node '{}' input+output tokens {} exceed "
+                "max_context_len {} (running={}, dropping {} turn(s))",
+                conversation_id,
+                spec.node_id,
+                turn_tokens,
+                max_len,
+                running_tokens,
+                remaining,
+            )
+            self.discarded_rows += 1
+            return True
+        logger.info(
+            "WEKA conversation '{}' truncated: discarding {} "
+            "turn(s) starting at node '{}' (turn tokens={}, "
+            "running={}, max_context_len={})",
+            conversation_id,
+            remaining,
+            spec.node_id,
+            turn_tokens,
+            running_tokens,
+            max_len,
+        )
+        self.discarded_turns += remaining
+        return False
 
     def _tool_response_text(
         self, processor: PreTrainedTokenizerBase, faker: Faker
