@@ -242,7 +242,7 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
         ):
             margin_precision += 1
 
-        return f"{mean} ±{safe_format_number(margin, precision=margin_precision)}"
+        return f"{mean} +/-{safe_format_number(margin, precision=margin_precision)}"
 
     @classmethod
     def _format_percentile_with_marker(
