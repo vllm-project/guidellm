@@ -21,7 +21,7 @@ The following arguments configure datasets and their processing:
   - `huggingface` (alias `hf`) — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (for example `split`, `name`) via `load_kwargs`.
   - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `tar_file` — loads from a local file. Required field: `path`.
   - `db_file` — loads rows from a database using `load_kwargs.sql`. Required field: `uri`, using a SQLAlchemy-style URI. GuideLLM currently supports only SQLite URIs, such as `sqlite:///prompts.db`.
-  - `trace_synthetic`, `mooncake`, `weka`, `otel` — replay traces with `--profile kind=replay`. Required field: nested `source` pointing at another dataset kind, for example `source.kind=json_file,source.path=trace.jsonl` or `source.kind=huggingface,source.source=org/dataset`. Optional: `timestamp_column`, `prompt_tokens_column`, `output_tokens_column`, `time_scale`, `copies`, and other format-specific options.  See [Trace File Formats](./trace_replay.md).
+  - `trace_synthetic`, `mooncake`, `weka`, `otel` — replay traces with `--profile kind=replay`. Required field: nested `source` pointing at another dataset kind, for example `source.kind=json_file,source.path=trace.jsonl` or `source.kind=huggingface,source.source=org/dataset`. Optional: `timestamp_column`, `prompt_tokens_column`, `output_tokens_column`, `time_scale`, `copies`, and other format-specific options. See [Trace File Formats](./trace_replay.md).
 
 In addition, you can specify additional arguments to the dataset loading with the data argument `load_kwargs`:
 
