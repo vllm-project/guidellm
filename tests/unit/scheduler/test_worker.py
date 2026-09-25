@@ -1099,6 +1099,52 @@ class TestWorkerProcessMultiturn:
         assert info_m2.history_len == 3
         assert info_m2.turn_index == 2
 
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_execute_node_all_new_edges_keeps_turn_index_zero(
+        self, worker_instance
+    ):
+        """history=trace graphs: preceding_nodes increments; turn_index stays 0.
+
+        ## WRITTEN BY AI ##
+        """
+        nodes = {
+            f"main_{i}": ConversationNode(
+                node_id=f"main_{i}", agent_id="default", request=f"r{i}"
+            )
+            for i in range(3)
+        }
+        graph = ConversationGraph(
+            graph_id="otel_trace",
+            nodes=nodes,
+            edges=[
+                ConversationEdge(
+                    source_node_id=f"main_{i}",
+                    target_node_id=f"main_{i + 1}",
+                    history_context="new",
+                )
+                for i in range(2)
+            ],
+        )
+        state = DAGExecutionState(graph)
+        target_start = time.time()
+
+        for i in range(3):
+            node_id = f"main_{i}"
+            info = RequestInfo(
+                request_id=f"id_{node_id}",
+                node_id=node_id,
+                preceding_nodes=state.preceding_nodes[node_id],
+            )
+            async for _ in worker_instance._execute_node(
+                state, node_id, f"r{i}", info, target_start
+            ):
+                pass
+            assert info.preceding_nodes == i
+            assert info.turn_index == 0
+            assert info.history_len == 0
+            state.mark_completed(node_id, f"r{i}", f"resp_{node_id}")
+
     @pytest.mark.regression
     @pytest.mark.asyncio
     async def test_worker_index_zero_reported_as_scheduler_node_id(self):

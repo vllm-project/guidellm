@@ -11,6 +11,7 @@ These are passed to the `--data` argument as `kind=format`:
 - `trace_synthetic`: A trace format that does the bare minimum needed to complete a fully functioning trace replay benchmark with synthetic prompt generation
 - `mooncake`: The trace format used by the serving platform *Mooncake*, as defined in [https://doi.org/10.48550/arXiv.2407.00079](https://doi.org/10.48550/arXiv.2407.00079)
 - `weka`: The trace format used by WEKA's *Augmented Memory Grid*, as specified [in the original research repository](https://github.com/callanjfox/agentic-coding-analysis/blob/master/docs/TRACE_FORMAT.md)
+- `otel` (alias `opentelemetry`): OpenTelemetry GenAI spans. GuideLLM keeps successful LLM spans and replays each `trace_id` as one conversation. It sends recorded `gen_ai.input.messages` with each span's full input (`history=trace`) unless `history=runtime` is set.
 
 ## Loading Trace Data
 
@@ -22,7 +23,8 @@ Trace replay always uses `--profile kind=replay`. Choose a **format** (`trace_sy
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=replay \
-  --data kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,time_scale=1.0
+  --data kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,time_scale=2.0 \
+  --constraint kind=max_requests,count=30
 ```
 
 **WEKA dataset from `huggingface`:**
@@ -31,15 +33,28 @@ guidellm run \
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=replay \
-  --data kind=weka,source.kind=huggingface,source.source=semianalysisai/cc-traces-weka-no-subagents-051226,load_kwargs.split=train
+  --data kind=weka,source.kind=huggingface,source.source=semianalysisai/cc-traces-weka-no-subagents-051226 \
+  --constraint kind=max_requests,count=30
 ```
 
 **Mooncake dataset from `huggingface`**
 
 ```bash
+guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=replay \
-  --data kind=weka,source.kind=hf,source.src=valeriol29/mooncake-traces,load_kwargs.name=mooncake
+  --data kind=mooncake,source.kind=huggingface,source.source=valeriol29/mooncake-traces,load_kwargs.name=mooncake \
+  --constraint kind=max_requests,count=30
+```
+
+**OTEL dataset from `huggingface`:**
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=replay \
+  --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces \
+  --constraint kind=max_requests,count=30
 ```
 
 ## Format-Agnostic Data Arguments
@@ -125,3 +140,74 @@ Modified defaults:
 | `timestamp_column`     | "t"         |
 | `prompt_tokens_column` | "in"        |
 | `output_tokens_column` | "out"       |
+
+### `otel`
+
+OpenTelemetry GenAI traces are replayed as timed conversations. Two file layouts are accepted:
+
+- **Session-per-line**: each JSONL row is `{ "trace_id": ..., "spans": [ ... ] }`
+- **Span-per-line**: each JSONL row is one span; adjacent rows with the same `trace_id` become one conversation. Grouping is streaming and consecutive only, so an interleaved `a, b, a` dump is three conversations, not two. Published replay corpora write each `trace_id` contiguously; live collector exports of concurrent traces may not.
+
+Only successful LLM spans are replayed (`gen_ai.operation.name` of `chat`, `generate`, or `text_completion`, or any span that already has usage token attributes). `invoke_agent` and failed spans (`status.code` error) are dropped. `execute_tool` spans are not sent as HTTP requests.
+
+Each LLM span is a full API snapshot: `gen_ai.input.messages` re-records the whole transcript, and `prompt_tokens` / `input_tokens` is **that call's full input size**, not a delta. `history` controls how that snapshot is turned into a request:
+
+| `history=trace` (default)                                                                                                                                                                                                              | `history=runtime`                                                                                                                                                                                        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Send the span's full recorded messages. `history_context=new`, so live completions are never substituted into the next prompt. Most accurate. Prefix cache breaks after the live completion diverges from the recorded assistant text. | DAG `full` history of *live* outputs; current turn is only the **new** messages. Requires `input[i] == input[i-1] + output[i-1] + delta`. Cache-friendly; accuracy suffers when the live model diverges. |
+
+Output length always uses the span's completion token count (`max_tokens` + `ignore_eos`).
+
+Spans without `gen_ai.input.messages` cannot be replayed as OTEL. Flatten token-count-only dumps to `kind=trace_synthetic` instead.
+
+Replay against `/v1/chat/completions` (the backend default). OTEL stores chat-completions message dicts in `raw_messages_column`. That handler sends them as a `messages` array. `/v1/completions` and `/v1/responses` do not read that column; they abort with a missing `prompt` or `input` error rather than posting an empty body.
+
+Recorded tool loops are pre-split onto GuideLLM's client tool-call pipeline. An LLM span whose output messages contain `tool_calls` (or `gen_ai.response.finish_reasons` of `tool_calls` / `tool_call` / `tool_use` / `function_call`) becomes `client_tool_call`. The next span is consumed as `tool_response_injection` when its new messages after `input[i] + output[i]` are only `role=tool` results. Recorded result strings are rebound to **live** `tool_call_id`s by the chat handler. `gen_ai.tool.definitions` supplies `tools_column` on those turns (otherwise the default synthetic tool is used); definitions alone do not classify a turn. Injection parents always use `history_context=full`, including `history=trace`. Missing-tool policy stays `--backend tool_call_missing_behavior=...`.
+
+If the next span cannot be parsed as tool results, a placeholder injection is synthesized and that next span is still replayed. A following `execute_tool` span supplies the injection text and pacing when it is a descendant of the tool-call LLM span, or a sibling sharing a non-null `parent_span_id` until the next LLM with that parent. Otherwise the synthetic placeholder is used at the call timestamp.
+
+Completed request stats merge response usage over the request's expected token counts, so a dedicated expected-vs-actual MAE is not reported. Compare `request.input_metrics` / `output_metrics` (span counts) with response usage before that merge if you need the deviation.
+
+ISO-8601 `start_time` values (naive, `Z`, or offset) and HuggingFace-decoded `datetime` objects are converted to epoch seconds before scheduling. Token counts are read from span `attributes`, trying current GenAI names first and then the deprecated aliases. OTel `parts` (`text`, `tool_call`, `tool_call_response`) are converted to OpenAI chat dicts.
+
+| Argument                   | Default                                                            | Description                                                                                                   |
+| -------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `spans_column`             | "spans"                                                            | Column name for nested span lists in session-per-line files                                                   |
+| `trace_id_column`          | "trace_id"                                                         | Column used to group span-per-line files into conversations                                                   |
+| `span_timestamp_field`     | "start_time"                                                       | Span field holding the request start time                                                                     |
+| `input_tokens_attributes`  | `["gen_ai.usage.input_tokens", "gen_ai.usage.prompt_tokens"]`      | Attribute keys tried in order for prompt token counts                                                         |
+| `output_tokens_attributes` | `["gen_ai.usage.output_tokens", "gen_ai.usage.completion_tokens"]` | Attribute keys tried in order for output token counts                                                         |
+| `history`                  | `trace`                                                            | `trace` resends each span's full input; `runtime` sends only new messages with DAG history                    |
+| `tool_choice`              | `required`                                                         | `required` or `auto` on client tool-call turns. Pair `auto` with `tool_call_missing_behavior=ignore_continue` |
+
+Start from Hugging Face. IBM traces have 30–50 LLM calls each, so `--constraint kind=max_requests` is a useful bound on first runs.
+
+**Default (`history=trace`):** send each span's recorded messages in full. Later turns wait on the DAG but use `history_context=new`, so live completions are not spliced into the next prompt.
+
+```bash
+guidellm run \
+    --backend kind=openai_http,target=http://localhost:8000 \
+    --profile kind=replay \
+    --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces \
+    --constraint kind=max_requests,count=30
+```
+
+**Recorded messages with DAG history (`history=runtime`):** send only the new messages; prior turns come from live completions (`history_context=full`). Requires each span's input to continue the previous span's input plus output.
+
+```bash
+guidellm run \
+    --backend kind=openai_http,target=http://localhost:8000 \
+    --profile kind=replay \
+    --data kind=otel,source.kind=huggingface,source.source=ibm-research/synthetic-conversations-traces,history=runtime \
+    --constraint kind=max_requests,count=30
+```
+
+Local JSONL uses the same `history` switch with `source.kind=json_file,source.path=...`.
+
+Public Hugging Face corpora:
+
+- [ibm-research/synthetic-conversations-traces](https://huggingface.co/datasets/ibm-research/synthetic-conversations-traces) — multi-turn chats, session-per-line JSONL, `prompt_tokens` / `completion_tokens`
+- [Exgentic/agent-llm-traces-v2](https://huggingface.co/datasets/Exgentic/agent-llm-traces-v2) — agent sessions, nested `spans`, `input_tokens` / `output_tokens`
+- [ibm-research/lmcache-agentic-traces_Otel](https://huggingface.co/datasets/ibm-research/lmcache-agentic-traces_Otel) — agentic sessions, session-per-line JSONL, deprecated token keys
+
+Related corpora: [DiscoPosse/agent-llm-traces](https://huggingface.co/datasets/DiscoPosse/agent-llm-traces) (Exgentic v1 schema) and [lenadan/otel-test-snippet-jsonl](https://huggingface.co/datasets/lenadan/otel-test-snippet-jsonl) (small span-per-line snippet). [ibm-research/codex_swebenchpro_traces_Otel](https://huggingface.co/datasets/ibm-research/codex_swebenchpro_traces_Otel) omits usage token attributes and is not usable for token-count replay. Spans without `gen_ai.input.messages` should use `trace_synthetic`.
