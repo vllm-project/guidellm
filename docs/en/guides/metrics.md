@@ -151,6 +151,36 @@ GuideLLM calculates a comprehensive set of percentiles for each metric, includin
 - **99th Percentile (p99)**: The value below which 99% of the data falls.
 - **99.9th Percentile (p999)**: The value below which 99.9% of the data falls.
 
+### Confidence Intervals
+
+Each summary statistic above is an estimate made from a finite number of requests, and GuideLLM reports how precisely each one was measured alongside the value itself.
+
+- **`mean_ci`**: A two-sided confidence interval for the mean.
+- **`percentile_cis`**: A confidence interval for each reported percentile, or `null` where the run is too short to place one.
+
+Set the level with `--metrics kind=generative,confidence=0.95`. It defaults to 0.95, and `null` reports the metrics without intervals. The level is recorded once per benchmark as `config.confidence`.
+
+The console shows the mean and the half-width of its interval together, for example `80.5 +/-3.9`, and marks a percentile the sample cannot bound with `*`. The CSV appends a `Mean CI` and a `Percentile CIs` column for each metric that carries intervals, the latter keyed by percentile, plus the confidence level. Those columns go at the end of each row so that existing column positions are unchanged.
+
+#### Which metrics report intervals
+
+Intervals are reported only for metrics recorded exactly once per request, where each value is one observation: request latency, TTFT, time to first output token, the round-trip metrics, the token counts, streaming iteration count, dispatch delay, and scheduled latency.
+
+Two groups are reported without intervals:
+
+- **Inter-token latency and time per output token.** Their reported mean is weighted by output tokens, so it is a ratio of total generation time to total tokens rather than a mean over interchangeable observations. Note that their `count` is the summed token exposure, not the number of requests.
+- **Rate distributions**, such as requests per second and output tokens per second. These are derived from event timings rather than per-request observations.
+
+#### Why a percentile interval can be absent
+
+The reported percentiles are order statistics: `p99` is the value at rank `ceil(0.99n)` in the sorted sample. A two-sided interval needs observations on both sides of that rank, which requires at least `ceil(log(alpha / 2) / log(q))` requests. At the default 0.95 confidence that is 72 requests for p95, 368 for p99 and 3688 for p999.
+
+Below those sizes the interval is reported as `null`. This is worth noticing: with fewer than 100 successful requests, the reported `p99` is the single slowest request in the run, and with fewer than 1000 the reported `p999` is as well.
+
+#### What the interval does and does not say
+
+The interval describes how precisely this run measured its own conditions, treating the requests within it as independent observations. It does not describe how far the value would move if the same benchmark were run again. Those two differ when successive requests share a condition that varies between runs, such as the server's load during generation, so a run-to-run comparison needs repeated runs rather than a single run's interval.
+
 ### Use Cases for Statistical Summaries
 
 - **Mean and Median**: Provide a central tendency of the metric values.
