@@ -75,6 +75,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         epoch: int = 0,
     ) -> Iterator[DataT]:
         gen_count = 0
+        processed_count = 0
         yield_count = 0
         error_count = 0
 
@@ -102,6 +103,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                         continue
 
                     # Apply preprocessors in sequence
+                    processed_count += 1
                     for preprocessor in self.preprocessors:
                         row = preprocessor(row)
 
@@ -123,10 +125,10 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                     )
                     gen_count -= 1
 
-        if gen_count > 0 and yield_count == 0:
+        if processed_count > 0 and yield_count == 0:
             raise ValueError(
-                f"Dataset iterator processed {gen_count} rows but yielded "
-                f"zero results ({error_count} errors; {gen_count - error_count} "
+                f"Dataset iterator processed {processed_count} rows but yielded "
+                f"zero results ({error_count} errors; {processed_count - error_count} "
                 f"empty). Check your data and data arguments."
             )
 
