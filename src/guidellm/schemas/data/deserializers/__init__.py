@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from guidellm.schemas.data.deserializers.file import FileDataArgs
+from guidellm.schemas.data.deserializers.file import DBFileDataArgs, FileDataArgs
 from guidellm.schemas.data.deserializers.huggingface import HuggingFaceDataArgs
 from guidellm.schemas.data.deserializers.memory import (
     InMemoryDictDataArgs,
@@ -30,6 +30,7 @@ __all__ = [
     "DEFAULT_SYNTHETIC_TOOLS",
     "RESOLUTION_PRESETS",
     "BranchSpec",
+    "DBFileDataArgs",
     "FileDataArgs",
     "HuggingFaceDataArgs",
     "InMemoryDictDataArgs",
