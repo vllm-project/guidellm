@@ -34,6 +34,7 @@ __all__ = [
     "GenerativeMetricsSummary",
     "GenerativeTextMetricsSummary",
     "GenerativeToolCallMetricsSummary",
+    "GenerativeTurnMetrics",
     "GenerativeVideoMetricsSummary",
     "SchedulerMetrics",
     "StatusTypes",
@@ -761,6 +762,165 @@ class GenerativeToolCallMetricsSummary(StandardBaseDict):
         )
 
 
+class GenerativeTurnMetrics(StandardBaseDict):
+    """
+    Request timing and size distributions for one turn position.
+
+    In a multi-turn workload the same metric behaves differently at different
+    positions in a conversation: later turns carry more history, so their
+    prompts are longer and their first-token latency depends on how much of
+    that history the server can reuse from its prefix cache. Aggregating all
+    turns into one distribution hides that trend. Each instance holds the
+    distributions for the requests at a single ``turn_index``.
+    """
+
+    turn_index: int = Field(
+        description="Turn position these distributions cover, starting at 0"
+    )
+    request_totals: StatusBreakdown[int, int, int, int] = Field(
+        description=(
+            "Request counts at this turn position by status: successful, "
+            "incomplete, errored, total"
+        )
+    )
+    request_latency: StatusDistributionSummary = Field(
+        description="Distribution of request latencies at this turn position"
+    )
+    prompt_token_count: StatusDistributionSummary = Field(
+        description="Distribution of prompt token counts at this turn position"
+    )
+    time_to_first_token_ms: StatusDistributionSummary = Field(
+        description="Distribution of first token latencies at this turn position"
+    )
+    inter_token_latency_ms: StatusDistributionSummary = Field(
+        description="Distribution of inter-token latencies at this turn position"
+    )
+
+    @classmethod
+    def compile_by_turn(
+        cls,
+        requests: tuple[
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+        ],
+        first_token_requests: tuple[
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+        ],
+        after_first_token_requests: tuple[
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+        ],
+    ) -> list[GenerativeTurnMetrics] | None:
+        """
+        Compile per-turn distributions, or None for a single-turn workload.
+
+        Each argument is a (successful, incomplete, errored) triple already
+        filtered to the measurement window the same way as the corresponding
+        aggregate metric, so a turn's distributions partition the aggregate
+        ones exactly.
+
+        :param requests: Requests within the measurement window, used for
+            latency, counts and prompt sizes
+        :param first_token_requests: Requests whose first token arrived within
+            the measurement window, used for time to first token
+        :param after_first_token_requests: Requests whose decoding started
+            within the measurement window, used for inter-token latency
+        :return: One entry per observed turn index in ascending order, or None
+            when every request is at turn 0, where a per-turn breakdown would
+            only repeat the aggregate metrics
+        """
+        # The windowed groups are normally subsets of ``requests``, but a
+        # request without a start time is treated as instantaneous at a
+        # different event in each group, so it can appear in one and not the
+        # others. Collect indices from every group so no distribution is lost.
+        turn_indices = sorted(
+            {
+                req.info.turn_index
+                for groups in (
+                    requests,
+                    first_token_requests,
+                    after_first_token_requests,
+                )
+                for group in groups
+                for req in group
+            }
+        )
+        if not turn_indices or turn_indices == [0]:
+            return None
+
+        def at_turn(
+            groups: tuple[
+                list[GenerativeRequestStats],
+                list[GenerativeRequestStats],
+                list[GenerativeRequestStats],
+            ],
+            turn_index: int,
+        ) -> tuple[
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+        ]:
+            successful, incomplete, errored = (
+                [req for req in group if req.info.turn_index == turn_index]
+                for group in groups
+            )
+            return successful, incomplete, errored
+
+        turns: list[GenerativeTurnMetrics] = []
+        for turn_index in turn_indices:
+            successful, incomplete, errored = at_turn(requests, turn_index)
+            ttft_successful, ttft_incomplete, ttft_errored = at_turn(
+                first_token_requests, turn_index
+            )
+            itl_successful, itl_incomplete, itl_errored = at_turn(
+                after_first_token_requests, turn_index
+            )
+            turns.append(
+                cls(
+                    turn_index=turn_index,
+                    request_totals=StatusBreakdown(
+                        successful=len(successful),
+                        incomplete=len(incomplete),
+                        errored=len(errored),
+                        total=len(successful) + len(incomplete) + len(errored),
+                    ),
+                    request_latency=StatusDistributionSummary.from_values_function(
+                        function=lambda req: req.request_latency or 0.0,
+                        successful=successful,
+                        incomplete=incomplete,
+                        errored=errored,
+                    ),
+                    prompt_token_count=StatusDistributionSummary.from_values_function(
+                        function=lambda req: req.prompt_tokens or 0.0,
+                        successful=successful,
+                        incomplete=incomplete,
+                        errored=errored,
+                    ),
+                    time_to_first_token_ms=StatusDistributionSummary.from_values_function(
+                        function=lambda req: req.time_to_first_token_ms or 0.0,
+                        successful=ttft_successful,
+                        incomplete=ttft_incomplete,
+                        errored=ttft_errored,
+                    ),
+                    inter_token_latency_ms=StatusDistributionSummary.from_values_function(
+                        function=lambda req: (
+                            req.inter_token_latency_ms or 0.0,
+                            (req.output_tokens or 1.0) - 1.0,
+                        ),
+                        successful=itl_successful,
+                        incomplete=itl_incomplete,
+                        errored=itl_errored,
+                    ),
+                )
+            )
+
+        return turns
+
+
 class GenerativeMetrics(StandardBaseDict):
     """
     Comprehensive metrics for generative AI benchmarks.
@@ -878,6 +1038,16 @@ class GenerativeMetrics(StandardBaseDict):
     )
     tool_call: GenerativeToolCallMetricsSummary = Field(
         description="Tool call metrics for tokens and call counts"
+    )
+
+    # Multi-turn stats, populated only when requests span more than one turn
+    turns: list[GenerativeTurnMetrics] | None = Field(
+        default=None,
+        description=(
+            "Per-turn-position distributions for multi-turn workloads, one "
+            "entry per observed turn index in ascending order. None when every "
+            "request is at turn 0"
+        ),
     )
 
     # Goodput stats, populated only when latency objectives are configured
@@ -1029,6 +1199,32 @@ class GenerativeMetrics(StandardBaseDict):
                 errored=errored,
             )
 
+        # First-token and inter-token latencies are windowed by when the first
+        # token arrived rather than by request end. Filter once so the
+        # aggregate and per-turn distributions cover the same requests.
+        first_token_requests = (
+            accumulator.completed.get_within_range(
+                start_time, end_time, end_func=lambda req: req.first_token_iteration
+            ),
+            accumulator.incomplete.get_within_range(
+                start_time, end_time, end_func=lambda req: req.first_token_iteration
+            ),
+            accumulator.errored.get_within_range(
+                start_time, end_time, end_func=lambda req: req.first_token_iteration
+            ),
+        )
+        after_first_token_requests = (
+            accumulator.completed.get_within_range(
+                start_time, end_time, start_func=lambda req: req.first_token_iteration
+            ),
+            accumulator.incomplete.get_within_range(
+                start_time, end_time, start_func=lambda req: req.first_token_iteration
+            ),
+            accumulator.errored.get_within_range(
+                start_time, end_time, start_func=lambda req: req.first_token_iteration
+            ),
+        )
+
         slo_attainment, slo_determined, request_goodput = cls._compile_goodput(
             slo=accumulator.config.slo,
             successful=successful,
@@ -1108,21 +1304,9 @@ class GenerativeMetrics(StandardBaseDict):
             # latencies. See github.com/vllm-project/guidellm/issues/1078
             time_to_first_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_first_token_ms or 0.0,
-                successful=accumulator.completed.get_within_range(
-                    start_time,
-                    end_time,
-                    end_func=lambda req: req.first_token_iteration,
-                ),
-                incomplete=accumulator.incomplete.get_within_range(
-                    start_time,
-                    end_time,
-                    end_func=lambda req: req.first_token_iteration,
-                ),
-                errored=accumulator.errored.get_within_range(
-                    start_time,
-                    end_time,
-                    end_func=lambda req: req.first_token_iteration,
-                ),
+                successful=first_token_requests[0],
+                incomplete=first_token_requests[1],
+                errored=first_token_requests[2],
             ),
             time_to_last_round_trip_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.time_to_last_round_trip_ms or 0.0,
@@ -1168,21 +1352,9 @@ class GenerativeMetrics(StandardBaseDict):
                     req.inter_token_latency_ms or 0.0,
                     (req.output_tokens or 1.0) - 1.0,
                 ),
-                successful=accumulator.completed.get_within_range(
-                    start_time,
-                    end_time,
-                    start_func=lambda req: req.first_token_iteration,
-                ),
-                incomplete=accumulator.incomplete.get_within_range(
-                    start_time,
-                    end_time,
-                    start_func=lambda req: req.first_token_iteration,
-                ),
-                errored=accumulator.errored.get_within_range(
-                    start_time,
-                    end_time,
-                    start_func=lambda req: req.first_token_iteration,
-                ),
+                successful=after_first_token_requests[0],
+                incomplete=after_first_token_requests[1],
+                errored=after_first_token_requests[2],
             ),
             prompt_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.prompt_tokens_timing,
@@ -1239,5 +1411,11 @@ class GenerativeMetrics(StandardBaseDict):
             ),
             tool_call=GenerativeToolCallMetricsSummary.compile(
                 successful=successful, incomplete=incomplete, errored=errored
+            ),
+            # Multi-turn stats
+            turns=GenerativeTurnMetrics.compile_by_turn(
+                requests=(successful, incomplete, errored),
+                first_token_requests=first_token_requests,
+                after_first_token_requests=after_first_token_requests,
             ),
         )

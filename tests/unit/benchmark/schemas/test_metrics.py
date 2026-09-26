@@ -1040,3 +1040,232 @@ class TestGoodputConfigWiring:
         del payload["slo"]
 
         assert BenchmarkConfig.model_validate(payload).slo is None
+
+
+def _make_turn_stats(
+    request_id: str,
+    conversation_id: str,
+    turn_index: int,
+    request_start: float,
+    first_token: float,
+    request_end: float,
+    prompt_tokens: int = 8,
+    status: str = "completed",
+) -> GenerativeRequestStats:
+    """Build a streaming request placed at a given turn of a conversation.
+
+    ## WRITTEN BY AI ##
+    """
+    timings = RequestTimings(
+        resolve_start=request_start,
+        resolve_end=request_end,
+        request_start=request_start,
+        request_end=request_end,
+        first_token_iteration=first_token,
+        last_token_iteration=request_end,
+        token_iterations=9,
+    )
+    return GenerativeRequestStats(
+        request_id=request_id,
+        info=RequestInfo(
+            request_id=request_id,
+            conversation_id=conversation_id,
+            turn_index=turn_index,
+            status=status,
+            timings=timings,
+        ),
+        input_metrics=UsageMetrics(text_tokens=prompt_tokens),
+        output_metrics=UsageMetrics(text_tokens=9),
+    )
+
+
+def _make_conversations(
+    n_conversations: int, n_turns: int
+) -> list[GenerativeRequestStats]:
+    """Build conversations whose first-token latency and prompt grow per turn.
+
+    Turn ``t`` of every conversation has a first-token latency of
+    ``100 * (t + 1)`` ms and a prompt of ``8 * (t + 1)`` tokens, so each
+    turn position has a distinct, known mean.
+
+    ## WRITTEN BY AI ##
+    """
+    stats: list[GenerativeRequestStats] = []
+    for conv in range(n_conversations):
+        for turn in range(n_turns):
+            start = SCHEDULE_BASE_TIME + conv * 10.0 + turn * 2.0
+            stats.append(
+                _make_turn_stats(
+                    request_id=f"c{conv}-t{turn}",
+                    conversation_id=f"c{conv}",
+                    turn_index=turn,
+                    request_start=start,
+                    first_token=start + 0.1 * (turn + 1),
+                    request_end=start + 1.0,
+                    prompt_tokens=8 * (turn + 1),
+                )
+            )
+    return stats
+
+
+class TestTurnMetrics:
+    """
+    Verify per-turn-position distributions for multi-turn workloads.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_single_turn_workload_reports_no_turns(self):
+        """
+        Leave the per-turn breakdown unset when every request is at turn 0.
+
+        ## WRITTEN BY AI ##
+        """
+        successful = _make_conversations(n_conversations=3, n_turns=1)
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                successful, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 100.0
+            )
+        )
+
+        assert metrics.turns is None
+
+    @pytest.mark.sanity
+    def test_turns_are_ordered_and_counted_per_position(self):
+        """
+        Emit one entry per turn index in ascending order with per-turn counts.
+
+        ## WRITTEN BY AI ##
+        """
+        successful = _make_conversations(n_conversations=4, n_turns=3)
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                successful, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 100.0
+            )
+        )
+
+        assert metrics.turns is not None
+        assert [turn.turn_index for turn in metrics.turns] == [0, 1, 2]
+        for turn in metrics.turns:
+            assert turn.request_totals.successful == 4
+            assert turn.request_totals.total == 4
+
+    @pytest.mark.sanity
+    def test_turn_distributions_track_their_own_position(self):
+        """
+        Report each turn's own latency and prompt size, not the pooled mean.
+
+        ## WRITTEN BY AI ##
+        """
+        successful = _make_conversations(n_conversations=4, n_turns=3)
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                successful, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 100.0
+            )
+        )
+
+        assert metrics.turns is not None
+        for turn in metrics.turns:
+            expected = turn.turn_index + 1
+            assert turn.time_to_first_token_ms.successful.mean == pytest.approx(
+                100.0 * expected, abs=0.1
+            )
+            assert turn.prompt_token_count.successful.mean == pytest.approx(
+                8.0 * expected
+            )
+        assert metrics.time_to_first_token_ms.successful.mean == pytest.approx(
+            200.0, abs=0.1
+        )
+
+    @pytest.mark.regression
+    def test_turns_partition_the_aggregate_distributions(self):
+        """
+        Sum per-turn counts to the aggregate counts, including windowed metrics.
+
+        The extra request starts and receives its first token before the
+        measurement window opens but finishes inside it, so it counts toward
+        request latency and inter-token latency but not toward time to first
+        token. It is the only request at its turn index, so that turn has a
+        request count of 1 and an empty first-token distribution.
+
+        ## WRITTEN BY AI ##
+        """
+        successful = _make_conversations(n_conversations=4, n_turns=3)
+        early = _make_turn_stats(
+            request_id="early",
+            conversation_id="c9",
+            turn_index=3,
+            request_start=SCHEDULE_BASE_TIME - 5.0,
+            first_token=SCHEDULE_BASE_TIME - 4.5,
+            request_end=SCHEDULE_BASE_TIME + 1.0,
+        )
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                [*successful, early], SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 100.0
+            )
+        )
+
+        assert metrics.turns is not None
+        assert [turn.turn_index for turn in metrics.turns] == [0, 1, 2, 3]
+        pairs = (
+            (
+                "request_latency",
+                metrics.request_latency,
+                [turn.request_latency for turn in metrics.turns],
+            ),
+            (
+                "prompt_token_count",
+                metrics.prompt_token_count,
+                [turn.prompt_token_count for turn in metrics.turns],
+            ),
+            (
+                "time_to_first_token_ms",
+                metrics.time_to_first_token_ms,
+                [turn.time_to_first_token_ms for turn in metrics.turns],
+            ),
+            (
+                "inter_token_latency_ms",
+                metrics.inter_token_latency_ms,
+                [turn.inter_token_latency_ms for turn in metrics.turns],
+            ),
+        )
+        for name, aggregate, per_turn in pairs:
+            assert sum(dist.successful.count for dist in per_turn) == (
+                aggregate.successful.count
+            ), name
+        assert metrics.turns[3].request_totals.total == 1
+        assert metrics.turns[3].time_to_first_token_ms.successful.count == 0
+        assert metrics.time_to_first_token_ms.successful.count == (
+            metrics.request_latency.successful.count - 1
+        )
+
+    @pytest.mark.sanity
+    def test_errored_turns_are_counted_at_their_position(self):
+        """
+        Count errored requests under the turn they failed at.
+
+        ## WRITTEN BY AI ##
+        """
+        successful = _make_conversations(n_conversations=2, n_turns=2)
+        accumulator = _make_accumulator(
+            successful, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 100.0
+        )
+        accumulator.errored.requests_stats = [
+            _make_turn_stats(
+                request_id="err",
+                conversation_id="c0",
+                turn_index=2,
+                request_start=SCHEDULE_BASE_TIME + 5.0,
+                first_token=SCHEDULE_BASE_TIME + 5.1,
+                request_end=SCHEDULE_BASE_TIME + 6.0,
+                status="errored",
+            )
+        ]
+        metrics = GenerativeMetrics.compile(accumulator)
+
+        assert metrics.turns is not None
+        assert [turn.turn_index for turn in metrics.turns] == [0, 1, 2]
+        last = metrics.turns[2]
+        assert last.request_totals.errored == 1
+        assert last.request_totals.successful == 0
