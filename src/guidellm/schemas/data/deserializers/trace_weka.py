@@ -46,6 +46,15 @@ class WEKATraceFormatArgs(TraceDataArgs):
         default=64,
         description="Amount of tokens represented by one hash ID.",
     )
+    max_context_len: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Maximum cumulative input+output tokens for a conversation. "
+            "Turns that would exceed this budget, and all later turns, are dropped. "
+            "If the first turn already exceeds it, the conversation is skipped."
+        ),
+    )
     tools: list[dict[str, Any]] | None = Field(
         description=(
             "Tool definitions in OpenAI format. Traces do not include schemas; "
