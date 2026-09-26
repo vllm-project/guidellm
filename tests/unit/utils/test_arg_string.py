@@ -43,6 +43,49 @@ class TestArgStringParser:
         result = parser.decode("items[5]=value")
         assert result == {"items": [0, 0, 0, 0, 0, "value"]}
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize("fill_factory", [list, dict])
+    @pytest.mark.parametrize("nested", [False, True])
+    def test_mutable_fill_values_are_independent(self, fill_factory, nested):
+        """
+        Mutating a fill value must not affect other positions or later decodes.
+
+        ## WRITTEN BY AI ##
+        """
+        parser = arg_string.ArgStringParser(fill_value=fill_factory)
+        expression = "items[2].name=value" if nested else "items[2]=value"
+        result = parser.decode(expression)
+        other = parser.decode("other[1]=value")
+
+        if fill_factory is list:
+            result["items"][0].append("changed")
+        else:
+            result["items"][0]["changed"] = True
+
+        assert result["items"][1] == fill_factory()
+        assert other["other"][0] == fill_factory()
+        assert parser.decode(expression)["items"][0] == fill_factory()
+
+    @pytest.mark.regression
+    def test_set_mutable_fill_values_are_independent(self):
+        """
+        Sparse list fills created by successive set calls must be independent.
+
+        ## WRITTEN BY AI ##
+        """
+        parser = arg_string.ArgStringParser(fill_value=list)
+        result = {}
+        parser.set(result, "items[2]", "value")
+        result["items"][0].append("changed")
+        parser.set(result, "items[4]", "later")
+
+        assert result == {"items": [["changed"], [], "value", [], "later"]}
+        parser.set(result, "items[1].name", "nested")
+        parser.set(result, "items[3]", "filled")
+        assert result == {
+            "items": [["changed"], {"name": "nested"}, "value", "filled", "later"]
+        }
+
 
 class TestArgStringLoads:
     """Test cases for arg_string.loads function."""
