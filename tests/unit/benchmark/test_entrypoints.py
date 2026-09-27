@@ -4,12 +4,14 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pytest_httpx import HTTPXMock
 
 from guidellm.benchmark import entrypoints as entrypoints_module
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.entrypoints import resolve_backend, resolve_output_formats
 from guidellm.benchmark.outputs import GenerativeBenchmarkerOutput
 from guidellm.benchmark.profiles import ProfileFactory
+from guidellm.benchmark.schemas.base import BenchmarkConfig
 from guidellm.schemas.backends import (
     OpenAIHTTPBackendArgs,
     VLLMPythonAsyncBackendArgs,
@@ -312,3 +314,49 @@ async def test_entrypoint_passes_configured_objectives_to_benchmarker():
         await entrypoints_module.benchmark_generative_text(args=args)
 
     assert captured.get("slo") == slo
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_server_config_reaches_serialized_benchmark(httpx_mock: HTTPXMock):
+    """Capture metadata during real setup and retain it in benchmark JSON."""
+    httpx_mock.add_response(url="http://test/health")
+    httpx_mock.add_response(
+        url="http://test/server_info?config_format=json",
+        json={"vllm_config": {"parallel_config": {"tensor_parallel_size": 2}}},
+    )
+    httpx_mock.add_response(
+        url="http://test/v1/models", json={"data": [{"id": "test-model"}]}
+    )
+    backend, model = await resolve_backend(
+        OpenAIHTTPBackendArgs(target="http://test", capture_server_config=True)
+    )
+    assert model == "test-model"
+    assert backend._async_client is None
+
+    class _StubScheduler:
+        async def run(self, **kwargs):
+            yield (None, None, None, MagicMock())
+
+    _RecordingAccumulator.configs = []
+    profile = ProfileFactory.create(SynchronousProfileArgs(), 42, {})
+    with patch("guidellm.benchmark.benchmarker.Scheduler", _StubScheduler):
+        async for _ in Benchmarker().run(
+            accumulator_class=_RecordingAccumulator,
+            benchmark_class=_StubBenchmark,
+            requests=MagicMock(info={}),
+            backend=backend,
+            profile=profile,
+            environment=MagicMock(info={}),
+            warmup=TransientPhaseConfig(),
+            cooldown=TransientPhaseConfig(),
+        ):
+            pass
+
+    assert len(_RecordingAccumulator.configs) == 1
+    config = _RecordingAccumulator.configs[0]
+    restored = BenchmarkConfig.model_validate_json(config.model_dump_json())
+    assert restored.backend["server_info"] == {
+        "vllm_config": {"parallel_config": {"tensor_parallel_size": 2}}
+    }
+    assert len(httpx_mock.get_requests()) == 3

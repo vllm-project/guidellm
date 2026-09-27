@@ -15,6 +15,7 @@ __all__ = ["OpenAIHTTPBackendArgs"]
 
 DEFAULT_API_PATHS = {
     "/health": "health",
+    "/server_info": "server_info",
     "/v1/models": "v1/models",
     "/v1/completions": "v1/completions",
     "/v1/chat/completions": "v1/chat/completions",
@@ -104,6 +105,13 @@ class OpenAIHTTPBackendArgs(BackendArgs):
     validate_backend: bool = Field(
         default=True,
         description="Send a health check request to validate backend configuration.",
+    )
+    capture_server_config: bool = Field(
+        default=False,
+        description=(
+            "Capture optional structured vLLM server configuration in benchmark "
+            "results. Unavailable or unsupported server_info endpoints are skipped."
+        ),
     )
     stream: bool = Field(
         default=True,

@@ -11,11 +11,14 @@ tracking with flexible parameter customization.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import AsyncIterator
+from copy import deepcopy
 from typing import Any
 
 import httpx
+from loguru import logger
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.openai.common import FALLBACK_TIMEOUT
@@ -35,6 +38,37 @@ from guidellm.utils.dict import deep_filter
 __all__ = [
     "OpenAIHTTPBackend",
 ]
+
+
+_SERVER_CONFIG_TIMEOUT = 5.0
+_SERVER_CONFIG_MAX_BYTES = 1024 * 1024
+
+
+def _redact_server_config(value: Any) -> Any:
+    """Redact common credential fields without hiding token-count settings."""
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            normalized = key.lower().replace("-", "_")
+            sensitive = (
+                normalized in {"token", "authorization", "credentials"}
+                or any(
+                    part in normalized
+                    for part in (
+                        "api_key",
+                        "apikey",
+                        "password",
+                        "secret",
+                        "access_key",
+                    )
+                )
+                or normalized.endswith(("_token", "_credentials"))
+            )
+            result[key] = "[REDACTED]" if sensitive else _redact_server_config(item)
+        return result
+    if isinstance(value, list):
+        return [_redact_server_config(item) for item in value]
+    return value
 
 
 @Backend.register("openai_http")
@@ -76,6 +110,19 @@ class OpenAIHTTPBackend(Backend):
         # Runtime state
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
+        self._server_config_attempted = False
+        self._server_info: dict[str, Any] | None = None
+
+    @property
+    def info(self) -> dict[str, Any]:
+        """Return backend arguments and the optional server configuration snapshot.
+
+        :return: JSON-serializable backend metadata for benchmark results
+        """
+        info = super().info
+        if self._server_info is not None:
+            info["server_info"] = deepcopy(self._server_info)
+        return info
 
     async def process_startup(self):
         """
@@ -128,24 +175,76 @@ class OpenAIHTTPBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
-        if not self._args.validate_backend:
-            return
+        if self._args.validate_backend:
+            try:
+                validate_kwargs: dict[str, Any] = {
+                    "method": "GET",
+                    "url": f"{self._args.target}/{self._args.api_routes['/health']}",
+                }
+                existing_headers = validate_kwargs.get("headers")
+                built_headers = self._build_headers(existing_headers)
+                validate_kwargs["headers"] = built_headers
+                response = await self._async_client.request(**validate_kwargs)
+                response.raise_for_status()
+            except Exception as exc:
+                raise RuntimeError(
+                    "Backend validation request failed. Could not connect to the "
+                    "server or validate the backend configuration."
+                ) from exc
 
-        try:
-            validate_kwargs: dict[str, Any] = {
-                "method": "GET",
-                "url": f"{self._args.target}/{self._args.api_routes['/health']}",
-            }
-            existing_headers = validate_kwargs.get("headers")
-            built_headers = self._build_headers(existing_headers)
-            validate_kwargs["headers"] = built_headers
-            response = await self._async_client.request(**validate_kwargs)
+        if self._args.capture_server_config and not self._server_config_attempted:
+            # resolve_backend validates in the parent before scheduling. Keep this
+            # flag when pickled so workers do not repeat the optional request.
+            self._server_config_attempted = True
+            try:
+                self._server_info = await asyncio.wait_for(
+                    self._fetch_server_config(), timeout=_SERVER_CONFIG_TIMEOUT
+                )
+            except (
+                httpx.HTTPError,
+                ValueError,
+                RecursionError,
+                asyncio.TimeoutError,
+            ) as exc:
+                # URLs, response bodies and exception messages may contain secrets.
+                logger.warning(
+                    "Server configuration was not recorded ({}). "
+                    "Benchmarking will continue without it.",
+                    type(exc).__name__,
+                )
+
+    async def _fetch_server_config(self) -> dict[str, Any]:
+        if self._async_client is None:
+            raise RuntimeError("Backend not started up for process.")
+
+        route = self._args.api_routes["/server_info"].lstrip("/")
+        headers = self._args.extras.headers if self._args.extras else None
+        # Bound both elapsed time and decoded body size, even for streaming or
+        # compressed responses. Never follow a metadata redirect to another host.
+        async with self._async_client.stream(
+            "GET",
+            f"{self._args.target}/{route}",
+            params={"config_format": "json"},
+            headers=self._build_headers(headers),
+            timeout=_SERVER_CONFIG_TIMEOUT,
+            follow_redirects=False,
+        ) as response:
             response.raise_for_status()
-        except Exception as exc:
-            raise RuntimeError(
-                "Backend validation request failed. Could not connect to the server "
-                "or validate the backend configuration."
-            ) from exc
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                if len(body) + len(chunk) > _SERVER_CONFIG_MAX_BYTES:
+                    raise ValueError("Server configuration exceeds the size limit")
+                body.extend(chunk)
+
+        payload = json.loads(body)
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("vllm_config"), dict
+        ):
+            raise ValueError("Expected structured vllm_config")
+
+        # Environment dumps are not needed for this feature and can contain
+        # private deployment details. Do not persist legacy repr strings either.
+        return {"vllm_config": _redact_server_config(payload["vllm_config"])}
 
     async def available_models(self) -> list[str]:
         """

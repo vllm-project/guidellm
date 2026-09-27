@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import pickle
 from contextlib import nullcontext
 from typing import Literal
 from unittest.mock import MagicMock, Mock, patch
@@ -1214,3 +1215,184 @@ async def test_resolve_responses_terminal_error(
                 assert responses[-1].text == "Partial answer"
     finally:
         await backend.process_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+class TestServerConfigCapture:
+    """Optional metadata must not change generation or worker initialization."""
+
+    async def test_capture_is_opt_in(self, httpx_mock: HTTPXMock):
+        """Do not probe server_info by default."""
+        backend = _make_backend(target="http://test", validate_backend=False)
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            assert "server_info" not in backend.info
+            assert not httpx_mock.get_requests()
+        finally:
+            await backend.process_shutdown()
+
+    async def test_capture_with_auth_and_custom_route(self, httpx_mock: HTTPXMock):
+        """Preserve useful settings, omit environments and redact nested secrets."""
+        config = {
+            "model_config": {"model": "test-model", "hf_token": "private-token"},
+            "parallel_config": {"tensor_parallel_size": 2},
+            "scheduler_config": {"max_num_batched_tokens": 4096},
+            "plugins": [{"API-Key": "private-key", "password": "private-password"}],
+        }
+        httpx_mock.add_response(
+            url="http://test/proxy/server_info?config_format=json",
+            match_headers={"Authorization": "Bearer test-key", "X-Tenant": "tenant"},
+            json={
+                "vllm_config": config,
+                "vllm_env": {"secret": "private-env"},
+                "system_env": {"hostname": "private-host"},
+            },
+        )
+        backend = _make_backend(
+            target="http://test/v1",
+            model="test-model",
+            validate_backend=False,
+            capture_server_config=True,
+            api_key="test-key",
+            extras={"headers": {"X-Tenant": "tenant"}},
+            api_routes={"/server_info": "/proxy/server_info"},
+        )
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            captured = backend.info["server_info"]
+            assert captured == {
+                "vllm_config": {
+                    "model_config": {"model": "test-model", "hf_token": "[REDACTED]"},
+                    "parallel_config": {"tensor_parallel_size": 2},
+                    "scheduler_config": {"max_num_batched_tokens": 4096},
+                    "plugins": [{"API-Key": "[REDACTED]", "password": "[REDACTED]"}],
+                }
+            }
+            assert "private-" not in json.dumps(backend.info)
+            captured["vllm_config"]["model_config"]["model"] = "changed"
+            assert (
+                backend.info["server_info"]["vllm_config"]["model_config"]["model"]
+                == "test-model"
+            )
+        finally:
+            await backend.process_shutdown()
+
+        worker_backend = pickle.loads(pickle.dumps(backend))  # noqa: S301 - local object
+        await worker_backend.process_startup()
+        try:
+            await worker_backend.validate()
+            assert worker_backend.info == backend.info
+            assert len(httpx_mock.get_requests()) == 1
+        finally:
+            await worker_backend.process_shutdown()
+
+    @pytest.mark.parametrize("status", [301, 401, 403, 404, 500])
+    async def test_unavailable_endpoint_is_not_retried(
+        self, httpx_mock: HTTPXMock, status
+    ):
+        """Skip denied, missing, failing and redirecting optional endpoints."""
+        httpx_mock.add_response(
+            status_code=status, headers={"Location": "http://other-host"}
+        )
+        backend = _make_backend(
+            target="http://test", validate_backend=False, capture_server_config=True
+        )
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            await backend.validate()
+            assert "server_info" not in backend.info
+            assert len(httpx_mock.get_requests()) == 1
+        finally:
+            await backend.process_shutdown()
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            b"<html>not JSON</html>",
+            b"[]",
+            b"null",
+            b"{}",
+            b'{"vllm_config": "hf_token=private-token"}',
+            b'{"vllm_config": null}',
+            b"x" * (1024 * 1024 + 1),
+        ],
+        ids=["html", "array", "null", "missing", "legacy", "null-config", "oversized"],
+    )
+    async def test_unsupported_payload_is_not_saved(
+        self, httpx_mock: HTTPXMock, content
+    ):
+        """Reject malformed, legacy and oversized responses without failing setup."""
+        httpx_mock.add_response(stream=IteratorStream([content[:100], content[100:]]))
+        backend = _make_backend(
+            target="http://test", validate_backend=False, capture_server_config=True
+        )
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            assert "server_info" not in backend.info
+        finally:
+            await backend.process_shutdown()
+
+    @pytest.mark.parametrize("error_type", [httpx.ConnectError, httpx.ReadTimeout])
+    async def test_network_failure_does_not_expose_details(
+        self, httpx_mock: HTTPXMock, error_type
+    ):
+        """Network failures are nonfatal and do not log secret-bearing messages."""
+        httpx_mock.add_exception(error_type("private-credential"))
+        backend = _make_backend(
+            target="http://test", validate_backend=False, capture_server_config=True
+        )
+        await backend.process_startup()
+        try:
+            with patch("guidellm.backends.openai.http.logger") as logger:
+                await backend.validate()
+            assert "server_info" not in backend.info
+            logger.warning.assert_called_once()
+            assert "private-credential" not in str(logger.warning.call_args)
+        finally:
+            await backend.process_shutdown()
+
+    async def test_total_deadline_closes_slow_response(self, httpx_mock: HTTPXMock):
+        """Bound the whole fetch even when the server stalls during streaming."""
+
+        class SlowStream(httpx.AsyncByteStream):
+            closed = False
+
+            async def __aiter__(self):
+                yield b'{"vllm_config":'
+                await asyncio.sleep(10)
+                yield b"{}}"
+
+            async def aclose(self):
+                self.closed = True
+
+        stream = SlowStream()
+        httpx_mock.add_response(stream=stream)
+        backend = _make_backend(
+            target="http://test", validate_backend=False, capture_server_config=True
+        )
+        await backend.process_startup()
+        try:
+            with patch("guidellm.backends.openai.http._SERVER_CONFIG_TIMEOUT", 0.02):
+                await asyncio.wait_for(backend.validate(), timeout=1)
+            assert "server_info" not in backend.info
+            assert stream.closed
+        finally:
+            await backend.process_shutdown()
+
+    async def test_cancellation_propagates(self, httpx_mock: HTTPXMock):
+        """Optional capture must not swallow benchmark cancellation."""
+        httpx_mock.add_exception(asyncio.CancelledError())
+        backend = _make_backend(
+            target="http://test", validate_backend=False, capture_server_config=True
+        )
+        await backend.process_startup()
+        try:
+            with pytest.raises(asyncio.CancelledError):
+                await backend.validate()
+        finally:
+            await backend.process_shutdown()
