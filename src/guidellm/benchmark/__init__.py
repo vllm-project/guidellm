@@ -34,6 +34,7 @@ from .profiles import (
 )
 from .progress import (
     BenchmarkerProgress,
+    CompositeBenchmarkerProgress,
     GenerativeConsoleBenchmarkerProgress,
     GenerativeLoggingBenchmarkerProgress,
 )
@@ -75,6 +76,7 @@ __all__ = [
     "BenchmarkT",
     "Benchmarker",
     "BenchmarkerProgress",
+    "CompositeBenchmarkerProgress",
     "ConcurrentProfile",
     "GenerativeAudioMetricsSummary",
     "GenerativeBenchmark",
