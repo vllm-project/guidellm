@@ -148,11 +148,7 @@ def run(**kwargs):  # noqa: C901, PLR0915
     asyncio.run(
         entry.benchmark_generative_text(
             args=args,
-            progress=(
-                entry.GenerativeConsoleBenchmarkerProgress()
-                if not disable_console_interactive
-                else None
-            ),
+            progress=not disable_console_interactive,
             console=console,
         )
     )

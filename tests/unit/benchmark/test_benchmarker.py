@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from guidellm.benchmark import CompositeBenchmarkerProgress
 from guidellm.benchmark import benchmarker as module
 from guidellm.benchmark.progress import BenchmarkerProgress
 
@@ -73,7 +74,7 @@ async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, fai
                 environment=Mock(),
                 warmup=Mock(),
                 cooldown=Mock(),
-                progress=observers,
+                progress=CompositeBenchmarkerProgress(observers),
             )
         ]
 
