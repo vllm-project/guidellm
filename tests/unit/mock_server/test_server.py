@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import math
 import multiprocessing
 
@@ -10,6 +11,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from pydantic import ValidationError
+from sanic import Sanic
 
 from guidellm.mock_server.server import MockServer
 from guidellm.schemas.mock_server.config import MockServerConfig
@@ -96,6 +98,7 @@ class TestMockServerConfig:
         assert config.output_tokens_std == 0.0
         assert config.fail_after_requests is None
         assert config.max_concurrent_requests is None
+        assert config.log_request_received is False
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -150,6 +153,44 @@ class TestMockServer:
         """Test MockServer initialization without required config."""
         with pytest.raises(TypeError):
             MockServer()
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("enabled", [True, False])
+    async def test_log_request_received(
+        self, enabled: bool, caplog: pytest.LogCaptureFixture
+    ):
+        """Log request arrival only when log_request_received is enabled.
+
+        ## WRITTEN BY AI ##
+        """
+        config = MockServerConfig(log_request_received=enabled)
+        server = MockServer(config)
+        # httpx does not send an ASGI lifespan. Mark the app as ASGI and run
+        # startup so Sanic finalizes routing before the in-process request.
+        # Touchup rewrites Sanic methods in place, so leave it off here.
+        server.app.asgi = True
+        server.app.config.TOUCHUP = False
+        try:
+            await server.app._startup()
+            transport = httpx.ASGITransport(app=server.app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as client:
+                with caplog.at_level(logging.INFO, logger="sanic.root"):
+                    response = await client.get("/health")
+            assert response.status_code == 200
+            received = [
+                record.message
+                for record in caplog.records
+                if record.message.startswith("Request received:")
+            ]
+            if enabled:
+                assert any("GET /health" in message for message in received)
+            else:
+                assert received == []
+        finally:
+            Sanic.unregister_app(server.app)
 
 
 class TestMockServerEndpoints:

@@ -121,6 +121,13 @@ class MockServerConfig(BaseSettings):
             "wait for a slot. None disables the concurrency limit."
         ),
     )
+    log_request_received: bool = Field(
+        default=False,
+        description=(
+            "Log each request when it arrives, in addition to Sanic's access log "
+            "written when the response is sent. Disabled by default."
+        ),
+    )
 
     class Config:
         env_prefix = "GUIDELLM_MOCK_SERVER_"

@@ -129,6 +129,15 @@ __all__ = ["mock_server"]
         "over-saturation detection."
     ),
 )
+@click.option(
+    "--log-request-received",
+    is_flag=True,
+    default=False,
+    help=(
+        "Log each request when it arrives, in addition to Sanic's access log "
+        "written when the response is sent."
+    ),
+)
 def mock_server(
     host: str,
     port: int,
@@ -148,6 +157,7 @@ def mock_server(
     audio_tokens_per_second: float,
     fail_after_requests: int | None,
     max_concurrent_requests: int | None,
+    log_request_received: bool,
 ):
     config = MockServerConfig(
         host=host,
@@ -168,6 +178,7 @@ def mock_server(
         audio_tokens_per_second=audio_tokens_per_second,
         fail_after_requests=fail_after_requests,
         max_concurrent_requests=max_concurrent_requests,
+        log_request_received=log_request_received,
     )
 
     server = entry.MockServer(config)
