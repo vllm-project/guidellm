@@ -11,7 +11,7 @@ Welcome to the GuideLLM examples section! This area is designed to showcase prac
 - [Practice on vLLM Simulator](./practice_on_vllm_simulator.md) — run your first benchmark from scratch against the vLLM simulator, no GPU required
 - [Custom JSONL Dataset](./custom-jsonl-dataset.md) — benchmark a deployed endpoint with a local tokenizer and your own JSONL prompts
 - [Kubernetes / OpenShift Client Job](./kubernetes-openshift-job.md) — run GuideLLM as a non-GPU batch Job against an in-cluster OpenAI-compatible Service, with results on a PVC
-- [Adaptive Knee Detection](../guides/knee_detection.md) — calculate a throughput knee and refine it with additional concurrent-stream measurements
+- [Adaptive Knee Profile](../guides/knee_detection.md) — calculate a throughput knee and refine it with additional concurrent-stream measurements
 
 ## Call for Contributions
 

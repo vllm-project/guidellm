@@ -53,7 +53,6 @@ __all__ = [
     "BenchmarkMetadata",
     "BenchmarkScenario",
     "GenerativeMetricsArgs",
-    "KneeDetectionArgs",
     "MetricsArgs",
 ]
 
@@ -144,56 +143,6 @@ class GenerativeMetricsArgs(MetricsArgs):
         ),
         examples=[None, {"ttft_ms": 2000, "tpot_ms": 100}],
     )
-
-
-class KneeDetectionArgs(StandardBaseModel):
-    """Configuration for cross-benchmark knee detection and refinement."""
-
-    model_config = args_model_config()
-
-    enabled: bool = Field(
-        default=False,
-        strict=True,
-        description="Calculate and report the throughput knee after benchmark runs.",
-    )
-    adaptive: bool = Field(
-        default=False,
-        strict=True,
-        description=(
-            "Run additional concurrency points around a detected knee. This requires "
-            "knee detection to be enabled."
-        ),
-    )
-    points_each_side: int = Field(
-        default=5,
-        strict=True,
-        gt=0,
-        description=(
-            "Maximum number of candidate concurrency points on each side of the "
-            "adaptive anchor, before excluding measured points."
-        ),
-    )
-    max_step: int = Field(
-        default=5,
-        strict=True,
-        gt=0,
-        description=(
-            "Largest concurrency step to consider when selecting adaptive points."
-        ),
-    )
-
-    @model_validator(mode="after")
-    def _check_adaptive_requires_enabled(self) -> KneeDetectionArgs:
-        """
-        Require knee calculation when adaptive refinement is requested.
-
-        :return: The validated instance
-        :raises ValueError: If adaptive refinement is enabled without detection
-        """
-        if self.adaptive and not self.enabled:
-            raise ValueError("adaptive=true requires enabled=true")
-
-        return self
 
 
 class BenchmarkArgs(ReloadableBaseModel):
@@ -437,14 +386,6 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
         examples=[
             {"labels": {"name": "benchmark", "description": "Benchmark description"}}
         ],
-    )
-    knee_detection: KneeDetectionArgs = Field(
-        default_factory=KneeDetectionArgs,
-        description=(
-            "Cross-benchmark throughput knee detection and adaptive refinement "
-            "configuration."
-        ),
-        json_schema_extra={"argument_alias": "knee_detection"},
     )
     spec: BenchmarkArgs = Field(
         default_factory=BenchmarkArgs,  # type: ignore[arg-type]

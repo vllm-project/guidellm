@@ -148,6 +148,16 @@ guidellm run --profile kind=concurrent,streams=10
 
 You can use the `--override` option to specify a list of stream values, to run a set of concurrent "strategies" (sub-benchmarks) with different stream values. For example, `--profile kind=concurrent --override profile.streams 10,20,30` will run a concurrent strategy with 10 streams, a concurrent strategy with 20 streams, and a concurrent strategy with 30 streams.
 
+#### Knee Profile
+
+Measures an initial set of concurrency points and estimates where output throughput stops increasing substantially. Set `adaptive=true` to run one additional set of points around that estimate. Adaptive refinement is disabled by default.
+
+```bash
+guidellm run --profile '{"kind":"knee","streams":[1,5,10,20,40,80,160],"adaptive":true,"points_each_side":5,"max_step":3}'
+```
+
+The profile uses concurrent strategies for both phases and stores its initial analysis, adaptive plan, and final analysis in the report's `conclusions` list. See the [Knee Profile Guide](../guides/knee_detection.md) for configuration, calculation details, and a scenario YAML example.
+
 #### Constant Profile
 
 Sends asynchronous requests at a fixed rate per second.

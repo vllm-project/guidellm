@@ -68,13 +68,13 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: Over-Saturation Guide](over_saturation_stopping.md)
 
-- :material-chart-bell-curve-cumulative:{ .lg .middle } Knee Detection
+- :material-chart-bell-curve-cumulative:{ .lg .middle } Knee Profile
 
   ______________________________________________________________________
 
   Find where throughput saturates and optionally run additional concurrency points around the detected knee.
 
-  [:octicons-arrow-right-24: Knee Detection Guide](knee_detection.md)
+  [:octicons-arrow-right-24: Knee Profile Guide](knee_detection.md)
 
 - :material-wrench:{ .lg .middle } Tool Calling
 

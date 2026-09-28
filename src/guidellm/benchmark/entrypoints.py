@@ -12,19 +12,10 @@ validation, data preprocessing, profile constraints, and output format specifica
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar
 
 from guidellm.backends import Backend
-from guidellm.benchmark.analysis import (
-    AdaptiveConcurrencyPlan,
-    KneeAnalysis,
-    KneeDetectionConclusion,
-    analyze_knee,
-    benchmark_concurrency,
-    generate_adaptive_concurrency_plan,
-)
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerConsole,
@@ -60,11 +51,8 @@ from guidellm.schemas.benchmark import (
     BenchmarkArgs,
     BenchmarkOutputArgs,
     BenchmarkScenario,
-    ConcurrentProfileArgs,
     GenerativeMetricsArgs,
-    KneeDetectionArgs,
     ProfileArgs,
-    TransientPhaseConfig,
 )
 from guidellm.utils.console import Console
 from guidellm.utils.mixins import InfoMixin
@@ -483,156 +471,6 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
     )
 
 
-def _concurrent_profile_for_knee(
-    benchmark_args: BenchmarkArgs,
-    config: KneeDetectionArgs,
-) -> ConcurrentProfileArgs | None:
-    """Return a valid concurrent profile when knee detection is enabled.
-
-    :param benchmark_args: Resolved common benchmark configuration
-    :param config: Knee detection settings controlling profile validation
-    :return: Validated concurrent profile arguments, or None when disabled
-    :raises ValueError: If the profile is not concurrent or repeats stream counts
-    """
-    if not config.enabled:
-        return None
-    if not isinstance(benchmark_args.profile, ConcurrentProfileArgs):
-        raise ValueError(
-            "Knee detection requires a concurrent profile; "
-            f"received {benchmark_args.profile.kind!r}"
-        )
-    streams = benchmark_args.profile.streams
-    if len(streams) != len(set(streams)):
-        raise ValueError("Knee detection requires distinct concurrency points")
-    return benchmark_args.profile
-
-
-@dataclass
-class _BenchmarkRuntime:
-    """Resolved objects used by the optional adaptive benchmark profile."""
-
-    benchmarker: Benchmarker[GenerativeBenchmark, GenerationRequest, GenerationResponse]
-    request_loader: DataLoader[GenerationRequest]
-    backend: Backend
-    constraints: dict[str, Any]
-    progress_trackers: list[
-        BenchmarkerProgress[GenerativeBenchmarkAccumulator, GenerativeBenchmark]
-    ]
-    metrics_args: GenerativeMetricsArgs
-    warmup: TransientPhaseConfig
-    cooldown: TransientPhaseConfig
-    random_seed: int
-    console: Console | None
-
-
-async def _run_adaptive_benchmarks(
-    profile: Profile,
-    runtime: _BenchmarkRuntime,
-) -> list[GenerativeBenchmark]:
-    """Run the adaptive profile and return its completed benchmarks."""
-    benchmarks: list[GenerativeBenchmark] = []
-    async for benchmark in runtime.benchmarker.run(
-        accumulator_class=GenerativeBenchmarkAccumulator,
-        benchmark_class=GenerativeBenchmark,
-        requests=runtime.request_loader,  # type: ignore[arg-type]
-        backend=runtime.backend,
-        profile=profile,
-        environment=NonDistributedEnvironment(),
-        progress=CompositeBenchmarkerProgress(runtime.progress_trackers),
-        sample_size=runtime.metrics_args.sample_size,
-        warmup=runtime.warmup,
-        cooldown=runtime.cooldown,
-        prefer_response_metrics=runtime.metrics_args.prefer_response_metrics,
-        slo=runtime.metrics_args.slo,
-    ):
-        if benchmark:
-            benchmarks.append(benchmark)
-    return benchmarks
-
-
-def _knee_adaptive_plan(
-    config: KneeDetectionArgs,
-    analysis: KneeAnalysis,
-    benchmarks: list[GenerativeBenchmark],
-) -> AdaptiveConcurrencyPlan:
-    """Select adaptive points while respecting scenario-wide stopping actions."""
-    if not config.adaptive:
-        return AdaptiveConcurrencyPlan(
-            status="skipped", reason="Adaptive refinement is disabled"
-        )
-    for benchmark in benchmarks:
-        state = benchmark.scheduler_state
-        for actions in (
-            state.end_queuing_constraints,
-            state.end_processing_constraints,
-        ):
-            if any(action.stopping_scope == "all" for action in actions.values()):
-                return AdaptiveConcurrencyPlan(
-                    status="skipped",
-                    reason=(
-                        "An initial benchmark triggered a "
-                        "stopping_scope='all' constraint"
-                    ),
-                )
-    return generate_adaptive_concurrency_plan(
-        analysis,
-        [benchmark_concurrency(benchmark) for benchmark in benchmarks],
-        points_each_side=config.points_each_side,
-        max_step=config.max_step,
-    )
-
-
-async def _run_knee_refinement(
-    config: KneeDetectionArgs,
-    profile_args: ConcurrentProfileArgs | None,
-    report: GenerativeBenchmarksReport,
-    runtime: _BenchmarkRuntime,
-) -> None:
-    """Analyze and optionally refine a report when knee detection is enabled."""
-    if profile_args is None:
-        return
-
-    initial_benchmarks = list(report.benchmarks)
-    initial_analysis = analyze_knee(initial_benchmarks)
-    adaptive_plan = _knee_adaptive_plan(config, initial_analysis, initial_benchmarks)
-
-    adaptive_benchmarks: list[GenerativeBenchmark] = []
-    if adaptive_plan.status == "ready":
-        adaptive_profile_data = profile_args.model_dump(mode="python")
-        adaptive_profile_data["streams"] = list(adaptive_plan.concurrencies)
-        adaptive_profile_args = ConcurrentProfileArgs.model_validate(
-            adaptive_profile_data
-        )
-        adaptive_profile = await resolve_profile(
-            profile=adaptive_profile_args,
-            constraints=runtime.constraints,
-            console=runtime.console,
-            random_seed=runtime.random_seed,
-        )
-        if runtime.console:
-            runtime.console.print_update(
-                title="Starting adaptive knee refinement",
-                details={"streams": list(adaptive_plan.concurrencies)},
-                status="info",
-            )
-        adaptive_benchmarks = await _run_adaptive_benchmarks(adaptive_profile, runtime)
-
-    final_analysis = analyze_knee([*initial_benchmarks, *adaptive_benchmarks])
-    conclusion = KneeDetectionConclusion(
-        initial=initial_analysis,
-        adaptive_plan=adaptive_plan,
-        final=final_analysis,
-    )
-    report.benchmarks.extend(adaptive_benchmarks)
-    report.conclusions.append(conclusion.model_dump(mode="json"))
-    if runtime.console:
-        runtime.console.print_update(
-            title="Knee detection complete",
-            details=conclusion.model_dump(mode="json"),
-            status="success",
-        )
-
-
 # Main Entrypoints Functions
 
 
@@ -664,8 +502,6 @@ async def benchmark_generative_text(
         trackers.append(GenerativeConsoleBenchmarkerProgress())
 
     benchmark_args = resolve_to_single_benchmark(args.get_benchmarks())
-    knee_config = args.knee_detection
-    concurrent_profile_args = _concurrent_profile_for_knee(benchmark_args, knee_config)
 
     metrics_args = benchmark_args.metrics
     if not isinstance(metrics_args, GenerativeMetricsArgs):
@@ -735,24 +571,6 @@ async def benchmark_generative_text(
     # including the last, whose config was captured before it ran.
     if (conclusion := profile.conclusion) is not None:
         report.conclusions.append(conclusion)
-
-    await _run_knee_refinement(
-        knee_config,
-        concurrent_profile_args,
-        report,
-        _BenchmarkRuntime(
-            benchmarker=benchmarker,
-            request_loader=request_loader,
-            backend=backend,
-            constraints=constraints,
-            progress_trackers=trackers,
-            metrics_args=metrics_args,
-            warmup=warmup,
-            cooldown=cooldown,
-            random_seed=benchmark_args.seed.value,  # type: ignore[attr-defined]
-            console=console,
-        ),
-    )
 
     output_format_results: list[tuple[str, Any]] = []
     for output_arg, output in zip(benchmark_args.outputs, output_formats, strict=True):

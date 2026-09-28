@@ -23,7 +23,6 @@ from guidellm.schemas.benchmark import (
     BenchmarkArgs,
     BenchmarkScenario,
     GenerativeMetricsArgs,
-    KneeDetectionArgs,
     MetricsArgs,
 )
 from guidellm.utils.typing import BLANK
@@ -781,83 +780,3 @@ class TestMetricsArgsValidation:
 
         assert isinstance(scenario.spec.metrics, GenerativeMetricsArgs)
         assert scenario.spec.metrics.sample_size == 200
-
-
-@pytest.mark.sanity
-class TestKneeDetectionArgs:
-    """Test cross-benchmark knee detection configuration validation."""
-
-    def test_defaults_to_disabled(self):
-        """
-        Knee detection and adaptive refinement default to disabled.
-
-        ## WRITTEN BY AI ##
-        """
-        scenario = BenchmarkScenario.model_validate(
-            {
-                "spec": {
-                    **_PIPELINE_DEFAULTS,
-                    "backend": {
-                        "kind": "openai_http",
-                        "target": "http://localhost:8000",
-                    },
-                }
-            }
-        )
-
-        assert isinstance(scenario.knee_detection, KneeDetectionArgs)
-        assert scenario.knee_detection.enabled is False
-        assert scenario.knee_detection.adaptive is False
-        assert scenario.knee_detection.points_each_side == 5
-        assert scenario.knee_detection.max_step == 5
-
-    def test_explicit_configuration_is_preserved(self):
-        """
-        Explicit knee detection settings survive scenario validation.
-
-        ## WRITTEN BY AI ##
-        """
-        scenario = BenchmarkScenario.model_validate(
-            {
-                "knee_detection": {
-                    "enabled": True,
-                    "adaptive": True,
-                    "points_each_side": 3,
-                    "max_step": 2,
-                },
-                "spec": {
-                    **_PIPELINE_DEFAULTS,
-                    "backend": {
-                        "kind": "openai_http",
-                        "target": "http://localhost:8000",
-                    },
-                },
-            }
-        )
-
-        assert scenario.knee_detection.enabled is True
-        assert scenario.knee_detection.adaptive is True
-        assert scenario.knee_detection.points_each_side == 3
-        assert scenario.knee_detection.max_step == 2
-
-    @pytest.mark.parametrize(
-        ("field", "value"),
-        [("points_each_side", 0), ("max_step", 0), ("max_step", True)],
-    )
-    def test_adaptive_point_options_require_positive_integers(self, field, value):
-        """
-        Adaptive point selection options reject zero and boolean values.
-
-        ## WRITTEN BY AI ##
-        """
-        with pytest.raises(ValidationError):
-            KneeDetectionArgs.model_validate({field: value})
-
-    def test_adaptive_requires_detection(self):
-        """
-        Adaptive refinement cannot run when knee detection is disabled.
-
-        ## WRITTEN BY AI ##
-        """
-        with pytest.raises(ValidationError, match="requires enabled=true"):
-            KneeDetectionArgs(adaptive=True)
