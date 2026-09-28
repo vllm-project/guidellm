@@ -45,6 +45,21 @@ def _linear_graph(n: int) -> ConversationGraph[str]:
     return ConversationGraph(graph_id="linear", nodes=nodes, edges=edges)
 
 
+def _linear_graph_new_edges(n: int) -> ConversationGraph[str]:
+    """Build a linear chain of n nodes connected by new edges (OTEL trace mode)."""
+    node_ids = [f"main_{i}" for i in range(n)]
+    nodes = {nid: _make_node(nid) for nid in node_ids}
+    edges = [
+        ConversationEdge(
+            source_node_id=node_ids[i],
+            target_node_id=node_ids[i + 1],
+            history_context="new",
+        )
+        for i in range(n - 1)
+    ]
+    return ConversationGraph(graph_id="otel_trace", nodes=nodes, edges=edges)
+
+
 def _fork_join_graph() -> ConversationGraph[str]:
     """
     Build a fork/join graph:
@@ -584,7 +599,7 @@ class TestDAGExecutionStateTopologicalOrder:
         ## WRITTEN BY AI ##
         """
         state = DAGExecutionState(_linear_graph(5))
-        order = state.topological_order()
+        order = state.topological_order
         for i in range(4):
             assert order.index(f"n{i}") < order.index(f"n{i + 1}")
 
@@ -597,7 +612,7 @@ class TestDAGExecutionStateTopologicalOrder:
         ## WRITTEN BY AI ##
         """
         state = DAGExecutionState(_fork_join_graph())
-        order = state.topological_order()
+        order = state.topological_order
 
         # M1 before M2 before M3
         assert order.index("M1") < order.index("M2") < order.index("M3")
@@ -693,6 +708,59 @@ class TestDAGExecutionStateTurnIndex:
         state = DAGExecutionState(_linear_graph(2))
         with pytest.raises(KeyError, match="Unknown node_id"):
             state.compute_turn_index("missing")
+
+
+class TestDAGExecutionStatePrecedingNodes:
+    """Test preceding_nodes topological ordering rules.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_linear_preceding_nodes(self):
+        """Linear chain assigns 0..n-1 by topological order.
+
+        ## WRITTEN BY AI ##
+        """
+        state = DAGExecutionState(_linear_graph(4))
+        for i in range(4):
+            assert state.preceding_nodes[f"n{i}"] == i
+
+    @pytest.mark.sanity
+    def test_all_new_linear_increments_while_turn_index_stays_zero(self):
+        """OTEL trace mode: preceding_nodes increments; turn_index stays 0.
+
+        ## WRITTEN BY AI ##
+        """
+        state = DAGExecutionState(_linear_graph_new_edges(3))
+        for i in range(3):
+            node_id = f"main_{i}"
+            assert state.preceding_nodes[node_id] == i
+            assert state.compute_turn_index(node_id) == 0
+
+    @pytest.mark.sanity
+    def test_fork_join_preceding_nodes(self):
+        """Fork/join predecessors appear before dependents in topo order.
+
+        ## WRITTEN BY AI ##
+        """
+        state = DAGExecutionState(_fork_join_graph())
+        order = state.topological_order
+        for node_id in order:
+            assert state.preceding_nodes[node_id] == order.index(node_id)
+        assert state.preceding_nodes["M1"] < state.preceding_nodes["M4"]
+        assert state.preceding_nodes["W1"] < state.preceding_nodes["M4"]
+        assert state.preceding_nodes["W2"] < state.preceding_nodes["M4"]
+
+    @pytest.mark.smoke
+    def test_unknown_node_raises(self):
+        """preceding_nodes lookup raises KeyError for unknown node_id.
+
+        ## WRITTEN BY AI ##
+        """
+        state = DAGExecutionState(_linear_graph(2))
+        with pytest.raises(KeyError):
+            _ = state.preceding_nodes["missing"]
 
 
 class TestDAGExecutionStateRequeueDelay:

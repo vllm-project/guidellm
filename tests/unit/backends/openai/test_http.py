@@ -1102,7 +1102,7 @@ class TestCheckToolCallExpectations:
         )
         await backend.process_startup()
 
-        request = GenerationRequest()
+        request = GenerationRequest(columns={"text_column": ["test"]})
         request_info = RequestInfo(
             request_id="test-id",
             status="pending",

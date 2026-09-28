@@ -474,6 +474,78 @@ def _constrain_tool_call_body(
             body.pop(key, None)
 
 
+def _dataset_tool_choice(data: GenerationRequest) -> str:
+    """Return ``tool_choice`` from ``tool_choice_column``, else ``required``.
+
+    :param data: Current generation request.
+    :return: ``required`` or ``auto``.
+    :raises ValueError: If ``tool_choice_column`` is set to an unsupported value.
+    """
+    values = data.columns.get("tool_choice_column") or []
+    if not values:
+        return "required"
+    choice = values[0]
+    if choice not in ("required", "auto"):
+        raise ValueError(
+            f"Unsupported tool_choice_column value {choice!r}; "
+            "expected 'required' or 'auto'."
+        )
+    return str(choice)
+
+
+def _recorded_chat_messages(columns: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """Return OpenAI chat dicts from ``raw_messages_column`` when present.
+
+    The column is always chat-completions format. Dataset cells store one
+    value per column as a list: either ``[[{role, content}, ...]]`` or a
+    flat list of dicts.
+
+    :param columns: Request column mapping.
+    :return: Message dicts, or ``None`` when the column is unset.
+    """
+    recorded = columns.get("raw_messages_column")
+    if not recorded:
+        return None
+    first = recorded[0]
+    if isinstance(first, list):
+        return [item for item in first if isinstance(item, dict)]
+    if isinstance(first, dict):
+        return [item for item in recorded if isinstance(item, dict)]
+    return None
+
+
+def _require_request_payload(
+    arguments: GenerationRequestArguments,
+    *,
+    endpoint: str,
+    field: str,
+    sources: str,
+    columns: dict[str, Any],
+) -> None:
+    """Raise if the endpoint's required body field is missing or empty.
+
+    Called after ``format()`` has merged extras, history, and the current
+    turn so a payload supplied that way still counts as present.
+
+    :param arguments: Formatted request arguments.
+    :param endpoint: Request path shown in the error (e.g. ``/v1/completions``).
+    :param field: Body key that must be non-empty (``prompt``, ``messages``,
+        ``input``).
+    :param sources: Human-readable column names that can fill ``field``.
+    :param columns: Request columns, listed in the error when present and non-empty.
+    :raises ValueError: If ``field`` is missing or empty.
+    """
+    body = arguments.body or {}
+    if body.get(field):
+        return
+    nonempty = sorted(key for key, value in columns.items() if value)
+    nonempty_names = ", ".join(nonempty) if nonempty else "none"
+    raise ValueError(
+        f"Cannot build {endpoint} {field}: missing {sources}. "
+        f"Present, non-empty columns: {nonempty_names}."
+    )
+
+
 @OpenAIRequestHandlerFactory.register("/v1/completions")
 class TextCompletionsRequestHandler(OpenAIRequestHandler):
     """
@@ -526,6 +598,8 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         :param data: The generation request to format
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
+        :raises ValueError: If ``prompt`` cannot be built from columns, extras,
+            or history.
         """
         arguments: GenerationRequestArguments = GenerationRequestArguments()
         arguments.body = {}  # The type checker works better setting this field here
@@ -574,6 +648,13 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         if prompts:
             arguments.body["prompt"] = " ".join(prompts)
 
+        _require_request_payload(
+            arguments,
+            endpoint="/v1/completions",
+            field="prompt",
+            sources="text_column or prefix_column",
+            columns=data.columns,
+        )
         return arguments
 
     def compile_non_streaming(
@@ -899,8 +980,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         Handles three concerns:
 
         1. Deserializes and injects tool definitions from dataset columns.
-        2. Sets ``tool_choice`` to ``"required"`` or ``"none"`` depending on
-           whether the current turn expects a tool call.
+        2. Sets ``tool_choice`` from ``tool_choice_column`` when present,
+           otherwise ``"required"``, or ``"none"`` on turns that must not
+           emit tool calls.
         3. Removes body keys that are incompatible with tool calling
            (``ignore_eos``, ``stop``, and token-limit keys on tool-call turns).
 
@@ -920,9 +1002,53 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     ChatCompletionsRequestHandler._ensure_tool_format(t)
                     for t in tools_value
                 ]
-                body.setdefault("tool_choice", "required")
+                body.setdefault("tool_choice", _dataset_tool_choice(data))
 
         _constrain_tool_call_body(body, data, "max_completion_tokens")
+
+    def _append_request_content_messages(
+        self,
+        messages: list[dict[str, Any]],
+        req: GenerationRequest,
+        **kwargs,
+    ) -> None:
+        """Append current-turn content: recorded chat dicts or text/multimodal.
+
+        When ``raw_messages_column`` is set, those dicts are extended as-is so
+        multi-turn replay can send user, assistant, and tool messages without
+        wrapping them as a single user string.
+
+        :param messages: Message list to extend in place.
+        :param req: Request whose columns supply the current turn.
+        :param kwargs: Forwarded format kwargs (``extras`` for multimodal).
+        """
+        recorded = _recorded_chat_messages(req.columns)
+        if recorded is not None:
+            messages.extend(recorded)
+            return
+
+        prefix = " ".join(req.columns.get("prefix_column", []))
+        if prefix:
+            messages.append({"role": "system", "content": prefix})
+
+        extras = kwargs.get("extras")
+        content_extras = extras.content if extras is not None else None
+        prompts = [
+            self._format_prompts(
+                req.columns.get(col, []),
+                col,
+                content_extras,
+            )
+            for col in (
+                "text_column",
+                "image_column",
+                "video_column",
+                "audio_column",
+            )
+        ]
+        user_content = list(roundrobin(*prompts))
+        if user_content:
+            messages.append({"role": "user", "content": user_content})
 
     def _build_history_messages(
         self,
@@ -989,29 +1115,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     content = wrapped + content
                 messages.append({"role": "assistant", "content": content})
         else:
-            # Standard or tool_call turn: system + user content.
-            prefix = " ".join(req.columns.get("prefix_column", []))
-            if prefix:
-                messages.append({"role": "system", "content": prefix})
-
-            extras = kwargs.get("extras")
-            content_extras = extras.content if extras is not None else None
-            prompts = [
-                self._format_prompts(
-                    req.columns.get(col, []),
-                    col,
-                    content_extras,
-                )
-                for col in (
-                    "text_column",
-                    "image_column",
-                    "video_column",
-                    "audio_column",
-                )
-            ]
-            user_content = list(roundrobin(*prompts))
-            if user_content:
-                messages.append({"role": "user", "content": user_content})
+            # Standard or tool_call turn: recorded messages, or system + user content.
+            self._append_request_content_messages(messages, req, **kwargs)
 
             # Assistant response for history replay.
             wrapped = _wrap_reasoning(
@@ -1052,6 +1157,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         :param history: Prior (request, response) pairs in the conversation
         :param **kwargs: Additional keyword arguments for request formatting
         :return: The formatted request arguments
+        :raises ValueError: If ``messages`` cannot be built from columns, extras,
+            history, or a tool-injection turn.
         """
         arguments = GenerationRequestArguments()
         arguments.body = {}  # The type checker works best with body assigned here
@@ -1103,35 +1210,23 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     )
                 )
         else:
-            # Standard or tool_call turn: system prompt + user content.
-            prefix = " ".join(data.columns.get("prefix_column", []))
-            if prefix:
-                arguments.body["messages"].append({"role": "system", "content": prefix})
-
-            extras = kwargs.get("extras")
-            content_extras = extras.content if extras is not None else None
-            prompts = [
-                self._format_prompts(
-                    data.columns.get(col, []),
-                    col,
-                    content_extras,
-                )
-                for col in (
-                    "text_column",
-                    "image_column",
-                    "video_column",
-                    "audio_column",
-                )
-            ]
-            user_content = list(roundrobin(*prompts))
-            if user_content:
-                arguments.body["messages"].append(
-                    {"role": "user", "content": user_content}
-                )
+            # Standard or tool_call turn: recorded messages, or system + user content.
+            self._append_request_content_messages(
+                arguments.body["messages"], data, **kwargs
+            )
 
         # Inject tool definitions and apply tool-call-specific overrides.
         self._apply_tool_call_overrides(arguments.body, data)
 
+        _require_request_payload(
+            arguments,
+            endpoint="/v1/chat/completions",
+            field="messages",
+            sources=(
+                "raw_messages_column, text_column, prefix_column, or media columns"
+            ),
+            columns=data.columns,
+        )
         return arguments
 
     def compile_non_streaming(
@@ -1728,25 +1823,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                     content = wrapped + content
                 items.append({"role": "assistant", "content": content})
         else:
-            # Standard or tool_call turn: user content.
-            extras = kwargs.get("extras")
-            content_extras = extras.content if extras is not None else None
-            prompts = [
-                self._format_prompts(
-                    req.columns.get(col, []),
-                    col,
-                    content_extras,
-                )
-                for col in (
-                    "text_column",
-                    "image_column",
-                    "video_column",
-                    "audio_column",
-                )
-            ]
-            content_parts = list(roundrobin(*prompts))
-            if content_parts:
-                items.append({"role": "user", "content": content_parts})
+            self._append_request_content_input_items(items, req, **kwargs)
 
             wrapped = _wrap_reasoning(
                 res.reasoning_text if res else None, multiturn_reasoning
@@ -1809,8 +1886,9 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
         1. Deserializes and injects tool definitions from dataset columns,
            normalising to Responses API format when necessary.
-        2. Sets ``tool_choice`` to ``"required"`` or ``"none"`` depending on
-           whether the current turn expects a tool call.
+        2. Sets ``tool_choice`` from ``tool_choice_column`` when present,
+           otherwise ``"required"``, or ``"none"`` on turns that must not
+           emit tool calls.
         3. Removes body keys that are incompatible with tool calling
            (``ignore_eos``, ``stop``, and ``max_output_tokens`` on tool-call
            turns).
@@ -1827,9 +1905,43 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 body["tools"] = [
                     ResponsesRequestHandler._ensure_tool_format(t) for t in tools_value
                 ]
-                body.setdefault("tool_choice", "required")
+                body.setdefault("tool_choice", _dataset_tool_choice(data))
 
         _constrain_tool_call_body(body, data, "max_output_tokens")
+
+    def _append_request_content_input_items(
+        self,
+        items: list[dict[str, Any]],
+        req: GenerationRequest,
+        **kwargs,
+    ) -> None:
+        """Append current-turn content as Responses ``input`` items.
+
+        ``text_column`` / media wrap as a user message. ``raw_messages_column``
+        is ignored here; a missing ``input`` after format raises.
+
+        :param items: Input item list to extend in place.
+        :param req: Request whose columns supply the current turn.
+        :param kwargs: Forwarded format kwargs (``extras`` for multimodal).
+        """
+        extras = kwargs.get("extras")
+        content_extras = extras.content if extras is not None else None
+        prompts = [
+            self._format_prompts(
+                req.columns.get(col, []),
+                col,
+                content_extras,
+            )
+            for col in (
+                "text_column",
+                "image_column",
+                "video_column",
+                "audio_column",
+            )
+        ]
+        content_parts = list(roundrobin(*prompts))
+        if content_parts:
+            items.append({"role": "user", "content": content_parts})
 
     def format(  # noqa: C901
         self,
@@ -1889,25 +2001,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                     )
                 )
         elif data.turn_type != "tool_response_injection":
-            # Standard or tool_call turn: user content.
-            extras = kwargs.get("extras")
-            content_extras = extras.content if extras is not None else None
-            prompts = [
-                self._format_prompts(
-                    data.columns.get(col, []),
-                    col,
-                    content_extras,
-                )
-                for col in (
-                    "text_column",
-                    "image_column",
-                    "video_column",
-                    "audio_column",
-                )
-            ]
-            content_parts = list(roundrobin(*prompts))
-            if content_parts:
-                input_items.append({"role": "user", "content": content_parts})
+            self._append_request_content_input_items(input_items, data, **kwargs)
 
         arguments.body["input"] = input_items
 
@@ -1921,6 +2015,13 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
         self._apply_tool_call_overrides(arguments.body, data)
 
+        _require_request_payload(
+            arguments,
+            endpoint="/v1/responses",
+            field="input",
+            sources="text_column or media columns",
+            columns=data.columns,
+        )
         return arguments
 
     @staticmethod
@@ -2373,6 +2474,7 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
         :param history: Request/response history (unused for embeddings)
         :param **kwargs: Additional keyword arguments (model, encoding_format, etc.)
         :return: The formatted request arguments
+        :raises ValueError: If ``input`` cannot be built from ``text_column`` or extras.
         """
         arguments = GenerationRequestArguments()
         arguments.body = {}
@@ -2398,6 +2500,13 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
         if kwargs.get("extras"):
             arguments.model_combine(kwargs["extras"])
 
+        _require_request_payload(
+            arguments,
+            endpoint="/v1/embeddings",
+            field="input",
+            sources="text_column",
+            columns=data.columns,
+        )
         return arguments
 
     def compile_non_streaming(
