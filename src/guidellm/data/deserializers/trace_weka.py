@@ -537,7 +537,7 @@ class WEKATraceFormat(TraceFormatBase):
             spec.row[self.config.output_tokens_column]
         )
         if not kept_any:
-            logger.info(
+            logger.debug(
                 "WEKA conversation '{}' discarded: first turn at "
                 "node '{}' input+output tokens {} exceed "
                 "max_context_len {} (running={}, dropping {} turn(s))",
@@ -550,7 +550,7 @@ class WEKATraceFormat(TraceFormatBase):
             )
             self.discarded_rows += 1
             return True
-        logger.info(
+        logger.debug(
             "WEKA conversation '{}' truncated: discarding {} "
             "turn(s) starting at node '{}' (turn tokens={}, "
             "running={}, max_context_len={})",
