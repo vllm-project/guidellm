@@ -30,6 +30,15 @@ class TraceDataArgs(DataArgs):
         default="output_length",
         description="Column name for output token counts in the trace file.",
     )
+    duration_column: str = Field(
+        default="duration",
+        description=(
+            "Optional column for how long each request ran, in seconds. "
+            "Relative replay timing keeps the idle gap after this duration. "
+            "When the column is absent, relative timing treats each request "
+            "as instantaneous."
+        ),
+    )
     conversation_id_column: str | None = Field(
         default=None,
         description=(

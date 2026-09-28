@@ -40,6 +40,7 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationParentRef,
     ConversationTurnData,
 )
+from guidellm.logger import logger
 from guidellm.schemas.data.deserializers import TraceDataArgs
 from guidellm.utils.registry import RegistryMixin
 
@@ -50,6 +51,7 @@ __all__ = [
     "create_distinct_token_block",
     "create_prompt_from_hash_ids",
     "decode_prompt",
+    "duration_columns",
     "fill_hash_id_table",
     "generate_token_ids",
     "get_missing_columns",
@@ -92,6 +94,20 @@ def get_missing_columns(
     required_columns: list[str], actual_columns: list[str]
 ) -> list[str]:
     return [c for c in required_columns if c not in actual_columns]
+
+
+def duration_columns(row: dict, config: TraceDataArgs) -> dict[str, list[float]]:
+    """Map an optional duration column onto request scheduling columns.
+
+    :param row: Trace row that may contain ``config.duration_column``.
+    :param config: Trace format arguments naming that column.
+    :return: ``{"request_duration_column": [seconds]}`` when the column is
+        present and non-null, otherwise an empty dict.
+    """
+    column = config.duration_column
+    if column not in row or row[column] is None:
+        return {}
+    return {"request_duration_column": [float(row[column])]}
 
 
 def create_prompt_from_hash_ids(
@@ -173,8 +189,20 @@ def _seeded_faker(random_seed: int, copy_index: int) -> Faker:
 
 class TraceFormatBase(Protocol):
     config: TraceDataArgs
+    dataset: Dataset
 
     def __init__(self, config, dataset: Dataset) -> None: ...
+
+    def has_duration_column(self) -> bool:
+        """
+        Return whether this trace includes the configured duration column.
+
+        The default checks top-level dataset columns. Nested formats override
+        this to look at the row shape they actually read. Called once at load.
+
+        :return: True when ``config.duration_column`` is present
+        """
+        return self.config.duration_column in self.dataset.column_names
 
     def __iter__(self) -> Iterable[Dataset]:
         """Returns the next conversation as a `Dataset`."""
@@ -228,6 +256,7 @@ class TraceFormatBase(Protocol):
                 "prompt_tokens_count_column": [turn[self.config.prompt_tokens_column]],
                 "output_tokens_count_column": [turn[self.config.output_tokens_column]],
                 "relative_timestamp_column": [relative_timestamp],
+                **duration_columns(turn, self.config),
             }
             turns.append(
                 ConversationTurnData(
@@ -446,6 +475,12 @@ def _handle_column_search(config: TraceDataArgs, trace_format: TraceFormatBase) 
     missing = trace_format.find_required_columns(list(features.keys()))
     if missing:
         raise DataNotSupportedError(f"Trace missing required columns: {missing}")
+    if not trace_format.has_duration_column():
+        logger.warning(
+            "Trace duration column '{}' is missing; relative replay timing "
+            "will treat each request as instantaneous.",
+            trace_format.config.duration_column,
+        )
 
 
 @DatasetDeserializerFactory.register(["trace_synthetic"])

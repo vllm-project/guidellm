@@ -63,4 +63,18 @@ class TestReplayProfile:
         assert profile.strategy_types == ["trace"]
         assert isinstance(strategy, TraceReplayStrategy)
         assert strategy.time_scale == 2.0
+        assert strategy.timing == "absolute"
         assert profile.next_strategy(strategy, None) is None
+
+    @pytest.mark.smoke
+    def test_next_strategy_passes_relative_timing(self):
+        """
+        Replay profile forwards timing=relative onto the trace strategy.
+
+        ## WRITTEN BY AI ##
+        """
+        profile = _replay_profile(timing="relative")
+
+        strategy = profile.next_strategy(None, None)
+        assert isinstance(strategy, TraceReplayStrategy)
+        assert strategy.timing == "relative"

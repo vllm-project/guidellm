@@ -176,8 +176,12 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerativeConversationGraph | 
             columns, "relative_timestamp_column"
         )
         requeue_delay = self._get_optional_column_value(columns, "requeue_delay_column")
+        trace_duration = self._get_optional_column_value(
+            columns, "request_duration_column"
+        )
         columns.pop("relative_timestamp_column", None)
         columns.pop("requeue_delay_column", None)
+        columns.pop("request_duration_column", None)
 
         return GenerationRequest(
             columns=columns,
@@ -187,6 +191,7 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerativeConversationGraph | 
         ), RequestSettings(
             relative_timestamp=relative_timestamp,
             requeue_delay=requeue_delay,
+            trace_duration=trace_duration,
         )
 
     @staticmethod

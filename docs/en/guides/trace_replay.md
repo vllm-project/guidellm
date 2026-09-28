@@ -66,6 +66,7 @@ All trace formats can accept the following optional data arguments:
 | `timestamp_column`        | "timestamp"     | Column name for timestamps in the trace file                                                    |
 | `prompt_tokens_column`    | "input_length"  | Column name for prompt token counts in the trace file                                           |
 | `output_tokens_column`    | "output_length" | Column name for output token counts in the trace file                                           |
+| `duration_column`         | "duration"      | Optional column for how long each request ran, in seconds. Used by `timing=relative`            |
 | `time_scale`              | 1.0             | Scale remaining relative timestamps after wait and pack caps                                    |
 | `max_wait`                | unset           | Maximum gap in original trace seconds between consecutive requests in one session               |
 | `max_session_wait`        | unset           | Maximum idle in original trace seconds from the previous session's last request to this session |
@@ -83,6 +84,8 @@ guidellm run \
 ```
 
 `trace_synthetic` can be thought of as the format-agnostic option, only looking for the timestamp, prompt token count and output token count columns and ignoring all other features contained in a dataset. While primarily used for testing, `trace_synthetic` may be used as a fallback for trace formats not currently supported by GuideLLM.
+
+The replay profile's `timing` argument selects how those timestamps are applied. `absolute` (the default) starts each request at its trace time, waiting only if the prior turn is still running. `relative` keeps the idle gap after `duration_column`: a request recorded as 1 second with the next timestamp 5 seconds later starts that next request 4 seconds after this one actually finishes. `relative` is more forgiving for when the server gets overloaded, since late requests all get sent as soon as the prior turns end. If `duration_column` is missing, the loader logs one warning, and relative timing treats each request as instantaneous. This results in the actual gap being marginally longer.
 
 `trace_synthetic` and `mooncake` replay each row as an independent, single-request conversation. Rows are sorted by timestamp and keep their offsets from the first request in the trace. Prompts are generated as rows are consumed, and Mooncake hash IDs remain shared across rows within one `copies` pass. Use `max_session_wait` to cap gaps between these independent requests; `max_wait` only caps gaps within multi-request conversations, such as WEKA sessions.
 

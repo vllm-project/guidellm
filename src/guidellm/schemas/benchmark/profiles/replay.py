@@ -22,3 +22,11 @@ class ReplayProfileArgs(ProfileArgs):
         gt=0,
         description="Scheduler scale factor applied to relative timestamps",
     )
+    timing: Literal["absolute", "relative"] = Field(
+        default="absolute",
+        description=(
+            "absolute schedules each request at its trace timestamp and waits "
+            "only while a prior turn is still running. relative keeps the idle "
+            "gap after each request's recorded duration."
+        ),
+    )

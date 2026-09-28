@@ -214,11 +214,14 @@ Replays trace events using timestamps from a trace file dataset. See [Trace Repl
 guidellm run --profile kind=replay,time_scale=1.0
 ```
 
-| Profile parameter | Description                                   | Example                                |
-| ----------------- | --------------------------------------------- | -------------------------------------- |
-| `time_scale`      | Time scale for intervals between trace events | `--profile kind=replay,time_scale=2.0` |
+| Profile parameter | Description                                                                                                           | Example                                 |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `time_scale`      | Time scale for intervals between trace events                                                                         | `--profile kind=replay,time_scale=2.0`  |
+| `timing`          | `absolute` (default) targets each trace timestamp. `relative` keeps the idle gap after each recorded request duration | `--profile kind=replay,timing=relative` |
 
 Wait caps and a data-side `time_scale` are set on `--data`. The profile `time_scale` is applied by the scheduler after those dataset timestamps are built, allowing multiple runs with different time scales.
+
+`timing=absolute` runs each request at its trace time and holds it only while a prior turn is still in progress. `timing=relative` keeps the gap that followed the recorded duration: if a request was recorded as 1 second and the next timestamp is 5 seconds later, the next request starts 4 seconds after this one actually finishes. A late or slow request shifts everything after it. When the trace has no duration column, the loader logs one warning and relative timing treats each request as instantaneous, so that same example starts the next request 5 seconds after this one finishes. Set the column name with `duration_column` on `--data` (default `duration`).
 
 ## Data Options
 

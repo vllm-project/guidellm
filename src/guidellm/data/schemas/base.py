@@ -28,6 +28,7 @@ GenerativeDatasetColumnType = Literal[
     "turn_type_column",
     "relative_timestamp_column",
     "requeue_delay_column",
+    "request_duration_column",
     "conversation_turns_column",
 ]
 

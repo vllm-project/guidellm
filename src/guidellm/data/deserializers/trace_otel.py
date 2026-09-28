@@ -23,6 +23,7 @@ from guidellm.data.deserializers.trace_common import (
     TraceFormatBase,
     TraceFormatRegistry,
     _validate_api_row,
+    duration_columns,
 )
 from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
@@ -590,11 +591,15 @@ def span_to_replay_row(
         return None
     prompt_tokens, output_tokens = tokens
     timestamp = parse_span_timestamp(span.get(config.span_timestamp_field))
-    return {
+    row = {
         config.timestamp_column: timestamp,
         config.prompt_tokens_column: prompt_tokens,
         config.output_tokens_column: output_tokens,
     }
+    duration = span.get(config.duration_column)
+    if duration is not None:
+        row[config.duration_column] = duration
+    return row
 
 
 def nested_spans_column(dataset: Dataset, config: OTELTraceFormatArgs) -> str | None:
@@ -670,14 +675,15 @@ def _llm_replay_spans(
         row = span_to_replay_row(span, config)
         if row is None:
             continue
-        rows.append(
-            {
-                "span": span,
-                "timestamp": row[config.timestamp_column],
-                "prompt_tokens": row[config.prompt_tokens_column],
-                "output_tokens": row[config.output_tokens_column],
-            }
-        )
+        wrapped = {
+            "span": span,
+            "timestamp": row[config.timestamp_column],
+            "prompt_tokens": row[config.prompt_tokens_column],
+            "output_tokens": row[config.output_tokens_column],
+        }
+        if config.duration_column in row:
+            wrapped[config.duration_column] = row[config.duration_column]
+        rows.append(wrapped)
     rows.sort(key=lambda item: item["timestamp"])
     return rows
 
@@ -721,6 +727,27 @@ class OTELTraceFormat(TraceFormatBase):
         if self.config.span_timestamp_field in sample or "attributes" in sample:
             return []
         return [self.config.span_timestamp_field]
+
+    def has_duration_column(self) -> bool:
+        """
+        Return whether span records include the duration column.
+
+        Span-per-line files store it as a top-level field. Session-per-line
+        files store it on the first nested span. Later rows are not scanned.
+
+        :return: True when ``config.duration_column`` is present
+        """
+        name = self.config.duration_column
+        if name in self.dataset.column_names:
+            return True
+        spans_col = nested_spans_column(self.dataset, self.config)
+        if spans_col is None:
+            return False
+        spans = self.dataset[spans_col][0]
+        if not spans:
+            return False
+        first = spans[0]
+        return isinstance(first, dict) and name in first
 
     def validate_row(
         self,
@@ -902,6 +929,7 @@ class OTELTraceFormat(TraceFormatBase):
                         relative_timestamp=next_row["timestamp"] - start_ts,
                         output_tokens=next_row["output_tokens"],
                         tools_span=next_row["span"] if include_tools else None,
+                        source_row=next_row,
                     ),
                     history_context,
                     parent_history_context="full",
@@ -986,11 +1014,13 @@ class OTELTraceFormat(TraceFormatBase):
         relative_timestamp: float,
         output_tokens: int | None,
         tools_span: dict[str, Any] | None,
+        source_row: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         columns: dict[str, Any] = {
             "turn_type_column": ["tool_response_injection"],
             "tool_response_column": responses,
             "relative_timestamp_column": [relative_timestamp],
+            **(duration_columns(source_row, self.config) if source_row else {}),
         }
         if output_tokens is not None:
             columns["output_tokens_count_column"] = [output_tokens]
@@ -1011,6 +1041,7 @@ class OTELTraceFormat(TraceFormatBase):
             "output_tokens_count_column": [turn["output_tokens"]],
             "relative_timestamp_column": [relative_timestamp],
             "raw_messages_column": [self._raw_turn_messages(turn_idx, turn, rows)],
+            **duration_columns(turn, self.config),
         }
 
     def _raw_turn_messages(
