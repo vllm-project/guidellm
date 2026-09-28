@@ -763,6 +763,67 @@ class TestDAGExecutionStatePrecedingNodes:
             _ = state.preceding_nodes["missing"]
 
 
+class TestDAGExecutionStatePredecessorCompleted:
+    """Record when the last parent finishes, excluding think time.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.sanity
+    def test_set_when_last_parent_finishes(self, monkeypatch):
+        """
+        predecessor_completed is the last parent's finish time, not unlock time.
+
+        The first parent leaves the child unset. Think time on the unlocking
+        parent does not move the recorded completion.
+
+        ## WRITTEN BY AI ##
+        """
+        clock = {"t": 10.0}
+        monkeypatch.setattr("guidellm.scheduler.dag.time.time", lambda: clock["t"])
+
+        nodes = {
+            "A": _make_node("A"),
+            "B": _make_node("B", settings=RequestSettings(requeue_delay=5.0)),
+            "C": _make_node("C"),
+        }
+        edges = [
+            ConversationEdge(
+                source_node_id="A",
+                target_node_id="C",
+                history_context="full",
+            ),
+            ConversationEdge(
+                source_node_id="B",
+                target_node_id="C",
+                history_context="last",
+            ),
+        ]
+        infos = {
+            node_id: RequestInfo(request_id=node_id, status="queued")
+            for node_id in nodes
+        }
+        state = DAGExecutionState(
+            ConversationGraph(
+                graph_id="join",
+                nodes=nodes,
+                edges=edges,
+                request_infos=infos,
+            )
+        )
+
+        state.mark_completed("A", "ra", None)
+        assert infos["C"].timings.predecessor_completed is None
+        assert infos["A"].timings.predecessor_completed is None
+
+        clock["t"] = 25.0
+        state.mark_completed("B", "rb", None)
+        assert infos["C"].timings.predecessor_completed == pytest.approx(25.0)
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[1] == pytest.approx(30.0)
+
+
 class TestDAGExecutionStateRequeueDelay:
     """Test think-time gating via requeue_delay.
 

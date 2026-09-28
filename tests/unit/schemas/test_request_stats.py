@@ -275,6 +275,8 @@ class TestGenerativeRequestStats:
             "request_end_time",
             "request_latency",
             "request_dispatch_delay",
+            "turn_predecessor_delay",
+            "turn_scheduling_delay",
             "request_scheduled_latency",
             "prompt_tokens",
             "output_tokens",
@@ -507,8 +509,57 @@ class TestGenerativeRequestStats:
         )
 
         assert instance.request_dispatch_delay is None
+        assert instance.turn_predecessor_delay is None
+        assert instance.turn_scheduling_delay is None
         assert instance.request_scheduled_latency is None
         assert instance.request_latency == pytest.approx(1.0)
+
+    @pytest.mark.sanity
+    def test_predecessor_and_scheduler_delay_split_dispatch_delay(self):
+        """
+        Predecessor delay is the wait on a prior turn; scheduler delay is the rest.
+
+        A root has no predecessor, so its whole dispatch delay is scheduler delay.
+        A child blocked past its target splits the wait at the predecessor's
+        completion. A predecessor that finished early contributes nothing.
+
+        ## WRITTEN BY AI ##
+        """
+
+        def _stats(
+            request_id: str,
+            targeted: float,
+            start: float,
+            predecessor: float | None,
+        ) -> GenerativeRequestStats:
+            info = RequestInfo(request_id=request_id, status="completed")
+            info.timings.targeted_start = targeted
+            info.timings.request_start = start
+            info.timings.request_end = start + 0.5
+            info.timings.resolve_end = start + 0.5
+            info.timings.predecessor_completed = predecessor
+            return GenerativeRequestStats(
+                request_id=request_id,
+                info=info,
+                input_metrics=UsageMetrics(text_tokens=4),
+                output_metrics=UsageMetrics(text_tokens=6),
+            )
+
+        root = _stats("root", targeted=100.0, start=103.0, predecessor=None)
+        assert root.turn_predecessor_delay == pytest.approx(0.0)
+        assert root.turn_scheduling_delay == pytest.approx(3.0)
+        assert root.request_dispatch_delay == pytest.approx(3.0)
+
+        child = _stats("child", targeted=100.0, start=107.0, predecessor=104.0)
+        assert child.turn_predecessor_delay == pytest.approx(4.0)
+        assert child.turn_scheduling_delay == pytest.approx(3.0)
+        assert child.request_dispatch_delay == pytest.approx(
+            child.turn_predecessor_delay + child.turn_scheduling_delay
+        )
+
+        early = _stats("early", targeted=100.0, start=108.0, predecessor=99.0)
+        assert early.turn_predecessor_delay == pytest.approx(0.0)
+        assert early.turn_scheduling_delay == pytest.approx(8.0)
 
     @pytest.mark.smoke
     def test_marshalling(self, valid_instances):

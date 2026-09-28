@@ -69,14 +69,24 @@ These metrics provide a breakdown of the overall request statuses, helping users
 ### Dispatch Delay
 
 - **Definition**: `request_dispatch_delay` is `request_start - targeted_start`: the time between when a request was scheduled to arrive and when it was actually sent.
-- **Use Case**: Reveals whether the benchmark itself kept up with the configured arrival schedule. A request cannot be dispatched while the concurrency limit is saturated, and that wait is not part of Request Latency. A delay near zero means the reported latencies reflect the full picture; a large delay means the load generator fell behind and the server saw a lower arrival rate than was requested.
+- **Use Case**: Reveals whether the benchmark itself kept up with the configured arrival schedule. A request cannot be dispatched while the concurrency limit is saturated, and that wait is not part of Request Latency. A delay near zero means the reported latencies reflect the full picture; a large delay means the load generator fell behind and the server saw a lower arrival rate than was requested. Dispatch Delay does not say why the request was late. Turn Predecessor Delay and Turn Scheduling Delay split that wait.
+
+### Turn Predecessor Delay
+
+- **Definition**: `turn_predecessor_delay` is the part of Dispatch Delay spent waiting because a prior turn was still running after this request's targeted start. It is zero when the request has no predecessor, or the predecessor finished before the target. When both happen, the wait until the predecessor finishes is Turn Predecessor Delay and any further wait is Turn Scheduling Delay. The two sum to Dispatch Delay.
+- **Use Case**: Shows that the previous turn, not the load generator, kept this request from starting on time.
+
+### Turn Scheduling Delay
+
+- **Definition**: `turn_scheduling_delay` is Dispatch Delay minus Turn Predecessor Delay. It is the wait after the request was both due and no longer blocked by a predecessor, including time to deserialize the trace, time spent queued, and worker turnaround. Think time (`requeue_delay`) that runs past the target is included here. Trace replay does not set think time.
+- **Use Case**: Can indicate when GuideLLM could not keep up or the machine was undersized for the benchmark.
 
 ### Scheduled Latency
 
 - **Definition**: `request_scheduled_latency` is `request_end - targeted_start`: request latency measured from the scheduled arrival time rather than from dispatch. When all three timestamps are present it equals Dispatch Delay plus Request Latency.
 - **Use Case**: Describes what a client holding to the configured arrival schedule would have experienced, including time spent waiting to be dispatched. When the benchmark keeps up this matches Request Latency; when it falls behind, the gap between the two is latency that Request Latency alone does not show.
 
-Dispatch Delay and Scheduled Latency only apply to some of the scheduling strategies. See [Applicability of Dispatch Delay and Scheduled Latency](#applicability-of-dispatch-delay-and-scheduled-latency) below.
+Dispatch Delay, Turn Predecessor Delay, Turn Scheduling Delay, and Scheduled Latency only apply to some of the scheduling strategies. See [Applicability of Dispatch Delay and Scheduled Latency](#applicability-of-dispatch-delay-and-scheduled-latency) below. In relative trace replay, `targeted_start` moves with the prior turn, so these delays are measured against that shifted target rather than the original trace clock.
 
 ### Time to First Token (TTFT)
 
@@ -162,7 +172,7 @@ By combining these metrics and statistical summaries, GuideLLM enables users to 
 
 ## Applicability of Dispatch Delay and Scheduled Latency
 
-Both metrics are derived from `targeted_start`, so they only describe arrival-schedule delay for strategies that define an arrival schedule:
+Dispatch Delay, Turn Predecessor Delay, Turn Scheduling Delay, and Scheduled Latency are derived from `targeted_start`, so they only describe arrival-schedule delay for strategies that define an arrival schedule:
 
 - `constant` and `poisson` derive each target from the configured rate.
 - `trace` derives each target from the replayed dataset timestamps. Trace requests that carry no relative timestamp fall back to the benchmark start time and take on the `throughput` caveat below.
@@ -172,8 +182,8 @@ The `synchronous`, `concurrent`, and `throughput` strategies set an ASAP-style t
 - `synchronous` and `concurrent` target the previous request's completion, apart from the requests staggered across a configured rampup. The target is therefore derived from the system's own responses, so a delay measured against it is circular: it describes harness turnaround rather than lag against an arrival schedule.
 - `throughput` targets the benchmark start time for every request, so the value grows with elapsed run time and is not a delay at all.
 
-For those three strategies **both metrics are reported as `null`** rather than as zero, and their columns do not appear in the CSV. Reporting zero would read as "no delay measured", which is a stronger and more misleading claim than "not applicable". This matters for the default `sweep` profile, which runs `synchronous` and `throughput` alongside its rate-based strategies.
+For those three strategies **these metrics are reported as `null`** rather than as zero, and their columns do not appear in the CSV. Reporting zero would read as "no delay measured", which is a stronger and more misleading claim than "not applicable". This matters for the default `sweep` profile, which runs `synchronous` and `throughput` alongside its rate-based strategies.
 
-For multi-turn conversation datasets, a turn's target is fixed when a scheduler slot opens rather than when the preceding turn completes, so configured think time between turns is counted as Dispatch Delay.
+For multi-turn conversation datasets, a turn's target is fixed when a scheduler slot opens rather than when the preceding turn completes, so configured think time between turns is counted as Dispatch Delay and as Turn Scheduling Delay.
 
 Where the metrics do apply they are recorded in the serialized report and the CSV output for offline analysis. They are omitted from the final console latency table in all cases, since that table is shared across every profile in a run.

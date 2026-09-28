@@ -419,13 +419,20 @@ class TestScheduleRelativeMetrics:
 
         # Strip the new keys to mimic a report written before they existed.
         payload = metrics.model_dump()
-        for name in ("request_dispatch_delay", "request_scheduled_latency"):
+        for name in (
+            "request_dispatch_delay",
+            "request_scheduled_latency",
+            "turn_predecessor_delay",
+            "turn_scheduling_delay",
+        ):
             del payload[name]
 
         restored = GenerativeMetrics.model_validate(payload)
 
         assert restored.request_dispatch_delay is None
         assert restored.request_scheduled_latency is None
+        assert restored.turn_predecessor_delay is None
+        assert restored.turn_scheduling_delay is None
         assert restored.request_latency.successful.mean == pytest.approx(0.5)
 
     @pytest.mark.sanity
@@ -551,8 +558,49 @@ class TestScheduleRelativeMetrics:
         # "no delay measured" instead of "not applicable".
         assert metrics.request_dispatch_delay is None
         assert metrics.request_scheduled_latency is None
+        assert metrics.turn_predecessor_delay is None
+        assert metrics.turn_scheduling_delay is None
         # Existing metrics are unaffected by the gating.
         assert metrics.request_latency.successful.mean == pytest.approx(0.5)
+
+    @pytest.mark.sanity
+    def test_compile_splits_dispatch_delay_into_predecessor_and_scheduler(self):
+        """
+        Compiled predecessor and scheduler delays sum to dispatch delay.
+
+        The root has no predecessor, so its delay is entirely scheduler delay.
+        The child was blocked by a predecessor for part of the wait.
+
+        ## WRITTEN BY AI ##
+        """
+        root = _make_scheduled_stats(
+            "root",
+            SCHEDULE_BASE_TIME,
+            SCHEDULE_BASE_TIME + 3.0,
+            SCHEDULE_BASE_TIME + 3.5,
+        )
+        child = _make_scheduled_stats(
+            "child",
+            SCHEDULE_BASE_TIME,
+            SCHEDULE_BASE_TIME + 7.0,
+            SCHEDULE_BASE_TIME + 7.5,
+        )
+        child.info.timings.predecessor_completed = SCHEDULE_BASE_TIME + 4.0
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                [root, child], SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10.0
+            )
+        )
+
+        assert metrics.turn_predecessor_delay is not None
+        assert metrics.turn_scheduling_delay is not None
+        assert metrics.request_dispatch_delay is not None
+        assert metrics.turn_predecessor_delay.successful.mean == pytest.approx(2.0)
+        assert metrics.turn_scheduling_delay.successful.mean == pytest.approx(3.0)
+        assert metrics.request_dispatch_delay.successful.mean == pytest.approx(
+            metrics.turn_predecessor_delay.successful.mean
+            + metrics.turn_scheduling_delay.successful.mean
+        )
 
     @pytest.mark.regression
     def test_compile_skips_requests_without_a_dispatch_timestamp(self):
