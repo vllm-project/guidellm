@@ -451,9 +451,33 @@ class WEKATraceFormat(TraceFormatBase):
             raise InvalidRowError(
                 "WEKA format: conversation has no API requests to replay"
             )
+        # One pass builds turns and stops at the first turn that would exceed
+        # the context budget, before prompt generation. The dataset origin is
+        # already known, so relative timestamps are written in this same pass.
+        max_len = self.config.max_context_len
+        prompt_col = self.config.prompt_tokens_column
+        output_col = self.config.output_tokens_column
         origin = 0.0 if self._trace_origin is None else self._trace_origin
+        running_tokens = 0
         turns: list[ConversationTurnData] = []
-        for spec in specs:
+        for index, spec in enumerate(specs):
+            if max_len is not None:
+                turn_tokens = int(spec.row[prompt_col]) + int(spec.row[output_col])
+                if running_tokens + turn_tokens > max_len:
+                    logger.debug(
+                        "WEKA conversation '{}' truncated: discarding {} "
+                        "turn(s) starting at node '{}' (turn tokens={}, "
+                        "running={})",
+                        conv_id,
+                        len(specs) - index,
+                        spec.node_id,
+                        turn_tokens,
+                        running_tokens,
+                    )
+                    if len(turns) < 1:
+                        return ConversationGraphData(turns=[])
+                    break
+                running_tokens += turn_tokens
             _validate_api_row(spec.row, self.config, self.validate_row)
             prompt = self.create_prompt(
                 spec.row,
@@ -464,12 +488,8 @@ class WEKATraceFormat(TraceFormatBase):
             )
             columns: dict[str, Any] = {
                 "text_column": [prompt],
-                "prompt_tokens_count_column": [
-                    spec.row[self.config.prompt_tokens_column]
-                ],
-                "output_tokens_count_column": [
-                    spec.row[self.config.output_tokens_column]
-                ],
+                "prompt_tokens_count_column": [spec.row[prompt_col]],
+                "output_tokens_count_column": [spec.row[output_col]],
                 "relative_timestamp_column": [spec.absolute_t - origin],
             }
             if spec.turn_type is not None:

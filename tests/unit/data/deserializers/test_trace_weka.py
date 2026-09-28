@@ -154,6 +154,7 @@ class TestWEKATraceFormat:
                 "tool_response_tokens_stdev",
                 "tool_response_tokens_min",
                 "tool_response_tokens_max",
+                "max_context_len",
             ),
             kwargs,
         )
@@ -640,6 +641,83 @@ class TestWEKATraceFormat:
             for call in mock_logger.warning.call_args_list
         ]
         assert any("not ordered chronologically" in message for message in messages)
+
+    @pytest.mark.sanity
+    def test_max_context_len_discards_conversation_when_first_turn_exceeds(
+        self, tmp_path: Path, deserializer
+    ):
+        """
+        Skip a conversation whose first turn already exceeds the token budget.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"id": "conv0", "requests": ['
+            '{"t": 0, "in": 30, "out": 30, "hash_ids": []}, '
+            '{"t": 1, "in": 1, "out": 1, "hash_ids": []}]}\n',
+        )
+        ds = self.deserialize(deserializer, trace, max_context_len=50)
+        assert list(ds) == []
+        trace_format = ds._ex_iterable.format
+        assert trace_format.discarded_rows == 1
+        assert trace_format.discarded_turns == 0
+
+    @pytest.mark.sanity
+    def test_max_context_len_truncates_at_overflow_using_trace_origin(
+        self, tmp_path: Path, deserializer
+    ):
+        """
+        Drop the overflowing turn and later turns. Relative timestamps stay on
+        the dataset origin, which is taken from every request time.
+
+        ## WRITTEN BY AI ##
+        """
+        # Emit order is 100, then 40, then 0. The last turn exceeds the budget
+        # and is dropped, but it still sets the dataset origin to 0.
+        trace = write_trace(
+            tmp_path,
+            '{"id": "conv0", "requests": ['
+            '{"t": 100.0, "in": 10, "out": 10, "hash_ids": []}, '
+            '{"t": 40.0, "in": 10, "out": 5, "hash_ids": []}, '
+            '{"t": 0.0, "in": 100, "out": 100, "hash_ids": []}]}\n',
+        )
+        ds = self.deserialize(deserializer, trace, max_context_len=40)
+        turns = load_graph_turns(next(iter(ds)))
+        assert [turn.node_id for turn in turns] == ["main_0", "main_1"]
+        assert [turn.columns["relative_timestamp_column"][0] for turn in turns] == [
+            100.0,
+            40.0,
+        ]
+        trace_format = ds._ex_iterable.format
+        assert trace_format.discarded_rows == 0
+        assert trace_format.discarded_turns == 1
+
+    @pytest.mark.regression
+    def test_max_context_len_unset_keeps_every_turn(self, tmp_path: Path, deserializer):
+        """
+        Leave conversations unchanged when no context-length cap is configured.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"id": "conv0", "requests": ['
+            '{"t": 100.0, "in": 10, "out": 10, "hash_ids": []}, '
+            '{"t": 40.0, "in": 10, "out": 5, "hash_ids": []}, '
+            '{"t": 0.0, "in": 100, "out": 100, "hash_ids": [1]}]}\n',
+        )
+        ds = self.deserialize(deserializer, trace)
+        turns = load_graph_turns(next(iter(ds)))
+        assert [turn.node_id for turn in turns] == ["main_0", "main_1", "main_2"]
+        assert [turn.columns["relative_timestamp_column"][0] for turn in turns] == [
+            100.0,
+            40.0,
+            0.0,
+        ]
+        trace_format = ds._ex_iterable.format
+        assert trace_format.discarded_rows == 0
+        assert trace_format.discarded_turns == 0
 
     @pytest.mark.sanity
     @pytest.mark.parametrize("hash_id_scope", [None, "global"])
