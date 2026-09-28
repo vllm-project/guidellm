@@ -237,14 +237,28 @@ class OpenAIHTTPBackend(Backend):
                 body.extend(chunk)
 
         payload = json.loads(body)
-        if not isinstance(payload, dict) or not isinstance(
-            payload.get("vllm_config"), dict
-        ):
-            raise ValueError("Expected structured vllm_config")
+        if not isinstance(payload, dict):
+            raise ValueError("Expected a server information object")
 
-        # Environment dumps are not needed for this feature and can contain
-        # private deployment details. Do not persist legacy repr strings either.
-        return {"vllm_config": _redact_server_config(payload["vllm_config"])}
+        selected = self._args.capture_server_config
+        captured = {}
+        for section in ("vllm_config", "vllm_env", "system_env"):
+            if selected != "all" and (not selected or section not in selected):
+                continue
+            value = payload.get(section)
+            if not isinstance(value, dict):
+                # Only fixed section names are logged, never response contents.
+                logger.warning(
+                    "Server information section {} was not recorded: "
+                    "missing or unsupported format.",
+                    section,
+                )
+                continue
+            captured[section] = _redact_server_config(value)
+
+        if not captured:
+            raise ValueError("No selected structured server information sections")
+        return captured
 
     async def available_models(self) -> list[str]:
         """

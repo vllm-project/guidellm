@@ -329,7 +329,9 @@ async def test_server_config_reaches_serialized_benchmark(httpx_mock: HTTPXMock)
         url="http://test/v1/models", json={"data": [{"id": "test-model"}]}
     )
     backend, model = await resolve_backend(
-        OpenAIHTTPBackendArgs(target="http://test", capture_server_config=True)
+        OpenAIHTTPBackendArgs(
+            target="http://test", capture_server_config={"vllm_config"}
+        )
     )
     assert model == "test-model"
     assert backend._async_client is None

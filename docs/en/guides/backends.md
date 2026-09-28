@@ -119,23 +119,33 @@ The API key is used to set the `Authorization: Bearer {api_key}` header in HTTP 
 
 ## Recording vLLM Server Configuration
 
-To include the server's configuration alongside benchmark results, enable `capture_server_config` on the HTTP backend:
+To include the server's configuration alongside benchmark results, select the desired `capture_server_config` sections on the HTTP backend:
 
 ```bash
 guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000,capture_server_config=true \
+  --backend '{"kind":"openai_http","target":"http://localhost:8000","capture_server_config":["vllm_config"]}' \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --constraint kind=max_requests,count=10 \
   --output kind=json,path=benchmark.json
 ```
 
-During setup, GuideLLM requests `/server_info?config_format=json` once and saves `vllm_config` under `benchmarks[].config.backend.server_info` in the JSON report. This includes settings such as tensor parallelism, scheduler limits and cache configuration that help explain differences between benchmark runs. The snapshot is reused across worker processes and benchmark strategies; collection is outside the measured generation requests. It also works with `validate_backend=false`.
+During setup, GuideLLM requests `/server_info?config_format=json` once and saves the selected sections under `benchmarks[].config.backend.server_info` in the JSON report. This includes settings such as tensor parallelism, scheduler limits and cache configuration that help explain differences between benchmark runs. The snapshot is reused across worker processes and benchmark strategies; collection is outside the measured generation requests. It also works with `validate_backend=false`.
 
-Capture is disabled by default. The optional request uses the configured API key and `extras.headers`, has a five-second total deadline and a 1 MiB response limit, and does not follow redirects. A missing or denied endpoint, network failure, invalid response or unsupported format produces a warning and leaves the benchmark running without server metadata. Custom routes can be supplied through `api_routes`, for example `{"/server_info": "proxy/server_info"}`.
+The selector accepts a set of section names (a JSON array in CLI input), `"all"`, or `null`:
 
-The server must support structured `vllm_config` via `config_format=json`. Older vLLM versions that return a text representation are skipped because their credential fields cannot be reliably redacted. Depending on the vLLM version, `/server_info` may require `VLLM_SERVER_DEV_MODE=1`. This enables development endpoints beyond server information; consult [vLLM's security documentation](https://docs.vllm.ai/en/latest/usage/security/) before enabling it, and use an isolated benchmark deployment.
+| Section       | Contents                                                                                      |
+| ------------- | --------------------------------------------------------------------------------------------- |
+| `vllm_config` | Model, scheduler, parallelism and cache configuration                                         |
+| `vllm_env`    | vLLM environment settings reported by the server                                              |
+| `system_env`  | System diagnostics such as library, CUDA and operating-system versions reported by the server |
 
-GuideLLM omits the endpoint's environment dumps and redacts common credential fields recursively, including API keys, passwords and authentication tokens. This is best-effort filtering, not a guarantee that arbitrary configuration is safe to publish. Model paths, deployment names and custom string values may still be private. Review the saved configuration before sharing a report.
+For example, use `"capture_server_config":["vllm_env","system_env"]` in the backend JSON to capture only environment information. Use `capture_server_config=all` with the key/value CLI syntax to capture all three supported sections. `all` does not include unknown response fields. These names select fields from the server response, not environment variables on the GuideLLM client. The exact contents depend on the server version; `system_env` is not necessarily a dump of process environment variables.
+
+Capture is disabled by default (`null`); an empty set/array also disables it. Booleans and unknown section names are rejected. The optional request uses the configured API key and `extras.headers`, has a five-second total deadline and a 1 MiB response limit, and does not follow redirects. A missing or denied endpoint, network failure, invalid response or unsupported format produces a warning and leaves the benchmark running without server metadata. Custom routes can be supplied through `api_routes`, for example `{"/server_info": "proxy/server_info"}`.
+
+Each selected section must be a JSON object. Missing or unsupported sections produce a warning and are omitted independently, preserving other valid selected sections. Empty objects are retained. Legacy text configurations are skipped because their credential fields cannot be reliably redacted; structured environment sections can still be captured when available. Depending on the vLLM version, `/server_info` may require `VLLM_SERVER_DEV_MODE=1`. This enables development endpoints beyond server information; consult [vLLM's security documentation](https://docs.vllm.ai/en/latest/usage/security/) before enabling it, and use an isolated benchmark deployment.
+
+GuideLLM redacts common credential fields recursively in every selected section, including API keys, passwords and authentication tokens. This is best-effort filtering, not a guarantee that arbitrary configuration or environment information is safe to publish. Model paths, deployment names, custom string values and credentials embedded in otherwise ordinary strings may still be private. Select only the sections needed and review the saved report before sharing it; `all` does not bypass filtering.
 
 ## Passing Sampling Parameters
 

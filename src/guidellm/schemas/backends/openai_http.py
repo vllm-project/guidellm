@@ -106,11 +106,15 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         default=True,
         description="Send a health check request to validate backend configuration.",
     )
-    capture_server_config: bool = Field(
-        default=False,
+    capture_server_config: (
+        set[Literal["vllm_config", "vllm_env", "system_env"]] | Literal["all"] | None
+    ) = Field(
+        default=None,
         description=(
-            "Capture optional structured vLLM server configuration in benchmark "
-            "results. Unavailable or unsupported server_info endpoints are skipped."
+            "Optional server_info sections to capture in benchmark results: "
+            "vllm_config, vllm_env, system_env, or all. Disabled when unset or empty. "
+            "Unavailable or unsupported sections are skipped. Credential filtering "
+            "is best effort; review captured data before sharing."
         ),
     )
     stream: bool = Field(

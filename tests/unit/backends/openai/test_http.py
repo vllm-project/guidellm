@@ -1222,9 +1222,14 @@ async def test_resolve_responses_terminal_error(
 class TestServerConfigCapture:
     """Optional metadata must not change generation or worker initialization."""
 
-    async def test_capture_is_opt_in(self, httpx_mock: HTTPXMock):
-        """Do not probe server_info by default."""
-        backend = _make_backend(target="http://test", validate_backend=False)
+    @pytest.mark.parametrize("selection", [None, set()])
+    async def test_capture_is_opt_in(self, httpx_mock: HTTPXMock, selection):
+        """Do not probe server_info when unset or explicitly empty."""
+        backend = _make_backend(
+            target="http://test",
+            validate_backend=False,
+            capture_server_config=selection,
+        )
         await backend.process_startup()
         try:
             await backend.validate()
@@ -1254,7 +1259,7 @@ class TestServerConfigCapture:
             target="http://test/v1",
             model="test-model",
             validate_backend=False,
-            capture_server_config=True,
+            capture_server_config={"vllm_config"},
             api_key="test-key",
             extras={"headers": {"X-Tenant": "tenant"}},
             api_routes={"/server_info": "/proxy/server_info"},
@@ -1289,6 +1294,101 @@ class TestServerConfigCapture:
         finally:
             await worker_backend.process_shutdown()
 
+    @pytest.mark.parametrize(
+        "selection",
+        [
+            {"vllm_config"},
+            {"vllm_env"},
+            {"system_env"},
+            {"vllm_config", "vllm_env"},
+            {"vllm_config", "system_env"},
+            {"vllm_env", "system_env"},
+            {"vllm_config", "vllm_env", "system_env"},
+            "all",
+        ],
+    )
+    async def test_selected_sections_are_redacted_and_reused(
+        self, httpx_mock: HTTPXMock, selection
+    ):
+        """Capture only selected fields and keep filtered snapshots across workers."""
+        expected = {
+            "vllm_config": {"max_num_batched_tokens": 4096, "api_key": "[REDACTED]"},
+            "vllm_env": {"VLLM_USE_V1": True, "VLLM_API_KEY": "[REDACTED]"},
+            "system_env": {
+                "cuda_runtime_version": "12.8",
+                "HF_TOKEN": "[REDACTED]",
+                "plugins": [{"AWS_SECRET_ACCESS_KEY": "[REDACTED]"}],
+            },
+        }
+        payload = json.loads(
+            json.dumps(expected).replace("[REDACTED]", "private-secret")
+        )
+        payload["future_section"] = {"value": "unselected-data"}
+        httpx_mock.add_response(json=payload)
+        backend = _make_backend(
+            target="http://test",
+            validate_backend=False,
+            capture_server_config=selection,
+        )
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            sections = set(expected) if selection == "all" else selection
+            assert backend.info["server_info"] == {
+                name: value for name, value in expected.items() if name in sections
+            }
+            assert "private-secret" not in json.dumps(backend.info)
+        finally:
+            await backend.process_shutdown()
+
+        worker = pickle.loads(pickle.dumps(backend))  # noqa: S301 - local object
+        await worker.process_startup()
+        try:
+            await worker.validate()
+            assert worker.info == backend.info
+            assert len(httpx_mock.get_requests()) == 1
+        finally:
+            await worker.process_shutdown()
+
+    @pytest.mark.parametrize("unsupported", [None, "hf_token=private-secret", [], 42])
+    async def test_valid_sections_survive_unsupported_sections(
+        self, httpx_mock: HTTPXMock, unsupported
+    ):
+        """Keep available environment data without requiring structured config."""
+        httpx_mock.add_response(
+            json={
+                "vllm_config": unsupported,
+                "vllm_env": {"VLLM_USE_V1": True},
+            }
+        )
+        backend = _make_backend(
+            target="http://test", validate_backend=False, capture_server_config="all"
+        )
+        await backend.process_startup()
+        try:
+            with patch("guidellm.backends.openai.http.logger") as logger:
+                await backend.validate()
+            assert backend.info["server_info"] == {"vllm_env": {"VLLM_USE_V1": True}}
+            assert logger.warning.call_count == 2
+            assert "private-secret" not in str(logger.warning.call_args_list)
+        finally:
+            await backend.process_shutdown()
+
+    async def test_empty_section_is_valid(self, httpx_mock: HTTPXMock):
+        """An empty selected object is distinct from a missing section."""
+        httpx_mock.add_response(json={"system_env": {}})
+        backend = _make_backend(
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"system_env"},
+        )
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            assert backend.info["server_info"] == {"system_env": {}}
+        finally:
+            await backend.process_shutdown()
+
     @pytest.mark.parametrize("status", [301, 401, 403, 404, 500])
     async def test_unavailable_endpoint_is_not_retried(
         self, httpx_mock: HTTPXMock, status
@@ -1298,7 +1398,9 @@ class TestServerConfigCapture:
             status_code=status, headers={"Location": "http://other-host"}
         )
         backend = _make_backend(
-            target="http://test", validate_backend=False, capture_server_config=True
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"vllm_config"},
         )
         await backend.process_startup()
         try:
@@ -1328,7 +1430,9 @@ class TestServerConfigCapture:
         """Reject malformed, legacy and oversized responses without failing setup."""
         httpx_mock.add_response(stream=IteratorStream([content[:100], content[100:]]))
         backend = _make_backend(
-            target="http://test", validate_backend=False, capture_server_config=True
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"vllm_config"},
         )
         await backend.process_startup()
         try:
@@ -1344,7 +1448,9 @@ class TestServerConfigCapture:
         """Network failures are nonfatal and do not log secret-bearing messages."""
         httpx_mock.add_exception(error_type("private-credential"))
         backend = _make_backend(
-            target="http://test", validate_backend=False, capture_server_config=True
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"vllm_config"},
         )
         await backend.process_startup()
         try:
@@ -1373,7 +1479,9 @@ class TestServerConfigCapture:
         stream = SlowStream()
         httpx_mock.add_response(stream=stream)
         backend = _make_backend(
-            target="http://test", validate_backend=False, capture_server_config=True
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"vllm_config"},
         )
         await backend.process_startup()
         try:
@@ -1388,7 +1496,9 @@ class TestServerConfigCapture:
         """Optional capture must not swallow benchmark cancellation."""
         httpx_mock.add_exception(asyncio.CancelledError())
         backend = _make_backend(
-            target="http://test", validate_backend=False, capture_server_config=True
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"vllm_config"},
         )
         await backend.process_startup()
         try:
@@ -1396,3 +1506,13 @@ class TestServerConfigCapture:
                 await backend.validate()
         finally:
             await backend.process_shutdown()
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    "selection", [True, False, "unknown", ["all"], ["vllm_config", "unknown"]]
+)
+def test_invalid_server_config_selection(selection):
+    """Reject ambiguous booleans and unknown capture sections before setup."""
+    with pytest.raises(ValidationError):
+        OpenAIHTTPBackendArgs(target="http://test", capture_server_config=selection)

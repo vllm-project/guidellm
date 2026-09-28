@@ -15,8 +15,20 @@ from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 
 @pytest.mark.regression
-@pytest.mark.parametrize("server_info_status", [200, 404])
-def test_server_config_capture_in_cli_report(tmp_path: Path, server_info_status: int):
+@pytest.mark.parametrize(
+    ("selection", "server_info_status"),
+    [
+        (["vllm_config"], 200),
+        (["vllm_env", "system_env"], 200),
+        ("all", 200),
+        ("all", 404),
+        (None, 200),
+        ([], 200),
+    ],
+)
+def test_server_config_capture_in_cli_report(
+    tmp_path: Path, selection, server_info_status: int
+):
     """Run real HTTP requests and workers, preserving optional report metadata.
 
     The local protocol fixture performs no model inference.
@@ -49,7 +61,15 @@ def test_server_config_capture_in_cli_report(tmp_path: Path, server_info_status:
                         "vllm_config": {
                             "parallel_config": {"tensor_parallel_size": 2},
                             "model_config": {"hf_token": "private-token"},
-                        }
+                        },
+                        "vllm_env": {
+                            "VLLM_USE_V1": True,
+                            "VLLM_API_KEY": "private-key",
+                        },
+                        "system_env": {
+                            "cuda_runtime_version": "12.8",
+                            "HF_TOKEN": "private-token",
+                        },
                     },
                 )
             else:
@@ -88,6 +108,18 @@ def test_server_config_capture_in_cli_report(tmp_path: Path, server_info_status:
     thread.start()
     report_path = tmp_path / "benchmark.json"
     target = f"http://127.0.0.1:{server.server_port}"
+    backend_arg = (
+        f"kind=openai_http,target={target},stream=false,capture_server_config=all"
+        if selection == "all"
+        else json.dumps(
+            {
+                "kind": "openai_http",
+                "target": target,
+                "stream": False,
+                "capture_server_config": selection,
+            }
+        )
+    )
     try:
         result = subprocess.run(  # noqa: S603 - fixed CLI and local fixture inputs
             [
@@ -96,7 +128,7 @@ def test_server_config_capture_in_cli_report(tmp_path: Path, server_info_status:
                 "guidellm",
                 "run",
                 "--backend",
-                f"kind=openai_http,target={target},stream=false,capture_server_config=true",
+                backend_arg,
                 "--profile",
                 "kind=synchronous",
                 "--data",
@@ -124,17 +156,28 @@ def test_server_config_capture_in_cli_report(tmp_path: Path, server_info_status:
     report = json.loads(report_text)
     benchmark = report["benchmarks"][0]
     assert len(benchmark["requests"]["successful"]) == 2
+    if not selection:
+        assert "/server_info?config_format=json" not in requests
+        assert "server_info" not in benchmark["config"]["backend"]
+        return
     assert requests.count("/server_info?config_format=json") == 1
     assert requests.index("/server_info?config_format=json") < requests.index(
         "/v1/chat/completions"
     )
     assert "private-token" not in report_text
+    assert "private-key" not in report_text
     if server_info_status == 200:
-        assert benchmark["config"]["backend"]["server_info"] == {
+        expected = {
             "vllm_config": {
                 "parallel_config": {"tensor_parallel_size": 2},
                 "model_config": {"hf_token": "[REDACTED]"},
-            }
+            },
+            "vllm_env": {"VLLM_USE_V1": True, "VLLM_API_KEY": "[REDACTED]"},
+            "system_env": {"cuda_runtime_version": "12.8", "HF_TOKEN": "[REDACTED]"},
+        }
+        sections = set(expected) if selection == "all" else set(selection)
+        assert benchmark["config"]["backend"]["server_info"] == {
+            key: value for key, value in expected.items() if key in sections
         }
     else:
         assert "server_info" not in benchmark["config"]["backend"]
