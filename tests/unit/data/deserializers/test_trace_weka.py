@@ -5,9 +5,11 @@ import random
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
+from logot import Logot
+from logot.logged import debug, warning
 from pydantic import ValidationError
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
@@ -597,9 +599,8 @@ class TestWEKATraceFormat:
         assert timestamps2 == pytest.approx([71.0, 71.5])
 
     @pytest.mark.smoke
-    @patch("guidellm.data.deserializers.trace_weka.logger")
     def test_earlier_conversation_warns_and_resets_origin(
-        self, mock_logger, tmp_path: Path, deserializer
+        self, tmp_path: Path, deserializer, logot: Logot
     ):
         """An earlier later-row timestamp warns; already-emitted graphs stay put.
 
@@ -636,15 +637,18 @@ class TestWEKATraceFormat:
         timestamps2 = [turn.columns["relative_timestamp_column"][0] for turn in conv2]
         assert timestamps1 == pytest.approx([0.0, 10.0])
         assert timestamps2 == pytest.approx([0.0, 10.0])
-        messages = [
-            call.args[0].format(*call.args[1:]) if call.args else ""
-            for call in mock_logger.warning.call_args_list
-        ]
-        assert any("not ordered chronologically" in message for message in messages)
+        logot.assert_logged(
+            warning(
+                "WEKA conversation 'early_second' starts earlier than previously "
+                "seen timestamps; the dataset is not ordered "
+                "chronologically, so relative timestamps of "
+                "conversations will be misaligned"
+            )
+        )
 
     @pytest.mark.sanity
     def test_max_context_len_discards_conversation_when_first_turn_exceeds(
-        self, tmp_path: Path, deserializer
+        self, tmp_path: Path, deserializer, logot: Logot
     ):
         """
         Skip a conversation whose first turn already exceeds the token budget.
@@ -659,13 +663,16 @@ class TestWEKATraceFormat:
         )
         ds = self.deserialize(deserializer, trace, max_context_len=50)
         assert list(ds) == []
-        trace_format = ds._ex_iterable.format
-        assert trace_format.discarded_rows == 1
-        assert trace_format.discarded_turns == 0
+        logot.assert_logged(
+            debug(
+                "WEKA conversation 'conv0' truncated: discarding 2 "
+                "turn(s) starting at node 'main_0' (turn tokens=60, running=0)"
+            )
+        )
 
     @pytest.mark.sanity
     def test_max_context_len_truncates_at_overflow_using_trace_origin(
-        self, tmp_path: Path, deserializer
+        self, tmp_path: Path, deserializer, logot: Logot
     ):
         """
         Drop the overflowing turn and later turns. Relative timestamps stay on
@@ -689,12 +696,17 @@ class TestWEKATraceFormat:
             100.0,
             40.0,
         ]
-        trace_format = ds._ex_iterable.format
-        assert trace_format.discarded_rows == 0
-        assert trace_format.discarded_turns == 1
+        logot.assert_logged(
+            debug(
+                "WEKA conversation 'conv0' truncated: discarding 1 "
+                "turn(s) starting at node 'main_2' (turn tokens=200, running=35)"
+            )
+        )
 
     @pytest.mark.regression
-    def test_max_context_len_unset_keeps_every_turn(self, tmp_path: Path, deserializer):
+    def test_max_context_len_unset_keeps_every_turn(
+        self, tmp_path: Path, deserializer, logot: Logot
+    ):
         """
         Leave conversations unchanged when no context-length cap is configured.
 
@@ -715,9 +727,12 @@ class TestWEKATraceFormat:
             40.0,
             0.0,
         ]
-        trace_format = ds._ex_iterable.format
-        assert trace_format.discarded_rows == 0
-        assert trace_format.discarded_turns == 0
+        logot.assert_not_logged(
+            debug(
+                "WEKA conversation '%s' truncated: discarding %d "
+                "turn(s) starting at node '%s' (turn tokens=%d, running=%d)"
+            )
+        )
 
     @pytest.mark.sanity
     @pytest.mark.parametrize("hash_id_scope", [None, "global"])
@@ -1166,9 +1181,8 @@ class TestWEKATraceFormat:
         ]
 
     @pytest.mark.sanity
-    @patch("guidellm.data.deserializers.trace_weka.logger")
     def test_subagent_without_preceding_parent_is_independent_root(
-        self, mock_logger, tmp_path: Path, deserializer
+        self, tmp_path: Path, deserializer, logot: Logot
     ):
         """A leading subagent is replayed as a root and the next parent joins it.
 
@@ -1201,11 +1215,12 @@ class TestWEKATraceFormat:
             for parent in turns["main_0"].parents
         }
         assert main_parents == {"sa_0_0": "last"}
-        messages = [
-            call.args[0].format(*call.args[1:]) if call.args else ""
-            for call in mock_logger.warning.call_args_list
-        ]
-        assert any("no preceding parent turn" in message for message in messages)
+        logot.assert_logged(
+            warning(
+                "WEKA subagent 'explore' in conversation 'conv0' has no "
+                "preceding parent turn; replaying as an independent root"
+            )
+        )
 
     @pytest.mark.sanity
     def test_inner_timestamps_relative_to_spawn(self, tmp_path: Path, deserializer):
@@ -1306,9 +1321,8 @@ class TestWEKATraceFormat:
         assert len(turns) == 3
 
     @pytest.mark.sanity
-    @patch("guidellm.data.deserializers.trace_weka.logger")
     def test_overlap_warns_on_same_chain(
-        self, mock_logger, tmp_path: Path, deserializer
+        self, tmp_path: Path, deserializer, logot: Logot
     ):
         """Consecutive turns of one agent that overlap in time are logged at debug.
 
@@ -1334,18 +1348,18 @@ class TestWEKATraceFormat:
         )
         ds = self.deserialize(deserializer, trace)
         load_graph_turns(next(iter(ds)))
-        messages = [
-            call.args[0].format(*call.args[1:]) if call.args else ""
-            for call in mock_logger.debug.call_args_list
-        ]
-        assert any("overlapping requests" in message for message in messages)
-        assert any("will run until t=" in message for message in messages)
-        assert any("default" in message for message in messages)
+        logot.assert_logged(
+            debug(
+                "WEKA conversation 'conv0' agent 'default' has overlapping requests: "
+                "the request at t=0.0 will run until t=5.0, which is after "
+                "the next request at t=1.0; they will be serialized on "
+                "this chain"
+            )
+        )
 
     @pytest.mark.sanity
-    @patch("guidellm.data.deserializers.trace_weka.logger")
     def test_overlap_does_not_warn_for_parallel_subagents(
-        self, mock_logger, tmp_path: Path, deserializer
+        self, tmp_path: Path, deserializer, logot: Logot
     ):
         """Parallel subagents may share timestamps without an overlap debug log.
 
@@ -1377,11 +1391,9 @@ class TestWEKATraceFormat:
         )
         ds = self.deserialize(deserializer, trace)
         load_graph_turns(next(iter(ds)))
-        messages = [
-            call.args[0].format(*call.args[1:]) if call.args else ""
-            for call in mock_logger.debug.call_args_list
-        ]
-        assert not any("overlapping requests" in message for message in messages)
+        logot.assert_not_logged(
+            debug("WEKA conversation '%s' agent '%s' has overlapping requests: %s")
+        )
 
     @pytest.mark.smoke
     def test_tool_use_then_tool_result_maps_to_call_and_injection(
