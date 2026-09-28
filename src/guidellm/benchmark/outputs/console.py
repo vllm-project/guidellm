@@ -242,7 +242,10 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
         ):
             margin_precision += 1
 
-        return f"{mean} +/-{safe_format_number(margin, precision=margin_precision)}"
+        # The space after the sign gives it room where a font draws it wider than
+        # one cell. An ASCII +/- avoids the width question, but Rich highlights
+        # it as a path and colours the margin differently from the mean.
+        return f"{mean} ± {safe_format_number(margin, precision=margin_precision)}"
 
     @classmethod
     def _format_percentile_with_marker(

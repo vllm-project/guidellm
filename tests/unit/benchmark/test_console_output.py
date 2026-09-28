@@ -5,6 +5,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from rich.highlighter import ReprHighlighter
+from rich.text import Text
 
 from guidellm.benchmark.outputs.console import (
     UNSUPPORTED_PERCENTILE_FOOTNOTE,
@@ -385,7 +387,7 @@ class TestRequestLatencyTableIntervals:
         ]
         assert mean_columns
         rendered = [values[index][0] for index in mean_columns]
-        assert any("+/-" in cell for cell in rendered)
+        assert any("±" in cell for cell in rendered)
 
     @pytest.mark.sanity
     def test_weighted_metrics_render_without_a_margin(self):
@@ -398,7 +400,7 @@ class TestRequestLatencyTableIntervals:
 
         for index, header in enumerate(headers):
             if header[0] in ("ITL", "TPOT") and header[-1] == "Mean":
-                assert "+/-" not in values[index][0]
+                assert "±" not in values[index][0]
 
     @pytest.mark.sanity
     def test_margin_is_omitted_when_no_interval_was_estimated(self):
@@ -411,24 +413,42 @@ class TestRequestLatencyTableIntervals:
 
         for index, header in enumerate(headers):
             if header[-1] == "Mean":
-                assert "+/-" not in values[index][0]
+                assert "±" not in values[index][0]
 
     @pytest.mark.regression
-    def test_cells_are_ascii_so_width_matches_length(self):
+    def test_margin_sign_is_followed_by_a_space(self):
         """
-        Every rendered cell is ASCII, so its length is the width it occupies.
+        The plus-minus sign has a space after it.
 
-        The table sizes columns with len(). A character of ambiguous East Asian
-        width, such as a plus-minus sign, is drawn two cells wide by some
-        terminals and would push the rest of the row out of alignment.
+        The sign has ambiguous East Asian width, and some fonts draw it wider
+        than one cell. Without the space it covers the first digit of the margin.
 
         ## WRITTEN BY AI ##
         """
         _, values = _render_latency_table_values()
 
-        for column in values:
-            for cell in column:
-                assert cell.isascii(), cell
+        margins = [cell for column in values for cell in column if "±" in cell]
+        assert margins
+        assert all("± " in cell for cell in margins)
+
+    @pytest.mark.regression
+    def test_margin_is_highlighted_like_the_mean(self):
+        """
+        Rich highlights the margin as a number, the same as the mean.
+
+        An ASCII +/- is read by Rich's highlighter as a path, which colours the
+        margin differently from the value it qualifies.
+
+        ## WRITTEN BY AI ##
+        """
+        _, values = _render_latency_table_values()
+
+        margins = [cell for column in values for cell in column if "±" in cell]
+        assert margins
+        for cell in margins:
+            text = Text(cell)
+            ReprHighlighter().highlight(text)
+            assert {str(span.style) for span in text.spans} == {"repr.number"}
 
     @pytest.mark.regression
     def test_margin_keeps_enough_precision_to_be_visible(self):
@@ -474,7 +494,7 @@ class TestRequestLatencyTableIntervals:
             distribution, precision=1
         )
 
-        assert rendered == "1.0 +/-0.02"
+        assert rendered == "1.0 ± 0.02"
 
 
 def _render_latency_table_with_footnote(
