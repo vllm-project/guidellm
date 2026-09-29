@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from fractions import Fraction
 from typing import Literal, TypeVar
 
 import numpy as np
@@ -437,6 +438,34 @@ class TestPercentiles:
             assert percentiles.p001 in values
             assert percentiles.p50 in values
             assert percentiles.p999 in values
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("num_values", [10, 20, 100, 300, 2000, 5000])
+    def test_from_pdf_equal_weights_exact_ranks(self, num_values):
+        """
+        Equal-weight percentiles land on the exact inverse-CDF rank, not the next one.
+
+        ## WRITTEN BY AI ##
+        """
+        values = np.arange(1, num_values + 1, dtype=float)
+        pdf = np.column_stack((values, np.full(num_values, 1.0 / num_values)))
+        percentiles = Percentiles.from_pdf(pdf).model_dump()
+        exact_probs = {
+            "p001": "0.001",
+            "p01": "0.01",
+            "p05": "0.05",
+            "p10": "0.1",
+            "p25": "0.25",
+            "p50": "0.5",
+            "p75": "0.75",
+            "p90": "0.9",
+            "p95": "0.95",
+            "p99": "0.99",
+            "p999": "0.999",
+        }
+        for key, prob in exact_probs.items():
+            rank = max(math.ceil(Fraction(prob) * num_values), 1)
+            assert percentiles[key] == values[rank - 1], f"{key} mismatch"
 
     @pytest.mark.sanity
     @pytest.mark.parametrize(
