@@ -691,7 +691,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                     return
 
                 # NOTE: This must be at the end of the loop
-                yield_attempted = time.time()
+                yield_attempted = time.monotonic()
 
             self.update_state(
                 add_constraints={
