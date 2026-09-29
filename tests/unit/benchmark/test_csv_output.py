@@ -318,6 +318,8 @@ async def test_finalize_exports_tool_call_metrics(tmp_path: Path):
 _LATENCY_CSV_METRICS = (
     "request_latency",
     "request_dispatch_delay",
+    "turn_predecessor_delay",
+    "turn_scheduling_delay",
     "request_scheduled_latency",
     "request_streaming_iterations_count",
     "time_to_first_token_ms",
@@ -339,7 +341,12 @@ def _latency_metric_groups(
     distribution = StatusDistributionSummary.from_values([1.0, 2.0, 3.0], [], [])
     metrics = dict.fromkeys(_LATENCY_CSV_METRICS, distribution)
     if schedule_metrics_missing:
-        for name in ("request_dispatch_delay", "request_scheduled_latency"):
+        for name in (
+            "request_dispatch_delay",
+            "turn_predecessor_delay",
+            "turn_scheduling_delay",
+            "request_scheduled_latency",
+        ):
             metrics[name] = None
     benchmark = SimpleNamespace(metrics=SimpleNamespace(**metrics))
 
@@ -374,6 +381,8 @@ class TestRequestLatencyCSVMetrics:
         groups = _latency_metric_groups(tmp_path)
 
         assert "Dispatch Delay" in groups
+        assert "Turn Predecessor Delay" in groups
+        assert "Turn Scheduling Delay" in groups
         assert "Scheduled Latency" in groups
 
     @pytest.mark.regression
@@ -388,7 +397,13 @@ class TestRequestLatencyCSVMetrics:
         existing = [
             group
             for group in groups
-            if group not in {"Dispatch Delay", "Scheduled Latency"}
+            if group
+            not in {
+                "Dispatch Delay",
+                "Turn Predecessor Delay",
+                "Turn Scheduling Delay",
+                "Scheduled Latency",
+            }
         ]
 
         assert existing == [
@@ -415,6 +430,8 @@ class TestRequestLatencyCSVMetrics:
         groups = _latency_metric_groups(tmp_path, schedule_metrics_missing=True)
 
         assert "Dispatch Delay" not in groups
+        assert "Turn Predecessor Delay" not in groups
+        assert "Turn Scheduling Delay" not in groups
         assert "Scheduled Latency" not in groups
         assert "Request Latency" in groups
 

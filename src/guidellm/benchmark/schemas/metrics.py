@@ -803,6 +803,23 @@ class GenerativeMetrics(StandardBaseDict):
             "schedule"
         ),
     )
+    turn_predecessor_delay: StatusDistributionSummary | None = Field(
+        default=None,
+        description=(
+            "Portion of dispatch delay spent waiting on a predecessor that "
+            "was still running past the targeted start. Zero for requests "
+            "with no predecessor. None when the strategy does not define an "
+            "arrival schedule"
+        ),
+    )
+    turn_scheduling_delay: StatusDistributionSummary | None = Field(
+        default=None,
+        description=(
+            "Portion of dispatch delay after the predecessor had finished, "
+            "including deserializer, queue, and worker lag. None when the "
+            "strategy does not define an arrival schedule"
+        ),
+    )
     request_streaming_iterations_count: StatusDistributionSummary = Field(
         description="Distribution of stream iterations for completed requests"
     )
@@ -1015,6 +1032,8 @@ class GenerativeMetrics(StandardBaseDict):
         # coordinated-omission correction, and is reported as None instead.
         dispatch_delay: StatusDistributionSummary | None = None
         scheduled_latency: StatusDistributionSummary | None = None
+        predecessor_delay: StatusDistributionSummary | None = None
+        scheduling_delay: StatusDistributionSummary | None = None
         if accumulator.config.strategy.defines_arrival_schedule:
             dispatch_delay = StatusDistributionSummary.from_values_function(
                 function=lambda req: req.request_dispatch_delay,
@@ -1024,6 +1043,18 @@ class GenerativeMetrics(StandardBaseDict):
             )
             scheduled_latency = StatusDistributionSummary.from_values_function(
                 function=lambda req: req.request_scheduled_latency,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            )
+            predecessor_delay = StatusDistributionSummary.from_values_function(
+                function=lambda req: req.turn_predecessor_delay,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            )
+            scheduling_delay = StatusDistributionSummary.from_values_function(
+                function=lambda req: req.turn_scheduling_delay,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
@@ -1079,6 +1110,8 @@ class GenerativeMetrics(StandardBaseDict):
             ),
             request_dispatch_delay=dispatch_delay,
             request_scheduled_latency=scheduled_latency,
+            turn_predecessor_delay=predecessor_delay,
+            turn_scheduling_delay=scheduling_delay,
             request_streaming_iterations_count=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.info.timings.request_iterations or 0.0,
                 successful=successful,
