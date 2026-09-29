@@ -129,10 +129,13 @@ class GenerativeRequestStats(StandardBaseDict):
 
         Non-zero when the scheduler could not issue the request at the time its
         strategy targeted, for example while a concurrency limit is saturated.
-        Only describes arrival-schedule delay for strategies that define an
-        arrival schedule (constant, poisson, and trace when the dataset supplies
-        timestamps); the synchronous, concurrent, and throughput strategies
-        target an ASAP start instead. See the metrics guide for full caveats.
+        :attr:`turn_predecessor_delay` and :attr:`turn_scheduling_delay`
+        split this into time blocked by a prior turn and time the harness
+        itself was late. Only describes arrival-schedule delay for strategies
+        that define an arrival schedule (constant, poisson, and trace when the
+        dataset supplies timestamps); the synchronous, concurrent, and
+        throughput strategies target an ASAP start instead. See the metrics
+        guide for full caveats.
 
         :return: Duration from targeted start to request start in seconds, or
             None if unavailable
@@ -143,6 +146,52 @@ class GenerativeRequestStats(StandardBaseDict):
             return None
 
         return start - targeted
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def turn_predecessor_delay(self) -> float | None:
+        """
+        Portion of dispatch delay spent waiting on a predecessor past the target.
+
+        Zero when the request has no predecessor, or the predecessor finished
+        before ``targeted_start``. The remainder of
+        :attr:`request_dispatch_delay` is :attr:`turn_scheduling_delay`.
+        Carries the same strategy caveat as :attr:`request_dispatch_delay`.
+
+        :return: Seconds the request was blocked by an unfinished predecessor
+            after its targeted start, or None if unavailable
+        """
+        targeted = self.info.timings.targeted_start
+        start = self.info.timings.request_start
+        if targeted is None or start is None:
+            return None
+
+        predecessor_completed = self.info.timings.predecessor_completed
+        if predecessor_completed is None:
+            return 0.0
+
+        return max(0.0, min(start, predecessor_completed) - targeted)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def turn_scheduling_delay(self) -> float | None:
+        """
+        Portion of dispatch delay after the request was no longer predecessor-blocked.
+
+        Covers deserializer, queue, and worker lag, plus think time
+        (``requeue_delay``) that extends past the targeted start. Together
+        with :attr:`turn_predecessor_delay` this equals
+        :attr:`request_dispatch_delay`. Carries the same strategy caveat.
+
+        :return: Seconds of dispatch delay not explained by a predecessor,
+            or None if unavailable
+        """
+        dispatch_delay = self.request_dispatch_delay
+        predecessor_delay = self.turn_predecessor_delay
+        if dispatch_delay is None or predecessor_delay is None:
+            return None
+
+        return dispatch_delay - predecessor_delay
 
     @computed_field  # type: ignore[misc]
     @property

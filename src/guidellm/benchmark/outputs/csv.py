@@ -414,6 +414,22 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 "Dispatch Delay",
                 "Sec",
             )
+        if benchmark.metrics.turn_predecessor_delay is not None:
+            self._add_stats_for_metric(
+                headers,
+                values,
+                benchmark.metrics.turn_predecessor_delay,
+                "Turn Predecessor Delay",
+                "Sec",
+            )
+        if benchmark.metrics.turn_scheduling_delay is not None:
+            self._add_stats_for_metric(
+                headers,
+                values,
+                benchmark.metrics.turn_scheduling_delay,
+                "Turn Scheduling Delay",
+                "Sec",
+            )
         if benchmark.metrics.request_scheduled_latency is not None:
             self._add_stats_for_metric(
                 headers,

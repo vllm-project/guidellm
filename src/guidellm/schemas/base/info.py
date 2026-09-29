@@ -33,6 +33,13 @@ class RequestTimings(StandardBaseDict):
         default=None,
         description="Unix timestamp when request was initially targeted for execution",
     )
+    predecessor_completed: float | None = Field(
+        default=None,
+        description=(
+            "Unix timestamp when the last predecessor finished, excluding think "
+            "time. None when the request has no predecessor."
+        ),
+    )
     queued: float | None = Field(
         default=None,
         description="Unix timestamp when request was placed into processing queue",
