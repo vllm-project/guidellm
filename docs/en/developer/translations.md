@@ -36,6 +36,12 @@ uv run python docs/scripts/check_translations.py --update --strict
 
 Commit the updated manifest with the translated page.
 
+## Navigation behavior
+
+The documentation hook selects navigation from the source route of each page. A page under `docs/zh/` uses translated pages where available; untranslated entries link to their English pages with an `(English)` label. Those English pages use the normal English sidebar, so the navigation returns to Chinese when readers navigate back to a page under `docs/zh/`. The language selection is per page and is not remembered across English fallback pages.
+
+Only known section titles are translated. The API navigation section is titled `API Reference` by the API documentation plugin; `reference/` is its generated route, not its section title. Generated API reference pages themselves remain English.
+
 ## Review responsibilities
 
 English-speaking maintainers can review site integration, technical claims, commands, links, code examples, and regressions to the canonical site. Chinese-speaking reviewers check semantic accuracy, terminology, and language quality. A reviewer does not need to be bilingual to cover both responsibilities.

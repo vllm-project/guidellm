@@ -1,5 +1,5 @@
 ---
-title: 简体中文
+title: 首页
 weight: 100
 ---
 
@@ -60,6 +60,6 @@ weight: 100
 
   查看完整的 GuideLLM API 参考文档，以便将基准测试集成到工作流中。
 
-  [:octicons-arrow-right-24: 阅读英文 API 参考](../api/)
+  [:octicons-arrow-right-24: 阅读英文 API 参考](../reference/guidellm/index.md)
 
 </div>
