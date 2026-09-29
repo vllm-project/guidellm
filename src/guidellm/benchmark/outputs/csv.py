@@ -871,6 +871,14 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 headers, values, "Scheduler Metrics", field_name, timing, "Sec"
             )
 
+        self._add_stats_for_metric(
+            headers,
+            values,
+            metrics.generation_delay,
+            "Generation Delay",
+            "Sec",
+        )
+
     def _add_stats_for_metric(
         self,
         headers: list[list[str]],

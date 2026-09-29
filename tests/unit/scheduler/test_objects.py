@@ -664,6 +664,7 @@ class TestSchedulerState:
         "successful_requests",
         "errored_requests",
         "cancelled_requests",
+        "generation_delay_samples",
     ]
 
     @pytest.fixture(
@@ -817,7 +818,13 @@ class TestSchedulerState:
         # Test model_dump
         data = instance.model_dump()
         assert isinstance(data, dict)
-        assert all(key in data for key in self.CHECK_KEYS)
+        serialized_keys = [
+            key
+            for key in self.CHECK_KEYS
+            if not SchedulerState.model_fields[key].exclude
+        ]
+        assert all(key in data for key in serialized_keys)
+        assert "generation_delay_samples" not in data
 
         # Test model_validate
         reconstructed = SchedulerState.model_validate(data)
@@ -830,6 +837,17 @@ class TestSchedulerState:
         # Validate that the reconstructed instance matches original constructor args
         for field, expected_value in constructor_args.items():
             assert getattr(reconstructed, field) == expected_value
+
+    @pytest.mark.smoke
+    def test_generation_delay_samples_excluded_from_dump(self):
+        """
+        generation_delay_samples is coordinator runtime data and is not serialized.
+
+        ## WRITTEN BY AI ##
+        """
+        state = SchedulerState(generation_delay_samples=[0.1, 0.2])
+        assert state.generation_delay_samples == pytest.approx([0.1, 0.2])
+        assert "generation_delay_samples" not in state.model_dump()
 
 
 class TestSchedulerUpdateAction:

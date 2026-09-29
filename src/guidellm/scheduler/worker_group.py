@@ -624,14 +624,19 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         constraints to determine when to stop request generation.
 
         :param requests: Finite iterable of requests to process sequentially
-        :return: Generator yielding (request, request_info) tuples
+        :return: Generator yielding conversation graphs for worker processing
         """
 
         try:
             count = 0
             stop_queueing: bool = False
+            yield_attempted = time.monotonic()
 
             for graph in requests:
+                # NOTE: This must be at the start of the loop
+                generation_delay = time.monotonic() - yield_attempted
+                self.update_state(generation_delay=generation_delay)
+
                 dag_state: DAGExecutionState[RequestT, ResponseT] = DAGExecutionState(
                     graph
                 )
@@ -684,6 +689,9 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 if stop_queueing:
                     self.stop_send_requests_event.set()
                     return
+
+                # NOTE: This must be at the end of the loop
+                yield_attempted = time.time()
 
             self.update_state(
                 add_constraints={
@@ -767,6 +775,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self,
         info: RequestInfo | None = None,
         add_constraints: dict[str, Constraint] | None = None,
+        generation_delay: float | None = None,
     ) -> _StateUpdate:
         """Update scheduler state and re-evaluate constraints.
 
@@ -776,6 +785,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
         :param info: Request that changed, or ``None`` for a state-only recheck
         :param add_constraints: Constraints to register before evaluation
+        :param generation_delay: Conversation-level request-generator delay to
+            record once per conversation, or ``None`` to skip
         :return: Copied scheduler state and stop flags
         """
         with self._update_lock:
@@ -785,6 +796,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             self._state.end_time = time.time()  # Always update in case last update
             if info is not None:
                 self._update_state_request_counts(info)
+            if generation_delay is not None:
+                self._state.generation_delay_samples.append(generation_delay)
 
             self._update_with_constraints(info)
 
