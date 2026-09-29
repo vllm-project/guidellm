@@ -2525,9 +2525,11 @@
       running += w / total;
       cdfProbs.push(running);
     });
-    // numpy searchsorted(cdf, q, side="left")
+    // numpy searchsorted(cdf, q, side="left"). Like from_values, allow for the
+    // running sum landing just below an exact step (ten 0.1s add up to 0.9999999999999999).
+    var roundingTolerance = cdfProbs.length * Number.EPSILON;
     var idx = 0;
-    while (idx < cdfProbs.length && cdfProbs[idx] < quantile) {
+    while (idx < cdfProbs.length && cdfProbs[idx] < quantile - roundingTolerance) {
       idx += 1;
     }
     if (idx >= uniq.length) idx = uniq.length - 1;
