@@ -55,6 +55,6 @@ SLO-Aware Benchmarking and Evaluation Platform for Optimizing Real-World LLM Inf
 
   Complete reference documentation for the GuideLLM API to integrate benchmarking into your workflow.
 
-  [:octicons-arrow-right-24: API Reference](./api/)
+  [:octicons-arrow-right-24: API Reference](./reference/guidellm/index.md)
 
 </div>

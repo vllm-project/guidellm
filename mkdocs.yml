@@ -105,6 +105,9 @@ plugins:
   - social
   - tags
 
+hooks:
+  - docs/scripts/localized_nav.py
+
 extra:
   generator: false
   alternate:

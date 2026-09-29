@@ -5,10 +5,20 @@
     return value.endsWith("/") ? value : `${value}/`;
   }
 
+  let cachedSiteRoot;
+
   function siteRoot() {
+    if (cachedSiteRoot) {
+      return cachedSiteRoot;
+    }
+
     const logo = document.querySelector("a.md-header__button.md-logo");
     const href = logo ? logo.href : new URL("./", window.location.href).href;
-    return new URL(ensureTrailingSlash(href));
+    cachedSiteRoot = new URL(ensureTrailingSlash(href));
+    if (cachedSiteRoot.pathname.endsWith("/zh/")) {
+      cachedSiteRoot.pathname = cachedSiteRoot.pathname.replace(/zh\/$/, "");
+    }
+    return cachedSiteRoot;
   }
 
   function currentRoute(root) {
