@@ -3,10 +3,10 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
-from datasets import IterableDataset
+from datasets import Dataset, IterableDataset
 from faker import Faker
 from pydantic import ValidationError
 
@@ -16,16 +16,22 @@ from guidellm.data.deserializers import (
 )
 from guidellm.data.deserializers.trace_common import (
     TraceDatasetDeserializer,
+    TraceFormatBase,
     TraceFormatRegistry,
     decode_prompt,
     generate_token_ids,
 )
+from guidellm.data.deserializers.trace_minimal import MinimalTraceFormat
+from guidellm.data.deserializers.trace_session_timing import TraceSessionTiming
+from guidellm.data.finalizers.generative import GenerativeRequestFinalizer
 from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
 )
+from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas.data import FileDataArgs, MinimalTraceFormatArgs, TraceDataArgs
+from guidellm.schemas.data.finalizers import GenerativeRequestFinalizerArgs
 from tests.unit.data.deserializers.trace_test_utils import trace_file_source
 
 
@@ -795,3 +801,87 @@ class TestTraceDatasetDeserializer:
             match=r"expected str or Path to a local \.json or \.jsonl file",
         ):
             self.deserialize(deserializer, trace)
+
+    @pytest.mark.sanity
+    def test_missing_duration_column_warns_once(self, tmp_path: Path, deserializer):
+        """
+        A trace without a duration column logs one warning at load.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 1, "input_length": 10, "output_length": 1}\n',
+        )
+        with patch("guidellm.data.deserializers.trace_common.logger") as mock_logger:
+            self.deserialize(deserializer, trace)
+
+        assert mock_logger.warning.call_count == 1
+
+    @pytest.mark.sanity
+    def test_present_duration_column_does_not_warn(self, tmp_path: Path, deserializer):
+        """
+        A trace that includes the duration column does not warn.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 1, "input_length": 10, "output_length": 1, '
+            '"duration": 0.5}\n',
+        )
+        with patch("guidellm.data.deserializers.trace_common.logger") as mock_logger:
+            self.deserialize(deserializer, trace)
+
+        mock_logger.warning.assert_not_called()
+
+
+class TestTraceDurationColumn:
+    """Recorded request duration reaches scheduling settings.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.sanity
+    def test_duration_scales_onto_request_settings(self, tmp_path: Path):
+        """
+        A duration column is stored on RequestSettings after dataset time_scale.
+
+        ## WRITTEN BY AI ##
+        """
+        source = trace_file_source(write_trace(tmp_path, ""))
+        config = MinimalTraceFormatArgs(
+            kind="trace_synthetic",
+            source=source,
+            time_scale=2.0,
+        )
+        dataset = Dataset.from_dict(
+            {
+                "timestamp": [10.0, 15.0],
+                "input_length": [4, 4],
+                "output_length": [1, 1],
+                "duration": [1.0, 0.5],
+            }
+        )
+        trace_format = MinimalTraceFormat(config, dataset)
+        graph = TraceFormatBase.build_conversation_graph(
+            trace_format,
+            dataset,
+            mock_processor(),
+            Faker(),
+        )
+        TraceSessionTiming(time_scale=config.time_scale).apply_scale(graph)
+
+        finalized = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())(
+            [{"conversation_turns_column": [graph.model_dump(mode="json")]}]
+        )
+
+        assert isinstance(finalized, GenerativeConversationGraph)
+        assert finalized.nodes["main_0"].settings.trace_duration == pytest.approx(2.0)
+        assert finalized.nodes["main_1"].settings.trace_duration == pytest.approx(1.0)
+        assert finalized.nodes["main_0"].settings.relative_timestamp == pytest.approx(
+            0.0
+        )
+        assert finalized.nodes["main_1"].settings.relative_timestamp == pytest.approx(
+            10.0
+        )

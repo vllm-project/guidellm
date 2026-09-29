@@ -193,12 +193,12 @@ class TraceSessionTiming:
         placed.append(new_start + (session_end - session_start))
 
     def _apply_time_scale(self, graph: ConversationGraphData) -> None:
-        """Multiply remaining timestamps after wait and pack caps."""
+        """Multiply timestamps and recorded durations after wait and pack caps."""
         for turn in graph.turns:
             relative_timestamp = _turn_timestamp(turn)
-            if relative_timestamp is None:
-                continue
-            _set_turn_timestamp(turn, relative_timestamp * self.time_scale)
+            if relative_timestamp is not None:
+                _set_turn_timestamp(turn, relative_timestamp * self.time_scale)
+            _scale_turn_duration(turn, self.time_scale)
 
     def _session_bounds(
         self, graph: ConversationGraphData
@@ -273,6 +273,18 @@ def _turn_timestamp(turn: ConversationTurnData) -> float | None:
     if turn.settings is not None:
         return turn.settings.relative_timestamp
     return None
+
+
+def _scale_turn_duration(turn: ConversationTurnData, scale: float) -> None:
+    """Multiply a recorded request duration so it stays in timestamp units.
+
+    :param turn: Turn that may carry ``request_duration_column``
+    :param scale: Factor already applied to relative timestamps
+    """
+    values = turn.columns.get("request_duration_column")
+    if not values or values[0] is None:
+        return
+    turn.columns["request_duration_column"] = [float(values[0]) * scale]
 
 
 def _set_turn_timestamp(turn: ConversationTurnData, timestamp: float) -> None:

@@ -93,6 +93,7 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
         ],
         "relative_timestamp_column": ["relative_timestamp"],
         "requeue_delay_column": ["requeue_delay"],
+        "request_duration_column": ["duration", "request_duration"],
         "conversation_turns_column": ["conversation_turns"],
     }
     column_name_pattern: str = (

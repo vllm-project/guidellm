@@ -133,3 +133,210 @@ class TestTraceReplayStrategy:
             scheduler_start_time=0,
         )
         strategy.request_completed(info)
+
+    @pytest.mark.sanity
+    def test_relative_timing_keeps_idle_gap_after_recorded_duration(self):
+        """
+        Relative timing starts the next request after the recorded idle gap.
+
+        A 1s recorded duration and a timestamp 5s later leave a 4s gap. When
+        the request finishes at t=6, the next target is 10, five seconds after
+        the original absolute time of 5.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = _relative_strategy(time_scale=1.0)
+        _complete(
+            strategy,
+            node_id="n0",
+            relative_timestamp=0.0,
+            trace_duration=1.0,
+            actual_end=6.0,
+        )
+
+        resolved = asyncio.run(
+            strategy.resolve_dequeued_target_start(
+                0,
+                0.0,
+                RequestSettings(relative_timestamp=5.0, trace_duration=1.0),
+                _child("n1", ["n0"], relative_timestamp=5.0),
+            )
+        )
+
+        assert resolved == pytest.approx(10.0)
+
+    @pytest.mark.sanity
+    def test_relative_timing_scales_the_idle_gap(self):
+        """
+        Profile time_scale multiplies the idle gap, not the parent's actual end.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = _relative_strategy(time_scale=2.0)
+        _complete(
+            strategy,
+            node_id="n0",
+            relative_timestamp=0.0,
+            trace_duration=1.0,
+            actual_end=6.0,
+        )
+
+        resolved = asyncio.run(
+            strategy.resolve_dequeued_target_start(
+                0,
+                0.0,
+                RequestSettings(relative_timestamp=5.0),
+                _child("n1", ["n0"], relative_timestamp=5.0),
+            )
+        )
+
+        assert resolved == pytest.approx(6.0 + 2.0 * 4.0)
+
+    @pytest.mark.sanity
+    def test_relative_timing_missing_duration_is_instantaneous(self):
+        """
+        A missing duration is zero, so the next request keeps the full gap.
+
+        The same 5s timestamp offset after an actual end at t=6 targets 11.
+        The loader warns when the column is absent; the scheduler does not.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = _relative_strategy(time_scale=1.0)
+        _complete(
+            strategy,
+            node_id="n0",
+            relative_timestamp=0.0,
+            trace_duration=None,
+            actual_end=6.0,
+        )
+        _complete(
+            strategy,
+            node_id="n0b",
+            relative_timestamp=1.0,
+            trace_duration=None,
+            actual_end=7.0,
+        )
+        resolved = asyncio.run(
+            strategy.resolve_dequeued_target_start(
+                0,
+                0.0,
+                RequestSettings(relative_timestamp=5.0),
+                _child("n1", ["n0"], relative_timestamp=5.0),
+            )
+        )
+
+        assert resolved == pytest.approx(11.0)
+
+    @pytest.mark.sanity
+    def test_relative_timing_explicit_zero_duration_is_instantaneous(self):
+        """
+        An explicit duration of zero keeps the full timestamp gap.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = _relative_strategy(time_scale=1.0)
+        _complete(
+            strategy,
+            node_id="n0",
+            relative_timestamp=0.0,
+            trace_duration=0.0,
+            actual_end=6.0,
+        )
+        resolved = asyncio.run(
+            strategy.resolve_dequeued_target_start(
+                0,
+                0.0,
+                RequestSettings(relative_timestamp=5.0),
+                _child("n1", ["n0"], relative_timestamp=5.0),
+            )
+        )
+
+        assert resolved == pytest.approx(11.0)
+
+    @pytest.mark.smoke
+    def test_absolute_timing_ignores_predecessor_completion(self):
+        """
+        schedule_turn=timestamp still targets the trace timestamp after a late
+        predecessor.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = _relative_strategy(time_scale=1.0, schedule_turn="timestamp")
+        _complete(
+            strategy,
+            node_id="n0",
+            relative_timestamp=0.0,
+            trace_duration=1.0,
+            actual_end=6.0,
+        )
+
+        resolved = asyncio.run(
+            strategy.resolve_dequeued_target_start(
+                0,
+                0.0,
+                RequestSettings(relative_timestamp=5.0, trace_duration=1.0),
+                _child("n1", ["n0"], relative_timestamp=5.0),
+            )
+        )
+
+        assert resolved == pytest.approx(5.0)
+
+
+def _relative_strategy(**kwargs) -> TraceReplayStrategy:
+    """Start a trace strategy at wall-clock time 0.
+
+    ## WRITTEN BY AI ##
+    """
+    if "schedule_turn" not in kwargs:
+        kwargs["schedule_turn"] = "idle_gap"
+    strategy = TraceReplayStrategy(**kwargs)
+    strategy.init_processes_timings(
+        worker_count=1,
+        max_concurrency=10,
+        mp_context=get_context(),
+    )
+    strategy.init_processes_start(0.0)
+    return strategy
+
+
+def _child(
+    node_id: str, parent_node_ids: list[str], relative_timestamp: float
+) -> RequestInfo:
+    """Build a successor request info for relative scheduling.
+
+    ## WRITTEN BY AI ##
+    """
+    return RequestInfo(
+        request_id=node_id,
+        conversation_id="conv",
+        node_id=node_id,
+        parent_node_ids=parent_node_ids,
+        status="pending",
+        settings=RequestSettings(relative_timestamp=relative_timestamp),
+    )
+
+
+def _complete(
+    strategy: TraceReplayStrategy,
+    node_id: str,
+    relative_timestamp: float,
+    trace_duration: float | None,
+    actual_end: float,
+) -> None:
+    """Record a finished predecessor on the strategy.
+
+    ## WRITTEN BY AI ##
+    """
+    info = RequestInfo(
+        request_id=node_id,
+        conversation_id="conv",
+        node_id=node_id,
+        status="completed",
+        settings=RequestSettings(
+            relative_timestamp=relative_timestamp,
+            trace_duration=trace_duration,
+        ),
+    )
+    info.timings.request_end = actual_end
+    strategy.request_completed(info)

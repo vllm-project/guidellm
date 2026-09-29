@@ -38,6 +38,7 @@ from guidellm.data.deserializers.trace_common import (
     _validate_api_row,
     create_prompt_from_hash_ids,
     decode_prompt,
+    duration_columns,
     fill_hash_id_table,
     generate_token_ids,
     get_missing_columns,
@@ -352,6 +353,22 @@ class WEKATraceFormat(TraceFormatBase):
             return required
         return get_missing_columns(required, list(first_api.keys()))
 
+    def has_duration_column(self) -> bool:
+        """
+        Return whether the first API request includes the duration column.
+
+        WEKA stores request fields inside the requests list, not as dataset
+        columns. Only the first API request is checked.
+
+        :return: True when ``config.duration_column`` is on that request
+        """
+        if self.config.duration_column in self.dataset.column_names:
+            return True
+        first_api = _first_api_request(self.dataset[self.requests_col][0])
+        if first_api is None:
+            return False
+        return self.config.duration_column in first_api
+
     def validate_row(self, row: dict) -> None:
         n_in = row[self.config.prompt_tokens_column]
         hash_ids = row.get(self.config.hash_ids_column)
@@ -491,6 +508,7 @@ class WEKATraceFormat(TraceFormatBase):
                 "prompt_tokens_count_column": [spec.row[prompt_col]],
                 "output_tokens_count_column": [spec.row[output_col]],
                 "relative_timestamp_column": [spec.absolute_t - origin],
+                **duration_columns(spec.row, self.config),
             }
             if spec.turn_type is not None:
                 columns["turn_type_column"] = [spec.turn_type]

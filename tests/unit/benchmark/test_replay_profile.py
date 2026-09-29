@@ -63,4 +63,18 @@ class TestReplayProfile:
         assert profile.strategy_types == ["trace"]
         assert isinstance(strategy, TraceReplayStrategy)
         assert strategy.time_scale == 2.0
+        assert strategy.schedule_turn == "idle_gap"
         assert profile.next_strategy(strategy, None) is None
+
+    @pytest.mark.smoke
+    def test_next_strategy_passes_timestamp(self):
+        """
+        Replay profile forwards schedule_turn=timestamp onto the trace strategy.
+
+        ## WRITTEN BY AI ##
+        """
+        profile = _replay_profile(schedule_turn="timestamp")
+
+        strategy = profile.next_strategy(None, None)
+        assert isinstance(strategy, TraceReplayStrategy)
+        assert strategy.schedule_turn == "timestamp"

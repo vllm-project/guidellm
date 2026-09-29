@@ -496,6 +496,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             self.worker_index,
             target_start,
             request_info.settings,
+            request_info,
         )
         if effective_target_start != target_start:
             request_info.timings.targeted_start = effective_target_start

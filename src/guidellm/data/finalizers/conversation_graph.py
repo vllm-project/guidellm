@@ -24,6 +24,7 @@ __all__ = [
 _SCHEDULING_COLUMNS = (
     "relative_timestamp_column",
     "requeue_delay_column",
+    "request_duration_column",
 )
 
 
@@ -45,6 +46,7 @@ def _lift_settings_from_columns(
     had_scheduling = any(key in content for key in _SCHEDULING_COLUMNS)
     relative_timestamp = _optional_column_value(content, "relative_timestamp_column")
     requeue_delay = _optional_column_value(content, "requeue_delay_column")
+    trace_duration = _optional_column_value(content, "request_duration_column")
     for key in _SCHEDULING_COLUMNS:
         content.pop(key, None)
     if not had_scheduling:
@@ -52,6 +54,7 @@ def _lift_settings_from_columns(
     return content, RequestSettings(
         relative_timestamp=relative_timestamp,
         requeue_delay=requeue_delay,
+        trace_duration=trace_duration,
     )
 
 

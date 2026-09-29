@@ -176,6 +176,17 @@ class RequestSettings(StandardBaseDict):
             "lower bound on the delay, subject to scheduling."
         ),
     )
+    trace_duration: float | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Recorded request duration in seconds from the trace, in the same "
+            "units as relative_timestamp after dataset time scaling. None when "
+            "the trace has no duration column. schedule_turn=idle_gap uses this "
+            "to keep the idle gap before the next request; a missing value is "
+            "treated as instantaneous."
+        ),
+    )
 
 
 class RequestInfo(StandardBaseModel):

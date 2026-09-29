@@ -173,6 +173,17 @@ class MockServer:
         """Setup middleware for CORS, logging, etc."""
 
         @self.app.middleware("request")
+        async def log_request_received(request: Request) -> None:
+            """Log request arrival when log_request_received is enabled."""
+            if self.config.log_request_received:
+                logger.info(
+                    "Request received: %s %s from %s",
+                    request.method,
+                    request.path,
+                    request.ip,
+                )
+
+        @self.app.middleware("request")
         async def add_cors_headers(_request: Request) -> None:
             """Add CORS headers to all requests."""
             return None  # noqa: RET501

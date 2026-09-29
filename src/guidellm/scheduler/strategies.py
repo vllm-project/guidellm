@@ -240,6 +240,7 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         worker_index: NonNegativeInt,
         provisional_start: float,
         settings: RequestSettings,
+        request_info: RequestInfo | None = None,
     ) -> float:
         """
         Resolve scheduled start time after dequeue using per-request settings.
@@ -250,9 +251,11 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         :param worker_index: Worker process index handling the request
         :param provisional_start: Start time from the worker's scheduling slot
         :param settings: Per-request scheduling metadata attached at enqueue
+        :param request_info: Request metadata, including predecessor node ids
+            for strategies that schedule from a prior completion
         :return: Unix timestamp when the request should begin processing
         """
-        _ = (worker_index, settings)
+        _ = (worker_index, settings, request_info)
         return provisional_start
 
 
@@ -718,9 +721,10 @@ class TraceReplayStrategy(SchedulingStrategy):
 
     Each request carries a ``relative_timestamp`` in ``RequestSettings`` from the
     dataset finalizer. ``next_request_time`` schedules dequeue immediately at
-    benchmark start; ``resolve_dequeued_target_start`` applies the trace offset via
-    ``start_time + time_scale * relative_timestamp``, reproducing inter-arrival
-    timing under multiprocessing.
+    benchmark start. ``schedule_turn=idle_gap`` (the default) keeps the idle
+    gap after each predecessor's recorded duration, measured from when that
+    predecessor actually finished. ``schedule_turn=timestamp`` targets
+    ``start_time + time_scale * relative_timestamp``.
     """
 
     type_: Literal["trace"] = "trace"  # type: ignore[assignment]
@@ -728,6 +732,18 @@ class TraceReplayStrategy(SchedulingStrategy):
         default=1.0,
         gt=0,
         description="Scale factor applied to relative timestamps from the dataset",
+    )
+    schedule_turn: Literal["timestamp", "idle_gap"] = Field(
+        default="idle_gap",
+        description=(
+            "idle_gap (the default) keeps the idle gap after each predecessor's "
+            "recorded duration. timestamp targets the trace timestamp."
+        ),
+    )
+    # (conversation_id, node_id) -> (relative_timestamp, duration, actual_end).
+    # Process-local: a conversation runs on one worker.
+    _completions: dict[tuple[str | None, str], tuple[float | None, float, float]] = (
+        PrivateAttr(default_factory=dict)
     )
 
     def __str__(self) -> str:
@@ -757,12 +773,83 @@ class TraceReplayStrategy(SchedulingStrategy):
         worker_index: NonNegativeInt,
         provisional_start: float,
         settings: RequestSettings,
+        request_info: RequestInfo | None = None,
     ) -> float:
         _ = (worker_index, provisional_start)
-        if settings.relative_timestamp is None:
-            return await self.get_processes_start_time()
+        absolute = await self._absolute_target(settings)
+        if (
+            self.schedule_turn != "idle_gap"
+            or request_info is None
+            or not request_info.parent_node_ids
+        ):
+            return absolute
+
+        targets: list[float] = []
+        for parent_id in request_info.parent_node_ids:
+            recorded = self._completions.get((request_info.conversation_id, parent_id))
+            if recorded is None:
+                targets.append(absolute)
+                continue
+            parent_timestamp, parent_duration, parent_end = recorded
+            child_timestamp = settings.relative_timestamp
+            if child_timestamp is None or parent_timestamp is None:
+                targets.append(absolute)
+                continue
+            # Idle gap from the trace, after the recorded request duration.
+            # A missing duration was stored as 0 when the parent completed.
+            gap = child_timestamp - parent_timestamp - parent_duration
+            targets.append(parent_end + self.time_scale * max(gap, 0.0))
+        if not targets:
+            return absolute
+        return max(targets)
+
+    async def _absolute_target(self, settings: RequestSettings) -> float:
+        """
+        Trace timestamp converted to a benchmark wall-clock start.
+
+        :param settings: Per-request scheduling metadata
+        :return: ``start_time + time_scale * relative_timestamp``, or the
+            benchmark start when the request has no relative timestamp
+        """
         start_time = await self.get_processes_start_time()
+        if settings.relative_timestamp is None:
+            return start_time
         return start_time + self.time_scale * settings.relative_timestamp
 
     def request_completed(self, request_info: RequestInfo):
-        _ = request_info
+        """
+        Record a finished request so an idle-gap successor can anchor to it.
+
+        ``schedule_turn=timestamp`` ignores completions. ``schedule_turn=idle_gap``
+        stores the trace timestamp, recorded duration, and actual end. A missing
+        duration is stored as zero. The dataset loader warns once when that
+        column is absent.
+
+        :param request_info: Completed request metadata
+        """
+        if self.schedule_turn != "idle_gap" or request_info.node_id is None:
+            return
+        timings = request_info.timings
+        actual_end = (
+            timings.request_end
+            if timings.request_end is not None
+            else timings.resolve_end
+        )
+        if actual_end is None:
+            return
+        self._completions[(request_info.conversation_id, request_info.node_id)] = (
+            request_info.settings.relative_timestamp,
+            self._trace_duration(request_info.settings),
+            actual_end,
+        )
+
+    def _trace_duration(self, settings: RequestSettings) -> float:
+        """
+        Recorded duration, or zero when the trace did not provide one.
+
+        :param settings: Per-request scheduling metadata
+        :return: Duration in seconds, in the same units as ``relative_timestamp``
+        """
+        if settings.trace_duration is None:
+            return 0.0
+        return settings.trace_duration
