@@ -85,15 +85,15 @@ The random seed is used for any operation in GuideLLM that involves randomness, 
 
 Constraints control when each strategy in a profile stops. Add one or more `--constraint` options. Constraints apply individually to each strategy in a profile. Profiles with multiple strategies include `sweep` and any profile whose primary parameter is a list (for example, `{"streams":[10,20]}` on `concurrent`).
 
-| Constraint type         | Config parameter         | Example                                                         |
-| ----------------------- | ------------------------ | --------------------------------------------------------------- |
-| `max_duration`          | `max_duration` (seconds) | `--constraint kind=max_duration,seconds=30`                     |
-| `max_requests`          | `count`                  | `--constraint kind=max_requests,count=1000`                     |
-| `min_requests`          | `count`                  | `--constraint kind=min_requests,count=1000`                     |
-| `max_errors`            | `count`                  | `--constraint kind=max_errors,count=10`                         |
-| `max_error_rate`        | `rate`                   | `--constraint kind=max_error_rate,rate=0.05`                    |
-| `max_global_error_rate` | `rate`                   | `--constraint kind=max_global_error_rate,rate=0.05`             |
-| `over_saturation`       | detection parameters     | `--constraint kind=over_saturation,min_seconds=30,mode=enforce` |
+| Constraint type         | Config parameters    | Example                                                          |
+| ----------------------- | -------------------- | ---------------------------------------------------------------- |
+| `max_duration`          | `seconds`            | `--constraint kind=max_duration,seconds=30`                      |
+| `max_requests`          | `count`              | `--constraint kind=max_requests,count=1000`                      |
+| `min_requests`          | `count`              | `--constraint kind=min_requests,count=1000`                      |
+| `max_errors`            | `count`              | `--constraint kind=max_errors,count=10`                          |
+| `max_error_rate`        | `rate`, `window`     | `--constraint kind=max_error_rate,rate=0.05,window=10`           |
+| `max_global_error_rate` | `rate`, `minimum`    | `--constraint kind=max_global_error_rate,rate=0.05,minimum=1000` |
+| `over_saturation`       | detection parameters | `--constraint kind=over_saturation,min_seconds=30,mode=enforce`  |
 
 For example, `--constraint kind=max_requests,count=1000` with `--profile kind=sweep` runs up to 1000 requests for each strategy in the sweep (synchronous, throughput, and each interpolated rate). `--constraint kind=min_requests,count=1000` is like `max_requests`, but keeps queuing until 1000 requests have been processed, which avoids throughput tail-off at the end of rate-based benchmarks. `--constraint kind=max_duration,seconds=30` with `--profile '{"kind":"concurrent","streams":[10,20]}'` runs 10 concurrent streams for 30 seconds, then 20 concurrent streams for 30 seconds.
 
