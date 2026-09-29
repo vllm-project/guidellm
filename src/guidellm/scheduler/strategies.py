@@ -721,10 +721,10 @@ class TraceReplayStrategy(SchedulingStrategy):
 
     Each request carries a ``relative_timestamp`` in ``RequestSettings`` from the
     dataset finalizer. ``next_request_time`` schedules dequeue immediately at
-    benchmark start. ``timing=absolute`` then targets
-    ``start_time + time_scale * relative_timestamp``. ``timing=relative`` keeps
-    the idle gap after each predecessor's recorded duration, measured from when
-    that predecessor actually finished.
+    benchmark start. ``schedule_turn=idle_gap`` (the default) keeps the idle
+    gap after each predecessor's recorded duration, measured from when that
+    predecessor actually finished. ``schedule_turn=timestamp`` targets
+    ``start_time + time_scale * relative_timestamp``.
     """
 
     type_: Literal["trace"] = "trace"  # type: ignore[assignment]
@@ -733,11 +733,11 @@ class TraceReplayStrategy(SchedulingStrategy):
         gt=0,
         description="Scale factor applied to relative timestamps from the dataset",
     )
-    timing: Literal["absolute", "relative"] = Field(
-        default="absolute",
+    schedule_turn: Literal["timestamp", "idle_gap"] = Field(
+        default="idle_gap",
         description=(
-            "absolute targets the trace timestamp. relative keeps the idle gap "
-            "after each predecessor's recorded duration."
+            "idle_gap (the default) keeps the idle gap after each predecessor's "
+            "recorded duration. timestamp targets the trace timestamp."
         ),
     )
     # (conversation_id, node_id) -> (relative_timestamp, duration, actual_end).
@@ -778,7 +778,7 @@ class TraceReplayStrategy(SchedulingStrategy):
         _ = (worker_index, provisional_start)
         absolute = await self._absolute_target(settings)
         if (
-            self.timing != "relative"
+            self.schedule_turn != "idle_gap"
             or request_info is None
             or not request_info.parent_node_ids
         ):
@@ -818,15 +818,16 @@ class TraceReplayStrategy(SchedulingStrategy):
 
     def request_completed(self, request_info: RequestInfo):
         """
-        Record a finished request so a relative-timed successor can anchor to it.
+        Record a finished request so an idle-gap successor can anchor to it.
 
-        Absolute timing ignores completions. Relative timing stores the trace
-        timestamp, recorded duration, and actual end. A missing duration is
-        stored as zero. The dataset loader warns once when that column is absent.
+        ``schedule_turn=timestamp`` ignores completions. ``schedule_turn=idle_gap``
+        stores the trace timestamp, recorded duration, and actual end. A missing
+        duration is stored as zero. The dataset loader warns once when that
+        column is absent.
 
         :param request_info: Completed request metadata
         """
-        if self.timing != "relative" or request_info.node_id is None:
+        if self.schedule_turn != "idle_gap" or request_info.node_id is None:
             return
         timings = request_info.timings
         actual_end = (

@@ -257,11 +257,12 @@ class TestTraceReplayStrategy:
     @pytest.mark.smoke
     def test_absolute_timing_ignores_predecessor_completion(self):
         """
-        Absolute timing still targets the trace timestamp after a late predecessor.
+        schedule_turn=timestamp still targets the trace timestamp after a late
+        predecessor.
 
         ## WRITTEN BY AI ##
         """
-        strategy = _relative_strategy(time_scale=1.0, timing="absolute")
+        strategy = _relative_strategy(time_scale=1.0, schedule_turn="timestamp")
         _complete(
             strategy,
             node_id="n0",
@@ -287,8 +288,8 @@ def _relative_strategy(**kwargs) -> TraceReplayStrategy:
 
     ## WRITTEN BY AI ##
     """
-    if "timing" not in kwargs:
-        kwargs["timing"] = "relative"
+    if "schedule_turn" not in kwargs:
+        kwargs["schedule_turn"] = "idle_gap"
     strategy = TraceReplayStrategy(**kwargs)
     strategy.init_processes_timings(
         worker_count=1,

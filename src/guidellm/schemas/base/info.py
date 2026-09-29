@@ -182,8 +182,8 @@ class RequestSettings(StandardBaseDict):
         description=(
             "Recorded request duration in seconds from the trace, in the same "
             "units as relative_timestamp after dataset time scaling. None when "
-            "the trace has no duration column. Relative replay uses this to "
-            "keep the idle gap before the next request; a missing value is "
+            "the trace has no duration column. schedule_turn=idle_gap uses this "
+            "to keep the idle gap before the next request; a missing value is "
             "treated as instantaneous."
         ),
     )

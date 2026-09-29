@@ -25,11 +25,11 @@ class ReplayProfile(Profile):
     """
     Replay a trace file using per-row ``relative_timestamp`` from the dataset.
 
-    ``timing=absolute`` (the default) schedules each request at
-    ``start_time + time_scale * relative_timestamp``. A later turn waits only
-    while its predecessor is still running. ``timing=relative`` keeps the idle
-    gap after each request's recorded duration, so a slow or late predecessor
-    shifts the following request by that overrun.
+    ``schedule_turn=idle_gap`` (the default) keeps the idle gap after each
+    request's recorded duration, so a slow or late predecessor shifts the
+    following request by that overrun. ``schedule_turn=timestamp`` schedules
+    each request at ``start_time + time_scale * relative_timestamp``. A later
+    turn waits only while its predecessor is still running.
 
     Dataset-side ``time_scale`` and wait caps are applied by the trace dataset
     before this scheduler scale.
@@ -65,5 +65,5 @@ class ReplayProfile(Profile):
             return None
         return TraceReplayStrategy(
             time_scale=self.args.time_scale,
-            timing=self.args.timing,
+            schedule_turn=self.args.schedule_turn,
         )

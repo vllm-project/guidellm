@@ -34,8 +34,8 @@ class TraceDataArgs(DataArgs):
         default="duration",
         description=(
             "Optional column for how long each request ran, in seconds. "
-            "Relative replay timing keeps the idle gap after this duration. "
-            "When the column is absent, relative timing treats each request "
+            "schedule_turn=idle_gap keeps the idle gap after this duration. "
+            "When the column is absent, idle_gap treats each request "
             "as instantaneous."
         ),
     )

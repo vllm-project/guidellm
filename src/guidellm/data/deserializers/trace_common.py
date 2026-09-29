@@ -477,7 +477,7 @@ def _handle_column_search(config: TraceDataArgs, trace_format: TraceFormatBase) 
         raise DataNotSupportedError(f"Trace missing required columns: {missing}")
     if not trace_format.has_duration_column():
         logger.warning(
-            "Trace duration column '{}' is missing; relative replay timing "
+            "Trace duration column '{}' is missing; schedule_turn=idle_gap "
             "will treat each request as instantaneous.",
             trace_format.config.duration_column,
         )
