@@ -5,7 +5,13 @@ import pytest
 from guidellm.benchmark.schemas.accumulator import (
     GenerativeRequestsAccumulator,
 )
-from guidellm.schemas import GenerativeRequestStats, RequestInfo, UsageMetrics
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationResponse,
+    GenerativeRequestStats,
+    RequestInfo,
+    UsageMetrics,
+)
 
 
 def _make_stats(
@@ -85,6 +91,62 @@ class TestClearStatsData:
         assert stats.request_args is None
         assert stats.output == "answer"
         assert stats.reasoning_output == "thinking..."
+
+
+class TestReservoirSampling:
+    """Tests for bounded request-data retention during reservoir sampling."""
+
+    @pytest.mark.regression
+    def test_clears_request_data_when_new_request_is_not_sampled(self, monkeypatch):
+        """A rejected reservoir candidate must not retain heavyweight data.
+
+        ## WRITTEN BY AI ##
+        """
+        accumulator = GenerativeRequestsAccumulator(sample_size=1)
+
+        first_request = GenerationRequest(request_id="req-1")
+        first_response = GenerationResponse(
+            request_id="req-1",
+            request_args="args-1",
+            text="output-1",
+            reasoning_text="reasoning-1",
+        )
+        first_info = RequestInfo(request_id="req-1", status="completed")
+        first_info.timings.request_start = 0.0
+        first_info.timings.request_end = 1.0
+        first_info.timings.resolve_end = 1.0
+        accumulator.update_estimate(
+            first_response,
+            first_request,
+            first_info,
+            prefer_response_metrics=True,
+        )
+
+        monkeypatch.setattr("random.random", lambda: 1.0)
+        second_request = GenerationRequest(request_id="req-2")
+        second_response = GenerationResponse(
+            request_id="req-2",
+            request_args="args-2",
+            text="output-2",
+            reasoning_text="reasoning-2",
+        )
+        second_info = RequestInfo(request_id="req-2", status="completed")
+        second_info.timings.request_start = 1.0
+        second_info.timings.request_end = 2.0
+        second_info.timings.resolve_end = 2.0
+        accumulator.update_estimate(
+            second_response,
+            second_request,
+            second_info,
+            prefer_response_metrics=True,
+        )
+
+        assert accumulator.samples == [0]
+        assert accumulator.requests_stats[0].request_args == "args-1"
+        assert accumulator.requests_stats[0].output == "output-1"
+        assert accumulator.requests_stats[1].request_args is None
+        assert accumulator.requests_stats[1].output is None
+        assert accumulator.requests_stats[1].reasoning_output is None
 
     @pytest.mark.smoke
     def test_clears_both(self):
