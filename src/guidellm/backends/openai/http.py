@@ -11,6 +11,7 @@ tracking with flexible parameter customization.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -35,6 +36,13 @@ from guidellm.utils.dict import deep_filter
 __all__ = [
     "OpenAIHTTPBackend",
 ]
+
+# SSE record boundaries per the spec: a line ends at CRLF, bare LF, or bare CR.
+# httpx.Response.aiter_lines() instead splits on the full str.splitlines() set
+# (which also includes U+0B, U+0C, U+1C-U+1E, U+85, U+2028, U+2029), so a server
+# that emits one of those inside an unescaped JSON string value (legal JSON;
+# only U+0000-001F require escaping) gets its record cut mid-string.
+_SSE_LINE_SPLIT_RE = re.compile(r"\r\n|\r|\n")
 
 
 @Backend.register("openai_http")
@@ -398,13 +406,33 @@ class OpenAIHTTPBackend(Backend):
         """
         Asynchronously iterate over lines in an HTTP response stream.
 
+        Splits on the SSE spec's own line endings (CRLF, LF, or bare CR) rather
+        than delegating to ``stream.aiter_lines()``, which additionally treats
+        U+2028/U+2029/U+0085 as record boundaries and cuts a record mid-string
+        when one appears unescaped in a JSON value. ``aiter_text()`` still
+        decodes bytes incrementally, so a record split across two network reads
+        is buffered here exactly as it would be by the stdlib splitter.
+
         :param stream: HTTP response object with streaming content
         :yield: Lines of text from the response stream
         """
-        async for line in stream.aiter_lines():
-            if not line.strip():
-                continue  # Skip blank lines
-            yield line
+        buffer = ""
+        async for chunk in stream.aiter_text():
+            buffer += chunk
+            while True:
+                # A trailing bare "\r" may be the first half of a "\r\n" that
+                # arrives in the next chunk, so hold it back until we know.
+                search_end = len(buffer) - 1 if buffer.endswith("\r") else len(buffer)
+                match = _SSE_LINE_SPLIT_RE.search(buffer, 0, search_end)
+                if match is None:
+                    break
+                line, buffer = buffer[: match.start()], buffer[match.end() :]
+                if line.strip():
+                    yield line
+        if buffer.endswith("\r"):
+            buffer = buffer[:-1]
+        if buffer.strip():
+            yield buffer
 
     def _build_headers(
         self, existing_headers: dict[str, str] | None = None

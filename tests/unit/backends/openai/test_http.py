@@ -1214,3 +1214,128 @@ async def test_resolve_responses_terminal_error(
                 assert responses[-1].text == "Partial answer"
     finally:
         await backend.process_shutdown()
+
+
+class TestAiterLinesSSERecordBoundaries:
+    """Cover the SSE record-boundary fix for issue #1202.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_resolve_stream_unicode_line_separator_in_json_string(
+        self, httpx_mock: HTTPXMock
+    ):
+        """A U+2028 inside a JSON string value must not split the SSE record.
+
+        U+2028/U+2029/U+0085 do not require escaping under the JSON spec, so a
+        server may legally emit one unescaped inside a string. httpx's
+        ``aiter_lines()`` treats those as line breaks (the full
+        ``str.splitlines()`` set), which used to cut the record mid-string and
+        raise a ``JSONDecodeError`` here.
+        """
+        content = "before" + "\u2028" + "after"
+        payload = {"choices": [{"delta": {"content": content}}]}
+        chunk = ("data: " + json.dumps(payload, ensure_ascii=False) + "\n\n").encode(
+            "utf-8"
+        )
+        httpx_mock.add_response(
+            url="http://test/v1/chat/completions",
+            stream=IteratorStream([chunk, b"data: [DONE]\n\n"]),
+        )
+
+        backend = _make_backend(
+            target="http://test",
+            model="test-model",
+            stream=True,
+            validate_backend=False,
+            request_format="/v1/chat/completions",
+        )
+        await backend.process_startup()
+        try:
+            request = GenerationRequest(columns={"text_column": ["test"]})
+            request_info = RequestInfo(request_id=request.request_id)
+
+            responses = [
+                response
+                async for response, _ in backend.resolve(request, request_info)
+                if response is not None
+            ]
+
+            assert responses[-1].text == content
+        finally:
+            await backend.process_shutdown()
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_resolve_stream_record_split_across_network_chunks(
+        self, httpx_mock: HTTPXMock
+    ):
+        """A single record split across two network reads must still parse.
+
+        Guards the case PR #680 reverted #663 for: a byte-level splitter that
+        does not buffer a partial record across ``aiter_raw()`` chunks. The
+        fix here buffers on ``aiter_text()`` instead, so this must stay green.
+        """
+        full = (
+            "data: "
+            + json.dumps({"choices": [{"delta": {"content": "hello world"}}]})
+            + "\n\n"
+        ).encode("utf-8")
+        midpoint = len(full) // 2
+
+        httpx_mock.add_response(
+            url="http://test/v1/chat/completions",
+            stream=IteratorStream(
+                [full[:midpoint], full[midpoint:], b"data: [DONE]\n\n"]
+            ),
+        )
+
+        backend = _make_backend(
+            target="http://test",
+            model="test-model",
+            stream=True,
+            validate_backend=False,
+            request_format="/v1/chat/completions",
+        )
+        await backend.process_startup()
+        try:
+            request = GenerationRequest(columns={"text_column": ["test"]})
+            request_info = RequestInfo(request_id=request.request_id)
+
+            responses = [
+                response
+                async for response, _ in backend.resolve(request, request_info)
+                if response is not None
+            ]
+
+            assert responses[-1].text == "hello world"
+        finally:
+            await backend.process_shutdown()
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_aiter_lines_flushes_unterminated_trailing_line(self):
+        """A final line with no newline, or a bare trailing CR, must still
+        be yielded once the stream ends rather than dropped from the buffer.
+        """
+        backend = _make_backend(target="http://test", model="test-model")
+        httpx_request = httpx.Request("GET", "http://test")
+
+        no_newline = httpx.Response(
+            200, request=httpx_request, stream=IteratorStream([b"data: [DONE]"])
+        )
+        assert [line async for line in backend._aiter_lines(no_newline)] == [
+            "data: [DONE]"
+        ]
+
+        trailing_cr = httpx.Response(
+            200, request=httpx_request, stream=IteratorStream([b"data: [DONE]\r"])
+        )
+        assert [line async for line in backend._aiter_lines(trailing_cr)] == [
+            "data: [DONE]"
+        ]
