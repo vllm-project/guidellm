@@ -131,7 +131,7 @@ async def resolve_backend(
                 f"{backend_instance.__class__.__name__} backend validated "
                 f"with model {model}"
             ),
-            details=backend_instance.info,
+            details=backend_instance.console_dump(),
             status_level="success",
         )
 

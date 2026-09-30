@@ -17,7 +17,7 @@ from pydantic import ValidationError
 from pytest_httpx import HTTPXMock, IteratorStream
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.openai.http import OpenAIHTTPBackend
+from guidellm.backends.openai.http import OpenAIHTTPBackend, _redact_server_config
 from guidellm.backends.openai.request_handlers import (
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
@@ -1345,7 +1345,9 @@ class TestServerConfigCapture:
         await worker.process_startup()
         try:
             await worker.validate()
-            assert worker.info == backend.info
+            # Selection is a set; its JSON list order can change after pickling.
+            assert worker._args == backend._args
+            assert worker.info["server_info"] == backend.info["server_info"]
             assert len(httpx_mock.get_requests()) == 1
         finally:
             await worker.process_shutdown()
@@ -1516,3 +1518,152 @@ def test_invalid_server_config_selection(selection):
     """Reject ambiguous booleans and unknown capture sections before setup."""
     with pytest.raises(ValidationError):
         OpenAIHTTPBackendArgs(target="http://test", capture_server_config=selection)
+
+
+@pytest.mark.regression
+class TestServerConfigRedaction:
+    """Concrete credential patterns must not erase useful benchmark settings."""
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "HF_TOKEN",
+            "OPENAI_API_KEY",
+            "VLLM_API_KEY",
+            "AWS_SECRET_ACCESS_KEY",
+            "WANDB_API_KEY",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "ssl_keyfile_password",
+            "PASSWD",
+            "DB_PASS",
+            "PRIVATE_KEY",
+            "AZURE_CLIENT_CREDENTIAL",
+            "COOKIE",
+            "BEARER",
+            "GITHUB_PAT",
+            "proxy-auth",
+            "client_credentials",
+            "apiKey",
+        ],
+    )
+    def test_credential_fields(self, key):
+        """Filter reviewer examples, including nested dictionaries inside lists."""
+        payload = {"plugins": [{key: "private-value"}]}
+        assert _redact_server_config(payload) == {"plugins": [{key: "[REDACTED]"}]}
+        assert payload == {"plugins": [{key: "private-value"}]}
+
+    @pytest.mark.parametrize("value", [None, False, True])
+    def test_unset_credentials_and_boolean_switches(self, value):
+        """Preserve the difference between absent credentials and enabled switches."""
+        assert _redact_server_config({"hf_token": value}) == {"hf_token": value}
+
+    def test_useful_settings_are_preserved(self):
+        """Do not confuse token counts, cache keys or compiler passes with secrets."""
+        payload = {
+            "max_tokens": 2048,
+            "max_num_batched_tokens": 4096,
+            "tokenizer": "test-model",
+            "tokenizer_mode": "auto",
+            "cache_key": "sha256",
+            "monkey_patch": False,
+            "bypass": True,
+            "pass_config": {"enable_fusion": True},
+            "enable_auth": True,
+            "auth_method": "oauth2",
+            "credential_provider": "default",
+            "VLLM_USE_V1": True,
+            "pip_packages": (
+                "torch==2.13.0\nvllm==0.30.0\ngoogle-auth==2.40.0\nsecretstorage==3.3.3"
+            ),
+            "cuda_runtime_version": "13.0",
+            "env_vars": "CUDA_VERSION=13.0\nVLLM_USE_V1=1",
+        }
+        assert _redact_server_config(payload) == payload
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("postgres://user:pw@host/db", "postgres://[REDACTED]@host/db"),
+            ("https://token@host/path", "https://[REDACTED]@host/path"),
+            ("redis://user:p%40ss@[::1]:6379/0", "redis://[REDACTED]@[::1]:6379/0"),
+            ("postgres://u:p@ss@host/db", "postgres://[REDACTED]@host/db"),
+            ("https://host/path@revision", "https://host/path@revision"),
+            ("https://host/path?max_tokens=32", "https://host/path?max_tokens=32"),
+            (
+                "primary=https://u:pw@a/ secondary=https://u:pw@b/",
+                "primary=https://[REDACTED]@a/ secondary=https://[REDACTED]@b/",
+            ),
+        ],
+    )
+    def test_url_userinfo(self, value, expected):
+        """Remove URL credentials without removing hosts, paths or numeric settings."""
+        assert _redact_server_config({"endpoint": value}) == {"endpoint": expected}
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "HF_TOKEN=hf_placeholder",
+            "export HF_TOKEN = 'two word secret'",
+            "--api-key=sk_placeholder",
+            "serve --api-key 'two word secret' --port 8000",
+            "CUDA_VERSION=13.0\nVLLM_API_KEY=placeholder\nVLLM_USE_V1=1",
+            "https://host/path?token=placeholder&max_tokens=32",
+        ],
+    )
+    def test_sensitive_free_form_text(self, value):
+        """Drop sensitive free-form text as a whole rather than parse shell syntax."""
+        assert _redact_server_config({"diagnostic": value}) == {
+            "diagnostic": "[REDACTED]"
+        }
+
+    def test_argument_lists(self):
+        """Filter flag values, assignments and nested lists without mutation."""
+        payload = [
+            "--api-key",
+            "two word secret",
+            "--max-tokens",
+            "32",
+            "HF_TOKEN=placeholder",
+            ["--private-key", {"value": "secret"}],
+            "--password=placeholder",
+            "--tokenizer",
+            "test-model",
+        ]
+        result = _redact_server_config(payload)
+        assert result == [
+            "--api-key",
+            "[REDACTED]",
+            "--max-tokens",
+            "32",
+            "[REDACTED]",
+            ["--private-key", "[REDACTED]"],
+            "[REDACTED]",
+            "--tokenizer",
+            "test-model",
+        ]
+        assert payload[1] == "two word secret"
+        assert _redact_server_config(result) == result
+
+    @pytest.mark.parametrize("value", ["localhost", "127.0.0.1", "::1", "", None])
+    def test_local_or_unset_hosts(self, value):
+        """Keep canonical local hosts and unset values useful for reproduction."""
+        payload = {"host": value, "VLLM_EC_SIDE_CHANNEL_HOST": value}
+        assert _redact_server_config(payload) == payload
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "private.internal",
+            "10.0.0.7",
+            "2001:db8::1",
+            "localhost.private.internal",
+            "0:0:0:0:0:0:0:1",
+        ],
+    )
+    def test_other_hosts(self, value):
+        """Conservatively filter noncanonical and non-local host fields."""
+        payload = {"host": value, "VLLM_EC_SIDE_CHANNEL_HOST": value}
+        assert _redact_server_config(payload) == {
+            "host": "[REDACTED]",
+            "VLLM_EC_SIDE_CHANNEL_HOST": "[REDACTED]",
+        }

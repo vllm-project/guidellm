@@ -129,7 +129,7 @@ guidellm run \
   --output kind=json,path=benchmark.json
 ```
 
-During setup, GuideLLM requests `/server_info?config_format=json` once and saves the selected sections under `benchmarks[].config.backend.server_info` in the JSON report. This includes settings such as tensor parallelism, scheduler limits and cache configuration that help explain differences between benchmark runs. The snapshot is reused across worker processes and benchmark strategies; collection is outside the measured generation requests. It also works with `validate_backend=false`.
+During setup, GuideLLM requests `/server_info?config_format=json` once and saves the selected sections under `benchmarks[].config.backend.server_info` in the JSON report. This includes settings such as tensor parallelism, scheduler limits and cache configuration that help explain differences between benchmark runs. The snapshot is reused across worker processes and benchmark strategies; collection is outside the measured generation requests. Captured server details are retained in the report and omitted from the initialization console output. It also works with `validate_backend=false`.
 
 The selector accepts a set of section names (a JSON array in CLI input), `"all"`, or `null`:
 
@@ -145,7 +145,14 @@ Capture is disabled by default (`null`); an empty set/array also disables it. Bo
 
 Each selected section must be a JSON object. Missing or unsupported sections produce a warning and are omitted independently, preserving other valid selected sections. Empty objects are retained. Legacy text configurations are skipped because their credential fields cannot be reliably redacted; structured environment sections can still be captured when available. Depending on the vLLM version, `/server_info` may require `VLLM_SERVER_DEV_MODE=1`. This enables development endpoints beyond server information; consult [vLLM's security documentation](https://docs.vllm.ai/en/latest/usage/security/) before enabling it, and use an isolated benchmark deployment.
 
-GuideLLM redacts common credential fields recursively in every selected section, including API keys, passwords and authentication tokens. This is best-effort filtering, not a guarantee that arbitrary configuration or environment information is safe to publish. Model paths, deployment names, custom string values and credentials embedded in otherwise ordinary strings may still be private. Select only the sections needed and review the saved report before sharing it; `all` does not bypass filtering.
+GuideLLM applies best-effort filtering to every selected section:
+
+- Recognizable credential fields, including API keys, passwords, private keys, tokens, cookies and credential aliases, are redacted recursively. Unset values and boolean switches are preserved.
+- User information in recognized scheme-based URLs (such as `postgres://user:password@host/db`) is replaced with `[REDACTED]`, retaining the host and path.
+- A sensitive flag in an argument list (such as `--api-key`) has its following value redacted. Free-form strings containing sensitive assignments or flags are omitted in full rather than attempting to parse shell quoting or multiline credentials. For example, an `env_vars` string containing `VLLM_API_KEY=...` is redacted as a whole.
+- Fields named `host` or ending in `_host` (case-insensitive, treating hyphens as underscores) are redacted unless their value is exactly `localhost`, `127.0.0.1`, `::1`, an empty string or `null`.
+
+This does not guarantee that configuration or environment information is safe to publish. Hardware details, model paths, deployment names, URL hosts/paths and unrecognized secret formats may remain. Choose only the sections needed, leave capture disabled for confidential environments, and review the saved report before sharing it. `all` does not bypass filtering.
 
 ## Passing Sampling Parameters
 

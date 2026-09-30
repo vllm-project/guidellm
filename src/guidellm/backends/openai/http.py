@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from collections.abc import AsyncIterator
 from copy import deepcopy
@@ -42,32 +43,101 @@ __all__ = [
 
 _SERVER_CONFIG_TIMEOUT = 5.0
 _SERVER_CONFIG_MAX_BYTES = 1024 * 1024
+_CONFIG_ASSIGNMENT_RE = re.compile(r"(?<![\w-])(?P<key>[A-Za-z_][\w.-]*)\s*=(?!=)")
+_CONFIG_FLAG_RE = re.compile(r"(?<!\S)--(?P<key>[A-Za-z_][\w-]*)(?=\s|=|$)")
+_CONFIG_URL_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s/?#<>\"']+")
+_LOCAL_CONFIG_HOSTS = ("localhost", "127.0.0.1", "::1", "", None)
+
+
+def _sensitive_config_key(key: str) -> bool:
+    """Recognize credential names without treating every key or token as secret."""
+    normalized = key.lower().replace("-", "_").replace(".", "_")
+    names = (
+        "token",
+        "pass",
+        "passwd",
+        "credential",
+        "credentials",
+        "cookie",
+        "cookies",
+        "bearer",
+        "pat",
+        "auth",
+        "authorization",
+    )
+    return (
+        normalized in names
+        or normalized.endswith(tuple(f"_{name}" for name in names))
+        or any(
+            part in normalized
+            for part in (
+                "api_key",
+                "apikey",
+                "password",
+                "secret",
+                "access_key",
+                "private_key",
+            )
+        )
+    )
+
+
+def _redact_config_text(value: str) -> str:
+    """Drop sensitive free-form assignments/flags and strip URL user information."""
+    for pattern in (_CONFIG_ASSIGNMENT_RE, _CONFIG_FLAG_RE):
+        if any(
+            _sensitive_config_key(match["key"]) for match in pattern.finditer(value)
+        ):
+            # Whole-string omission avoids guessing where quoted, multiline or
+            # escaped credentials end. Other fields in the section are retained.
+            return "[REDACTED]"
+
+    def redact_url(match: re.Match[str]) -> str:
+        scheme, authority = match[0].split("://", 1)
+        if "@" not in authority:
+            return match[0]
+        return f"{scheme}://[REDACTED]@{authority.rsplit('@', 1)[1]}"
+
+    return _CONFIG_URL_RE.sub(redact_url, value)
 
 
 def _redact_server_config(value: Any) -> Any:
-    """Redact common credential fields without hiding token-count settings."""
+    """Filter recognizable credentials and host fields without mutating input."""
     if isinstance(value, dict):
         result = {}
         for key, item in value.items():
             normalized = key.lower().replace("-", "_")
-            sensitive = (
-                normalized in {"token", "authorization", "credentials"}
-                or any(
-                    part in normalized
-                    for part in (
-                        "api_key",
-                        "apikey",
-                        "password",
-                        "secret",
-                        "access_key",
-                    )
+            if _sensitive_config_key(key):
+                # Preserve unset values and boolean switches: neither is a secret.
+                result[key] = (
+                    item if item is None or isinstance(item, bool) else "[REDACTED]"
                 )
-                or normalized.endswith(("_token", "_credentials"))
-            )
-            result[key] = "[REDACTED]" if sensitive else _redact_server_config(item)
+            elif (
+                normalized == "host" or normalized.endswith("_host")
+            ) and item not in _LOCAL_CONFIG_HOSTS:
+                result[key] = "[REDACTED]"
+            else:
+                result[key] = _redact_server_config(item)
         return result
     if isinstance(value, list):
-        return [_redact_server_config(item) for item in value]
+        items = []
+        redact_next = False
+        for item in value:
+            if redact_next:
+                items.append("[REDACTED]")
+                redact_next = False
+            elif (
+                isinstance(item, str)
+                and (flag := _CONFIG_FLAG_RE.fullmatch(item))
+                and _sensitive_config_key(flag["key"])
+            ):
+                items.append(item)
+                redact_next = True
+            else:
+                items.append(_redact_server_config(item))
+        return items
+    if isinstance(value, str):
+        return _redact_config_text(value)
     return value
 
 
@@ -123,6 +193,13 @@ class OpenAIHTTPBackend(Backend):
         if self._server_info is not None:
             info["server_info"] = deepcopy(self._server_info)
         return info
+
+    def console_dump(self) -> dict[str, Any]:
+        """Omit captured server details from initialization console output.
+
+        :return: Backend arguments without copying or exposing the report snapshot
+        """
+        return super().info
 
     async def process_startup(self):
         """

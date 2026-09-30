@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from io import StringIO
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -24,6 +25,7 @@ from guidellm.schemas.benchmark import (
     SynchronousProfileArgs,
     TransientPhaseConfig,
 )
+from guidellm.utils.console import Console
 
 
 @pytest.mark.asyncio
@@ -328,11 +330,17 @@ async def test_server_config_reaches_serialized_benchmark(httpx_mock: HTTPXMock)
     httpx_mock.add_response(
         url="http://test/v1/models", json={"data": [{"id": "test-model"}]}
     )
+    output = StringIO()
     backend, model = await resolve_backend(
         OpenAIHTTPBackendArgs(
             target="http://test", capture_server_config={"vllm_config"}
-        )
+        ),
+        console=Console(file=output, width=200, color_system=None),
     )
+    assert "backend validated" in output.getvalue()
+    assert "tensor_parallel_size" not in output.getvalue()
+    with patch("guidellm.backends.openai.http.deepcopy", side_effect=AssertionError):
+        assert "server_info" not in backend.console_dump()
     assert model == "test-model"
     assert backend._async_client is None
 

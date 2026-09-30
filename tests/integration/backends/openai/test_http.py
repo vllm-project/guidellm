@@ -35,6 +35,7 @@ def test_server_config_capture_in_cli_report(
 
     """
     requests: list[str] = []
+    diagnostic = "capture-only-system-diagnostic " * 1000
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, message, *args):
@@ -60,15 +61,30 @@ def test_server_config_capture_in_cli_report(
                     {
                         "vllm_config": {
                             "parallel_config": {"tensor_parallel_size": 2},
-                            "model_config": {"hf_token": "private-token"},
+                            "model_config": {
+                                "hf_token": "private-token",
+                                "model": "capture-only-model-name",
+                                "endpoint": "postgres://user:private-url-secret@localhost/db",
+                                "args": [
+                                    "--api-key",
+                                    "private-argument",
+                                    "--max-tokens",
+                                    "32",
+                                ],
+                            },
                         },
                         "vllm_env": {
                             "VLLM_USE_V1": True,
                             "VLLM_API_KEY": "private-key",
+                            "VLLM_EC_SIDE_CHANNEL_HOST": "private-host.internal",
                         },
                         "system_env": {
                             "cuda_runtime_version": "12.8",
                             "HF_TOKEN": "private-token",
+                            "cpu_info": diagnostic,
+                            "env_vars": (
+                                "CUDA_VERSION=13.0\nVLLM_API_KEY=private-inline-secret"
+                            ),
                         },
                     },
                 )
@@ -139,7 +155,6 @@ def test_server_config_capture_in_cli_report(
                 "kind=max_requests,count=2",
                 "--output",
                 f"kind=json,path={report_path}",
-                "--disable-console",
             ],
             capture_output=True,
             text=True,
@@ -151,7 +166,11 @@ def test_server_config_capture_in_cli_report(
         server.server_close()
         thread.join(timeout=5)
 
-    assert result.returncode == 0, result.stdout + result.stderr
+    console_output = result.stdout + result.stderr
+    assert result.returncode == 0, console_output
+    assert "backend validated" in console_output
+    assert "capture-only-" not in console_output
+    assert "private-" not in console_output
     report_text = report_path.read_text()
     report = json.loads(report_text)
     benchmark = report["benchmarks"][0]
@@ -164,16 +183,29 @@ def test_server_config_capture_in_cli_report(
     assert requests.index("/server_info?config_format=json") < requests.index(
         "/v1/chat/completions"
     )
-    assert "private-token" not in report_text
-    assert "private-key" not in report_text
+    assert "private-" not in report_text
     if server_info_status == 200:
         expected = {
             "vllm_config": {
                 "parallel_config": {"tensor_parallel_size": 2},
-                "model_config": {"hf_token": "[REDACTED]"},
+                "model_config": {
+                    "hf_token": "[REDACTED]",
+                    "model": "capture-only-model-name",
+                    "endpoint": "postgres://[REDACTED]@localhost/db",
+                    "args": ["--api-key", "[REDACTED]", "--max-tokens", "32"],
+                },
             },
-            "vllm_env": {"VLLM_USE_V1": True, "VLLM_API_KEY": "[REDACTED]"},
-            "system_env": {"cuda_runtime_version": "12.8", "HF_TOKEN": "[REDACTED]"},
+            "vllm_env": {
+                "VLLM_USE_V1": True,
+                "VLLM_API_KEY": "[REDACTED]",
+                "VLLM_EC_SIDE_CHANNEL_HOST": "[REDACTED]",
+            },
+            "system_env": {
+                "cuda_runtime_version": "12.8",
+                "HF_TOKEN": "[REDACTED]",
+                "cpu_info": diagnostic,
+                "env_vars": "[REDACTED]",
+            },
         }
         sections = set(expected) if selection == "all" else set(selection)
         assert benchmark["config"]["backend"]["server_info"] == {
