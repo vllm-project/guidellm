@@ -66,6 +66,11 @@ These metrics provide a breakdown of the overall request statuses, helping users
 - **Definition**: The time taken to process a single request, from start to finish.
 - **Use Case**: A critical metric for evaluating the responsiveness of the system.
 
+### Generation Delay
+
+- **Definition**: `generation_delay` is the time between the scheduler beginning to produce the next conversation from `requests_generator` and creating that conversation's request infos. It is recorded once per conversation on scheduler state, not on individual requests.
+- **Use Case**: Shows how long the load generator spends materializing and enqueueing each conversation (dataset iteration plus coordinator prep). A delay near zero means request production is keeping up; a large delay means the dataset or enqueue path is the bottleneck, independent of backend latency and dispatch scheduling.
+
 ### Dispatch Delay
 
 - **Definition**: `request_dispatch_delay` is `request_start - targeted_start`: the time between when a request was scheduled to arrive and when it was actually sent.

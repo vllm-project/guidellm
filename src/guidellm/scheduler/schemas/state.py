@@ -243,3 +243,9 @@ class SchedulerState(StandardBaseModel):
     cancelled_requests: int = Field(
         default=0, description="Number of requests that were cancelled"
     )
+    # TODO: We should consider replacing this with per-conversation metrics
+    generation_delay_samples: list[float] = Field(
+        default_factory=list,
+        exclude=True,  # Avoid including this potentially large list in output
+        description="Delays in yielding conversations from the data generator",
+    )

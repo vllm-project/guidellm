@@ -20,6 +20,7 @@ from guidellm.benchmark.schemas.accumulator import (
 )
 from guidellm.scheduler import SchedulerState
 from guidellm.schemas import (
+    DistributionSummary,
     GenerativeRequestStats,
     SampleUncertainty,
     StandardBaseDict,
@@ -91,6 +92,13 @@ class SchedulerMetrics(StandardBaseDict):
     )
 
     # Scheduler internal performance timings
+    generation_delay: DistributionSummary = Field(
+        default_factory=lambda: DistributionSummary.from_values([]),
+        description=(
+            "Distribution of time between attempting to yield a conversation "
+            "from the request generator and actually yielding it (seconds)"
+        ),
+    )
     queued_time_avg: float = Field(
         description="Avg time requests spent in the queue (seconds)"
     )
@@ -144,6 +152,9 @@ class SchedulerMetrics(StandardBaseDict):
             # Request details tracked by the scheduler
             requests_made=accumulator.scheduler_metrics.requests_made,
             # Scheduler internal performance timings
+            generation_delay=DistributionSummary.from_values(
+                scheduler_state.generation_delay_samples
+            ),
             queued_time_avg=accumulator.scheduler_metrics.queued_time.mean or -1.0,
             resolve_start_delay_avg=(
                 accumulator.scheduler_metrics.resolve_start_delay.mean or -1.0
