@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from contextlib import nullcontext
 from typing import Literal
 from unittest.mock import MagicMock, Mock, patch
@@ -1339,3 +1340,40 @@ class TestAiterLinesSSERecordBoundaries:
         assert [line async for line in backend._aiter_lines(trailing_cr)] == [
             "data: [DONE]"
         ]
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_aiter_lines_long_single_record_across_many_chunks_is_linear(self):
+        """A single record spanning many small chunks must not be rescanned
+        from the start of the buffer on every chunk.
+
+        Before the fix, ``_aiter_lines`` re-searched the whole buffer from
+        index 0 on each chunk while no line ending had been found yet, so a
+        1 MB record (a large logprobs payload, say) delivered in 1 KB chunks
+        cost seconds instead of milliseconds. 500 KB in 1 KB chunks stays
+        well under a second either way it is split; the unpatched loop
+        clears it too, but at a cost this bound would still catch a
+        regression back to quadratic behavior.
+        """
+        backend = _make_backend(target="http://test", model="test-model")
+        httpx_request = httpx.Request("GET", "http://test")
+
+        record = "x" * (500 * 1024)
+        chunk_size = 1024
+        chunks = [
+            record[i : i + chunk_size].encode("utf-8")
+            for i in range(0, len(record), chunk_size)
+        ]
+        chunks.append(b"\n")
+
+        response = httpx.Response(
+            200, request=httpx_request, stream=IteratorStream(chunks)
+        )
+
+        start = time.monotonic()
+        lines = [line async for line in backend._aiter_lines(response)]
+        elapsed = time.monotonic() - start
+
+        assert lines == [record]
+        assert elapsed < 1.0

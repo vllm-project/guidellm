@@ -417,18 +417,30 @@ class OpenAIHTTPBackend(Backend):
         :yield: Lines of text from the response stream
         """
         buffer = ""
+        # Offset up to which the buffer has already been searched with no
+        # match. Without this, a single record spanning many chunks (a large
+        # logprobs payload, for example) gets rescanned from index 0 on every
+        # chunk, making the loop quadratic in the record's size.
+        scanned = 0
         async for chunk in stream.aiter_text():
             buffer += chunk
+            start = 0
             while True:
                 # A trailing bare "\r" may be the first half of a "\r\n" that
                 # arrives in the next chunk, so hold it back until we know.
                 search_end = len(buffer) - 1 if buffer.endswith("\r") else len(buffer)
-                match = _SSE_LINE_SPLIT_RE.search(buffer, 0, search_end)
+                match = _SSE_LINE_SPLIT_RE.search(
+                    buffer, max(start, scanned), search_end
+                )
                 if match is None:
                     break
-                line, buffer = buffer[: match.start()], buffer[match.end() :]
+                line, start = buffer[start : match.start()], match.end()
                 if line.strip():
                     yield line
+            buffer = buffer[start:]
+            # Rescan only the buffer's last character next time, in case it's
+            # a bare "\r" that turns out to be half of a cross-chunk "\r\n".
+            scanned = max(len(buffer) - 1, 0)
         if buffer.endswith("\r"):
             buffer = buffer[:-1]
         if buffer.strip():
