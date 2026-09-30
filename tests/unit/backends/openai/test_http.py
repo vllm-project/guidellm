@@ -1218,10 +1218,7 @@ async def test_resolve_responses_terminal_error(
 
 
 class TestAiterLinesSSERecordBoundaries:
-    """Cover the SSE record-boundary fix for issue #1202.
-
-    ## WRITTEN BY AI ##
-    """
+    """Cover the SSE record-boundary fix for issue #1202."""
 
     @pytest.mark.regression
     @pytest.mark.asyncio
@@ -1236,6 +1233,8 @@ class TestAiterLinesSSERecordBoundaries:
         ``aiter_lines()`` treats those as line breaks (the full
         ``str.splitlines()`` set), which used to cut the record mid-string and
         raise a ``JSONDecodeError`` here.
+
+        ## WRITTEN BY AI ##
         """
         content = "before" + "\u2028" + "after"
         payload = {"choices": [{"delta": {"content": content}}]}
@@ -1280,6 +1279,8 @@ class TestAiterLinesSSERecordBoundaries:
         Guards the case PR #680 reverted #663 for: a byte-level splitter that
         does not buffer a partial record across ``aiter_raw()`` chunks. The
         fix here buffers on ``aiter_text()`` instead, so this must stay green.
+
+        ## WRITTEN BY AI ##
         """
         full = (
             "data: "
@@ -1323,6 +1324,8 @@ class TestAiterLinesSSERecordBoundaries:
     async def test_aiter_lines_flushes_unterminated_trailing_line(self):
         """A final line with no newline, or a bare trailing CR, must still
         be yielded once the stream ends rather than dropped from the buffer.
+
+        ## WRITTEN BY AI ##
         """
         backend = _make_backend(target="http://test", model="test-model")
         httpx_request = httpx.Request("GET", "http://test")
@@ -1355,6 +1358,8 @@ class TestAiterLinesSSERecordBoundaries:
         well under a second either way it is split; the unpatched loop
         clears it too, but at a cost this bound would still catch a
         regression back to quadratic behavior.
+
+        ## WRITTEN BY AI ##
         """
         backend = _make_backend(target="http://test", model="test-model")
         httpx_request = httpx.Request("GET", "http://test")
