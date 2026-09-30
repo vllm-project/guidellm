@@ -31,15 +31,19 @@ from .request import (
 from .request_stats import GenerativeRequestStats
 from .response import GenerationResponse
 from .statistics import (
+    ConfidenceInterval,
     DistributionSummary,
     FunctionObjT,
+    PercentileIntervals,
     Percentiles,
+    SampleUncertainty,
     StatusDistributionSummary,
 )
 from .tool_call import ToolCall, ToolCallFunction
 
 __all__ = [
     "BaseModelT",
+    "ConfidenceInterval",
     "DistributionSummary",
     "ErroredT",
     "FunctionObjT",
@@ -48,6 +52,7 @@ __all__ = [
     "GenerationResponse",
     "GenerativeRequestStats",
     "IncompleteT",
+    "PercentileIntervals",
     "Percentiles",
     "PydanticClassRegistryMixin",
     "RegisterClassT",
@@ -55,6 +60,7 @@ __all__ = [
     "RequestInfo",
     "RequestSettings",
     "RequestTimings",
+    "SampleUncertainty",
     "StandardBaseDict",
     "StandardBaseModel",
     "StatusBreakdown",

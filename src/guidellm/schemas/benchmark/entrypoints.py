@@ -135,6 +135,17 @@ class GenerativeMetricsArgs(MetricsArgs):
             "when both are available."
         ),
     )
+    confidence: float | None = Field(
+        default=0.95,
+        gt=0.0,
+        lt=1.0,
+        description=(
+            "Two-sided confidence level for the intervals reported alongside "
+            "request-level metrics. Set to null to report those metrics without "
+            "intervals."
+        ),
+        examples=[0.95, 0.99, None],
+    )
     slo: GoodputSLO | None = Field(
         default=None,
         description=(
