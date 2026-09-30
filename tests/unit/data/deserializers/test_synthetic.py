@@ -248,6 +248,62 @@ class TestSyntheticDatasetConfig:
                 prompt_tokens=20, output_tokens=10, output_tokens_max=0
             )
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("shorthand", "expected_count", "expected_tokens"),
+        [
+            ({"prefix_tokens": 512}, 1, 512),
+            ({"prefix_count": 5}, 5, 0),
+            ({"prefix_tokens": 50, "prefix_count": 3}, 3, 50),
+        ],
+        ids=["tokens_only", "count_only", "tokens_and_count"],
+    )
+    def test_prefix_shorthand_maps_to_prefix_buckets(
+        self,
+        shorthand: dict[str, int],
+        expected_count: int,
+        expected_tokens: int,
+    ):
+        """prefix_tokens and prefix_count map to a single prefix bucket.
+
+        Defaults are prefix_count=1 and prefix_tokens=0 when the other
+        shorthand is omitted. Shorthand fields are cleared after mapping.
+
+        ## WRITTEN BY AI ##
+        """
+        config = SyntheticTextDataArgs(prompt_tokens=128, output_tokens=64, **shorthand)
+
+        assert config.prefix_buckets is not None
+        assert len(config.prefix_buckets) == 1
+        bucket = config.prefix_buckets[0]
+        assert bucket.prefix_count == expected_count
+        assert bucket.prefix_tokens == expected_tokens
+        assert bucket.bucket_weight == 100
+        assert config.prefix_count is None
+        assert config.prefix_tokens is None
+        dumped = config.model_dump()
+        assert "prefix_count" not in dumped
+        assert "prefix_tokens" not in dumped
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("shorthand_field", ["prefix_tokens", "prefix_count"])
+    def test_prefix_shorthand_mutually_exclusive_with_prefix_buckets(
+        self, shorthand_field: str
+    ):
+        """prefix_buckets cannot be combined with prefix_tokens or prefix_count.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            SyntheticTextDataArgs(
+                prompt_tokens=128,
+                output_tokens=64,
+                prefix_buckets=[
+                    SyntheticTextPrefixBucketConfig(prefix_count=1, prefix_tokens=10)
+                ],
+                **{shorthand_field: 4},
+            )
+
 
 class TestSyntheticTextGenerator:
     """Test cases for SyntheticTextGenerator class.
