@@ -13,9 +13,11 @@ from guidellm.benchmark.schemas.metrics import (
     GenerativeMetrics,
     GenerativeMetricsSummary,
     GenerativeToolCallMetricsSummary,
+    SchedulerMetrics,
 )
 from guidellm.scheduler import (
     AsyncConstantStrategy,
+    SchedulerState,
     SchedulingStrategy,
     ThroughputStrategy,
 )
@@ -1090,75 +1092,8 @@ class TestGoodputConfigWiring:
         assert BenchmarkConfig.model_validate(payload).slo is None
 
 
-def _make_turn_stats(
-    request_id: str,
-    conversation_id: str,
-    turn_index: int,
-    request_start: float,
-    first_token: float,
-    request_end: float,
-    prompt_tokens: int = 8,
-    status: str = "completed",
-) -> GenerativeRequestStats:
-    """Build a streaming request placed at a given turn of a conversation.
-
-    ## WRITTEN BY AI ##
-    """
-    timings = RequestTimings(
-        resolve_start=request_start,
-        resolve_end=request_end,
-        request_start=request_start,
-        request_end=request_end,
-        first_token_iteration=first_token,
-        last_token_iteration=request_end,
-        token_iterations=9,
-    )
-    return GenerativeRequestStats(
-        request_id=request_id,
-        info=RequestInfo(
-            request_id=request_id,
-            conversation_id=conversation_id,
-            turn_index=turn_index,
-            status=status,
-            timings=timings,
-        ),
-        input_metrics=UsageMetrics(text_tokens=prompt_tokens),
-        output_metrics=UsageMetrics(text_tokens=9),
-    )
-
-
-def _make_conversations(
-    n_conversations: int, n_turns: int
-) -> list[GenerativeRequestStats]:
-    """Build conversations whose first-token latency and prompt grow per turn.
-
-    Turn ``t`` of every conversation has a first-token latency of
-    ``100 * (t + 1)`` ms and a prompt of ``8 * (t + 1)`` tokens, so each
-    turn position has a distinct, known mean.
-
-    ## WRITTEN BY AI ##
-    """
-    stats: list[GenerativeRequestStats] = []
-    for conv in range(n_conversations):
-        for turn in range(n_turns):
-            start = SCHEDULE_BASE_TIME + conv * 10.0 + turn * 2.0
-            stats.append(
-                _make_turn_stats(
-                    request_id=f"c{conv}-t{turn}",
-                    conversation_id=f"c{conv}",
-                    turn_index=turn,
-                    request_start=start,
-                    first_token=start + 0.1 * (turn + 1),
-                    request_end=start + 1.0,
-                    prompt_tokens=8 * (turn + 1),
-                )
-            )
-    return stats
-
-
-class TestTurnMetrics:
-    """
-    Verify per-turn-position distributions for multi-turn workloads.
+class TestSchedulerMetricsGenerationDelayCompile:
+    """Compile generation delay samples into a distribution summary.
 
     ## WRITTEN BY AI ##
     """
@@ -1487,3 +1422,115 @@ class TestReportedUncertainty:
         assert short.successful.percentile_cis.p99 is None
         assert long_run.successful.percentile_cis is not None
         assert long_run.successful.percentile_cis.p99 is not None
+
+
+def _make_turn_stats(
+    request_id: str,
+    conversation_id: str,
+    turn_index: int,
+    request_start: float,
+    first_token: float,
+    request_end: float,
+    prompt_tokens: int = 8,
+    status: str = "completed",
+) -> GenerativeRequestStats:
+    """Build a streaming request placed at a given turn of a conversation.
+
+    ## WRITTEN BY AI ##
+    """
+    timings = RequestTimings(
+        resolve_start=request_start,
+        resolve_end=request_end,
+        request_start=request_start,
+        request_end=request_end,
+        first_token_iteration=first_token,
+        last_token_iteration=request_end,
+        token_iterations=9,
+    )
+    return GenerativeRequestStats(
+        request_id=request_id,
+        info=RequestInfo(
+            request_id=request_id,
+            conversation_id=conversation_id,
+            turn_index=turn_index,
+            status=status,
+            timings=timings,
+        ),
+        input_metrics=UsageMetrics(text_tokens=prompt_tokens),
+        output_metrics=UsageMetrics(text_tokens=9),
+    )
+
+
+def _make_conversations(
+    n_conversations: int, n_turns: int
+) -> list[GenerativeRequestStats]:
+    """Build conversations whose first-token latency and prompt grow per turn.
+
+    Turn ``t`` of every conversation has a first-token latency of
+    ``100 * (t + 1)`` ms and a prompt of ``8 * (t + 1)`` tokens, so each
+    turn position has a distinct, known mean.
+
+    ## WRITTEN BY AI ##
+    """
+    stats: list[GenerativeRequestStats] = []
+    for conv in range(n_conversations):
+        for turn in range(n_turns):
+            start = SCHEDULE_BASE_TIME + conv * 10.0 + turn * 2.0
+            stats.append(
+                _make_turn_stats(
+                    request_id=f"c{conv}-t{turn}",
+                    conversation_id=f"c{conv}",
+                    turn_index=turn,
+                    request_start=start,
+                    first_token=start + 0.1 * (turn + 1),
+                    request_end=start + 1.0,
+                    prompt_tokens=8 * (turn + 1),
+                )
+            )
+    return stats
+
+
+class TestTurnMetrics:
+    """
+    Verify per-turn-position distributions for multi-turn workloads.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_compile_builds_distribution_from_samples(self):
+        """
+        SchedulerMetrics.compile summarizes recorded generation delays.
+
+        ## WRITTEN BY AI ##
+        """
+        accumulator = _make_accumulator([], SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10)
+
+        metrics = SchedulerMetrics.compile(
+            accumulator,
+            SchedulerState(
+                start_time=SCHEDULE_BASE_TIME,
+                generation_delay_samples=[0.1, 0.2, 0.3],
+            ),
+        )
+
+        assert metrics.generation_delay.count == 3
+        assert metrics.generation_delay.mean == pytest.approx(0.2)
+        assert metrics.generation_delay.min == pytest.approx(0.1)
+        assert metrics.generation_delay.max == pytest.approx(0.3)
+
+    @pytest.mark.smoke
+    def test_compile_empty_samples_has_zero_count(self):
+        """
+        Missing generation delay samples compile to an empty distribution.
+
+        ## WRITTEN BY AI ##
+        """
+        accumulator = _make_accumulator([], SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10)
+
+        metrics = SchedulerMetrics.compile(
+            accumulator, SchedulerState(start_time=SCHEDULE_BASE_TIME)
+        )
+
+        assert metrics.generation_delay.count == 0
+        assert metrics.generation_delay.mean == 0.0

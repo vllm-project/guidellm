@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from guidellm.benchmark.schemas.accumulator import (
-    GenerativeRequestsAccumulator,
+from guidellm.benchmark.schemas.accumulator import GenerativeRequestsAccumulator
+from guidellm.schemas import (
+    GenerativeRequestStats,
+    RequestInfo,
+    UsageMetrics,
 )
-from guidellm.schemas import GenerativeRequestStats, RequestInfo, UsageMetrics
 
 
 def _make_stats(

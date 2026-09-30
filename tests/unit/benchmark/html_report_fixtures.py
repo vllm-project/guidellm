@@ -229,6 +229,7 @@ def make_scheduler_metrics(
         resolve_time_avg=0.0,
         finalized_delay_avg=0.0,
         processed_delay_avg=0.0,
+        generation_delay=distribution(0.0),
     )
 
 

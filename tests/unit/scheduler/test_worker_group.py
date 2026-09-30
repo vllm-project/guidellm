@@ -26,6 +26,7 @@ from guidellm.scheduler import (
     ThroughputStrategy,
     WorkerProcessGroup,
 )
+from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
 from guidellm.scheduler.worker_group import WorkerGroupState
 from guidellm.schemas import RequestInfo, RequestTimings
 from guidellm.schemas.scheduler import (
@@ -856,3 +857,102 @@ class TestWorkerProcessGroupForcedShutdown:
         assert proc.join_timeouts == [5.0, 2.0, 2.0]
         mp_manager.shutdown.assert_called_once()
         shutdown_event.set.assert_called_once()
+
+
+def _single_node_graph(graph_id: str, request: str = "r0") -> ConversationGraph[str]:
+    return ConversationGraph(
+        graph_id=graph_id,
+        nodes={
+            "n0": ConversationNode(node_id="n0", agent_id="agent", request=request),
+        },
+        edges=[],
+    )
+
+
+class TestRequestsGeneratorGenerationDelay:
+    """Record conversation-level generation_delay on scheduler state.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def _build_state(self) -> WorkerGroupState:
+        messaging = Mock()
+        messaging.buffer_receive_queue = Mock()
+        return WorkerGroupState(
+            start_time=time.time(),
+            processes=[],
+            strategy=SynchronousStrategy(),
+            constraints={},
+            stop_send_requests_event=threading.Event(),
+            send_requests_stopped_event=threading.Event(),
+            requests_generated_event=multiprocessing.Event(),
+            constraint_reached_event=multiprocessing.Event(),
+            shutdown_event=multiprocessing.Event(),
+            error_event=multiprocessing.Event(),
+            messaging=messaging,
+        )
+
+    @pytest.mark.sanity
+    def test_stamps_generation_delay_including_dataset_wait(self):
+        """
+        Generation delay includes time spent waiting on the dataset iterator.
+
+        ## WRITTEN BY AI ##
+        """
+        state = self._build_state()
+        dataset_delay = 0.05
+
+        def slow_graphs():
+            time.sleep(dataset_delay)
+            yield _single_node_graph("g1")
+
+        yielded = list(state.requests_generator(slow_graphs()))
+
+        assert len(yielded) == 1
+        assert len(state._state.generation_delay_samples) == 1
+        assert state._state.generation_delay_samples[0] >= dataset_delay
+
+    @pytest.mark.sanity
+    def test_generation_delay_excludes_time_suspended_after_yield(self):
+        """
+        Time the consumer waits before pulling the next conversation is not
+        counted in the following sample.
+
+        ## WRITTEN BY AI ##
+        """
+        state = self._build_state()
+        graphs = (
+            _single_node_graph("g1", "r1"),
+            _single_node_graph("g2", "r2"),
+        )
+        generator = state.requests_generator(graphs)
+
+        next(generator)
+        time.sleep(0.1)
+        next(generator)
+
+        samples = state._state.generation_delay_samples
+        assert len(samples) == 2
+        assert samples[1] < 0.05
+
+    @pytest.mark.sanity
+    def test_records_generation_delay_once_per_conversation(self):
+        """
+        Multi-node conversations contribute a single generation delay sample.
+
+        ## WRITTEN BY AI ##
+        """
+        state = self._build_state()
+        graph = ConversationGraph(
+            graph_id="g1",
+            nodes={
+                "n0": ConversationNode(node_id="n0", agent_id="agent", request="r0"),
+                "n1": ConversationNode(node_id="n1", agent_id="agent", request="r1"),
+            },
+            edges=[],
+        )
+
+        yielded = list(state.requests_generator([graph]))
+
+        assert len(yielded[0].request_infos) == 2
+        assert len(state._state.generation_delay_samples) == 1

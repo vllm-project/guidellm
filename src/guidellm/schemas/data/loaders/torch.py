@@ -26,3 +26,10 @@ class TorchDataLoaderArgs(DataLoaderArgs):
             "will be performed in the main process."
         ),
     )
+    prefetch_factor: int = Field(
+        default=4096,
+        description=(
+            "Number of samples loaded in advance by each worker. "
+            "Increasing this generates more data ahead of demand."
+        ),
+    )
