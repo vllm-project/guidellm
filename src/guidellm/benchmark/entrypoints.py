@@ -424,7 +424,7 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
             if isinstance(val, list | tuple):
                 if len(val) > 1:
                     logger.warning(
-                        "One or more sub-benchmarks specificed a list of profile.{0}."
+                        "One or more sub-benchmarks specified a list of profile.{0}."
                         " This pattern is deprecated and will be removed in a future"
                         " release. Please use `--override profile.{0} {1}` on the CLI"
                         " or sub-benchmarks in the config file instead.",
@@ -466,7 +466,7 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
             if isinstance(val, list | tuple):
                 if len(val) > 1:
                     logger.warning(
-                        "One or more sub-benchmarks specificed a list of"
+                        "One or more sub-benchmarks specified a list of"
                         " constraints[{0}].{1}. This pattern is deprecated and will be"
                         " removed in a future release. Please use `--override"
                         " constraints[{0}].{1} {2}` on the CLI or sub-benchmarks in the"
