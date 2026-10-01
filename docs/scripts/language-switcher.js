@@ -5,6 +5,20 @@
     return value.endsWith("/") ? value : `${value}/`;
   }
 
+  function sharedPath(paths) {
+    const segments = paths.map((path) => path.split("/").filter(Boolean));
+    let sharedCount = 0;
+    while (
+      segments.every((parts) => parts[sharedCount] === segments[0][sharedCount]) &&
+      segments[0][sharedCount] !== undefined
+    ) {
+      sharedCount += 1;
+    }
+
+    const prefix = segments[0].slice(0, sharedCount).join("/");
+    return prefix ? `/${prefix}/` : "/";
+  }
+
   let cachedSiteRoot;
 
   function siteRoot() {
@@ -15,8 +29,37 @@
     const logo = document.querySelector("a.md-header__button.md-logo");
     const href = logo ? logo.href : new URL("./", window.location.href).href;
     cachedSiteRoot = new URL(ensureTrailingSlash(href));
-    if (cachedSiteRoot.pathname.endsWith("/zh/")) {
-      cachedSiteRoot.pathname = cachedSiteRoot.pathname.replace(/zh\/$/, "");
+
+    const localeCandidates = Array.from(
+      document.querySelectorAll("a[hreflang], link[hreflang]"),
+    )
+      .map((link) => ({
+        language: link.hreflang.toLowerCase(),
+        url: new URL(link.href, window.location.href),
+      }))
+      .filter(({ url }) => url.origin === cachedSiteRoot.origin);
+    const candidatePaths = Array.from(
+      new Set(localeCandidates.map(({ url }) => ensureTrailingSlash(url.pathname))),
+    );
+
+    if (candidatePaths.length > 1) {
+      cachedSiteRoot.pathname = sharedPath(candidatePaths);
+    } else if (localeCandidates.length === 1) {
+      const { language, url } = localeCandidates[0];
+      const rootSegments = cachedSiteRoot.pathname.split("/").filter(Boolean);
+      const candidateSegments = url.pathname.split("/").filter(Boolean);
+      const finalRootSegment = rootSegments.at(-1)?.toLowerCase();
+      const languageSubtags = language.split("-").map((part) => part.toLowerCase());
+      if (
+        rootSegments.length > 1 &&
+        languageSubtags.includes(finalRootSegment) &&
+        rootSegments.every((part, index) => candidateSegments[index] === part)
+      ) {
+        rootSegments.pop();
+        cachedSiteRoot.pathname = rootSegments.length
+          ? `/${rootSegments.join("/")}/`
+          : "/";
+      }
     }
     return cachedSiteRoot;
   }
