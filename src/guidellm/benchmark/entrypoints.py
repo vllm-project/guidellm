@@ -37,6 +37,7 @@ from guidellm.data import (
     DataLoader,
     create_data_loader,
 )
+from guidellm.logger import logger
 from guidellm.scheduler import (
     ConstraintInitializer,
     ConstraintsInitializerFactory,
@@ -395,9 +396,6 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
     :return: A single, merged ``BenchmarkArgs`` ready for execution
     :raises NotImplementedError: If any non-mergeable field differs across benchmarks
     """
-    if len(benchmarks) == 1:
-        return benchmarks[0]
-
     # Use this for determining correct field kinds
     # `kind` should not chnage between benchmarks
     base = benchmarks[0]
@@ -424,6 +422,15 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
         for bench in benchmarks:
             val = bench.profile.__dict__[rate_field]
             if isinstance(val, list | tuple):
+                if len(val) > 1:
+                    logger.warning(
+                        "One or more sub-benchmarks specificed a list of profile.{0}."
+                        " This pattern is deprecated and will be removed in a future"
+                        " release. Please use `--override profile.{0} {1}` on the CLI"
+                        " or sub-benchmarks in the config file instead.",
+                        rate_field,
+                        ",".join(str(v) for v in val),
+                    )
                 merged_rates.extend(val)
             else:
                 merged_rates.append(val)
@@ -457,6 +464,17 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
         for constraint in constraints_at_idx:
             val = constraint.__dict__[list_field]
             if isinstance(val, list | tuple):
+                if len(val) > 1:
+                    logger.warning(
+                        "One or more sub-benchmarks specificed a list of"
+                        " constraints[{0}].{1}. This pattern is deprecated and will be"
+                        " removed in a future release. Please use `--override"
+                        " constraints[{0}].{1} {2}` on the CLI or sub-benchmarks in the"
+                        " config file instead.",
+                        idx,
+                        list_field,
+                        ",".join(str(v) for v in val),
+                    )
                 merged_values.extend(val)
             else:
                 merged_values.append(val)
