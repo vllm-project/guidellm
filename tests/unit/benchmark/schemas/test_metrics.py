@@ -90,6 +90,28 @@ class TestToolCallMetricsAllErrored:
         assert result.output.errored.count == 3
         assert result.output.errored.mean == 0.0
 
+    @pytest.mark.regression
+    def test_compile_timed_metrics_total_is_per_request(self):
+        """
+        The total distribution holds one input + output value per request,
+        not the input and output values pooled together.
+
+        ## WRITTEN BY AI ##
+        """
+        successful_metrics = [(float(i), float(i + 1), 100, 10) for i in range(4)]
+
+        result = GenerativeMetricsSummary.compile_timed_metrics(
+            successful=successful_metrics,
+            incomplete=[],
+            errored=[],
+        )
+
+        assert result is not None
+        assert result.total is not None
+        assert result.total.successful.count == 4
+        assert result.total.successful.mean == 110.0
+        assert result.total.successful.median == 110.0
+
     @pytest.mark.smoke
     def test_compile_timed_metrics_empty_lists_all_fields_none(self):
         """
