@@ -11,6 +11,7 @@ validation, data preprocessing, profile constraints, and output format specifica
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, TypeVar
@@ -37,7 +38,6 @@ from guidellm.data import (
     DataLoader,
     create_data_loader,
 )
-from guidellm.logger import logger
 from guidellm.scheduler import (
     ConstraintInitializer,
     ConstraintsInitializerFactory,
@@ -423,13 +423,16 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
             val = bench.profile.__dict__[rate_field]
             if isinstance(val, list | tuple):
                 if len(val) > 1:
-                    logger.warning(
-                        "One or more sub-benchmarks specified a list of profile.{0}."
-                        " This pattern is deprecated and will be removed in a future"
-                        " release. Please use `--override profile.{0} {1}` on the CLI"
-                        " or sub-benchmarks in the config file instead.",
-                        rate_field,
-                        ",".join(str(v) for v in val),
+                    warnings.warn(
+                        (
+                            "One or more sub-benchmarks specified a list of"
+                            " profile.{0}. This pattern is deprecated and will be"
+                            " removed in a future release. Please use `--override"
+                            " profile.{0} {1}` on the CLI or sub-benchmarks in the"
+                            " config file instead."
+                        ).format(rate_field, ",".join(str(v) for v in val)),
+                        category=FutureWarning,
+                        stacklevel=2,
                     )
                 merged_rates.extend(val)
             else:
@@ -465,15 +468,16 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
             val = constraint.__dict__[list_field]
             if isinstance(val, list | tuple):
                 if len(val) > 1:
-                    logger.warning(
-                        "One or more sub-benchmarks specified a list of"
-                        " constraints[{0}].{1}. This pattern is deprecated and will be"
-                        " removed in a future release. Please use `--override"
-                        " constraints[{0}].{1} {2}` on the CLI or sub-benchmarks in the"
-                        " config file instead.",
-                        idx,
-                        list_field,
-                        ",".join(str(v) for v in val),
+                    warnings.warn(
+                        (
+                            "One or more sub-benchmarks specified a list of"
+                            " constraints[{0}].{1}. This pattern is deprecated and will"
+                            " be removed in a future release. Please use `--override"
+                            " constraints[{0}].{1} {2}` on the CLI or sub-benchmarks in"
+                            " the config file instead."
+                        ).format(idx, list_field, ",".join(str(v) for v in val)),
+                        category=FutureWarning,
+                        stacklevel=2,
                     )
                 merged_values.extend(val)
             else:
