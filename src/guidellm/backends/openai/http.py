@@ -23,6 +23,7 @@ from guidellm.backends.openai.request_handlers import (
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
 )
+from guidellm.logger import logger
 from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
@@ -76,6 +77,7 @@ class OpenAIHTTPBackend(Backend):
         # Runtime state
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
+        self._available_models_cache: list[str] | None = None
 
     async def process_startup(self):
         """
@@ -118,6 +120,7 @@ class OpenAIHTTPBackend(Backend):
         await self._async_client.aclose()  # type: ignore [union-attr]
         self._async_client = None
         self._in_process = False
+        self._available_models_cache = None
 
     async def validate(self):
         """
@@ -250,7 +253,7 @@ class OpenAIHTTPBackend(Backend):
         arguments: GenerationRequestArguments = request_handler.format(
             data=request,
             history=history,
-            model=(await self.default_model()),
+            model=(await self._model_for_request(request)),
             stream=self._args.stream,
             extras=self._args.extras,
             max_tokens=self._args.max_tokens,
@@ -283,6 +286,37 @@ class OpenAIHTTPBackend(Backend):
         }
 
         return request_handler, arguments, request_kwargs
+
+    async def _model_for_request(self, request: GenerationRequest) -> str:
+        """
+        Resolve the model identifier to send with a generation request.
+
+        Uses the first ``model_column`` value when it is present in the server's
+        available models list. Otherwise returns :meth:`default_model`. When a
+        dataset model is provided but not listed, a warning is emitted.
+
+        :param request: Generation request that may include ``model_column``
+        :return: Model identifier to send with the request
+        """
+        default = await self.default_model()
+        values = request.columns.get("model_column") or []
+        if not values or not values[0]:
+            return default
+
+        dataset_model = str(values[0])
+        if self._available_models_cache is None:
+            self._available_models_cache = await self.available_models()
+        if dataset_model in self._available_models_cache:
+            return dataset_model
+
+        logger.warning(
+            "Dataset model '{}' was not found in the server's available models {}; "
+            "using backend model '{}' instead.",
+            dataset_model,
+            self._available_models_cache,
+            default,
+        )
+        return default
 
     async def _resolve_non_streaming(
         self,
