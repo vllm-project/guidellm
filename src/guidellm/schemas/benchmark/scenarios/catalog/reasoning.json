@@ -1,0 +1,87 @@
+{
+  "metadata": {
+    "labels": {
+      "name": "reasoning",
+      "description": "Single-turn reasoning with short prompts and long outputs.",
+      "source": "https://github.com/kubernetes-sigs/inference-perf/blob/76e2959b6a8ed9ded7af9c7398d9025a04da195f/workload-catalog/reasoning/inference-perf.yaml",
+      "source_revision": "76e2959b6a8ed9ded7af9c7398d9025a04da195f",
+      "source_model": "google/gemma-3-1b-it",
+      "approximations": "Lognormal distributions use bounded normal sampling; normal and uniform sampling retain upstream parameters. Request counts are min_requests stopping thresholds, not exact budgets. See catalog/README.md."
+    }
+  },
+  "spec": {
+    "backend": {
+      "kind": "openai_http",
+      "request_format": "/v1/completions",
+      "stream": true
+    },
+    "profile": {
+      "kind": "concurrent",
+      "streams": [
+        2
+      ]
+    },
+    "seed": {
+      "kind": "static",
+      "value": 42
+    },
+    "data": [
+      {
+        "kind": "synthetic_text",
+        "prompt_tokens": 1000,
+        "prompt_tokens_stdev": 800,
+        "prompt_tokens_min": 100,
+        "prompt_tokens_max": 5000,
+        "output_tokens": 8000,
+        "output_tokens_stdev": 6500,
+        "output_tokens_min": 500,
+        "output_tokens_max": 32000,
+        "turns": 1,
+        "prefix_buckets": [
+          {
+            "prefix_tokens": 250,
+            "prefix_count": 1
+          }
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "kind": "min_requests",
+        "count": 20
+      }
+    ]
+  },
+  "benchmarks": [
+    {
+      "profile.streams": [
+        2
+      ],
+      "constraints[0].count": 20
+    },
+    {
+      "profile.streams": [
+        4
+      ],
+      "constraints[0].count": 20
+    },
+    {
+      "profile.streams": [
+        6
+      ],
+      "constraints[0].count": 20
+    },
+    {
+      "profile.streams": [
+        8
+      ],
+      "constraints[0].count": 20
+    },
+    {
+      "profile.streams": [
+        10
+      ],
+      "constraints[0].count": 20
+    }
+  ]
+}

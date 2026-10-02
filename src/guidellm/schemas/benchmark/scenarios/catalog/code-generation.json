@@ -1,0 +1,95 @@
+{
+  "metadata": {
+    "labels": {
+      "name": "code-generation",
+      "description": "Long-context coding conversations with shared code context and simulated tool delays.",
+      "source": "https://github.com/kubernetes-sigs/inference-perf/blob/76e2959b6a8ed9ded7af9c7398d9025a04da195f/workload-catalog/code-generation/inference-perf.yaml",
+      "source_revision": "76e2959b6a8ed9ded7af9c7398d9025a04da195f",
+      "source_model": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+      "approximations": "Lognormal distributions use bounded normal sampling; normal and uniform sampling retain upstream parameters. Request counts are min_requests stopping thresholds, not exact budgets. Turn counts are fixed at the upstream mean; delays are sampled once per conversation. Dynamic context and first-turn input are combined; rolling context truncation and a fixed recycled conversation pool are not reproduced. See catalog/README.md."
+    }
+  },
+  "spec": {
+    "backend": {
+      "kind": "openai_http",
+      "request_format": "/v1/completions",
+      "stream": true
+    },
+    "profile": {
+      "kind": "concurrent",
+      "streams": [
+        5
+      ]
+    },
+    "seed": {
+      "kind": "static",
+      "value": 42
+    },
+    "data": [
+      {
+        "kind": "synthetic_text",
+        "prompt_tokens": 1500,
+        "prompt_tokens_stdev": 1200,
+        "prompt_tokens_min": 100,
+        "prompt_tokens_max": 10000,
+        "output_tokens": 425,
+        "output_tokens_stdev": 825,
+        "output_tokens_min": 50,
+        "output_tokens_max": 10000,
+        "first_prompt_tokens": 161500,
+        "first_prompt_tokens_stdev": 233603,
+        "first_prompt_tokens_min": 10100,
+        "first_prompt_tokens_max": 1000000,
+        "turns": 540,
+        "delay": 15,
+        "delay_stdev": 55,
+        "delay_min": 1,
+        "delay_max": 100,
+        "prefix_buckets": [
+          {
+            "prefix_tokens": 3000,
+            "prefix_count": 1
+          }
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "kind": "min_requests",
+        "count": 100
+      }
+    ]
+  },
+  "benchmarks": [
+    {
+      "profile.streams": [
+        5
+      ],
+      "constraints[0].count": 100
+    },
+    {
+      "profile.streams": [
+        10
+      ],
+      "constraints[0].count": 200
+    },
+    {
+      "profile.streams": [
+        20
+      ],
+      "constraints[0].count": 400
+    },
+    {
+      "profile.streams": [
+        30
+      ],
+      "constraints[0].count": 600
+    },
+    {
+      "profile.streams": [
+        40
+      ],
+      "constraints[0].count": 800
+    }
+  ]
+}
