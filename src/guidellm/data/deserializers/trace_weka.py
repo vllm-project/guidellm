@@ -32,12 +32,15 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.deserializers.trace_common import (
+    EnglishTokenBuffer,
+    HashTokenBlock,
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
     _validate_api_row,
     create_prompt_from_hash_ids,
     decode_prompt,
+    decodes_hash_blocks_concatenatively,
     duration_columns,
     fill_hash_id_table,
     generate_token_ids,
@@ -75,11 +78,17 @@ def _find_requests_column(dataset: Dataset) -> str | None:
 
 
 def _generate_remaining_prompt(
-    num_tokens: int, processor: PreTrainedTokenizerBase, faker: Faker
+    num_tokens: int,
+    processor: PreTrainedTokenizerBase,
+    faker: Faker,
+    english_buffer: EnglishTokenBuffer | None = None,
 ) -> str:
     if num_tokens == 0:
         return ""
-    token_ids = generate_token_ids(num_tokens, processor, faker)
+    if english_buffer is not None:
+        token_ids = english_buffer.take(num_tokens, processor, faker.random)
+    else:
+        token_ids = generate_token_ids(num_tokens, processor, faker)
     return decode_prompt(processor, list(token_ids))
 
 
@@ -273,8 +282,15 @@ class WEKATraceFormat(TraceFormatBase):
         self.config = config
         self.dataset = dataset
 
-        self._hash_id_table: dict[int, tuple[int, ...]] = {}
+        self._hash_id_table: dict[int, HashTokenBlock] = {}
         self._sibling_table: dict[Any, set[tuple[int, ...]]] = {}
+        # Tokenizer-level. Not cleared by ``reset_hash_tables``: each copies
+        # pass rebuilds blocks, but concatenativity does not change.
+        self._join_decoded_blocks = False
+        self._english_buffer = EnglishTokenBuffer()
+        # Remainder strings keyed by token count. At most block_size - 1
+        # entries. Cleared with the hash tables so each copies pass redraws.
+        self._remainder_cache: dict[int, str] = {}
         # Filled by each ``__iter__`` pass so mixed subagent/API schemas are
         # not forced through a single HuggingFace Arrow table.
         self._conversations: list[tuple[str, list[dict[str, Any]], str | None]] = []
@@ -299,7 +315,27 @@ class WEKATraceFormat(TraceFormatBase):
         """
         self._hash_id_table = {}
         self._sibling_table = {}
+        self._remainder_cache = {}
+        self._english_buffer.reset()
         self._tool_response_sampler = None
+
+    def prepare_processor(
+        self, processor: PreTrainedTokenizerBase, random_seed: int
+    ) -> None:
+        """Decide once whether hash-block decodes can be joined.
+
+        The probe uses this format's block size and a private generator, so
+        replay prompt text is unchanged when the probe rejects the tokenizer.
+
+        :param processor: Tokenizer used to build synthetic prompts.
+        :param random_seed: Dataset seed passed through to the probe.
+        """
+        self._join_decoded_blocks = decodes_hash_blocks_concatenatively(
+            processor,
+            block_size=self.config.hash_id_block_size,
+            random_seed=random_seed,
+            use_english=True,
+        )
 
     def __iter__(self) -> Iterable[Dataset]:
         self._conversations = []
@@ -397,7 +433,7 @@ class WEKATraceFormat(TraceFormatBase):
         row: dict,
         processor: PreTrainedTokenizerBase,
         faker: Faker,
-        hash_id_table: dict[int, tuple[int, ...]] | None = None,
+        hash_id_table: dict[int, HashTokenBlock] | None = None,
         sibling_token_blocks: dict[Any, set[tuple[int, ...]]] | None = None,
     ) -> str:
         """Before generating the prompt, this first generates a block of tokens for
@@ -430,9 +466,15 @@ class WEKATraceFormat(TraceFormatBase):
             processor,
             faker,
             lambda _idx, _hash_id: block_size,
+            english_buffer=self._english_buffer,
         )
-        prompt = create_prompt_from_hash_ids(ids, hash_id_table, processor)
-        remainder = _generate_remaining_prompt(n_in % block_size, processor, faker)
+        prompt = create_prompt_from_hash_ids(
+            ids,
+            hash_id_table,
+            processor,
+            join_decoded_blocks=self._join_decoded_blocks,
+        )
+        remainder = self._cached_remainder(n_in % block_size, processor, faker)
         if not prompt:
             return remainder
         if not remainder:
@@ -449,7 +491,7 @@ class WEKATraceFormat(TraceFormatBase):
         # Local scope uses throwaway tables so this conversation cannot reuse
         # or pollute the instance-level hash storage used by global/unset rows.
         if hash_id_scope == "local":
-            hash_id_table: dict[int, tuple[int, ...]] = {}
+            hash_id_table: dict[int, HashTokenBlock] = {}
             sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
         else:
             hash_id_table = self._hash_id_table
@@ -548,11 +590,38 @@ class WEKATraceFormat(TraceFormatBase):
                     random_seed=faker.random.getrandbits(32),
                 )
             )
-        body = _generate_remaining_prompt(
+        body = self._cached_remainder(
             next(self._tool_response_sampler), processor, faker
         )
         raw = json.dumps({"result": body})
         return raw.decode() if isinstance(raw, bytes) else raw
+
+    def _cached_remainder(
+        self,
+        num_tokens: int,
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
+    ) -> str:
+        """Return the synthetic tail for ``num_tokens``, cached by that count.
+
+        Each copies pass has its own cache, cleared in ``reset_hash_tables``.
+        The same remainder length therefore reuses one decoded string.
+
+        :param num_tokens: Tokens still needed after full hash blocks.
+        :param processor: Tokenizer used when the length has not been cached.
+        :param faker: Random source for a cache miss.
+        :return: Decoded remainder text. Empty when ``num_tokens`` is 0.
+        """
+        if num_tokens == 0:
+            return ""
+        cached = self._remainder_cache.get(num_tokens)
+        if cached is not None:
+            return cached
+        text = _generate_remaining_prompt(
+            num_tokens, processor, faker, english_buffer=self._english_buffer
+        )
+        self._remainder_cache[num_tokens] = text
+        return text
 
     def _unpack_conversation(
         self, conversation: Dataset

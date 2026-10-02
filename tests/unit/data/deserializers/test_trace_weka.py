@@ -8,12 +8,19 @@ from typing import Any
 from unittest.mock import Mock
 
 import pytest
+from datasets import Dataset
+from faker import Faker
 from logot import Logot
 from logot.logged import debug, warning
 from pydantic import ValidationError
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
-from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
+from guidellm.data.deserializers.trace_common import (
+    _ENGLISH_WORDS,
+    TraceDatasetDeserializer,
+    decode_prompt,
+)
+from guidellm.data.deserializers.trace_weka import WEKATraceFormat
 from guidellm.data.schemas import DataNotSupportedError, InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
@@ -33,6 +40,42 @@ def ascending_processor() -> Mock:
     proc.encode.side_effect = lambda text: list(range(len(text.split())))
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
         f"tok{i}" for i, _ in enumerate(tokens)
+    )
+    return proc
+
+
+def english_piece_processor() -> Mock:
+    """Tokenizer that decodes each id back to the English word it encoded."""
+    lexicon: dict[str, int] = {}
+    reverse: dict[int, str] = {}
+
+    def encode(text: str) -> list[int]:
+        ids: list[int] = []
+        for word in text.split():
+            token_id = lexicon.get(word)
+            if token_id is None:
+                token_id = len(lexicon) + 1
+                lexicon[word] = token_id
+                reverse[token_id] = f"{word} "
+            ids.append(token_id)
+        return ids
+
+    proc = Mock()
+    proc.encode.side_effect = encode
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: "".join(
+        reverse[token] for token in tokens
+    )
+    return proc
+
+
+def concatenative_processor() -> Mock:
+    """Tokenizer whose decode is the concatenation of per-token pieces."""
+    proc = Mock()
+    proc.encode.side_effect = lambda text: [
+        sum(ord(char) for char in word) % 997 for word in text.split()
+    ]
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: "".join(
+        f"t{token}" for token in tokens
     )
     return proc
 
@@ -101,7 +144,13 @@ def generate_weka_trace(
 
 
 def load_graph_turns(row: dict) -> list[ConversationTurnData]:
-    graph = ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+    payload = row["conversation_turns"]
+    if isinstance(payload, ConversationGraphData):
+        graph = payload
+    elif isinstance(payload, str):
+        graph = ConversationGraphData.model_validate(json.loads(payload))
+    else:
+        graph = ConversationGraphData.model_validate(payload)
     return graph.turns
 
 
@@ -459,6 +508,11 @@ class TestWEKATraceFormat:
     def test_incompatible_encoding_raises(
         self, tmp_path: Path, deserializer, default_block_size
     ):
+        """
+        A tokenizer that maps every word to the same id cannot make distinct siblings.
+
+        ## WRITTEN BY AI ##
+        """
         n_rows = 1
         n_virtual_rows = 2
         n_in = default_block_size * 2
@@ -478,7 +532,14 @@ class TestWEKATraceFormat:
         )
         ds = deserializer(
             config=WEKATraceFormatArgs(source=trace_file_source(trace)),
-            processor_factory=ascending_processor,
+            processor_factory=lambda: Mock(
+                encode=Mock(side_effect=lambda text: [0] * len(text.split())),
+                decode=Mock(
+                    side_effect=lambda tokens, skip_special_tokens=False: " ".join(
+                        "tok0" for _ in tokens
+                    )
+                ),
+            ),
             random_seed=42,
         )
         with pytest.raises(ValueError, match="generate distinct"):
@@ -1916,3 +1977,115 @@ class TestWEKATraceFormatArgsTools:
                 source=trace_file_source(tmp_path),
                 tool_response_tokens_stdev=1,
             )
+
+
+class TestWEKAJoinedHashPrompts:
+    def _format(
+        self, tmp_path: Path, block_size: int, n_in: int, hash_ids: list[int]
+    ) -> tuple[WEKATraceFormat, dict]:
+        row = {"t": 0.0, "in": n_in, "out": 1, "hash_ids": list(hash_ids)}
+        dataset = Dataset.from_dict({"id": ["conv0"], "requests": [[row]]})
+        fmt = WEKATraceFormat(
+            WEKATraceFormatArgs(
+                source=trace_file_source(tmp_path),
+                hash_id_block_size=block_size,
+            ),
+            dataset,
+        )
+        return fmt, row
+
+    @pytest.mark.sanity
+    def test_exact_blocks_match_full_decode(self, tmp_path: Path):
+        """
+        Joined hash blocks match a full decode when the tokenizer concatenates.
+
+        ## WRITTEN BY AI ##
+        """
+        block_size = 4
+        hash_ids = [1, 2]
+        fmt, row = self._format(tmp_path, block_size, block_size * 2, hash_ids)
+        proc = concatenative_processor()
+        fmt.prepare_processor(proc, random_seed=42)
+        assert fmt._join_decoded_blocks is True
+        faker = Faker()
+        faker.seed_instance(1)
+        prompt = fmt.create_prompt({**row, "hash_ids": list(hash_ids)}, proc, faker)
+        flat = [
+            token
+            for hash_id in hash_ids
+            for token in fmt._hash_id_table[hash_id].token_ids
+        ]
+        assert prompt == decode_prompt(proc, flat)
+
+    @pytest.mark.sanity
+    def test_remainder_stays_outside_the_hash_decode(self, tmp_path: Path):
+        """
+        A partial trailing block is still appended after the joined hash text.
+
+        ## WRITTEN BY AI ##
+        """
+        block_size = 4
+        hash_ids = [1, 2]
+        fmt, row = self._format(tmp_path, block_size, block_size * 2 + 2, hash_ids)
+        proc = concatenative_processor()
+        fmt.prepare_processor(proc, random_seed=42)
+        assert fmt._join_decoded_blocks is True
+        faker = Faker()
+        faker.seed_instance(1)
+        prompt = fmt.create_prompt({**row, "hash_ids": list(hash_ids)}, proc, faker)
+        flat = [
+            token
+            for hash_id in hash_ids
+            for token in fmt._hash_id_table[hash_id].token_ids
+        ]
+        hash_text = decode_prompt(proc, flat)
+        cached = "".join(fmt._hash_id_table[hash_id].text for hash_id in hash_ids)
+        assert hash_text == cached
+        # Remainder is a separate decode, then joined with one space. A single
+        # decode of the hash ids does not include that tail.
+        assert prompt.startswith(f"{hash_text} ")
+        assert len(prompt) > len(hash_text) + 1
+        assert prompt != hash_text
+
+    @pytest.mark.sanity
+    def test_same_remainder_length_reuses_cached_text(self, tmp_path: Path):
+        """
+        Turns with the same remainder length share one decoded tail.
+
+        ## WRITTEN BY AI ##
+        """
+        block_size = 4
+        fmt, row = self._format(tmp_path, block_size, block_size + 2, [1])
+        proc = concatenative_processor()
+        fmt.prepare_processor(proc, random_seed=42)
+        faker = Faker()
+        faker.seed_instance(1)
+
+        def tail(prompt: str, hash_ids: list[int]) -> str:
+            text = "".join(fmt._hash_id_table[hash_id].text for hash_id in hash_ids)
+            assert prompt.startswith(f"{text} ")
+            return prompt[len(text) + 1 :]
+
+        first = fmt.create_prompt({**row, "hash_ids": [1], "in": 6}, proc, faker)
+        second = fmt.create_prompt({**row, "hash_ids": [2], "in": 6}, proc, faker)
+        assert tail(first, [1]) == tail(second, [2])
+        assert list(fmt._remainder_cache) == [2]
+
+    @pytest.mark.sanity
+    def test_prompt_contains_only_english_words(self, tmp_path: Path):
+        """
+        A WEKA prompt decodes to words from the English frequency list.
+
+        ## WRITTEN BY AI ##
+        """
+        block_size = 4
+        fmt, row = self._format(tmp_path, block_size, block_size + 2, [1])
+        proc = english_piece_processor()
+        fmt.prepare_processor(proc, random_seed=7)
+        faker = Faker()
+        faker.seed_instance(1)
+        prompt = fmt.create_prompt({**row, "hash_ids": [1], "in": 6}, proc, faker)
+        words = prompt.split()
+        assert words
+        assert set(words) <= set(_ENGLISH_WORDS)
+        assert prompt.isascii()

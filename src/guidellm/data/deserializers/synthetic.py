@@ -405,12 +405,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 )
 
         graph_data = ConversationGraphData(turns=turns)
-        payload = json.dumps(graph_data.model_dump(mode="json"))
-        return {
-            "conversation_turns": (
-                payload.decode() if isinstance(payload, bytes) else payload
-            )
-        }
+        return {"conversation_turns": graph_data}
 
     @property
     def is_typed(self) -> bool:
