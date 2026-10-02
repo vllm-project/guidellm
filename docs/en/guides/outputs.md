@@ -123,7 +123,7 @@ report = GenerativeBenchmarksReport.load_file(
 benchmarks = report.benchmarks
 
 for benchmark in benchmarks:
-    print(benchmark.id_)
+    print(benchmark.config.id_)
 ```
 
-For more details on the `GenerativeBenchmarksReport` class and its methods, refer to the [source code](https://github.com/vllm-project/guidellm/blob/main/src/guidellm/benchmark/schemas/generative/report.py).
+For more details on the `GenerativeBenchmarksReport` class and its methods, refer to the [source code](https://github.com/vllm-project/guidellm/blob/main/src/guidellm/benchmark/schemas/report.py).
