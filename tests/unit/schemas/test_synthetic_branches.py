@@ -26,6 +26,13 @@ from guidellm.schemas.data import (
 from guidellm.utils.imports import json
 
 
+def _graph(row: dict) -> ConversationGraphData:
+    payload = row["conversation_turns"]
+    if isinstance(payload, ConversationGraphData):
+        return payload
+    return ConversationGraphData.model_validate(json.loads(payload))
+
+
 def _make_request(
     label: str, settings: RequestSettings | None = None
 ) -> tuple[GenerationRequest, RequestSettings]:
@@ -431,9 +438,7 @@ class TestSyntheticBranchesEmitConversationTurns:
         _key, row = next(iter(iterable))
 
         assert set(row) == {"conversation_turns"}
-        graph_data = ConversationGraphData.model_validate(
-            json.loads(row["conversation_turns"])
-        )
+        graph_data = _graph(row)
         by_id = {turn.node_id: turn for turn in graph_data.turns}
         assert set(by_id) == {"main_0", "main_1", "main_2", "branch_0_0"}
         assert by_id["main_0"].parents == []
@@ -471,9 +476,7 @@ class TestSyntheticBranchesEmitConversationTurns:
         iterable = _SyntheticTextExamplesIterable(config, tokenizer, random_seed=1)
         _key, row = next(iter(iterable))
 
-        graph_data = ConversationGraphData.model_validate(
-            json.loads(row["conversation_turns"])
-        )
+        graph_data = _graph(row)
         by_id = {turn.node_id: turn for turn in graph_data.turns}
 
         # main_1 continues without the branch; merge is at main_2
@@ -510,9 +513,7 @@ class TestSyntheticBranchesEmitConversationTurns:
         )
         iterable = _SyntheticTextExamplesIterable(config, tokenizer, random_seed=1)
         _key, row = next(iter(iterable))
-        graph_data = ConversationGraphData.model_validate(
-            json.loads(row["conversation_turns"])
-        )
+        graph_data = _graph(row)
         by_id = {turn.node_id: turn for turn in graph_data.turns}
 
         # Logical (unsplit) emission — expander owns injection insertion.
@@ -583,9 +584,7 @@ class TestSyntheticBranchesEmitConversationTurns:
         )
         iterable = _SyntheticTextExamplesIterable(config, tokenizer, random_seed=1)
         _key, row = next(iter(iterable))
-        graph_data = ConversationGraphData.model_validate(
-            json.loads(row["conversation_turns"])
-        )
+        graph_data = _graph(row)
         by_id = {turn.node_id: turn for turn in graph_data.turns}
 
         assert "main_0_injection" not in by_id
@@ -616,9 +615,7 @@ class TestSyntheticBranchesEmitConversationTurns:
         )
         iterable = _SyntheticTextExamplesIterable(config, tokenizer, random_seed=1)
         _key, row = next(iter(iterable))
-        graph_data = ConversationGraphData.model_validate(
-            json.loads(row["conversation_turns"])
-        )
+        graph_data = _graph(row)
         by_id = {turn.node_id: turn for turn in graph_data.turns}
 
         assert by_id["main_0"].columns["prompt_tokens_count_column"] == [100]
@@ -651,9 +648,7 @@ class TestSyntheticBranchesEmitConversationTurns:
         )
         iterable = _SyntheticTextExamplesIterable(config, tokenizer, random_seed=1)
         _key, row = next(iter(iterable))
-        graph_data = ConversationGraphData.model_validate(
-            json.loads(row["conversation_turns"])
-        )
+        graph_data = _graph(row)
         by_id = {turn.node_id: turn for turn in graph_data.turns}
 
         assert by_id["main_0"].columns["prompt_tokens_count_column"] == [100]

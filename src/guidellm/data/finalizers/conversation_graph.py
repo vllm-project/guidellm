@@ -59,6 +59,8 @@ def _lift_settings_from_columns(
 
 
 def _parse_conversation_turns(raw: Any) -> ConversationGraphData:
+    if isinstance(raw, ConversationGraphData):
+        return raw
     if isinstance(raw, str):
         return ConversationGraphData.model_validate_json(raw)
     return ConversationGraphData.model_validate(raw)

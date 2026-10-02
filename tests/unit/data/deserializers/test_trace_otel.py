@@ -342,7 +342,13 @@ def accumulating_session(
 
 
 def load_graph_turns(row: dict) -> list[ConversationTurnData]:
-    graph = ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+    payload = row["conversation_turns"]
+    if isinstance(payload, ConversationGraphData):
+        graph = payload
+    elif isinstance(payload, str):
+        graph = ConversationGraphData.model_validate(json.loads(payload))
+    else:
+        graph = ConversationGraphData.model_validate(payload)
     return graph.turns
 
 
