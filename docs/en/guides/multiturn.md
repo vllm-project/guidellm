@@ -495,7 +495,7 @@ Reasoning models emit chain-of-thought tokens before their final answer. By defa
 ### Think Tags (most models)
 
 ```bash
---backend kind=openai_http'target=http://localhost:8000,multiturn_reasoning=true'
+--backend kind=openai_http,target=http://localhost:8000,multiturn_reasoning=true
 ```
 
 Results in the following being sent for the turn in the conversation history:
