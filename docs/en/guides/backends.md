@@ -147,10 +147,11 @@ Each selected section must be a JSON object. Missing or unsupported sections pro
 
 GuideLLM applies best-effort filtering to every selected section:
 
-- Recognizable credential fields, including API keys, passwords, private keys, tokens, cookies and credential aliases, are redacted recursively. Unset values and boolean switches are preserved.
-- User information in recognized scheme-based URLs (such as `postgres://user:password@host/db`) is replaced with `[REDACTED]`, retaining the host and path.
-- A sensitive flag in an argument list (such as `--api-key`) has its following value redacted. Free-form strings containing sensitive assignments or flags are omitted in full rather than attempting to parse shell quoting or multiline credentials. For example, an `env_vars` string containing `VLLM_API_KEY=...` is redacted as a whole.
-- Fields named `host` or ending in `_host` (case-insensitive, treating hyphens as underscores) are redacted unless their value is exactly `localhost`, `127.0.0.1`, `::1`, an empty string or `null`.
+- Recognizable credential fields, including API keys, passwords, private keys, tokens, cookies and credential aliases, are redacted recursively. Additional exact names and suffixes include `ssh_key`, `encryption_key`, `signing_key`, `license_key`, `client_key`, `passphrase` and `pwd`. Related settings such as `signing_key_algorithm` and `client_key_file` remain intact. Unset values and boolean switches are preserved.
+- In environment records such as `{"name": "VLLM_API_KEY", "value": "..."}`, a recognizable sensitive name causes the `value` to be redacted. Records for ordinary settings, such as `CUDA_VISIBLE_DEVICES`, are retained.
+- User information in recognized scheme-based URLs (such as `postgres://user:password@host/db`) is replaced with `[REDACTED]`, retaining the host and path. Strings with ambiguous URL user information are omitted in full: for example, `redis://user:pa/ss@cache:6379/0`. This conservative rule can also omit a URL with a port or IPv6 authority followed by `@` in its path, query or fragment.
+- A sensitive flag in an argument list (such as `--api-key`) has its following value redacted. Free-form strings containing sensitive assignments, flags or `Authorization:`/`Proxy-Authorization:` headers are omitted in full rather than attempting to parse shell quoting or multiline credentials. This includes recognizable signature assignments such as `sig=` and `X-Amz-Signature=` in URLs. For example, an `env_vars` string containing `VLLM_API_KEY=...` is redacted as a whole.
+- Fields named `host`, `hostname`, `node_ip` or `master_addr`, or ending in `_host` (case-insensitive, treating hyphens as underscores), are redacted unless their value is exactly `localhost`, `127.0.0.1`, `::1`, an empty string or `null`.
 
 This does not guarantee that configuration or environment information is safe to publish. Hardware details, model paths, deployment names, URL hosts/paths and unrecognized secret formats may remain. Choose only the sections needed, leave capture disabled for confidential environments, and review the saved report before sharing it. `all` does not bypass filtering.
 

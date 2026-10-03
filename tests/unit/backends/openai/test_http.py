@@ -1544,6 +1544,13 @@ class TestServerConfigRedaction:
             "proxy-auth",
             "client_credentials",
             "apiKey",
+            "SSH_KEY",
+            "plugin.encryption-key",
+            "service_signing_key",
+            "LICENSE_KEY",
+            "tls_client_key",
+            "PASSPHRASE",
+            "db_pwd",
         ],
     )
     def test_credential_fields(self, key):
@@ -1571,6 +1578,14 @@ class TestServerConfigRedaction:
             "enable_auth": True,
             "auth_method": "oauth2",
             "credential_provider": "default",
+            "ssh_key_path": "/keys/id_ed25519",
+            "encryption_key_id": "key-1",
+            "signing_key_algorithm": "ed25519",
+            "license_key_required": True,
+            "client_key_file": "/keys/client.pem",
+            "signature_algorithm": "sha256",
+            "pwd_length": 32,
+            "hostname_override_enabled": False,
             "VLLM_USE_V1": True,
             "pip_packages": (
                 "torch==2.13.0\nvllm==0.30.0\ngoogle-auth==2.40.0\nsecretstorage==3.3.3"
@@ -1590,6 +1605,17 @@ class TestServerConfigRedaction:
             ("https://host/path@revision", "https://host/path@revision"),
             ("https://host/path?max_tokens=32", "https://host/path?max_tokens=32"),
             (
+                "https://host:8000/path?revision=main",
+                "https://host:8000/path?revision=main",
+            ),
+            ("redis://user:pa%2Fss@cache:6379/0", "redis://[REDACTED]@cache:6379/0"),
+            ("redis://user:pa/ss@cache:6379/0", "[REDACTED]"),
+            ("redis://user:pa?ss@cache:6379/0", "[REDACTED]"),
+            ("redis://user:pa#ss@cache:6379/0", "[REDACTED]"),
+            ("endpoint=redis://user:pa/ss@cache:6379/0 retries=2", "[REDACTED]"),
+            ("https://host:8000/path@revision", "[REDACTED]"),
+            ("https://[::1]/path@revision", "[REDACTED]"),
+            (
                 "primary=https://u:pw@a/ secondary=https://u:pw@b/",
                 "primary=https://[REDACTED]@a/ secondary=https://[REDACTED]@b/",
             ),
@@ -1608,6 +1634,12 @@ class TestServerConfigRedaction:
             "serve --api-key 'two word secret' --port 8000",
             "CUDA_VERSION=13.0\nVLLM_API_KEY=placeholder\nVLLM_USE_V1=1",
             "https://host/path?token=placeholder&max_tokens=32",
+            "Authorization: Bearer placeholder",
+            "proxy-authorization: Basic placeholder\nAccept: application/json",
+            "https://host/path?sig=placeholder&max_tokens=32",
+            "https://host/path?X-Amz-Signature=placeholder&X-Amz-Expires=60",
+            "--signing-key placeholder",
+            "PASSPHRASE=placeholder",
         ],
     )
     def test_sensitive_free_form_text(self, value):
@@ -1644,10 +1676,57 @@ class TestServerConfigRedaction:
         assert payload[1] == "two word secret"
         assert _redact_server_config(result) == result
 
+    def test_environment_records(self):
+        """Use an environment record's name to filter its value without mutation."""
+        payload = {
+            "env": [
+                {"name": "VLLM_API_KEY", "value": "private-value"},
+                {"name": "SERVICE_SIGNING_KEY", "value": "private-signing-key"},
+                {"name": "VLLM_ATTENTION_BACKEND", "value": "FLASH_ATTN"},
+                {"name": "CUDA_VISIBLE_DEVICES", "value": "0,1"},
+                {"name": "HF_HOME", "value": "/cache/huggingface"},
+                {"name": None, "value": "ordinary-value"},
+                {"name": ["ordinary-name"], "value": "ordinary-value"},
+            ]
+        }
+        result = _redact_server_config(payload)
+        assert result["env"][:2] == [
+            {"name": "VLLM_API_KEY", "value": "[REDACTED]"},
+            {"name": "SERVICE_SIGNING_KEY", "value": "[REDACTED]"},
+        ]
+        assert result["env"][2:] == payload["env"][2:]
+        assert payload["env"][0]["value"] == "private-value"
+        assert _redact_server_config(result) == result
+
+    def test_non_string_keys(self):
+        """Preserve non-JSON keys while still filtering the values below them."""
+        payload = {1: {"API_KEY": "private-value"}, None: "ordinary-value"}
+        assert _redact_server_config(payload) == {
+            1: {"API_KEY": "[REDACTED]"},
+            None: "ordinary-value",
+        }
+        assert payload[1] == {"API_KEY": "private-value"}
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "Authorization is enabled",
+            "Content-Type: application/json",
+            "https://host/path?signature_algorithm=sha256&max_tokens=32",
+            "https://host/path?X-Amz-Expires=60",
+        ],
+    )
+    def test_non_sensitive_text(self, value):
+        """Keep ordinary headers and query settings available for comparison."""
+        assert _redact_server_config(value) == value
+
     @pytest.mark.parametrize("value", ["localhost", "127.0.0.1", "::1", "", None])
     def test_local_or_unset_hosts(self, value):
         """Keep canonical local hosts and unset values useful for reproduction."""
-        payload = {"host": value, "VLLM_EC_SIDE_CHANNEL_HOST": value}
+        payload = dict.fromkeys(
+            ["host", "VLLM_EC_SIDE_CHANNEL_HOST", "hostname", "node_ip", "master_addr"],
+            value,
+        )
         assert _redact_server_config(payload) == payload
 
     @pytest.mark.parametrize(
@@ -1662,8 +1741,8 @@ class TestServerConfigRedaction:
     )
     def test_other_hosts(self, value):
         """Conservatively filter noncanonical and non-local host fields."""
-        payload = {"host": value, "VLLM_EC_SIDE_CHANNEL_HOST": value}
-        assert _redact_server_config(payload) == {
-            "host": "[REDACTED]",
-            "VLLM_EC_SIDE_CHANNEL_HOST": "[REDACTED]",
-        }
+        payload = dict.fromkeys(
+            ["host", "VLLM_EC_SIDE_CHANNEL_HOST", "hostname", "node_ip", "master_addr"],
+            value,
+        )
+        assert _redact_server_config(payload) == dict.fromkeys(payload, "[REDACTED]")

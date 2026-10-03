@@ -60,11 +60,18 @@ def test_server_config_capture_in_cli_report(
                     server_info_status,
                     {
                         "vllm_config": {
-                            "parallel_config": {"tensor_parallel_size": 2},
+                            "parallel_config": {
+                                "tensor_parallel_size": 2,
+                                "master_addr": "private-master.internal",
+                            },
                             "model_config": {
                                 "hf_token": "private-token",
                                 "model": "capture-only-model-name",
                                 "endpoint": "postgres://user:private-url-secret@localhost/db",
+                                "cache_url": "redis://user:private-pa/ss@cache:6379/0",
+                                "download_url": "https://host/model?X-Amz-Signature=private-signature",
+                                "headers": "Authorization: Bearer private-bearer",
+                                "signing_key": "private-signing-key",
                                 "args": [
                                     "--api-key",
                                     "private-argument",
@@ -82,6 +89,10 @@ def test_server_config_capture_in_cli_report(
                             "cuda_runtime_version": "12.8",
                             "HF_TOKEN": "private-token",
                             "cpu_info": diagnostic,
+                            "env_records": [
+                                {"name": "VLLM_API_KEY", "value": "private-record-key"},
+                                {"name": "CUDA_VISIBLE_DEVICES", "value": "0,1"},
+                            ],
                             "env_vars": (
                                 "CUDA_VERSION=13.0\nVLLM_API_KEY=private-inline-secret"
                             ),
@@ -187,11 +198,18 @@ def test_server_config_capture_in_cli_report(
     if server_info_status == 200:
         expected = {
             "vllm_config": {
-                "parallel_config": {"tensor_parallel_size": 2},
+                "parallel_config": {
+                    "tensor_parallel_size": 2,
+                    "master_addr": "[REDACTED]",
+                },
                 "model_config": {
                     "hf_token": "[REDACTED]",
                     "model": "capture-only-model-name",
                     "endpoint": "postgres://[REDACTED]@localhost/db",
+                    "cache_url": "[REDACTED]",
+                    "download_url": "[REDACTED]",
+                    "headers": "[REDACTED]",
+                    "signing_key": "[REDACTED]",
                     "args": ["--api-key", "[REDACTED]", "--max-tokens", "32"],
                 },
             },
@@ -204,6 +222,10 @@ def test_server_config_capture_in_cli_report(
                 "cuda_runtime_version": "12.8",
                 "HF_TOKEN": "[REDACTED]",
                 "cpu_info": diagnostic,
+                "env_records": [
+                    {"name": "VLLM_API_KEY", "value": "[REDACTED]"},
+                    {"name": "CUDA_VISIBLE_DEVICES", "value": "0,1"},
+                ],
                 "env_vars": "[REDACTED]",
             },
         }

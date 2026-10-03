@@ -45,7 +45,8 @@ _SERVER_CONFIG_TIMEOUT = 5.0
 _SERVER_CONFIG_MAX_BYTES = 1024 * 1024
 _CONFIG_ASSIGNMENT_RE = re.compile(r"(?<![\w-])(?P<key>[A-Za-z_][\w.-]*)\s*=(?!=)")
 _CONFIG_FLAG_RE = re.compile(r"(?<!\S)--(?P<key>[A-Za-z_][\w-]*)(?=\s|=|$)")
-_CONFIG_URL_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s/?#<>\"']+")
+_CONFIG_HEADER_RE = re.compile(r"(?<![\w-])(?:proxy-)?authorization\s*:", re.IGNORECASE)
+_CONFIG_URL_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s<>\"']+")
 _LOCAL_CONFIG_HOSTS = ("localhost", "127.0.0.1", "::1", "", None)
 
 
@@ -64,6 +65,15 @@ def _sensitive_config_key(key: str) -> bool:
         "pat",
         "auth",
         "authorization",
+        "passphrase",
+        "pwd",
+        "ssh_key",
+        "encryption_key",
+        "signing_key",
+        "license_key",
+        "client_key",
+        "sig",
+        "signature",
     )
     return (
         normalized in names
@@ -84,6 +94,8 @@ def _sensitive_config_key(key: str) -> bool:
 
 def _redact_config_text(value: str) -> str:
     """Drop sensitive free-form assignments/flags and strip URL user information."""
+    if _CONFIG_HEADER_RE.search(value):
+        return "[REDACTED]"
     for pattern in (_CONFIG_ASSIGNMENT_RE, _CONFIG_FLAG_RE):
         if any(
             _sensitive_config_key(match["key"]) for match in pattern.finditer(value)
@@ -92,11 +104,23 @@ def _redact_config_text(value: str) -> str:
             # escaped credentials end. Other fields in the section are retained.
             return "[REDACTED]"
 
+    for match in _CONFIG_URL_RE.finditer(value):
+        _, remainder = match[0].split("://", 1)
+        authority = re.split(r"[/?#]", remainder, maxsplit=1)[0]
+        if ":" in authority and "@" in remainder[len(authority) :]:
+            # An unescaped delimiter may split a password from its userinfo.
+            # Omit the string rather than guess where the credentials end.
+            return "[REDACTED]"
+
     def redact_url(match: re.Match[str]) -> str:
-        scheme, authority = match[0].split("://", 1)
+        scheme, remainder = match[0].split("://", 1)
+        authority = re.split(r"[/?#]", remainder, maxsplit=1)[0]
         if "@" not in authority:
             return match[0]
-        return f"{scheme}://[REDACTED]@{authority.rsplit('@', 1)[1]}"
+        return (
+            f"{scheme}://[REDACTED]@{authority.rsplit('@', 1)[1]}"
+            f"{remainder[len(authority) :]}"
+        )
 
     return _CONFIG_URL_RE.sub(redact_url, value)
 
@@ -105,15 +129,20 @@ def _redact_server_config(value: Any) -> Any:
     """Filter recognizable credentials and host fields without mutating input."""
     if isinstance(value, dict):
         result = {}
+        name = value.get("name")
+        sensitive_record = isinstance(name, str) and _sensitive_config_key(name)
         for key, item in value.items():
-            normalized = key.lower().replace("-", "_")
-            if _sensitive_config_key(key):
+            normalized = key.lower().replace("-", "_") if isinstance(key, str) else ""
+            if _sensitive_config_key(normalized) or (
+                key == "value" and sensitive_record
+            ):
                 # Preserve unset values and boolean switches: neither is a secret.
                 result[key] = (
                     item if item is None or isinstance(item, bool) else "[REDACTED]"
                 )
             elif (
-                normalized == "host" or normalized.endswith("_host")
+                normalized in ("host", "hostname", "node_ip", "master_addr")
+                or normalized.endswith("_host")
             ) and item not in _LOCAL_CONFIG_HOSTS:
                 result[key] = "[REDACTED]"
             else:
