@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import pickle
 from contextlib import nullcontext
 from typing import Literal
 from unittest.mock import MagicMock, Mock, patch
@@ -16,7 +17,7 @@ from pydantic import ValidationError
 from pytest_httpx import HTTPXMock, IteratorStream
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.openai.http import OpenAIHTTPBackend
+from guidellm.backends.openai.http import OpenAIHTTPBackend, _redact_server_config
 from guidellm.backends.openai.request_handlers import (
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
@@ -1214,3 +1215,534 @@ async def test_resolve_responses_terminal_error(
                 assert responses[-1].text == "Partial answer"
     finally:
         await backend.process_shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+class TestServerConfigCapture:
+    """Optional metadata must not change generation or worker initialization."""
+
+    @pytest.mark.parametrize("selection", [None, set()])
+    async def test_capture_is_opt_in(self, httpx_mock: HTTPXMock, selection):
+        """Do not probe server_info when unset or explicitly empty."""
+        backend = _make_backend(
+            target="http://test",
+            validate_backend=False,
+            capture_server_config=selection,
+        )
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            assert "server_info" not in backend.info
+            assert not httpx_mock.get_requests()
+        finally:
+            await backend.process_shutdown()
+
+    async def test_capture_with_auth_and_custom_route(self, httpx_mock: HTTPXMock):
+        """Preserve useful settings, omit environments and redact nested secrets."""
+        config = {
+            "model_config": {"model": "test-model", "hf_token": "private-token"},
+            "parallel_config": {"tensor_parallel_size": 2},
+            "scheduler_config": {"max_num_batched_tokens": 4096},
+            "plugins": [{"API-Key": "private-key", "password": "private-password"}],
+        }
+        httpx_mock.add_response(
+            url="http://test/proxy/server_info?config_format=json",
+            match_headers={"Authorization": "Bearer test-key", "X-Tenant": "tenant"},
+            json={
+                "vllm_config": config,
+                "vllm_env": {"secret": "private-env"},
+                "system_env": {"hostname": "private-host"},
+            },
+        )
+        backend = _make_backend(
+            target="http://test/v1",
+            model="test-model",
+            validate_backend=False,
+            capture_server_config={"vllm_config"},
+            api_key="test-key",
+            extras={"headers": {"X-Tenant": "tenant"}},
+            api_routes={"/server_info": "/proxy/server_info"},
+        )
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            captured = backend.info["server_info"]
+            assert captured == {
+                "vllm_config": {
+                    "model_config": {"model": "test-model", "hf_token": "[REDACTED]"},
+                    "parallel_config": {"tensor_parallel_size": 2},
+                    "scheduler_config": {"max_num_batched_tokens": 4096},
+                    "plugins": [{"API-Key": "[REDACTED]", "password": "[REDACTED]"}],
+                }
+            }
+            assert "private-" not in json.dumps(backend.info)
+            captured["vllm_config"]["model_config"]["model"] = "changed"
+            assert (
+                backend.info["server_info"]["vllm_config"]["model_config"]["model"]
+                == "test-model"
+            )
+        finally:
+            await backend.process_shutdown()
+
+        worker_backend = pickle.loads(pickle.dumps(backend))  # noqa: S301 - local object
+        await worker_backend.process_startup()
+        try:
+            await worker_backend.validate()
+            assert worker_backend.info == backend.info
+            assert len(httpx_mock.get_requests()) == 1
+        finally:
+            await worker_backend.process_shutdown()
+
+    @pytest.mark.parametrize(
+        "selection",
+        [
+            {"vllm_config"},
+            {"vllm_env"},
+            {"system_env"},
+            {"vllm_config", "vllm_env"},
+            {"vllm_config", "system_env"},
+            {"vllm_env", "system_env"},
+            {"vllm_config", "vllm_env", "system_env"},
+            "all",
+        ],
+    )
+    async def test_selected_sections_are_redacted_and_reused(
+        self, httpx_mock: HTTPXMock, selection
+    ):
+        """Capture only selected fields and keep filtered snapshots across workers."""
+        expected = {
+            "vllm_config": {"max_num_batched_tokens": 4096, "api_key": "[REDACTED]"},
+            "vllm_env": {"VLLM_USE_V1": True, "VLLM_API_KEY": "[REDACTED]"},
+            "system_env": {
+                "cuda_runtime_version": "12.8",
+                "HF_TOKEN": "[REDACTED]",
+                "plugins": [{"AWS_SECRET_ACCESS_KEY": "[REDACTED]"}],
+            },
+        }
+        payload = json.loads(
+            json.dumps(expected).replace("[REDACTED]", "private-secret")
+        )
+        payload["future_section"] = {"value": "unselected-data"}
+        httpx_mock.add_response(json=payload)
+        backend = _make_backend(
+            target="http://test",
+            validate_backend=False,
+            capture_server_config=selection,
+        )
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            sections = set(expected) if selection == "all" else selection
+            assert backend.info["server_info"] == {
+                name: value for name, value in expected.items() if name in sections
+            }
+            assert "private-secret" not in json.dumps(backend.info)
+        finally:
+            await backend.process_shutdown()
+
+        worker = pickle.loads(pickle.dumps(backend))  # noqa: S301 - local object
+        await worker.process_startup()
+        try:
+            await worker.validate()
+            # Selection is a set; its JSON list order can change after pickling.
+            assert worker._args == backend._args
+            assert worker.info["server_info"] == backend.info["server_info"]
+            assert len(httpx_mock.get_requests()) == 1
+        finally:
+            await worker.process_shutdown()
+
+    @pytest.mark.parametrize("unsupported", [None, "hf_token=private-secret", [], 42])
+    async def test_valid_sections_survive_unsupported_sections(
+        self, httpx_mock: HTTPXMock, unsupported
+    ):
+        """Keep available environment data without requiring structured config."""
+        httpx_mock.add_response(
+            json={
+                "vllm_config": unsupported,
+                "vllm_env": {"VLLM_USE_V1": True},
+            }
+        )
+        backend = _make_backend(
+            target="http://test", validate_backend=False, capture_server_config="all"
+        )
+        await backend.process_startup()
+        try:
+            with patch("guidellm.backends.openai.http.logger") as logger:
+                await backend.validate()
+            assert backend.info["server_info"] == {"vllm_env": {"VLLM_USE_V1": True}}
+            assert logger.warning.call_count == 2
+            assert "private-secret" not in str(logger.warning.call_args_list)
+        finally:
+            await backend.process_shutdown()
+
+    async def test_empty_section_is_valid(self, httpx_mock: HTTPXMock):
+        """An empty selected object is distinct from a missing section."""
+        httpx_mock.add_response(json={"system_env": {}})
+        backend = _make_backend(
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"system_env"},
+        )
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            assert backend.info["server_info"] == {"system_env": {}}
+        finally:
+            await backend.process_shutdown()
+
+    @pytest.mark.parametrize("status", [301, 401, 403, 404, 500])
+    async def test_unavailable_endpoint_is_not_retried(
+        self, httpx_mock: HTTPXMock, status
+    ):
+        """Skip denied, missing, failing and redirecting optional endpoints."""
+        httpx_mock.add_response(
+            status_code=status, headers={"Location": "http://other-host"}
+        )
+        backend = _make_backend(
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"vllm_config"},
+        )
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            await backend.validate()
+            assert "server_info" not in backend.info
+            assert len(httpx_mock.get_requests()) == 1
+        finally:
+            await backend.process_shutdown()
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            b"<html>not JSON</html>",
+            b"[]",
+            b"null",
+            b"{}",
+            b'{"vllm_config": "hf_token=private-token"}',
+            b'{"vllm_config": null}',
+            b"x" * (1024 * 1024 + 1),
+        ],
+        ids=["html", "array", "null", "missing", "legacy", "null-config", "oversized"],
+    )
+    async def test_unsupported_payload_is_not_saved(
+        self, httpx_mock: HTTPXMock, content
+    ):
+        """Reject malformed, legacy and oversized responses without failing setup."""
+        httpx_mock.add_response(stream=IteratorStream([content[:100], content[100:]]))
+        backend = _make_backend(
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"vllm_config"},
+        )
+        await backend.process_startup()
+        try:
+            await backend.validate()
+            assert "server_info" not in backend.info
+        finally:
+            await backend.process_shutdown()
+
+    @pytest.mark.parametrize("error_type", [httpx.ConnectError, httpx.ReadTimeout])
+    async def test_network_failure_does_not_expose_details(
+        self, httpx_mock: HTTPXMock, error_type
+    ):
+        """Network failures are nonfatal and do not log secret-bearing messages."""
+        httpx_mock.add_exception(error_type("private-credential"))
+        backend = _make_backend(
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"vllm_config"},
+        )
+        await backend.process_startup()
+        try:
+            with patch("guidellm.backends.openai.http.logger") as logger:
+                await backend.validate()
+            assert "server_info" not in backend.info
+            logger.warning.assert_called_once()
+            assert "private-credential" not in str(logger.warning.call_args)
+        finally:
+            await backend.process_shutdown()
+
+    async def test_total_deadline_closes_slow_response(self, httpx_mock: HTTPXMock):
+        """Bound the whole fetch even when the server stalls during streaming."""
+
+        class SlowStream(httpx.AsyncByteStream):
+            closed = False
+
+            async def __aiter__(self):
+                yield b'{"vllm_config":'
+                await asyncio.sleep(10)
+                yield b"{}}"
+
+            async def aclose(self):
+                self.closed = True
+
+        stream = SlowStream()
+        httpx_mock.add_response(stream=stream)
+        backend = _make_backend(
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"vllm_config"},
+        )
+        await backend.process_startup()
+        try:
+            with patch("guidellm.backends.openai.http._SERVER_CONFIG_TIMEOUT", 0.02):
+                await asyncio.wait_for(backend.validate(), timeout=1)
+            assert "server_info" not in backend.info
+            assert stream.closed
+        finally:
+            await backend.process_shutdown()
+
+    async def test_cancellation_propagates(self, httpx_mock: HTTPXMock):
+        """Optional capture must not swallow benchmark cancellation."""
+        httpx_mock.add_exception(asyncio.CancelledError())
+        backend = _make_backend(
+            target="http://test",
+            validate_backend=False,
+            capture_server_config={"vllm_config"},
+        )
+        await backend.process_startup()
+        try:
+            with pytest.raises(asyncio.CancelledError):
+                await backend.validate()
+        finally:
+            await backend.process_shutdown()
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    "selection", [True, False, "unknown", ["all"], ["vllm_config", "unknown"]]
+)
+def test_invalid_server_config_selection(selection):
+    """Reject ambiguous booleans and unknown capture sections before setup."""
+    with pytest.raises(ValidationError):
+        OpenAIHTTPBackendArgs(target="http://test", capture_server_config=selection)
+
+
+@pytest.mark.regression
+class TestServerConfigRedaction:
+    """Concrete credential patterns must not erase useful benchmark settings."""
+
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "HF_TOKEN",
+            "OPENAI_API_KEY",
+            "VLLM_API_KEY",
+            "AWS_SECRET_ACCESS_KEY",
+            "WANDB_API_KEY",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "ssl_keyfile_password",
+            "PASSWD",
+            "DB_PASS",
+            "PRIVATE_KEY",
+            "AZURE_CLIENT_CREDENTIAL",
+            "COOKIE",
+            "BEARER",
+            "GITHUB_PAT",
+            "proxy-auth",
+            "client_credentials",
+            "apiKey",
+            "SSH_KEY",
+            "plugin.encryption-key",
+            "service_signing_key",
+            "LICENSE_KEY",
+            "tls_client_key",
+            "PASSPHRASE",
+            "db_pwd",
+        ],
+    )
+    def test_credential_fields(self, key):
+        """Filter reviewer examples, including nested dictionaries inside lists."""
+        payload = {"plugins": [{key: "private-value"}]}
+        assert _redact_server_config(payload) == {"plugins": [{key: "[REDACTED]"}]}
+        assert payload == {"plugins": [{key: "private-value"}]}
+
+    @pytest.mark.parametrize("value", [None, False, True])
+    def test_unset_credentials_and_boolean_switches(self, value):
+        """Preserve the difference between absent credentials and enabled switches."""
+        assert _redact_server_config({"hf_token": value}) == {"hf_token": value}
+
+    def test_useful_settings_are_preserved(self):
+        """Do not confuse token counts, cache keys or compiler passes with secrets."""
+        payload = {
+            "max_tokens": 2048,
+            "max_num_batched_tokens": 4096,
+            "tokenizer": "test-model",
+            "tokenizer_mode": "auto",
+            "cache_key": "sha256",
+            "monkey_patch": False,
+            "bypass": True,
+            "pass_config": {"enable_fusion": True},
+            "enable_auth": True,
+            "auth_method": "oauth2",
+            "credential_provider": "default",
+            "ssh_key_path": "/keys/id_ed25519",
+            "encryption_key_id": "key-1",
+            "signing_key_algorithm": "ed25519",
+            "license_key_required": True,
+            "client_key_file": "/keys/client.pem",
+            "signature_algorithm": "sha256",
+            "pwd_length": 32,
+            "hostname_override_enabled": False,
+            "VLLM_USE_V1": True,
+            "pip_packages": (
+                "torch==2.13.0\nvllm==0.30.0\ngoogle-auth==2.40.0\nsecretstorage==3.3.3"
+            ),
+            "cuda_runtime_version": "13.0",
+            "env_vars": "CUDA_VERSION=13.0\nVLLM_USE_V1=1",
+        }
+        assert _redact_server_config(payload) == payload
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("postgres://user:pw@host/db", "postgres://[REDACTED]@host/db"),
+            ("https://token@host/path", "https://[REDACTED]@host/path"),
+            ("redis://user:p%40ss@[::1]:6379/0", "redis://[REDACTED]@[::1]:6379/0"),
+            ("postgres://u:p@ss@host/db", "postgres://[REDACTED]@host/db"),
+            ("https://host/path@revision", "https://host/path@revision"),
+            ("https://host/path?max_tokens=32", "https://host/path?max_tokens=32"),
+            (
+                "https://host:8000/path?revision=main",
+                "https://host:8000/path?revision=main",
+            ),
+            ("redis://user:pa%2Fss@cache:6379/0", "redis://[REDACTED]@cache:6379/0"),
+            ("redis://user:pa/ss@cache:6379/0", "[REDACTED]"),
+            ("redis://user:pa?ss@cache:6379/0", "[REDACTED]"),
+            ("redis://user:pa#ss@cache:6379/0", "[REDACTED]"),
+            ("endpoint=redis://user:pa/ss@cache:6379/0 retries=2", "[REDACTED]"),
+            ("https://host:8000/path@revision", "[REDACTED]"),
+            ("https://[::1]/path@revision", "[REDACTED]"),
+            (
+                "primary=https://u:pw@a/ secondary=https://u:pw@b/",
+                "primary=https://[REDACTED]@a/ secondary=https://[REDACTED]@b/",
+            ),
+        ],
+    )
+    def test_url_userinfo(self, value, expected):
+        """Remove URL credentials without removing hosts, paths or numeric settings."""
+        assert _redact_server_config({"endpoint": value}) == {"endpoint": expected}
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "HF_TOKEN=hf_placeholder",
+            "export HF_TOKEN = 'two word secret'",
+            "--api-key=sk_placeholder",
+            "serve --api-key 'two word secret' --port 8000",
+            "CUDA_VERSION=13.0\nVLLM_API_KEY=placeholder\nVLLM_USE_V1=1",
+            "https://host/path?token=placeholder&max_tokens=32",
+            "Authorization: Bearer placeholder",
+            "proxy-authorization: Basic placeholder\nAccept: application/json",
+            "https://host/path?sig=placeholder&max_tokens=32",
+            "https://host/path?X-Amz-Signature=placeholder&X-Amz-Expires=60",
+            "--signing-key placeholder",
+            "PASSPHRASE=placeholder",
+        ],
+    )
+    def test_sensitive_free_form_text(self, value):
+        """Drop sensitive free-form text as a whole rather than parse shell syntax."""
+        assert _redact_server_config({"diagnostic": value}) == {
+            "diagnostic": "[REDACTED]"
+        }
+
+    def test_argument_lists(self):
+        """Filter flag values, assignments and nested lists without mutation."""
+        payload = [
+            "--api-key",
+            "two word secret",
+            "--max-tokens",
+            "32",
+            "HF_TOKEN=placeholder",
+            ["--private-key", {"value": "secret"}],
+            "--password=placeholder",
+            "--tokenizer",
+            "test-model",
+        ]
+        result = _redact_server_config(payload)
+        assert result == [
+            "--api-key",
+            "[REDACTED]",
+            "--max-tokens",
+            "32",
+            "[REDACTED]",
+            ["--private-key", "[REDACTED]"],
+            "[REDACTED]",
+            "--tokenizer",
+            "test-model",
+        ]
+        assert payload[1] == "two word secret"
+        assert _redact_server_config(result) == result
+
+    def test_environment_records(self):
+        """Use an environment record's name to filter its value without mutation."""
+        payload = {
+            "env": [
+                {"name": "VLLM_API_KEY", "value": "private-value"},
+                {"name": "SERVICE_SIGNING_KEY", "value": "private-signing-key"},
+                {"name": "VLLM_ATTENTION_BACKEND", "value": "FLASH_ATTN"},
+                {"name": "CUDA_VISIBLE_DEVICES", "value": "0,1"},
+                {"name": "HF_HOME", "value": "/cache/huggingface"},
+                {"name": None, "value": "ordinary-value"},
+                {"name": ["ordinary-name"], "value": "ordinary-value"},
+            ]
+        }
+        result = _redact_server_config(payload)
+        assert result["env"][:2] == [
+            {"name": "VLLM_API_KEY", "value": "[REDACTED]"},
+            {"name": "SERVICE_SIGNING_KEY", "value": "[REDACTED]"},
+        ]
+        assert result["env"][2:] == payload["env"][2:]
+        assert payload["env"][0]["value"] == "private-value"
+        assert _redact_server_config(result) == result
+
+    def test_non_string_keys(self):
+        """Preserve non-JSON keys while still filtering the values below them."""
+        payload = {1: {"API_KEY": "private-value"}, None: "ordinary-value"}
+        assert _redact_server_config(payload) == {
+            1: {"API_KEY": "[REDACTED]"},
+            None: "ordinary-value",
+        }
+        assert payload[1] == {"API_KEY": "private-value"}
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "Authorization is enabled",
+            "Content-Type: application/json",
+            "https://host/path?signature_algorithm=sha256&max_tokens=32",
+            "https://host/path?X-Amz-Expires=60",
+        ],
+    )
+    def test_non_sensitive_text(self, value):
+        """Keep ordinary headers and query settings available for comparison."""
+        assert _redact_server_config(value) == value
+
+    @pytest.mark.parametrize("value", ["localhost", "127.0.0.1", "::1", "", None])
+    def test_local_or_unset_hosts(self, value):
+        """Keep canonical local hosts and unset values useful for reproduction."""
+        payload = dict.fromkeys(
+            ["host", "VLLM_EC_SIDE_CHANNEL_HOST", "hostname", "node_ip", "master_addr"],
+            value,
+        )
+        assert _redact_server_config(payload) == payload
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "private.internal",
+            "10.0.0.7",
+            "2001:db8::1",
+            "localhost.private.internal",
+            "0:0:0:0:0:0:0:1",
+        ],
+    )
+    def test_other_hosts(self, value):
+        """Conservatively filter noncanonical and non-local host fields."""
+        payload = dict.fromkeys(
+            ["host", "VLLM_EC_SIDE_CHANNEL_HOST", "hostname", "node_ip", "master_addr"],
+            value,
+        )
+        assert _redact_server_config(payload) == dict.fromkeys(payload, "[REDACTED]")

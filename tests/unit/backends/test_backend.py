@@ -326,6 +326,12 @@ class TestBackend:
         assert info["type"] == constructor_args["kind"]
         assert "test" in info
 
+    @pytest.mark.regression
+    def test_console_dump_preserves_subclass_info(self, valid_instances):
+        """Backends without an override retain their existing console details."""
+        instance, _ = valid_instances
+        assert instance.console_dump() == {"type": instance.kind, "test": "backend"}
+
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(5.0)

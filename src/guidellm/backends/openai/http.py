@@ -11,11 +11,15 @@ tracking with flexible parameter customization.
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import time
 from collections.abc import AsyncIterator
+from copy import deepcopy
 from typing import Any
 
 import httpx
+from loguru import logger
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.openai.common import FALLBACK_TIMEOUT
@@ -35,6 +39,135 @@ from guidellm.utils.dict import deep_filter
 __all__ = [
     "OpenAIHTTPBackend",
 ]
+
+
+_SERVER_CONFIG_TIMEOUT = 5.0
+_SERVER_CONFIG_MAX_BYTES = 1024 * 1024
+_CONFIG_ASSIGNMENT_RE = re.compile(r"(?<![\w-])(?P<key>[A-Za-z_][\w.-]*)\s*=(?!=)")
+_CONFIG_FLAG_RE = re.compile(r"(?<!\S)--(?P<key>[A-Za-z_][\w-]*)(?=\s|=|$)")
+_CONFIG_HEADER_RE = re.compile(r"(?<![\w-])(?:proxy-)?authorization\s*:", re.IGNORECASE)
+_CONFIG_URL_RE = re.compile(r"\b[A-Za-z][A-Za-z0-9+.-]*://[^\s<>\"']+")
+_LOCAL_CONFIG_HOSTS = ("localhost", "127.0.0.1", "::1", "", None)
+
+
+def _sensitive_config_key(key: str) -> bool:
+    """Recognize credential names without treating every key or token as secret."""
+    normalized = key.lower().replace("-", "_").replace(".", "_")
+    names = (
+        "token",
+        "pass",
+        "passwd",
+        "credential",
+        "credentials",
+        "cookie",
+        "cookies",
+        "bearer",
+        "pat",
+        "auth",
+        "authorization",
+        "passphrase",
+        "pwd",
+        "ssh_key",
+        "encryption_key",
+        "signing_key",
+        "license_key",
+        "client_key",
+        "sig",
+        "signature",
+    )
+    return (
+        normalized in names
+        or normalized.endswith(tuple(f"_{name}" for name in names))
+        or any(
+            part in normalized
+            for part in (
+                "api_key",
+                "apikey",
+                "password",
+                "secret",
+                "access_key",
+                "private_key",
+            )
+        )
+    )
+
+
+def _redact_config_text(value: str) -> str:
+    """Drop sensitive free-form assignments/flags and strip URL user information."""
+    if _CONFIG_HEADER_RE.search(value):
+        return "[REDACTED]"
+    for pattern in (_CONFIG_ASSIGNMENT_RE, _CONFIG_FLAG_RE):
+        if any(
+            _sensitive_config_key(match["key"]) for match in pattern.finditer(value)
+        ):
+            # Whole-string omission avoids guessing where quoted, multiline or
+            # escaped credentials end. Other fields in the section are retained.
+            return "[REDACTED]"
+
+    for match in _CONFIG_URL_RE.finditer(value):
+        _, remainder = match[0].split("://", 1)
+        authority = re.split(r"[/?#]", remainder, maxsplit=1)[0]
+        if ":" in authority and "@" in remainder[len(authority) :]:
+            # An unescaped delimiter may split a password from its userinfo.
+            # Omit the string rather than guess where the credentials end.
+            return "[REDACTED]"
+
+    def redact_url(match: re.Match[str]) -> str:
+        scheme, remainder = match[0].split("://", 1)
+        authority = re.split(r"[/?#]", remainder, maxsplit=1)[0]
+        if "@" not in authority:
+            return match[0]
+        return (
+            f"{scheme}://[REDACTED]@{authority.rsplit('@', 1)[1]}"
+            f"{remainder[len(authority) :]}"
+        )
+
+    return _CONFIG_URL_RE.sub(redact_url, value)
+
+
+def _redact_server_config(value: Any) -> Any:
+    """Filter recognizable credentials and host fields without mutating input."""
+    if isinstance(value, dict):
+        result = {}
+        name = value.get("name")
+        sensitive_record = isinstance(name, str) and _sensitive_config_key(name)
+        for key, item in value.items():
+            normalized = key.lower().replace("-", "_") if isinstance(key, str) else ""
+            if _sensitive_config_key(normalized) or (
+                key == "value" and sensitive_record
+            ):
+                # Preserve unset values and boolean switches: neither is a secret.
+                result[key] = (
+                    item if item is None or isinstance(item, bool) else "[REDACTED]"
+                )
+            elif (
+                normalized in ("host", "hostname", "node_ip", "master_addr")
+                or normalized.endswith("_host")
+            ) and item not in _LOCAL_CONFIG_HOSTS:
+                result[key] = "[REDACTED]"
+            else:
+                result[key] = _redact_server_config(item)
+        return result
+    if isinstance(value, list):
+        items = []
+        redact_next = False
+        for item in value:
+            if redact_next:
+                items.append("[REDACTED]")
+                redact_next = False
+            elif (
+                isinstance(item, str)
+                and (flag := _CONFIG_FLAG_RE.fullmatch(item))
+                and _sensitive_config_key(flag["key"])
+            ):
+                items.append(item)
+                redact_next = True
+            else:
+                items.append(_redact_server_config(item))
+        return items
+    if isinstance(value, str):
+        return _redact_config_text(value)
+    return value
 
 
 @Backend.register("openai_http")
@@ -76,6 +209,26 @@ class OpenAIHTTPBackend(Backend):
         # Runtime state
         self._in_process = False
         self._async_client: httpx.AsyncClient | None = None
+        self._server_config_attempted = False
+        self._server_info: dict[str, Any] | None = None
+
+    @property
+    def info(self) -> dict[str, Any]:
+        """Return backend arguments and the optional server configuration snapshot.
+
+        :return: JSON-serializable backend metadata for benchmark results
+        """
+        info = super().info
+        if self._server_info is not None:
+            info["server_info"] = deepcopy(self._server_info)
+        return info
+
+    def console_dump(self) -> dict[str, Any]:
+        """Omit captured server details from initialization console output.
+
+        :return: Backend arguments without copying or exposing the report snapshot
+        """
+        return super().info
 
     async def process_startup(self):
         """
@@ -128,24 +281,90 @@ class OpenAIHTTPBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
-        if not self._args.validate_backend:
-            return
+        if self._args.validate_backend:
+            try:
+                validate_kwargs: dict[str, Any] = {
+                    "method": "GET",
+                    "url": f"{self._args.target}/{self._args.api_routes['/health']}",
+                }
+                existing_headers = validate_kwargs.get("headers")
+                built_headers = self._build_headers(existing_headers)
+                validate_kwargs["headers"] = built_headers
+                response = await self._async_client.request(**validate_kwargs)
+                response.raise_for_status()
+            except Exception as exc:
+                raise RuntimeError(
+                    "Backend validation request failed. Could not connect to the "
+                    "server or validate the backend configuration."
+                ) from exc
 
-        try:
-            validate_kwargs: dict[str, Any] = {
-                "method": "GET",
-                "url": f"{self._args.target}/{self._args.api_routes['/health']}",
-            }
-            existing_headers = validate_kwargs.get("headers")
-            built_headers = self._build_headers(existing_headers)
-            validate_kwargs["headers"] = built_headers
-            response = await self._async_client.request(**validate_kwargs)
+        if self._args.capture_server_config and not self._server_config_attempted:
+            # resolve_backend validates in the parent before scheduling. Keep this
+            # flag when pickled so workers do not repeat the optional request.
+            self._server_config_attempted = True
+            try:
+                self._server_info = await asyncio.wait_for(
+                    self._fetch_server_config(), timeout=_SERVER_CONFIG_TIMEOUT
+                )
+            except (
+                httpx.HTTPError,
+                ValueError,
+                RecursionError,
+                asyncio.TimeoutError,
+            ) as exc:
+                # URLs, response bodies and exception messages may contain secrets.
+                logger.warning(
+                    "Server configuration was not recorded ({}). "
+                    "Benchmarking will continue without it.",
+                    type(exc).__name__,
+                )
+
+    async def _fetch_server_config(self) -> dict[str, Any]:
+        if self._async_client is None:
+            raise RuntimeError("Backend not started up for process.")
+
+        route = self._args.api_routes["/server_info"].lstrip("/")
+        headers = self._args.extras.headers if self._args.extras else None
+        # Bound both elapsed time and decoded body size, even for streaming or
+        # compressed responses. Never follow a metadata redirect to another host.
+        async with self._async_client.stream(
+            "GET",
+            f"{self._args.target}/{route}",
+            params={"config_format": "json"},
+            headers=self._build_headers(headers),
+            timeout=_SERVER_CONFIG_TIMEOUT,
+            follow_redirects=False,
+        ) as response:
             response.raise_for_status()
-        except Exception as exc:
-            raise RuntimeError(
-                "Backend validation request failed. Could not connect to the server "
-                "or validate the backend configuration."
-            ) from exc
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                if len(body) + len(chunk) > _SERVER_CONFIG_MAX_BYTES:
+                    raise ValueError("Server configuration exceeds the size limit")
+                body.extend(chunk)
+
+        payload = json.loads(body)
+        if not isinstance(payload, dict):
+            raise ValueError("Expected a server information object")
+
+        selected = self._args.capture_server_config
+        captured = {}
+        for section in ("vllm_config", "vllm_env", "system_env"):
+            if selected != "all" and (not selected or section not in selected):
+                continue
+            value = payload.get(section)
+            if not isinstance(value, dict):
+                # Only fixed section names are logged, never response contents.
+                logger.warning(
+                    "Server information section {} was not recorded: "
+                    "missing or unsupported format.",
+                    section,
+                )
+                continue
+            captured[section] = _redact_server_config(value)
+
+        if not captured:
+            raise ValueError("No selected structured server information sections")
+        return captured
 
     async def available_models(self) -> list[str]:
         """
