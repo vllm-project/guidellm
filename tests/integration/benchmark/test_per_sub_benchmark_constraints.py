@@ -220,7 +220,7 @@ class TestSingleBenchmarkPassthrough:
     """A single sub-benchmark passes through resolve_to_single_benchmark unchanged."""
 
     @pytest.mark.smoke
-    def test_single_benchmark_returns_identity(self):
+    def test_single_benchmark_returns_single_value(self):
         """
         A single-element list returns the original BenchmarkArgs unmodified.
 
@@ -233,9 +233,10 @@ class TestSingleBenchmarkPassthrough:
         assert len(benchmarks) == 1
         merged = resolve_to_single_benchmark(benchmarks)
 
-        assert merged is benchmarks[0]
+        assert len(merged.constraints) == 1
         assert isinstance(merged.constraints[0], MaxDurationConstraintArgs)
         assert merged.constraints[0].seconds == 30
+        assert merged == benchmarks[0]
 
 
 class TestCombinedProfileAndConstraintOverrides:
