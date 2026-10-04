@@ -794,19 +794,19 @@ class DistributionSummary(StandardBaseModel):
         in_long_run = np.repeat(long_runs, run_lengths)
         long_inds = np.flatnonzero(in_long_run)
         long_times = times[long_inds]
-        group_ends = np.searchsorted(
-            long_times, long_times + threshold, side="right"
-        ).tolist()
+        group_ends = np.searchsorted(long_times, long_times + threshold, side="right")
 
         # Walk each run left to right in one pass: a group takes all times within
-        # threshold of its first time, the next group starts at the first time after
+        # threshold of its first time, the next group starts at the first time after.
+        # group_ends stays a numpy array: the walk reads only the group starts, so
+        # converting every end to a Python int would cost more memory and time
         group_starts = []
         run_start = 0
         for run_end in np.cumsum(run_lengths[long_runs]).tolist():
             ind = run_start
             while ind < run_end:
                 group_starts.append(ind)
-                ind = group_ends[ind]
+                ind = int(group_ends[ind])
             run_start = run_end
 
         # Keep the first time of each group with the sum of its weights
