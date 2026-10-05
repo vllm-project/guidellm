@@ -106,6 +106,14 @@ class BenchmarkerProgress(Generic[BenchmarkAccumulatorT, BenchmarkT], ABC):
     async def on_finalize(self):
         """Finalize progress tracking and release associated resources."""
 
+    async def on_prefetch(self, built: int, target: int | None) -> None:
+        """
+        Report conversations built before the replay clock starts.
+
+        :param built: Conversations built so far
+        :param target: Required count, or ``None`` when the whole dataset is loaded
+        """
+
 
 class CompositeBenchmarkerProgress(
     BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT]
@@ -165,6 +173,17 @@ class CompositeBenchmarkerProgress(
     async def on_finalize(self):
         await self._notify_progress(
             *(tracker.on_finalize() for tracker in self.trackers)
+        )
+
+    async def on_prefetch(self, built: int, target: int | None) -> None:
+        """
+        Forward dataset-load progress to every tracker.
+
+        :param built: Conversations built so far
+        :param target: Required count, or ``None`` when the whole dataset is loaded
+        """
+        await self._notify_progress(
+            *(tracker.on_prefetch(built, target) for tracker in self.trackers)
         )
 
 
@@ -254,6 +273,16 @@ class GenerativeConsoleBenchmarkerProgress(
         if self.tasks_progress is not None:
             self.tasks_progress.start_benchmark(strategy)
             self._sync_run_progress()
+
+    async def on_prefetch(self, built: int, target: int | None) -> None:
+        """
+        Show dataset-load progress on the current strategy row.
+
+        :param built: Conversations built so far
+        :param target: Required count, or ``None`` when the whole dataset is loaded
+        """
+        if self.tasks_progress is not None:
+            self.tasks_progress.show_prefetch(built, target)
 
     async def on_benchmark_update(
         self,
@@ -477,6 +506,18 @@ class _GenerativeProgressTasks(Progress):
                 **current_state.current,
             )
 
+    def show_prefetch(self, built: int, target: int | None) -> None:
+        """
+        Mark the current strategy row as loading the dataset.
+
+        :param built: Conversations built so far
+        :param target: Required count, or ``None`` when the whole dataset is loaded
+        """
+        current_state = self.benchmark_task_states[self.current_index]
+        current_state.show_prefetch(built, target)
+        if current_state.task_id is not None:
+            self.update(current_state.task_id, **current_state.current)
+
     def update_benchmark(
         self,
         accumulator: GenerativeBenchmarkAccumulator,
@@ -528,6 +569,19 @@ class _GenerativeProgressTaskState:
     queued_time: float = 0.0
     request_targeted_start_delay: float = 0.0
     scheduler_overheads_time: float = 0.0
+    prefetch_summary: str | None = None
+
+    def show_prefetch(self, built: int, target: int | None) -> None:
+        """
+        Replace the pending request column with the dataset-load count.
+
+        :param built: Conversations built so far
+        :param target: Required count, or ``None`` when the whole dataset is loaded
+        """
+        if target is None:
+            self.prefetch_summary = str(built)
+        else:
+            self.prefetch_summary = f"{built}/{target}"
 
     @property
     def current(self) -> dict[str, Any]:
@@ -565,6 +619,8 @@ class _GenerativeProgressTaskState:
 
     @property
     def formatted_progress_status(self) -> str:
+        if self.prefetch_summary is not None:
+            return f"[{Colors.info}]{'loading'.ljust(8)}[/{Colors.info}]"
         if self.benchmark_status == "warmup":
             status = "warmup"
             color = Colors.progress
@@ -585,6 +641,8 @@ class _GenerativeProgressTaskState:
 
     @property
     def formatted_requests_summary(self) -> str:
+        if self.prefetch_summary is not None:
+            return self.prefetch_summary
         if self.benchmark_status == "pending":
             return " "
 
@@ -741,6 +799,7 @@ class _GenerativeProgressTaskState:
         accumulator: GenerativeBenchmarkAccumulator,
         scheduler_state: SchedulerState,
     ):
+        self.prefetch_summary = None
         self.progress = (
             (1.0 - scheduler_state.progress.remaining_fraction)
             if scheduler_state.progress.remaining_fraction is not None

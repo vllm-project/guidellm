@@ -3,6 +3,7 @@ from .base import (
     DatasetDictType,
     DatasetType,
     GenerativeDatasetColumnType,
+    IndefiniteDataset,
     InvalidRowError,
 )
 from .conversation_graph_data import (
@@ -19,5 +20,6 @@ __all__ = [
     "DatasetDictType",
     "DatasetType",
     "GenerativeDatasetColumnType",
+    "IndefiniteDataset",
     "InvalidRowError",
 ]

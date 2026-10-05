@@ -9,7 +9,7 @@ various scenarios including LLM inference benchmarking.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Generic
 
 from guidellm.scheduler.constraints import (
@@ -67,6 +67,10 @@ class Scheduler(
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         env: Environment[RequestT, ResponseT] | None,
+        min_prefetch: int | None = 0,
+        zero_start_count: int = 0,
+        schedule_length: int | None = None,
+        on_prefetch: Callable[[int, int | None], Awaitable[None]] | None = None,
         **constraints: Constraint | ConstraintInitializer,
     ) -> AsyncIterator[
         tuple[
@@ -90,6 +94,18 @@ class Scheduler(
         :param strategy: Scheduling strategy controlling request timing and distribution
         :param env: Environment interface for distributed coordination and
             synchronization. Defaults to NonDistributedEnvironment if None
+        :param min_prefetch: Conversations to build before the benchmark clock
+            starts. ``None`` waits for the most demanding of the worker count,
+            the strategy concurrency cap, and ``zero_start_count``. 0 starts
+            immediately. -1 waits until a finite dataset is exhausted. A
+            positive count waits for that many conversations, or until the
+            dataset ends.
+        :param zero_start_count: Trace conversations due at time zero. Used
+            only when ``min_prefetch`` is ``None``
+        :param schedule_length: Known trace length shown while a full-dataset
+            prefetch is loading
+        :param on_prefetch: Called with the built count and optional target while
+            the replay clock is held. Omitted when prefetch does not delay the start.
         :param constraints: Runtime constraints for execution control (max_requests,
             max_duration, max_error_rate, etc.) as primitives, dictionaries, or
             constraint instances
@@ -121,11 +137,17 @@ class Scheduler(
                     requests=local_requests,
                     backend=backend,
                     strategy=local_strategy,
+                    min_prefetch=min_prefetch,
+                    zero_start_count=zero_start_count,
+                    schedule_length=schedule_length,
                     **local_constraints,  # type: ignore[arg-type]
                 )
                 await worker_group.create_processes()
                 local_start_time = await env.sync_run_start()
-                await worker_group.start(local_start_time)
+                await worker_group.start(
+                    local_start_time,
+                    on_prefetch=on_prefetch,
+                )
 
                 # Yield any updates and sync with the environment for non-local updates
                 async for (

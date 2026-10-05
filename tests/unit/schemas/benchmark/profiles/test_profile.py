@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 import pytest
+from pydantic import ValidationError
 
 from guidellm.schemas.benchmark import (
     BenchmarkArgs,
@@ -12,6 +13,7 @@ from guidellm.schemas.benchmark import (
     GenerativeMetricsArgs,
 )
 from guidellm.schemas.benchmark.profiles import ProfileArgs
+from guidellm.schemas.benchmark.profiles.replay import ReplayProfileArgs
 
 VALID_BASE = {
     "backend": {"kind": "openai_http", "target": "http://localhost:8000"},
@@ -170,3 +172,37 @@ class TestValidateMetricsHook:
 
         assert args.profile.kind == "validate_metrics_probe"
         assert len(seen) == 1
+
+
+@pytest.mark.smoke
+def test_min_prefetch_defaults_to_automatic() -> None:
+    """
+    Profiles omit min_prefetch so the scheduler picks the load target.
+
+    ## WRITTEN BY AI ##
+    """
+    args = ReplayProfileArgs(kind="replay")
+    assert args.min_prefetch is None
+
+
+@pytest.mark.sanity
+def test_min_prefetch_accepts_explicit_counts_and_rejects_below() -> None:
+    """
+    min_prefetch allows start, scheduled, -1, and positive counts.
+
+    ## WRITTEN BY AI ##
+    """
+    assert ReplayProfileArgs(kind="replay", min_prefetch="start").min_prefetch == (
+        "start"
+    )
+    assert ReplayProfileArgs(kind="replay", min_prefetch="scheduled").min_prefetch == (
+        "scheduled"
+    )
+    assert ReplayProfileArgs(kind="replay", min_prefetch=-1).min_prefetch == -1
+    assert ReplayProfileArgs(kind="replay", min_prefetch=3).min_prefetch == 3
+    with pytest.raises(ValidationError):
+        ReplayProfileArgs(kind="replay", min_prefetch=-2)
+    with pytest.raises(ValidationError):
+        ReplayProfileArgs(kind="replay", min_prefetch="everything")
+    with pytest.raises(ValidationError):
+        ReplayProfileArgs(kind="replay", min_prefetch="timeframe")

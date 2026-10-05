@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import contextlib
 from abc import ABC
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import (
     Field,
@@ -70,6 +70,29 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
         description="Cooldown phase to exclude final transient period",
         examples=[0.0, 1.0, {"mode": "duration", "value": 2.0}],
     )
+    min_prefetch: Literal["start", "scheduled"] | int | None = Field(
+        default=None,
+        description=(
+            "Conversations to build before the benchmark clock starts. "
+            "Omit to use 'scheduled' when the run has a max_requests, "
+            "min_requests, or max_duration constraint, otherwise 'start'. "
+            "A request count wins over max_duration, and max_requests wins "
+            "when both request counts are set. 'start' waits for trace "
+            "conversations scheduled at time zero. On a dataset that is not "
+            "one trace, 'start' waits for the worker count and the strategy "
+            "concurrency cap. 'scheduled' waits for the max_requests or "
+            "min_requests count when one is set, which preloads a synthetic "
+            "dataset to that size. Without that count it waits for every "
+            "trace conversation due inside max_duration. On a trace, 'start' "
+            "and a duration-window "
+            "'scheduled' also wait for the worker count and the strategy "
+            "concurrency cap when those are greater. 0 starts immediately. "
+            "-1 builds a finite dataset first and raises when the source "
+            "never ends. A positive count waits for that many conversations, "
+            "or until the dataset ends if it is shorter, and replaces the "
+            "automatic choice."
+        ),
+    )
 
     def validate_metrics(self, metrics: Any) -> None:
         """
@@ -84,6 +107,25 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
         :raises ValueError: If the metrics configuration cannot support this
             profile
         """
+
+    @field_validator("min_prefetch")
+    @classmethod
+    def _check_min_prefetch(cls, value: Any) -> Any:
+        """
+        Reject prefetch counts below -1.
+
+        ``start`` and ``scheduled`` are accepted by the field type. A numeric
+        bound cannot be declared on that union.
+
+        :param value: Parsed prefetch mode or count
+        :return: The value unchanged
+        :raises ValueError: If an integer is below -1
+        """
+        if isinstance(value, int) and value < -1:
+            raise ValueError(
+                "min_prefetch must be 'start', 'scheduled', or an integer >= -1"
+            )
+        return value
 
     @field_validator("warmup", "cooldown", mode="before")
     @classmethod

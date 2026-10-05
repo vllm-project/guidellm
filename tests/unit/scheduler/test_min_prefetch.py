@@ -9,13 +9,32 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from guidellm.scheduler import MaxDurationConstraint, SynchronousStrategy
+from guidellm.benchmark.benchmarker import (
+    _replay_prefetch_horizon,
+    _resolve_profile_prefetch,
+    _trace_prefetch_counts,
+)
+from guidellm.data.deserializers.trace_common import TraceDataset
+from guidellm.data.loaders.torch import DatasetsIterator, TorchDataLoader
+from guidellm.scheduler import (
+    MaxDurationConstraint,
+    MaxNumberConstraint,
+    MinNumberConstraint,
+    SynchronousStrategy,
+    TraceReplayStrategy,
+)
 from guidellm.scheduler.schemas.state import TraceConversationArrival
 from guidellm.scheduler.worker_group import (
     WorkerGroupState,
     WorkerProcessGroup,
+    prefetch_progress_target,
+    resolve_min_prefetch,
 )
-from guidellm.schemas.scheduler import MaxDurationConstraintArgs
+from guidellm.schemas.scheduler import (
+    MaxDurationConstraintArgs,
+    MaxRequestsConstraintArgs,
+    MinRequestsConstraintArgs,
+)
 
 
 def _state(
@@ -38,6 +57,225 @@ def _state(
         error_event=multiprocessing.Event(),
         messaging=None,  # type: ignore[arg-type]  # state methods under test do not send
     )
+
+
+@pytest.mark.sanity
+def test_automatic_prefetch_uses_the_greatest_demand():
+    """
+    An omitted count waits for workers, concurrency, or time-zero conversations.
+
+    ## WRITTEN BY AI ##
+    """
+    assert (
+        resolve_min_prefetch(
+            None,
+            num_processes=10,
+            requests_limit=None,
+            zero_start_count=400,
+        )
+        == 400
+    )
+    assert (
+        resolve_min_prefetch(
+            None,
+            num_processes=4,
+            requests_limit=8,
+            zero_start_count=0,
+        )
+        == 8
+    )
+
+
+@pytest.mark.sanity
+def test_automatic_prefetch_ignores_the_global_concurrency_ceiling():
+    """
+    An uncapped strategy does not prefetch settings.max_concurrency.
+
+    ## WRITTEN BY AI ##
+    """
+    assert (
+        resolve_min_prefetch(
+            None,
+            num_processes=10,
+            requests_limit=None,
+            zero_start_count=0,
+        )
+        == 10
+    )
+
+
+@pytest.mark.sanity
+def test_explicit_prefetch_replaces_the_formula():
+    """
+    A set count is used as given, including zero and a full-dataset wait.
+
+    ## WRITTEN BY AI ##
+    """
+    assert (
+        resolve_min_prefetch(
+            3,
+            num_processes=10,
+            requests_limit=None,
+            zero_start_count=400,
+        )
+        == 3
+    )
+    assert (
+        resolve_min_prefetch(
+            0,
+            num_processes=10,
+            requests_limit=8,
+            zero_start_count=400,
+        )
+        == 0
+    )
+    assert (
+        resolve_min_prefetch(
+            -1,
+            num_processes=10,
+            requests_limit=None,
+            zero_start_count=400,
+        )
+        == -1
+    )
+
+
+@pytest.mark.sanity
+def test_progress_target_is_the_required_count():
+    """
+    The load display uses the resolved need, or the trace length for a full wait.
+
+    ## WRITTEN BY AI ##
+    """
+    assert prefetch_progress_target(400, 900) == 400
+    assert prefetch_progress_target(-1, 900) == 900
+    assert prefetch_progress_target(-1, None) is None
+    assert prefetch_progress_target(0, 900) is None
+
+
+class _Trace(TraceDataset):
+    def __init__(self, offsets: list[float]) -> None:
+        self.replay_start_offsets = offsets
+
+
+class _Loader(TorchDataLoader):
+    def __init__(self, offsets: list[float], samples: int) -> None:
+        self.dataset = DatasetsIterator.__new__(DatasetsIterator)
+        self.dataset.datasets = [_Trace(offsets)]  # type: ignore[attr-defined]
+        self._info = {"samples": samples}
+
+    @property
+    def info(self) -> dict[str, int]:
+        return self._info
+
+
+@pytest.mark.sanity
+def test_replay_horizon_follows_the_duration_constraint():
+    """
+    The opening window is the duration limit, scaled by the replay time scale.
+
+    ## WRITTEN BY AI ##
+    """
+    constraint = MaxDurationConstraint(args=MaxDurationConstraintArgs(seconds=60.0))
+    constraints = {"max_duration": constraint.create_constraint()}
+    assert (
+        _replay_prefetch_horizon(TraceReplayStrategy(time_scale=2.0), constraints)
+        == 30.0
+    )
+    assert _replay_prefetch_horizon(SynchronousStrategy(), constraints) == 60.0
+    assert _replay_prefetch_horizon(TraceReplayStrategy(), None) is None
+
+
+@pytest.mark.sanity
+def test_prefetch_modes_select_the_trace_window():
+    """
+    start counts time zero, scheduled counts the duration, and a number passes through.
+
+    ## WRITTEN BY AI ##
+    """
+    loader = _Loader([0.0, 0.0, 5.0, 0.0], samples=3)
+    strategy = TraceReplayStrategy()
+    constraints = {
+        "max_duration": MaxDurationConstraint(
+            args=MaxDurationConstraintArgs(seconds=60.0)
+        ).create_constraint()
+    }
+    request_cap = {
+        "max_requests": MaxNumberConstraint(
+            args=MaxRequestsConstraintArgs(count=1000)
+        ).create_constraint()
+    }
+    assert _resolve_profile_prefetch("start", loader, strategy, constraints) == (
+        None,
+        2,
+        3,
+    )
+    assert _resolve_profile_prefetch("start", loader, strategy, request_cap) == (
+        None,
+        2,
+        3,
+    )
+    assert _resolve_profile_prefetch("scheduled", loader, strategy, constraints) == (
+        None,
+        3,
+        3,
+    )
+    assert _resolve_profile_prefetch("scheduled", loader, strategy, request_cap) == (
+        1000,
+        0,
+        3,
+    )
+    assert _resolve_profile_prefetch("scheduled", object(), strategy, request_cap) == (
+        1000,
+        0,
+        None,
+    )
+    minimum = {
+        "min_requests": MinNumberConstraint(
+            args=MinRequestsConstraintArgs(count=250)
+        ).create_constraint()
+    }
+    assert _resolve_profile_prefetch("scheduled", object(), strategy, minimum) == (
+        250,
+        0,
+        None,
+    )
+    both = {**request_cap, **minimum}
+    assert _resolve_profile_prefetch("scheduled", object(), strategy, both) == (
+        1000,
+        0,
+        None,
+    )
+    assert _resolve_profile_prefetch(400, loader, strategy, constraints) == (400, 0, 3)
+    with pytest.raises(ValueError, match="max_requests, min_requests, or"):
+        _resolve_profile_prefetch("scheduled", loader, strategy, None)
+    # Non-trace sources have no schedule. start matches omit, so the scheduler
+    # waits for workers and the strategy concurrency cap.
+    assert _resolve_profile_prefetch("start", object(), strategy, None) == (
+        None,
+        0,
+        None,
+    )
+    assert _resolve_profile_prefetch(None, object(), strategy, None) == (
+        None,
+        0,
+        None,
+    )
+    with pytest.raises(ValueError, match="trace dataset"):
+        _resolve_profile_prefetch("scheduled", object(), strategy, constraints)
+
+
+@pytest.mark.sanity
+def test_trace_prefetch_counts_time_zero_within_the_sample_cap():
+    """
+    Only the sample prefix counts. A duration window includes later starts.
+
+    ## WRITTEN BY AI ##
+    """
+    loader = _Loader([0.0, 0.0, 5.0, 0.0], samples=3)
+    assert _trace_prefetch_counts(loader, None) == (2, 3)
+    assert _trace_prefetch_counts(loader, 60.0) == (3, 3)
+    assert _trace_prefetch_counts(object(), 60.0) == (0, None)
 
 
 @pytest.mark.sanity
@@ -209,7 +447,7 @@ async def test_min_prefetch_zero_does_not_call_the_callback():
 @pytest.mark.asyncio
 async def test_wait_reports_arrivals_and_an_open_target(monkeypatch):
     """
-        The wait reports each newly built conversation, with no target when prefetch is -1.
+    The wait reports each newly built conversation against the required total.
 
     ## WRITTEN BY AI ##
     """
@@ -239,8 +477,8 @@ async def test_wait_reports_arrivals_and_an_open_target(monkeypatch):
     group.state = state
     group.error_event = multiprocessing.Event()
     group._worker_error_details = None
-    await group._wait_for_min_prefetch(-1, on_prefetch)
-    assert reported == [(0, None), (1, None)]
+    await group._wait_for_min_prefetch(-1, on_prefetch, display_target=4)
+    assert reported == [(0, 4), (1, 4)]
 
 
 @pytest.mark.regression

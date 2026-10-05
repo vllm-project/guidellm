@@ -9,7 +9,11 @@ from __future__ import annotations
 import pytest
 
 from guidellm.data.loaders.loader import DataLoaderRegistry
-from guidellm.data.loaders.torch import TorchDataLoader
+from guidellm.data.loaders.torch import (
+    TorchDataLoader,
+    _reject_indefinite_full_prefetch,
+)
+from guidellm.data.schemas import IndefiniteDataset
 from guidellm.schemas.data import TorchDataLoaderArgs
 
 
@@ -54,6 +58,39 @@ class TestTorchDataLoaderArgs:
         """
         args = TorchDataLoaderArgs()
         assert args.shuffle is False
+
+    @pytest.mark.sanity
+    def test_full_prefetch_rejects_an_indefinite_source(self):
+        """
+        min_prefetch=-1 raises when every dataset loops forever.
+
+        ## WRITTEN BY AI ##
+        """
+
+        class _Looping:
+            pass
+
+        # The marker is what the loader checks; a full dataset is unnecessary.
+        IndefiniteLoop = type("IndefiniteLoop", (IndefiniteDataset, _Looping), {})
+        with pytest.raises(ValueError, match="does not end"):
+            _reject_indefinite_full_prefetch(-1, [IndefiniteLoop()], samples=-1)
+
+    @pytest.mark.sanity
+    def test_full_prefetch_allows_a_sample_cap_or_finite_dataset(self):
+        """
+        min_prefetch=-1 is allowed when samples cap the source or any dataset ends.
+
+        ## WRITTEN BY AI ##
+        """
+
+        class _Looping:
+            pass
+
+        IndefiniteLoop = type("IndefiniteLoop", (IndefiniteDataset, _Looping), {})
+        finite = object()
+        _reject_indefinite_full_prefetch(-1, [IndefiniteLoop()], samples=10)
+        _reject_indefinite_full_prefetch(-1, [finite, IndefiniteLoop()], samples=-1)
+        _reject_indefinite_full_prefetch(100, [IndefiniteLoop()], samples=-1)
 
     @pytest.mark.sanity
     def test_custom_values(self):
