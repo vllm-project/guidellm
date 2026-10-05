@@ -63,7 +63,7 @@ These metrics provide a breakdown of the overall request statuses, helping users
 
 ### Request Latency
 
-- **Definition**: The time taken to process a single request, from start to finish.
+- **Definition**: The time taken to process a single request, from start to finish. With the `openai_http` backend, timing starts when GuideLLM begins writing the request headers, so time spent waiting inside GuideLLM or opening a connection is excluded.
 - **Use Case**: A critical metric for evaluating the responsiveness of the system.
 
 ### Generation Delay
@@ -95,7 +95,7 @@ Dispatch Delay, Turn Predecessor Delay, Turn Scheduling Delay, and Scheduled Lat
 
 ### Time to First Token (TTFT)
 
-- **Definition**: The time taken to generate the first token of the output.
+- **Definition**: The time taken to generate the first token of the output, measured from the same start as Request Latency.
 - **Use Case**: Indicates the initial response time of the model, which is crucial for user-facing applications.
 
 ### Inter-Token Latency (ITL)

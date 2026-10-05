@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 import httpx
@@ -305,8 +305,12 @@ class OpenAIHTTPBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
+        # Kept if no trace event fires, e.g. the request fails before sending
         request_info.timings.request_start = time.time()
-        response = await self._async_client.request(**request_kwargs)
+        response = await self._async_client.request(
+            **request_kwargs,
+            extensions={"trace": self._trace_request_start(request_info)},
+        )
         request_info.timings.request_end = time.time()
         response.raise_for_status()
         data = response.json()
@@ -341,9 +345,13 @@ class OpenAIHTTPBackend(Backend):
             raise RuntimeError("Backend not started up for process.")
 
         try:
+            # Kept if no trace event fires, e.g. the request fails before sending
             request_info.timings.request_start = time.time()
 
-            async with self._async_client.stream(**request_kwargs) as stream:
+            async with self._async_client.stream(
+                **request_kwargs,
+                extensions={"trace": self._trace_request_start(request_info)},
+            ) as stream:
                 stream.raise_for_status()
                 end_reached = False
 
@@ -405,6 +413,35 @@ class OpenAIHTTPBackend(Backend):
             if not line.strip():
                 continue  # Skip blank lines
             yield line
+
+    @staticmethod
+    def _trace_request_start(
+        request_info: RequestInfo,
+    ) -> Callable[[str, dict[str, Any]], Awaitable[None]]:
+        """
+        Build an httpcore ``trace`` callback that records when a request is sent.
+
+        Sets ``request_start`` when httpcore starts writing the request headers, so
+        time spent waiting in the worker or opening a connection is not counted as
+        request time. Proxy ``CONNECT`` requests are skipped, and only the first
+        request is recorded, so a redirect keeps the original start.
+
+        :param request_info: Request tracking info to update
+        :return: Async callback for the httpx ``trace`` request extension
+        """
+        recorded = False
+
+        async def trace(event_name: str, info: dict[str, Any]) -> None:
+            nonlocal recorded
+            if recorded or not event_name.endswith(".send_request_headers.started"):
+                return
+            request = info.get("request")
+            if request is not None and request.method == b"CONNECT":
+                return
+            recorded = True
+            request_info.timings.request_start = time.time()
+
+        return trace
 
     def _build_headers(
         self, existing_headers: dict[str, str] | None = None
