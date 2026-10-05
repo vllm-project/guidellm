@@ -307,6 +307,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         :param report: The completed benchmark report
         :return: Status message indicating output location
         """
+        self.print_trace_replay_warnings(report)
         self.print_run_summary_table(report)
         self.print_text_table(report)
         self.print_image_table(report)
@@ -318,6 +319,15 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         self.print_server_throughput_table(report)
 
         return "printed to console"
+
+    def print_trace_replay_warnings(self, report: GenerativeBenchmarksReport) -> None:
+        """Print post-run trace replay warnings stored on each benchmark.
+
+        :param report: The benchmark report containing stored warnings
+        """
+        for benchmark in report.benchmarks:
+            for warning in benchmark.warnings:
+                self.console.print_update(title=warning, status="warning")
 
     def print_run_summary_table(self, report: GenerativeBenchmarksReport):
         """

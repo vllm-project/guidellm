@@ -84,6 +84,33 @@ class TestRequestLatencyTable:
     """
 
     @pytest.mark.regression
+    def test_finalize_prints_trace_replay_warnings(self):
+        """
+        Stored trace replay warnings are printed before the summary tables.
+
+        ## WRITTEN BY AI ##
+        """
+        warning = (
+            "Trace replay sent 1 of 2 conversations due by the time queuing stopped."
+        )
+        printed: list[tuple[str, str]] = []
+        output = GenerativeBenchmarkerConsole()
+
+        def _print_update(
+            title: str, details: object = None, status: str = "info"
+        ) -> None:
+            _ = details
+            printed.append((title, status))
+
+        # Console is not a pydantic model; this replaces the printer.
+        output.console.print_update = _print_update  # type: ignore[method-assign]
+        report = SimpleNamespace(benchmarks=[SimpleNamespace(warnings=[warning])])
+        # finalize prints these warnings before the summary tables.
+        output.print_trace_replay_warnings(report)  # type: ignore[arg-type]
+
+        assert printed == [(warning, "warning")]
+
+    @pytest.mark.regression
     def test_omits_schedule_relative_metrics(self):
         """
         Dispatch delay and scheduled latency are absent from the console table.

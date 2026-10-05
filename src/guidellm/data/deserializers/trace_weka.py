@@ -439,11 +439,34 @@ class WEKATraceFormat(TraceFormatBase):
             return prompt
         return f"{prompt} {remainder}"
 
+    def build_timing_graph(self, conversation: Dataset) -> ConversationGraphData:
+        """Build WEKA turn timestamps without generating prompts.
+
+        :param conversation: One conversation stub from ``__iter__``.
+        :return: Graph whose relative timestamps match ``build_conversation_graph``
+        """
+        return self._build_graph(
+            conversation, processor=None, faker=None, prompts=False
+        )
+
     def build_conversation_graph(
         self,
         conversation: Dataset,
         processor: PreTrainedTokenizerBase,
         faker: Faker,
+    ) -> ConversationGraphData:
+        return self._build_graph(
+            conversation, processor=processor, faker=faker, prompts=True
+        )
+
+    # Prompt and timing paths share this walk so truncation cannot drift.
+    def _build_graph(  # noqa: C901, PLR0912
+        self,
+        conversation: Dataset,
+        processor: PreTrainedTokenizerBase | None,
+        faker: Faker | None,
+        *,
+        prompts: bool,
     ) -> ConversationGraphData:
         conv_id, requests, hash_id_scope = self._unpack_conversation(conversation)
         # Local scope uses throwaway tables so this conversation cannot reuse
@@ -481,28 +504,35 @@ class WEKATraceFormat(TraceFormatBase):
             if max_len is not None:
                 turn_tokens = int(spec.row[prompt_col]) + int(spec.row[output_col])
                 if running_tokens + turn_tokens > max_len:
-                    logger.debug(
-                        "WEKA conversation '{}' truncated: discarding {} "
-                        "turn(s) starting at node '{}' (turn tokens={}, "
-                        "running={})",
-                        conv_id,
-                        len(specs) - index,
-                        spec.node_id,
-                        turn_tokens,
-                        running_tokens,
-                    )
+                    if prompts:
+                        logger.debug(
+                            "WEKA conversation '{}' truncated: discarding {} "
+                            "turn(s) starting at node '{}' (turn tokens={}, "
+                            "running={})",
+                            conv_id,
+                            len(specs) - index,
+                            spec.node_id,
+                            turn_tokens,
+                            running_tokens,
+                        )
                     if len(turns) < 1:
                         return ConversationGraphData(turns=[])
                     break
                 running_tokens += turn_tokens
             _validate_api_row(spec.row, self.config, self.validate_row)
-            prompt = self.create_prompt(
-                spec.row,
-                processor,
-                faker,
-                hash_id_table,
-                sibling_token_blocks,
-            )
+            prompt = ""
+            if prompts:
+                if processor is None or faker is None:
+                    raise RuntimeError(
+                        "WEKA prompt generation requires a tokenizer and faker"
+                    )
+                prompt = self.create_prompt(
+                    spec.row,
+                    processor,
+                    faker,
+                    hash_id_table,
+                    sibling_token_blocks,
+                )
             columns: dict[str, Any] = {
                 "text_column": [prompt],
                 "prompt_tokens_count_column": [spec.row[prompt_col]],
@@ -514,7 +544,11 @@ class WEKATraceFormat(TraceFormatBase):
                 columns["turn_type_column"] = [spec.turn_type]
             if spec.include_tools:
                 columns["tools_column"] = [self._tools_json]
-            if spec.include_tool_response:
+            if spec.include_tool_response and prompts:
+                if processor is None or faker is None:
+                    raise RuntimeError(
+                        "WEKA prompt generation requires a tokenizer and faker"
+                    )
                 columns["tool_response_column"] = [
                     self._tool_response_text(processor, faker)
                 ]

@@ -198,5 +198,34 @@ def test_trace_rows_are_independent_conversations(tmp_path: Path, kind: str) -> 
     assert [
         turns[0].columns["relative_timestamp_column"][0] for turns in conversations
     ] == [0, 2, 5]
+    assert dataset.replay_start_offsets == [0, 2, 5]
     if kind == "mooncake":
         assert len({turns[0].columns["text_column"][0] for turns in conversations}) == 1
+
+
+@pytest.mark.sanity
+def test_single_turn_schedule_matches_sorted_roots(tmp_path: Path) -> None:
+    """
+    Timing-only starts match the sorted single-turn replay offsets.
+
+    ## WRITTEN BY AI ##
+    """
+    trace = write_trace(
+        tmp_path,
+        '{"timestamp": 12.0, "input_length": 4, "output_length": 2}\n'
+        '{"timestamp": 5.0, "input_length": 4, "output_length": 2}\n'
+        '{"timestamp": 7.0, "input_length": 4, "output_length": 2}\n',
+    )
+    processor = mock_processor()
+    dataset = DatasetDeserializerFactory.deserialize(
+        config=MinimalTraceFormatArgs(source=trace_file_source(trace)),
+        processor_factory=lambda: processor,
+        random_seed=42,
+    )
+
+    assert dataset.replay_start_offsets == [0.0, 2.0, 7.0]
+    assert processor.decode.call_count == 0
+    turns = [load_graph_turns(row) for row in dataset]
+    assert [
+        row[0].columns["relative_timestamp_column"][0] for row in turns
+    ] == dataset.replay_start_offsets

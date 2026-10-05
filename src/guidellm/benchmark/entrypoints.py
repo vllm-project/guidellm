@@ -34,6 +34,7 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmarkAccumulator,
     GenerativeBenchmarksReport,
 )
+from guidellm.benchmark.trace_validation import apply_trace_replay_warnings
 from guidellm.data import (
     DataLoader,
     create_data_loader,
@@ -588,6 +589,7 @@ async def benchmark_generative_text(
         confidence=metrics_args.confidence,
     ):
         if benchmark:
+            apply_trace_replay_warnings(benchmark, request_loader)
             report.benchmarks.append(benchmark)
 
     # Read after the final strategy so the conclusion reflects every benchmark,

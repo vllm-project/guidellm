@@ -30,6 +30,7 @@ from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstrai
 from guidellm.scheduler.dag import DAGExecutionState
 from guidellm.scheduler.schemas import (
     BackendInterface,
+    ConversationGraph,
     ConversationT,
     DatasetIterT,
     RequestT,
@@ -37,7 +38,8 @@ from guidellm.scheduler.schemas import (
     SchedulerState,
     SchedulerUpdateAction,
 )
-from guidellm.scheduler.strategies import SchedulingStrategy
+from guidellm.scheduler.schemas.state import TraceConversationArrival
+from guidellm.scheduler.strategies import SchedulingStrategy, TraceReplayStrategy
 from guidellm.scheduler.worker import WorkerProcess
 from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
@@ -537,6 +539,34 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         return None
 
 
+def _trace_conversation_arrival(
+    strategy: SchedulingStrategy,
+    graph: ConversationGraph[RequestT],
+) -> TraceConversationArrival | None:
+    """Record when a replay conversation was ready, using its earliest root turn.
+
+    Child turns are omitted. Idle-gap replay moves their targets after the
+    parent finishes, which would hide a late session start.
+
+    :param strategy: Active scheduling strategy
+    :param graph: Conversation about to be enqueued
+    :return: Arrival record for trace replay, otherwise None
+    """
+    if not isinstance(strategy, TraceReplayStrategy):
+        return None
+    offsets: list[float] = []
+    for node_id in graph.root_node_ids:
+        timestamp = graph.nodes[node_id].settings.relative_timestamp
+        if timestamp is not None:
+            offsets.append(timestamp)
+    if not offsets:
+        return None
+    return TraceConversationArrival(
+        scheduled_offset=min(offsets),
+        queued_at=time.time(),
+    )
+
+
 class _StateUpdate(NamedTuple):
     """Internal state update result with control flags."""
 
@@ -635,7 +665,11 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             for graph in requests:
                 # NOTE: This must be at the start of the loop
                 generation_delay = time.monotonic() - yield_attempted
-                self.update_state(generation_delay=generation_delay)
+                trace_arrival = _trace_conversation_arrival(self.strategy, graph)
+                self.update_state(
+                    generation_delay=generation_delay,
+                    trace_arrival=trace_arrival,
+                )
 
                 dag_state: DAGExecutionState[RequestT, ResponseT] = DAGExecutionState(
                     graph
@@ -776,6 +810,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         info: RequestInfo | None = None,
         add_constraints: dict[str, Constraint] | None = None,
         generation_delay: float | None = None,
+        trace_arrival: TraceConversationArrival | None = None,
     ) -> _StateUpdate:
         """Update scheduler state and re-evaluate constraints.
 
@@ -787,6 +822,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         :param add_constraints: Constraints to register before evaluation
         :param generation_delay: Conversation-level request-generator delay to
             record once per conversation, or ``None`` to skip
+        :param trace_arrival: Replay enqueue record for this conversation, or
+            ``None`` when the strategy is not trace replay
         :return: Copied scheduler state and stop flags
         """
         with self._update_lock:
@@ -798,6 +835,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 self._update_state_request_counts(info)
             if generation_delay is not None:
                 self._state.generation_delay_samples.append(generation_delay)
+            if trace_arrival is not None:
+                self._state.trace_conversation_arrivals.append(trace_arrival)
 
             self._update_with_constraints(info)
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import math
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any, Protocol
 
 import numpy as np
@@ -32,6 +32,7 @@ from guidellm.data.deserializers.trace_session_timing import (
     TraceSessionTiming,
     graph_max_timestamp,
     graph_min_timestamp,
+    root_start_offset,
     shift_graph_timestamps,
 )
 from guidellm.data.schemas import InvalidRowError
@@ -45,6 +46,7 @@ from guidellm.schemas.data.deserializers import TraceDataArgs
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
+    "TraceDataset",
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
@@ -227,17 +229,16 @@ class TraceFormatBase(Protocol):
         """Called within `trace_common.TraceExamplesIterable` on each iteration.
         Returns a generated synthetic prompt."""
 
-    def build_conversation_graph(
-        self,
-        conversation: Dataset,
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
-    ) -> ConversationGraphData:
-        """Build a conversation graph from one ``__iter__`` conversation.
+    def build_timing_graph(self, conversation: Dataset) -> ConversationGraphData:
+        """Build turn timestamps without generating prompts.
 
-        The default emits a linear ``main_*`` chain. Formats with branches
-        or subagents should override this rather than branching in the
-        shared iterable.
+        The default emits the same linear ``main_*`` chain as
+        ``build_conversation_graph``, with empty prompt text. Formats with
+        branches or subagents should override this so the replay schedule
+        matches the prompts that will be generated.
+
+        :param conversation: One conversation from ``__iter__``.
+        :return: Graph whose relative timestamps match prompt generation
         """
         start_ts = conversation[0][self.config.timestamp_column]
         turns = []
@@ -249,10 +250,9 @@ class TraceFormatBase(Protocol):
                 )
 
             _validate_api_row(turn, self.config, self.validate_row)
-            prompt = self.create_prompt(turn, processor, faker)
             relative_timestamp = turn[self.config.timestamp_column] - start_ts
             columns = {
-                "text_column": [prompt],
+                "text_column": [""],
                 "prompt_tokens_count_column": [turn[self.config.prompt_tokens_column]],
                 "output_tokens_count_column": [turn[self.config.output_tokens_column]],
                 "relative_timestamp_column": [relative_timestamp],
@@ -267,6 +267,30 @@ class TraceFormatBase(Protocol):
                 )
             )
         return ConversationGraphData(turns=turns)
+
+    def build_conversation_graph(
+        self,
+        conversation: Dataset,
+        processor: PreTrainedTokenizerBase,
+        faker: Faker,
+    ) -> ConversationGraphData:
+        """Build a conversation graph from one ``__iter__`` conversation.
+
+        The default emits a linear ``main_*`` chain. Formats with branches
+        or subagents should override this rather than branching in the
+        shared iterable.
+
+        :param conversation: One conversation from ``__iter__``.
+        :param processor: Tokenizer for generating the synthetic prompt
+        :param faker: Seeded synthetic text generator
+        :return: Conversation graph with prompts and relative timestamps
+        """
+        graph = self.build_timing_graph(conversation)
+        for turn_idx, turn in enumerate(conversation):
+            graph.turns[turn_idx].columns["text_column"] = [
+                self.create_prompt(turn, processor, faker)
+            ]
+        return graph
 
 
 class SingleTurnTraceFormat(TraceFormatBase):
@@ -284,20 +308,13 @@ class SingleTurnTraceFormat(TraceFormatBase):
         for index in range(len(ordered)):
             yield ordered.select([index])
 
-    def build_conversation_graph(
-        self,
-        conversation: Dataset,
-        processor: PreTrainedTokenizerBase,
-        faker: Faker,
-    ) -> ConversationGraphData:
-        """Build a single root turn with its offset from the start of the trace.
+    def build_timing_graph(self, conversation: Dataset) -> ConversationGraphData:
+        """Build one root turn with its offset from the start of the trace.
 
         :param conversation: One trace row returned by iteration
-        :param processor: Tokenizer for generating the synthetic prompt
-        :param faker: Seeded synthetic text generator
         :return: An independent conversation preserving its trace arrival time
         """
-        graph = super().build_conversation_graph(conversation, processor, faker)
+        graph = super().build_timing_graph(conversation)
         graph.turns[0].columns["relative_timestamp_column"] = [
             conversation[0][self.config.timestamp_column] - self._trace_start_timestamp
         ]
@@ -339,6 +356,45 @@ class TraceExamplesIterable(_BaseExamplesIterable):
     def __iter__(self) -> Iterable[tuple[int, dict[str, Any]]]:
         self.iteration_count += 1
         samples_count = 0
+        for graph_data in self._iter_timed_graphs(prompts=True):
+            samples_count += len(graph_data.turns)
+            payload = json.dumps(graph_data.model_dump(mode="json"))
+            yield (
+                samples_count,
+                {
+                    "conversation_turns": (
+                        payload.decode() if isinstance(payload, bytes) else payload
+                    )
+                },
+            )
+
+    def conversation_start_offsets(self) -> list[float]:
+        """Return each emitted conversation's scheduled root start, in seconds.
+
+        Uses the same wait caps, copies, packing, and time scale as prompt
+        generation, without building prompts.
+
+        :return: One offset per emitted conversation that has a timed root turn
+        """
+        try:
+            offsets: list[float] = []
+            for graph_data in self._iter_timed_graphs(prompts=False):
+                offset = root_start_offset(graph_data)
+                if offset is None:
+                    continue
+                offsets.append(offset)
+            return offsets
+        finally:
+            self.format.reset_hash_tables()
+
+    def _iter_timed_graphs(self, *, prompts: bool) -> Iterator[ConversationGraphData]:
+        """Yield conversations after wait caps, copy placement, packing, and scale.
+
+        :param prompts: When True, generate prompts and raise row errors.
+            When False, build timestamps only and skip rows that fail,
+            matching the loader's skip without logging.
+        :return: Prepared conversation graphs in emission order
+        """
         pass_offset = 0.0
         # Shared across copies so packing sees the combined timeline.
         packer = TraceSessionTiming(
@@ -355,9 +411,19 @@ class TraceExamplesIterable(_BaseExamplesIterable):
             copy_min = math.inf
             copy_max = -math.inf
             for conv in self.format:  # type: ignore[attr-defined]
-                graph_data = self.format.build_conversation_graph(
-                    conv, self.processor, faker_copy
-                )
+                try:
+                    if prompts:
+                        graph_data = self.format.build_conversation_graph(
+                            conv, self.processor, faker_copy
+                        )
+                    else:
+                        graph_data = self.format.build_timing_graph(conv)
+                except Exception:  # noqa: BLE001
+                    # The loader logs and skips the same row during prompt
+                    # generation. The schedule walk stays silent.
+                    if prompts:
+                        raise
+                    continue
                 if not graph_data.turns:
                     continue
                 wait_timing.apply_wait_caps(graph_data)
@@ -366,16 +432,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                 copy_max = max(copy_max, graph_max_timestamp(graph_data))
                 packer.apply_pack(graph_data)
                 scaler.apply_scale(graph_data)
-                samples_count += len(graph_data.turns)
-                payload = json.dumps(graph_data.model_dump(mode="json"))
-                yield (
-                    samples_count,
-                    {
-                        "conversation_turns": (
-                            payload.decode() if isinstance(payload, bytes) else payload
-                        )
-                    },
-                )
+                yield graph_data
                 self.format.reset()
             if math.isfinite(copy_min):
                 pass_offset = copy_min + self.config.copy_offset * (copy_max - copy_min)
@@ -429,6 +486,9 @@ class TraceDataset(IterableDataset):
         ex_iterable = TraceExamplesIterable(
             config, trace_format, processor, random_seed
         )
+        # Captured before the benchmark clock starts. Prompt generation is
+        # still lazy; this walk only reads timestamps.
+        self.replay_start_offsets = ex_iterable.conversation_start_offsets()
         super().__init__(
             ex_iterable=ex_iterable,
             info=DatasetInfo(
