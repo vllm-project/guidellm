@@ -983,6 +983,62 @@ class TestDistributionSummary:
             assert summary.count > 0
 
     @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("weighted_times", "threshold", "expected"),
+        [
+            # Chain longer than threshold splits into groups from the left
+            (
+                [(0.0, 1.0), (0.6, 1.0), (1.2, 1.0), (1.8, 1.0), (3.0, 1.0)],
+                1.0,
+                [(0.0, 2.0), (1.2, 2.0), (3.0, 1.0)],
+            ),
+            # Separate times stay as they are around a merged group
+            (
+                [(0.0, 1.0), (5.0, 1.0), (5.5, 2.0), (10.0, 1.0)],
+                1.0,
+                [(0.0, 1.0), (5.0, 3.0), (10.0, 1.0)],
+            ),
+            # Exact duplicates sum weights, including negative weights
+            ([(1.0, 1.0), (1.0, 2.0), (5.0, -1.0)], 1.0, [(1.0, 3.0), (5.0, -1.0)]),
+            # Gap just over threshold is not merged, even though
+            # 0.00063 + 1e-5 rounds up to 0.00064 in floating point
+            ([(0.00063, 1.0), (0.00064, 1.0)], 1e-5, [(0.00063, 1.0), (0.00064, 1.0)]),
+            # No threshold only merges exact duplicates
+            ([(1.0, 1.0), (1.0, 1.0), (1.5, 1.0)], None, [(1.0, 2.0), (1.5, 1.0)]),
+            ([(1.0, 1.0)], 1.0, [(1.0, 1.0)]),
+        ],
+    )
+    def test_merge_sorted_times_with_weights(self, weighted_times, threshold, expected):
+        """
+        Test that times within threshold of a group's first time merge into it.
+
+        ## WRITTEN BY AI ##
+        """
+        merged = DistributionSummary._merge_sorted_times_with_weights(
+            np.array(weighted_times, dtype=float), threshold
+        )
+        assert np.array_equal(merged, np.array(expected, dtype=float))
+
+    @pytest.mark.regression
+    @pytest.mark.timeout(5)
+    def test_rate_distribution_dense_timings(self):
+        """
+        Test that densely packed timestamps merge in a single pass.
+
+        Regression test for #1152: merging used one pass per threshold window, so
+        long chains of close token timestamps took minutes to compile.
+
+        ## WRITTEN BY AI ##
+        """
+        num_events = 400_000
+        timings = np.arange(num_events) * 1e-6  # ~100 events per 0.1 ms window
+
+        summary = DistributionSummary.rate_distribution_from_timings(timings)
+
+        assert summary.count == num_events
+        assert summary.mean == pytest.approx(1e6, rel=0.05)
+
+    @pytest.mark.sanity
     def test_rate_distribution_with_weights(self):
         """Test rate_distribution_from_timings with weighted timestamps."""
         # Events with weights: (timestamp, weight)
