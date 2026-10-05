@@ -333,8 +333,8 @@ with **TurnPivot** the second turn will be:
 To use TurnPivot in the CLI, specify it as a data preprocessor:
 
 ```bash
---data kind=huggingface,source=dataset0.jsonl \
---data kind=huggingface,source=dataset1.jsonl \
+--data kind=json_file,path=dataset0.jsonl \
+--data kind=json_file,path=dataset1.jsonl \
 --data-preprocessor kind=encode_media \
 --data-preprocessor kind=turn_pivot
 ```
@@ -449,7 +449,7 @@ guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
   --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=200 \
-  --data kind=huggingface,source=multiturn_conversations.jsonl
+  --data kind=json_file,path=multiturn_conversations.jsonl
 ```
 
 **Key Parameters:**
@@ -495,7 +495,7 @@ Reasoning models emit chain-of-thought tokens before their final answer. By defa
 ### Think Tags (most models)
 
 ```bash
---backend kind=openai_http'target=http://localhost:8000,multiturn_reasoning=true'
+--backend kind=openai_http,target=http://localhost:8000,multiturn_reasoning=true
 ```
 
 Results in the following being sent for the turn in the conversation history:

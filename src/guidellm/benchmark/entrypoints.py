@@ -11,6 +11,7 @@ validation, data preprocessing, profile constraints, and output format specifica
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, TypeVar
@@ -395,9 +396,6 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
     :return: A single, merged ``BenchmarkArgs`` ready for execution
     :raises NotImplementedError: If any non-mergeable field differs across benchmarks
     """
-    if len(benchmarks) == 1:
-        return benchmarks[0]
-
     # Use this for determining correct field kinds
     # `kind` should not chnage between benchmarks
     base = benchmarks[0]
@@ -424,6 +422,18 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
         for bench in benchmarks:
             val = bench.profile.__dict__[rate_field]
             if isinstance(val, list | tuple):
+                if len(val) > 1:
+                    warnings.warn(
+                        (
+                            "One or more sub-benchmarks specified a list of"
+                            " profile.{0}. This pattern is deprecated and will be"
+                            " removed in a future release. Please use `--override"
+                            " profile.{0} {1}` on the CLI or sub-benchmarks in the"
+                            " config file instead."
+                        ).format(rate_field, ",".join(str(v) for v in val)),
+                        category=FutureWarning,
+                        stacklevel=2,
+                    )
                 merged_rates.extend(val)
             else:
                 merged_rates.append(val)
@@ -457,6 +467,18 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
         for constraint in constraints_at_idx:
             val = constraint.__dict__[list_field]
             if isinstance(val, list | tuple):
+                if len(val) > 1:
+                    warnings.warn(
+                        (
+                            "One or more sub-benchmarks specified a list of"
+                            " constraints[{0}].{1}. This pattern is deprecated and will"
+                            " be removed in a future release. Please use `--override"
+                            " constraints[{0}].{1} {2}` on the CLI or sub-benchmarks in"
+                            " the config file instead."
+                        ).format(idx, list_field, ",".join(str(v) for v in val)),
+                        category=FutureWarning,
+                        stacklevel=2,
+                    )
                 merged_values.extend(val)
             else:
                 merged_values.append(val)
@@ -563,6 +585,7 @@ async def benchmark_generative_text(
         cooldown=cooldown,
         prefer_response_metrics=metrics_args.prefer_response_metrics,
         slo=metrics_args.slo,
+        confidence=metrics_args.confidence,
     ):
         if benchmark:
             report.benchmarks.append(benchmark)

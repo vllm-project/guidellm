@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from guidellm.schemas.base import (
     BaseModelT,
+    ConfidenceInterval,
     DistributionSummary,
     ErroredT,
     FunctionObjT,
@@ -19,6 +20,7 @@ from guidellm.schemas.base import (
     GenerationResponse,
     GenerativeRequestStats,
     IncompleteT,
+    PercentileIntervals,
     Percentiles,
     PydanticClassRegistryMixin,
     RegisterClassT,
@@ -26,6 +28,7 @@ from guidellm.schemas.base import (
     RequestInfo,
     RequestSettings,
     RequestTimings,
+    SampleUncertainty,
     StandardBaseDict,
     StandardBaseModel,
     StatusBreakdown,
@@ -41,6 +44,7 @@ from guidellm.schemas.base import (
 
 __all__ = [
     "BaseModelT",
+    "ConfidenceInterval",
     "DistributionSummary",
     "ErroredT",
     "FunctionObjT",
@@ -49,6 +53,7 @@ __all__ = [
     "GenerationResponse",
     "GenerativeRequestStats",
     "IncompleteT",
+    "PercentileIntervals",
     "Percentiles",
     "PydanticClassRegistryMixin",
     "RegisterClassT",
@@ -56,6 +61,7 @@ __all__ = [
     "RequestInfo",
     "RequestSettings",
     "RequestTimings",
+    "SampleUncertainty",
     "StandardBaseDict",
     "StandardBaseModel",
     "StatusBreakdown",

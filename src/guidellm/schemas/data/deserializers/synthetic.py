@@ -420,6 +420,24 @@ class SyntheticTextDataArgs(DataArgs):
         default_factory=list,
     )
 
+    prefix_count: int | None = Field(
+        description=(
+            "Shorthand for a single prefix bucket with this many unique prefixes. "
+            "Mutually exclusive with prefix_buckets."
+        ),
+        default=None,
+        examples=[1],
+        exclude=True,  # Mapped to prefix_buckets[0].prefix_count
+    )
+    prefix_tokens: int | None = Field(
+        description=(
+            "Shorthand for a single prefix bucket with this many prefix tokens. "
+            "Mutually exclusive with prefix_buckets."
+        ),
+        default=None,
+        examples=[512],
+        exclude=True,  # Mapped to prefix_buckets[0].prefix_tokens
+    )
     prefix_buckets: list[SyntheticTextPrefixBucketConfig] | None = Field(
         description="Buckets for the prefix tokens distribution.",
         default=None,
@@ -430,23 +448,23 @@ class SyntheticTextDataArgs(DataArgs):
 
     @model_validator(mode="after")
     def check_prefix_options(self) -> SyntheticTextDataArgs:
-        if self.__pydantic_extra__ is not None:
-            prefix_count = self.__pydantic_extra__.get("prefix_count", None)  # type: ignore[attr-defined]
-            prefix_tokens = self.__pydantic_extra__.get("prefix_tokens", None)  # type: ignore[attr-defined]
+        prefix_count = self.prefix_count
+        prefix_tokens = self.prefix_tokens
+        self.prefix_count = self.prefix_tokens = None  # Clear shorthand fields
 
-            if prefix_count is not None or prefix_tokens is not None:
-                if self.prefix_buckets:
-                    raise ValueError(
-                        "prefix_buckets is mutually exclusive"
-                        " with prefix_count and prefix_tokens"
-                    )
+        if prefix_count is not None or prefix_tokens is not None:
+            if self.prefix_buckets:
+                raise ValueError(
+                    "prefix_buckets is mutually exclusive"
+                    " with prefix_count and prefix_tokens"
+                )
 
-                self.prefix_buckets = [
-                    SyntheticTextPrefixBucketConfig(
-                        prefix_count=prefix_count or 1,
-                        prefix_tokens=prefix_tokens or 0,
-                    )
-                ]
+            self.prefix_buckets = [
+                SyntheticTextPrefixBucketConfig(
+                    prefix_count=prefix_count or 1,
+                    prefix_tokens=prefix_tokens or 0,
+                )
+            ]
 
         return self
 

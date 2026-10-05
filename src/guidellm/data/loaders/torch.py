@@ -165,6 +165,7 @@ class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
             shuffle=config.shuffle,
             collate_fn=_collate_first,
             num_workers=config.num_workers,
+            prefetch_factor=config.prefetch_factor,
             generator=gen,
             **kwargs,
         )
