@@ -23,7 +23,7 @@ async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, fai
         "on_initialize",
         "on_benchmark_start",
         "on_benchmark_update",
-        "on_benchmark_postprocess",
+        "on_benchmark_compile",
         "on_benchmark_complete",
         "on_finalize",
     ]
@@ -92,7 +92,7 @@ async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, fai
         assert [o.on_benchmark_complete.await_count for o in observers] == [1, 1]
     for observer in observers:
         observer.on_initialize.assert_awaited_once()
-        assert observer.on_benchmark_postprocess.await_count == int(
+        assert observer.on_benchmark_compile.await_count == int(
             failure not in ("initialize", "scheduler")
         )
         assert observer.on_finalize.await_count == int(
@@ -105,11 +105,9 @@ async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, fai
 
 def _compile_benchmark(observers, finished, result, **kwargs):
     for observer in observers:
-        observer.on_benchmark_postprocess.assert_awaited_once()
+        observer.on_benchmark_compile.assert_awaited_once()
         observer.on_benchmark_complete.assert_not_awaited()
-    assert set(finished[-2:]) == {
-        (index, "on_benchmark_postprocess") for index in range(2)
-    }
+    assert set(finished[-2:]) == {(index, "on_benchmark_compile") for index in range(2)}
     return result
 
 

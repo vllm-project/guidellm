@@ -73,10 +73,10 @@ async def test_rich_lifecycle_still_renders(accumulator):
 @pytest.mark.regression
 @pytest.mark.asyncio
 @pytest.mark.parametrize("last_update", [1.0, 2.0, 4.0])
-async def test_postprocess_is_visible_before_compilation(
+async def test_compile_is_visible_before_compilation(
     monkeypatch, accumulator, last_update
 ):
-    """Refresh postprocess immediately from any execution phase, then complete.
+    """Refresh compile immediately from any execution phase, then complete.
 
     ## WRITTEN BY AI ##
     """
@@ -104,14 +104,14 @@ async def test_postprocess_is_visible_before_compilation(
         assert task_state.benchmark_status == accumulator.timings.status
         requests_summary = task_state.formatted_requests_summary
 
-        await progress.on_benchmark_postprocess()
+        await progress.on_benchmark_compile()
 
-        assert task_state.benchmark_status == "postprocess"
+        assert task_state.benchmark_status == "compile"
         assert task_state.formatted_requests_summary == requests_summary
-        assert "postprocess" in output.getvalue()
+        assert "compile" in output.getvalue()
         assert [r["extra"]["progress_status"] for r in records] == [
             "started",
-            "postprocess",
+            "compile",
         ]
 
         benchmark = GenerativeBenchmark.compile(accumulator, scheduler_state)

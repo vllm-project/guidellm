@@ -169,7 +169,7 @@ class Benchmarker(
                         )
 
                 if progress:
-                    await progress.on_benchmark_postprocess()
+                    await progress.on_benchmark_compile()
 
                 benchmark = benchmark_class.compile(
                     accumulator=accumulator,

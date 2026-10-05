@@ -57,7 +57,7 @@ class BenchmarkerProgress(Generic[BenchmarkAccumulatorT, BenchmarkT], ABC):
     Abstract interface for tracking and displaying benchmark execution progress.
 
     Provides lifecycle hooks for monitoring benchmark stages including initialization,
-    execution start, progress updates, postprocess, completion, and finalization.
+    execution start, progress updates, compile, completion, and finalization.
     Implementations handle display updates, progress tracking, and resource management
     for benchmark monitoring.
     """
@@ -94,7 +94,7 @@ class BenchmarkerProgress(Generic[BenchmarkAccumulatorT, BenchmarkT], ABC):
         :param scheduler_state: Current scheduler execution state and counters
         """
 
-    async def on_benchmark_postprocess(self):
+    async def on_benchmark_compile(self):
         """
         Handle result processing after request execution has ended.
 
@@ -164,10 +164,10 @@ class CompositeBenchmarkerProgress(
             )
         )
 
-    async def on_benchmark_postprocess(self):
+    async def on_benchmark_compile(self):
         """Notify all trackers that benchmark results are being processed."""
         await self._notify_progress(
-            *(tracker.on_benchmark_postprocess() for tracker in self.trackers)
+            *(tracker.on_benchmark_compile() for tracker in self.trackers)
         )
 
     async def on_benchmark_complete(self, benchmark: BenchmarkT):
@@ -283,10 +283,10 @@ class GenerativeConsoleBenchmarkerProgress(
             self.tasks_progress.update_benchmark(accumulator, scheduler_state)
             self._sync_run_progress()
 
-    async def on_benchmark_postprocess(self):
+    async def on_benchmark_compile(self):
         """Show result processing before synchronous compilation begins."""
         if self.tasks_progress is not None:
-            self.tasks_progress.postprocess_benchmark()
+            self.tasks_progress.compile_benchmark()
             self._sync_run_progress()
             self.refresh()
 
@@ -386,11 +386,11 @@ class GenerativeLoggingBenchmarkerProgress(
             self._state.update(accumulator, scheduler_state)
             self._log_update(self._state.benchmark_status)
 
-    async def on_benchmark_postprocess(self):
+    async def on_benchmark_compile(self):
         """Log result processing immediately, regardless of the interval."""
         if self._state:
-            self._state.benchmark_status = "postprocess"
-            self._log_update("postprocess")
+            self._state.benchmark_status = "compile"
+            self._log_update("compile")
 
     async def on_benchmark_complete(self, benchmark: GenerativeBenchmark):
         """
@@ -516,9 +516,9 @@ class _GenerativeProgressTasks(Progress):
                 **current_state.current,
             )
 
-    def postprocess_benchmark(self):
+    def compile_benchmark(self):
         current_state = self.benchmark_task_states[self.current_index]
-        current_state.benchmark_status = "postprocess"
+        current_state.benchmark_status = "compile"
         if current_state.task_id is not None:
             self.update(
                 current_state.task_id,
@@ -544,7 +544,7 @@ class _GenerativeProgressTaskState:
     task_id: TaskID | None = None
     strategy: SchedulingStrategy | None = None
     benchmark_status: Literal[
-        "pending", "warmup", "active", "cooldown", "postprocess", "completed"
+        "pending", "warmup", "active", "cooldown", "compile", "completed"
     ] = "pending"
     progress: float | None = None
     start_time: float = -1.0
@@ -609,8 +609,8 @@ class _GenerativeProgressTaskState:
         elif self.benchmark_status == "cooldown":
             status = "cooldown"
             color = Colors.progress
-        elif self.benchmark_status == "postprocess":
-            status = "postprocess"
+        elif self.benchmark_status == "compile":
+            status = "compile"
             color = Colors.progress
         elif self.benchmark_status == "completed":
             status = "complete"
@@ -842,16 +842,16 @@ class _GenerativeProgressTaskState:
     @staticmethod
     def _map_status(
         status: Literal[
-            "pending", "warmup", "active", "cooldown", "postprocess", "completed"
+            "pending", "warmup", "active", "cooldown", "compile", "completed"
         ],
-    ) -> Literal["pending", "warmup", "active", "cooldown", "postprocess", "completed"]:
+    ) -> Literal["pending", "warmup", "active", "cooldown", "compile", "completed"]:
         """Map accumulator status to internal progress status representation."""
         return status
 
     def _update_processing_states(
         self,
         benchmark_status: Literal[
-            "pending", "warmup", "active", "cooldown", "postprocess", "completed"
+            "pending", "warmup", "active", "cooldown", "compile", "completed"
         ]
         | None = None,
         start_time: float | None = None,
