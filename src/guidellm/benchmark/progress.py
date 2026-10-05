@@ -613,7 +613,7 @@ class _GenerativeProgressTaskState:
             status = "cooldown"
             color = Colors.progress
         elif self.benchmark_status == "compile":
-            status = "compile"
+            status = "compiling"
             color = Colors.progress
         elif self.benchmark_status == "completed":
             status = "complete"
@@ -622,7 +622,7 @@ class _GenerativeProgressTaskState:
             status = "pending"
             color = Colors.info
 
-        return f"[{color}]{status.ljust(8)}[/{color}]"
+        return f"[{color}]{status.ljust(9)}[/{color}]"
 
     @property
     def formatted_requests_summary(self) -> str:
