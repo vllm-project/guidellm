@@ -778,49 +778,45 @@ class DistributionSummary(StandardBaseModel):
         np.add.at(unique_weights, inverse, weighted_times[:, 1])
         weighted_times = np.column_stack((unique_times, unique_weights))
 
-        if threshold is None or threshold <= 0.0:
+        if threshold is None or threshold <= 0.0 or weighted_times.shape[0] <= 1:
             return weighted_times
 
-        # Loop to merge times within threshold until no more merges possible
-        # (loop due to possible overlapping merge groups)
-        while weighted_times.shape[0] > 1:
-            times = weighted_times[:, 0]
-            weights = weighted_times[:, 1]
+        # Gaps over threshold split the times into runs; only runs with more than
+        # one time can merge, so pull those times out and leave the rest as is
+        times = weighted_times[:, 0]
+        within = np.diff(times) <= threshold
+        if not np.any(within):
+            return weighted_times
 
-            # Find diffs between consecutive times, create mask for within-threshold
-            diffs = np.diff(times)
-            within = diffs <= threshold
-            if not np.any(within):
-                break
+        run_starts = np.flatnonzero(np.concatenate(([True], ~within)))
+        run_lengths = np.diff(run_starts, append=len(times))
+        long_runs = run_lengths > 1
+        in_long_run = np.repeat(long_runs, run_lengths)
+        long_inds = np.flatnonzero(in_long_run)
+        long_times = times[long_inds]
+        group_ends = np.searchsorted(long_times, long_times + threshold, side="right")
 
-            # Start indices are marked by the transition from 0 to 1 in the mask
-            # End indices found by searching for last time within threshold from start
-            starts = np.where(np.diff(np.insert(within.astype(int), 0, 0)) == 1)[0]
-            start_end_times = times[starts] + threshold
-            ends = np.searchsorted(times, start_end_times, side="right") - 1
+        # Walk each run left to right in one pass: a group takes all times within
+        # threshold of its first time, the next group starts at the first time after.
+        # group_ends stays a numpy array: the walk reads only the group starts, so
+        # converting every end to a Python int would cost more memory and time
+        group_starts = []
+        run_start = 0
+        for run_end in np.cumsum(run_lengths[long_runs]).tolist():
+            ind = run_start
+            while ind < run_end:
+                group_starts.append(ind)
+                ind = int(group_ends[ind])
+            run_start = run_end
 
-            # Collapse overlapping or chained merge groups
-            if len(starts) > 1:
-                valid_mask = np.concatenate([[True], starts[1:] > ends[:-1]])
-                starts, ends = starts[valid_mask], ends[valid_mask]
+        # Keep the first time of each group with the sum of its weights
+        is_start = ~in_long_run
+        is_start[long_inds[group_starts]] = True
+        starts = np.flatnonzero(is_start)
 
-            # Update weights at start indices to sum of merged weights
-            cumsum = np.concatenate(([0.0], np.cumsum(weights)))
-            weighted_times[starts, 1] = cumsum[ends + 1] - cumsum[starts]
-
-            # Calculate vectorized mask for removing merged entries
-            merged_events = np.zeros(len(weighted_times) + 1, dtype=int)
-            np.add.at(merged_events, starts, 1)
-            np.add.at(merged_events, ends + 1, -1)
-            remove_mask = np.cumsum(merged_events[:-1]) > 0
-            remove_mask[starts] = False  # Keep start indices
-
-            # Remove merged entries, update weighted_times
-            weights = weights[~remove_mask]
-            times = times[~remove_mask]
-            weighted_times = np.column_stack((times, weights))
-
-        return weighted_times
+        return np.column_stack(
+            (times[starts], np.add.reduceat(weighted_times[:, 1], starts))
+        )
 
 
 class StatusDistributionSummary(
