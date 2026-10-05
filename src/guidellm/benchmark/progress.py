@@ -16,7 +16,7 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 from math import isfinite
 from time import monotonic
-from typing import Any, Generic, Literal
+from typing import Any, Generic, Literal, TypeAlias
 
 from loguru import logger
 from rich.console import Group
@@ -49,6 +49,11 @@ __all__ = [
     "BenchmarkerProgress",
     "GenerativeConsoleBenchmarkerProgress",
     "GenerativeLoggingBenchmarkerProgress",
+]
+
+
+BenchmarkStatus: TypeAlias = Literal[
+    "pending", "warmup", "active", "cooldown", "compile", "completed"
 ]
 
 
@@ -543,9 +548,7 @@ class _GenerativeProgressTaskState:
     strategy_type: str
     task_id: TaskID | None = None
     strategy: SchedulingStrategy | None = None
-    benchmark_status: Literal[
-        "pending", "warmup", "active", "cooldown", "compile", "completed"
-    ] = "pending"
+    benchmark_status: BenchmarkStatus = "pending"
     progress: float | None = None
     start_time: float = -1.0
     successful_requests: int = 0
@@ -840,20 +843,13 @@ class _GenerativeProgressTaskState:
         )
 
     @staticmethod
-    def _map_status(
-        status: Literal[
-            "pending", "warmup", "active", "cooldown", "compile", "completed"
-        ],
-    ) -> Literal["pending", "warmup", "active", "cooldown", "compile", "completed"]:
+    def _map_status(status: BenchmarkStatus) -> BenchmarkStatus:
         """Map accumulator status to internal progress status representation."""
         return status
 
     def _update_processing_states(
         self,
-        benchmark_status: Literal[
-            "pending", "warmup", "active", "cooldown", "compile", "completed"
-        ]
-        | None = None,
+        benchmark_status: BenchmarkStatus | None = None,
         start_time: float | None = None,
         successful_requests: int | None = None,
         cancelled_requests: int | None = None,
