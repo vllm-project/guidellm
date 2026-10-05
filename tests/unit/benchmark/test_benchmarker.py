@@ -23,6 +23,7 @@ async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, fai
         "on_initialize",
         "on_benchmark_start",
         "on_benchmark_update",
+        "on_benchmark_postprocess",
         "on_benchmark_complete",
         "on_finalize",
     ]
@@ -54,6 +55,9 @@ async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, fai
     monkeypatch.setattr(module, "BenchmarkConfig", Mock())
     accumulator_class = Mock()
     benchmark_class = Mock()
+    benchmark_class.compile.side_effect = partial(
+        _compile_benchmark, observers, finished, benchmark_class.compile.return_value
+    )
 
     async def schedule(**kwargs):
         yield None, None, None, Mock()
@@ -88,12 +92,25 @@ async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, fai
         assert [o.on_benchmark_complete.await_count for o in observers] == [1, 1]
     for observer in observers:
         observer.on_initialize.assert_awaited_once()
+        assert observer.on_benchmark_postprocess.await_count == int(
+            failure not in ("initialize", "scheduler")
+        )
         assert observer.on_finalize.await_count == int(
             failure not in ("initialize", "scheduler")
         )
     assert [(index, "on_finalize") in finished for index in range(2)] == [
         failure not in ("initialize", "scheduler")
     ] * 2
+
+
+def _compile_benchmark(observers, finished, result, **kwargs):
+    for observer in observers:
+        observer.on_benchmark_postprocess.assert_awaited_once()
+        observer.on_benchmark_complete.assert_not_awaited()
+    assert set(finished[-2:]) == {
+        (index, "on_benchmark_postprocess") for index in range(2)
+    }
+    return result
 
 
 async def _callback(arrivals, gates, finished, failure, index, hook, *args):
