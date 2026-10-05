@@ -2,7 +2,7 @@
 
 GuideLLM's `knee` profile estimates where output throughput stops increasing substantially as concurrency rises. This transition is the throughput knee. The profile runs an initial set of concurrency points, reports the knee, and optionally selects additional points around it to refine the estimate.
 
-Select `kind=knee` with the existing `--profile` option or in a scenario file to enable knee detection. Other profiles keep their existing behavior. Adaptive refinement is disabled by default within the knee profile.
+Use `--profile kind=knee` to enable knee detection. Adaptive refinement is disabled by default.
 
 ## Basic Usage
 
@@ -11,16 +11,18 @@ Calculate and report a knee from an existing set of concurrency points:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000/v1 \
-  --profile '{"kind":"knee","streams":[1,5,10,20,40,80,160]}' \
+  --profile kind=knee \
+  --override profile.streams 1,5,10,20,40,80,160 \
   --data kind=synthetic_text,prompt_tokens=1000,output_tokens=1000 \
   --constraint kind=max_duration,seconds=60 \
   --output kind=json,path=knee-benchmark.json
 ```
 
-To run additional concurrency points automatically, replace the profile argument with:
+To run additional concurrency points automatically, use these profile and override options:
 
 ```bash
---profile '{"kind":"knee","streams":[1,5,10,20,40,80,160],"adaptive":true,"points_each_side":5,"max_step":3}'
+--profile kind=knee,adaptive=true,points_each_side=5,max_step=3 \
+--override profile.streams 1,5,10,20,40,80,160
 ```
 
 The knee profile uses concurrent scheduling strategies and requires distinct positive integer stream counts. Initial points run in the supplied order. At least five completed concurrency points with output-throughput measurements are required to fit a knee. Choose a range that covers both rising throughput and a plateau; a curve that is flat or approximately linear produces `status: no_knee`.
@@ -34,7 +36,7 @@ The knee profile uses concurrent scheduling strategies and requires distinct pos
 | `points_each_side` | `5`      | Maximum number of grid points selected below and above the adaptive anchor. |
 | `max_step`         | `5`      | Largest integer spacing considered for the adaptive concurrency grid.       |
 
-All options belong to the profile. `points_each_side` and `max_step` must be positive integers. All adaptive concurrency values are positive integers. GuideLLM removes concurrency points that were already measured before starting adaptive refinement. Standard profile timing options (`rampup_duration`, `warmup`, and `cooldown`) apply to both phases.
+Set `streams` with `--override profile.streams`; the remaining options belong to the profile. `points_each_side` and `max_step` must be positive integers. All adaptive concurrency values are positive integers. GuideLLM removes concurrency points that were already measured before starting adaptive refinement. Standard profile timing options (`rampup_duration`, `warmup`, and `cooldown`) apply to both phases.
 
 ## How the Knee Is Calculated
 
@@ -79,26 +81,12 @@ The throughput knee can be calculated without the over-saturation constraint. Ad
 
 See [Over-Saturation Stopping](over_saturation_stopping.md) for all detector settings.
 
-## Scenario File
-
-The complete [knee detection scenario](../examples/knee-detection.yaml) can be run from a GuideLLM checkout:
-
-```bash
-guidellm run --config docs/examples/knee-detection.yaml
-```
-
-Change `spec.backend.target`, the initial `spec.profile.streams`, dataset sizes, and duration for the deployment being tested. The server must be running, and its model tokenizer must be available to GuideLLM; set `--tokenizer kind=huggingface_auto,model=<tokenizer-name-or-path>` if needed.
-
-All knee settings live under `spec.profile`. CLI settings override the YAML values. To run this scenario with analysis only, add `--profile kind=knee,adaptive=false`. To run a fixed sweep without knee detection, use `kind=concurrent` and remove the knee-specific `adaptive`, `points_each_side`, and `max_step` fields from the scenario profile.
-
 ## Results
 
-The profile logs the adaptive plan and final knee at INFO level. JSON and YAML reports store the full analysis in the standard profile `conclusions` list under an entry with `kind: knee_detection`. The entry contains:
+Console output summarizes the final knee and adaptive refinement status. JSON and YAML reports store the full analysis in the standard profile `conclusions` list under an entry with `kind: knee_detection`. The entry contains:
 
 - `initial`: Knee and over-saturation analysis from the configured concurrency points.
 - `adaptive_plan`: Selection center, anchor, step, candidates, excluded points, and planned additional points. A stopping constraint can prevent some planned points from running.
 - `final`: Analysis of the combined initial and adaptive measurements.
 
-Initial and adaptive benchmark measurements are stored together in the report's `benchmarks` list, with the initial measurements first. These measurements show which points actually ran. The configuration is stored in `config.spec.profile`; each benchmark also records its profile and concurrent strategy. Output paths are relative to the working directory unless an absolute path is specified; the example writes `knee-benchmark.json` there. CSV and HTML retain their existing benchmark summaries and do not yet have dedicated knee summaries.
-
-Selecting the knee profile is the opt-in mechanism; no separate knee-detection CLI flag or scenario-level configuration is needed.
+Initial and adaptive benchmark measurements are stored together in the report's `benchmarks` list, with the initial measurements first. These measurements show which points actually ran. The configuration is stored in `config.spec.profile`; each benchmark also records its profile and concurrent strategy.

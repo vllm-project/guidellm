@@ -134,7 +134,7 @@ class KneeProfile(Profile):
                 max_step=self.args.max_step,
             )
         self._streams.extend(self._adaptive_plan.concurrencies)
-        logger.info(
+        logger.debug(
             "Knee profile adaptive plan: {} ({})",
             self._adaptive_plan.concurrencies,
             self._adaptive_plan.reason,
@@ -150,7 +150,7 @@ class KneeProfile(Profile):
             final=analyze_knee(self._benchmarks),
         )
         result = self._conclusion.final.throughput
-        logger.info(
+        logger.debug(
             "Knee profile complete after {} benchmarks: knee={} ({})",
             len(self._benchmarks),
             result.knee,

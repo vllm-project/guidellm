@@ -153,10 +153,12 @@ You can use the `--override` option to specify a list of stream values, to run a
 Measures an initial set of concurrency points and estimates where output throughput stops increasing substantially. Set `adaptive=true` to run one additional set of points around that estimate. Adaptive refinement is disabled by default.
 
 ```bash
-guidellm run --profile '{"kind":"knee","streams":[1,5,10,20,40,80,160],"adaptive":true,"points_each_side":5,"max_step":3}'
+guidellm run \
+  --profile kind=knee,adaptive=true,points_each_side=5,max_step=3 \
+  --override profile.streams 1,5,10,20,40,80,160
 ```
 
-The profile uses concurrent strategies for both phases and stores its initial analysis, adaptive plan, and final analysis in the report's `conclusions` list. See the [Knee Profile Guide](../guides/knee_detection.md) for configuration, calculation details, and a scenario YAML example.
+The profile uses concurrent strategies for both phases and stores its initial analysis, adaptive plan, and final analysis in the report's `conclusions` list. See the [Knee Profile Guide](../guides/knee_detection.md) for configuration and calculation details.
 
 #### Constant Profile
 

@@ -1,13 +1,13 @@
 """Tests for ``guidellm run`` CLI error translation."""
 
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
 from click.testing import CliRunner
 
 from guidellm.__main__ import cli
+from guidellm.benchmark.entrypoints import resolve_to_single_benchmark
 
 
 @pytest.mark.regression
@@ -269,27 +269,62 @@ def test_run_accepts_knee_profile(monkeypatch, adaptive):
 
 @pytest.mark.regression
 @pytest.mark.parametrize(
-    ("options", "adaptive"),
-    [([], True), (["--profile", "kind=knee,adaptive=false"], False)],
+    ("profile_option", "adaptive"),
+    [
+        ("kind=knee", False),
+        ("kind=knee,adaptive=true,points_each_side=5,max_step=3", True),
+    ],
 )
-def test_knee_yaml_example_loads_through_cli(monkeypatch, options, adaptive):
-    """Load the example and override its adaptive setting through profile arguments.
+def test_knee_profile_accepts_canonical_cli_options(
+    monkeypatch, profile_option, adaptive
+):
+    """Use the documented knee profile and stream override syntax.
 
     ## WRITTEN BY AI ##
     """
-    scenario_path = (
-        Path(__file__).resolve().parents[3] / "docs/examples/knee-detection.yaml"
-    )
     benchmark = AsyncMock()
     monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
-    result = CliRunner().invoke(cli, ["run", "--config", str(scenario_path), *options])
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            "kind=openai_http,target=http://localhost:8000/v1",
+            "--profile",
+            profile_option,
+            "--override",
+            "profile.streams",
+            "1,5,10,20,40,80,160",
+            "--data",
+            "kind=synthetic_text,prompt_tokens=1000,output_tokens=1000",
+            "--constraint",
+            "kind=max_duration,seconds=60",
+            "--output",
+            "kind=json,path=knee-benchmark.json",
+        ],
+    )
     assert result.exit_code == 0, result.output
     benchmark.assert_awaited_once()
     scenario = benchmark.call_args.kwargs["args"]
     assert scenario.spec.profile.kind == "knee"
     assert scenario.spec.profile.adaptive is adaptive
     assert scenario.spec.profile.points_each_side == 5
-    assert scenario.spec.profile.max_step == 3
-    assert scenario.spec.profile.streams == [1, 5, 10, 20, 40, 80, 160]
-    assert scenario.spec.constraints[1].mode == "monitor"
-    assert scenario.spec.outputs[0].path == Path("knee-benchmark.json")
+    assert scenario.spec.profile.max_step == (3 if adaptive else 5)
+    assert [benchmark.profile.streams for benchmark in scenario.get_benchmarks()] == [
+        [1],
+        [5],
+        [10],
+        [20],
+        [40],
+        [80],
+        [160],
+    ]
+    assert resolve_to_single_benchmark(scenario.get_benchmarks()).profile.streams == [
+        1,
+        5,
+        10,
+        20,
+        40,
+        80,
+        160,
+    ]
