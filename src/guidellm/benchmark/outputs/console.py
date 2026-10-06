@@ -362,6 +362,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
             else:
                 details.append(f"Adaptive refinement skipped: {plan.reason}")
 
+            self.console.print("\n")
             self.console.print_update(title, "\n".join(details), status=status)
 
     def print_run_summary_table(self, report: GenerativeBenchmarksReport):
