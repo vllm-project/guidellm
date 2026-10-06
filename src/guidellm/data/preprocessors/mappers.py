@@ -179,11 +179,22 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
                 if not filtered_names:
                     continue
 
-                column_pattern = cls.column_name_pattern.format(
-                    name="|".join(re.escape(n) for n in filtered_names)
+                # Try candidate names in priority order, so an earlier name wins
+                # over a later one regardless of the dataset's column order
+                base_match = next(
+                    (
+                        match
+                        for name in filtered_names
+                        if (
+                            match := re.search(
+                                cls.column_name_pattern.format(name=re.escape(name)),
+                                dataset_columns_str,
+                                re.M | re.I,
+                            )
+                        )
+                    ),
+                    None,
                 )
-                # Find the first matching column name
-                base_match = re.search(column_pattern, dataset_columns_str, re.M | re.I)
                 if not base_match:
                     continue
 
