@@ -16,7 +16,7 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 from math import isfinite
 from time import monotonic
-from typing import Any, Generic, Literal
+from typing import Any, Generic, Literal, TypeAlias
 
 from loguru import logger
 from rich.console import Group
@@ -52,14 +52,19 @@ __all__ = [
 ]
 
 
+BenchmarkStatus: TypeAlias = Literal[
+    "pending", "warmup", "active", "cooldown", "compile", "completed"
+]
+
+
 class BenchmarkerProgress(Generic[BenchmarkAccumulatorT, BenchmarkT], ABC):
     """
     Abstract interface for tracking and displaying benchmark execution progress.
 
     Provides lifecycle hooks for monitoring benchmark stages including initialization,
-    execution start, progress updates, completion, and finalization. Implementations
-    handle display updates, progress tracking, and resource management for benchmark
-    monitoring.
+    execution start, progress updates, compile, completion, and finalization.
+    Implementations handle display updates, progress tracking, and resource management
+    for benchmark monitoring.
     """
 
     def __init__(self):
@@ -92,6 +97,13 @@ class BenchmarkerProgress(Generic[BenchmarkAccumulatorT, BenchmarkT], ABC):
 
         :param accumulator: Current accumulated benchmark metrics and statistics
         :param scheduler_state: Current scheduler execution state and counters
+        """
+
+    async def on_benchmark_compile(self):
+        """
+        Handle result processing after request execution has ended.
+
+        Defaults to no action so existing progress trackers remain compatible.
         """
 
     @abstractmethod
@@ -155,6 +167,12 @@ class CompositeBenchmarkerProgress(
                 tracker.on_benchmark_update(accumulator, scheduler_state)
                 for tracker in self.trackers
             )
+        )
+
+    async def on_benchmark_compile(self):
+        """Notify all trackers that benchmark results are being processed."""
+        await self._notify_progress(
+            *(tracker.on_benchmark_compile() for tracker in self.trackers)
         )
 
     async def on_benchmark_complete(self, benchmark: BenchmarkT):
@@ -270,6 +288,13 @@ class GenerativeConsoleBenchmarkerProgress(
             self.tasks_progress.update_benchmark(accumulator, scheduler_state)
             self._sync_run_progress()
 
+    async def on_benchmark_compile(self):
+        """Show result processing before synchronous compilation begins."""
+        if self.tasks_progress is not None:
+            self.tasks_progress.compile_benchmark()
+            self._sync_run_progress()
+            self.refresh()
+
     async def on_benchmark_complete(self, benchmark: GenerativeBenchmark):
         """
         Update display for completed benchmark strategy.
@@ -365,6 +390,12 @@ class GenerativeLoggingBenchmarkerProgress(
         if self._state and monotonic() - self._last_update >= self.interval:
             self._state.update(accumulator, scheduler_state)
             self._log_update(self._state.benchmark_status)
+
+    async def on_benchmark_compile(self):
+        """Log result processing immediately, regardless of the interval."""
+        if self._state:
+            self._state.benchmark_status = "compile"
+            self._log_update("compile")
 
     async def on_benchmark_complete(self, benchmark: GenerativeBenchmark):
         """
@@ -490,6 +521,15 @@ class _GenerativeProgressTasks(Progress):
                 **current_state.current,
             )
 
+    def compile_benchmark(self):
+        current_state = self.benchmark_task_states[self.current_index]
+        current_state.benchmark_status = "compile"
+        if current_state.task_id is not None:
+            self.update(
+                current_state.task_id,
+                **current_state.current,
+            )
+
     def complete_benchmark(self, benchmark: GenerativeBenchmark):
         current_state = self.benchmark_task_states[self.current_index]
         current_state.complete(benchmark)
@@ -508,9 +548,7 @@ class _GenerativeProgressTaskState:
     strategy_type: str
     task_id: TaskID | None = None
     strategy: SchedulingStrategy | None = None
-    benchmark_status: Literal[
-        "pending", "warmup", "active", "cooldown", "completed"
-    ] = "pending"
+    benchmark_status: BenchmarkStatus = "pending"
     progress: float | None = None
     start_time: float = -1.0
     successful_requests: int = 0
@@ -574,6 +612,9 @@ class _GenerativeProgressTaskState:
         elif self.benchmark_status == "cooldown":
             status = "cooldown"
             color = Colors.progress
+        elif self.benchmark_status == "compile":
+            status = "compiling"
+            color = Colors.progress
         elif self.benchmark_status == "completed":
             status = "complete"
             color = Colors.success
@@ -581,7 +622,7 @@ class _GenerativeProgressTaskState:
             status = "pending"
             color = Colors.info
 
-        return f"[{color}]{status.ljust(8)}[/{color}]"
+        return f"[{color}]{status.ljust(9)}[/{color}]"
 
     @property
     def formatted_requests_summary(self) -> str:
@@ -802,18 +843,13 @@ class _GenerativeProgressTaskState:
         )
 
     @staticmethod
-    def _map_status(
-        status: Literal["pending", "warmup", "active", "cooldown", "completed"],
-    ) -> Literal["pending", "warmup", "active", "cooldown", "completed"]:
+    def _map_status(status: BenchmarkStatus) -> BenchmarkStatus:
         """Map accumulator status to internal progress status representation."""
         return status
 
     def _update_processing_states(
         self,
-        benchmark_status: Literal[
-            "pending", "warmup", "active", "cooldown", "completed"
-        ]
-        | None = None,
+        benchmark_status: BenchmarkStatus | None = None,
         start_time: float | None = None,
         successful_requests: int | None = None,
         cancelled_requests: int | None = None,

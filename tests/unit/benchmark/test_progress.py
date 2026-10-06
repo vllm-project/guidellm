@@ -10,6 +10,7 @@ from rich.console import Console
 from guidellm.benchmark import progress as progress_module
 from guidellm.benchmark.profiles import ProfileFactory
 from guidellm.benchmark.progress import (
+    CompositeBenchmarkerProgress,
     GenerativeConsoleBenchmarkerProgress,
     GenerativeLoggingBenchmarkerProgress,
 )
@@ -67,6 +68,59 @@ async def test_rich_lifecycle_still_renders(accumulator):
             await progress.on_finalize()
     assert "Benchmarks" in captured.get()
     assert progress.tasks_progress is None
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize("last_update", [1.0, 2.0, 4.0])
+async def test_compile_is_visible_before_compilation(
+    monkeypatch, accumulator, last_update
+):
+    """Refresh compile immediately from any execution phase, then complete.
+
+    ## WRITTEN BY AI ##
+    """
+    monkeypatch.setattr(progress_module, "monotonic", lambda: 100.0)
+    accumulator.timings.current_update = last_update
+    output = StringIO()
+    display = GenerativeConsoleBenchmarkerProgress(cleanup=False)
+    display.console = Console(file=output, force_terminal=True, width=200)
+    progress = CompositeBenchmarkerProgress(
+        [display, GenerativeLoggingBenchmarkerProgress(interval=10)]
+    )
+    records = []
+    sink = progress_module.logger.add(
+        lambda message: records.append(message.record),
+        filter=lambda record: "progress_status" in record["extra"],
+    )
+    profile = ProfileFactory.create(SynchronousProfileArgs(), random_seed=0)
+    scheduler_state = SchedulerState(successful_requests=12, errored_requests=2)
+    try:
+        await progress.on_initialize(profile)
+        await progress.on_benchmark_start(SynchronousStrategy())
+        await progress.on_benchmark_update(accumulator, scheduler_state)
+        assert display.tasks_progress is not None
+        task_state = display.tasks_progress.benchmark_task_states[0]
+        assert task_state.benchmark_status == accumulator.timings.status
+        requests_summary = task_state.formatted_requests_summary
+
+        await progress.on_benchmark_compile()
+
+        assert task_state.benchmark_status == "compile"
+        assert task_state.formatted_requests_summary == requests_summary
+        assert "compile" in output.getvalue()
+        assert [r["extra"]["progress_status"] for r in records] == [
+            "started",
+            "compile",
+        ]
+
+        benchmark = GenerativeBenchmark.compile(accumulator, scheduler_state)
+        await progress.on_benchmark_complete(benchmark)
+        assert task_state.benchmark_status == "completed"
+        assert records[-1]["extra"]["progress_status"] == "completed"
+    finally:
+        await progress.on_finalize()
+        progress_module.logger.remove(sink)
 
 
 @pytest.mark.regression

@@ -54,7 +54,7 @@ class Benchmarker(
     scheduling strategies and execution environments.
     """
 
-    async def run(
+    async def run(  # noqa: C901
         self,
         accumulator_class: type[BenchmarkAccumulatorT],
         benchmark_class: type[BenchmarkT],
@@ -167,6 +167,9 @@ class Benchmarker(
                         logger.error(
                             "Error updating benchmark estimate/progress: {}", err
                         )
+
+                if progress:
+                    await progress.on_benchmark_compile()
 
                 benchmark = benchmark_class.compile(
                     accumulator=accumulator,
