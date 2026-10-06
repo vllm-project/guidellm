@@ -95,6 +95,15 @@ class Backend(
         """
         return self._args.model_dump(mode="json") if self._args else {}
 
+    def console_dump(self) -> dict[str, Any]:
+        """Return backend details for initialization console output.
+
+        Backends may override this to omit large report-only metadata.
+
+        :return: JSON-serializable console details, defaulting to backend info
+        """
+        return self.info
+
     @property
     def processes_limit(self) -> int | None:
         """

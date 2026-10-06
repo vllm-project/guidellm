@@ -117,6 +117,44 @@ The API key is used to set the `Authorization: Bearer {api_key}` header in HTTP 
 > [!IMPORTANT]\
 > For security, avoid hardcoding API keys in scripts. Consider using environment variables or secure credential management tools when passing API keys via `--backend`.
 
+## Recording vLLM Server Configuration
+
+To include the server's configuration alongside benchmark results, select the desired `capture_server_config` sections on the HTTP backend:
+
+```bash
+guidellm run \
+  --backend '{"kind":"openai_http","target":"http://localhost:8000","capture_server_config":["vllm_config"]}' \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --constraint kind=max_requests,count=10 \
+  --output kind=json,path=benchmark.json
+```
+
+During setup, GuideLLM requests `/server_info?config_format=json` once and saves the selected sections under `benchmarks[].config.backend.server_info` in the JSON report. This includes settings such as tensor parallelism, scheduler limits and cache configuration that help explain differences between benchmark runs. The snapshot is reused across worker processes and benchmark strategies; collection is outside the measured generation requests. Captured server details are retained in the report and omitted from the initialization console output. It also works with `validate_backend=false`.
+
+The selector accepts a set of section names (a JSON array in CLI input), `"all"`, or `null`:
+
+| Section       | Contents                                                                                      |
+| ------------- | --------------------------------------------------------------------------------------------- |
+| `vllm_config` | Model, scheduler, parallelism and cache configuration                                         |
+| `vllm_env`    | vLLM environment settings reported by the server                                              |
+| `system_env`  | System diagnostics such as library, CUDA and operating-system versions reported by the server |
+
+For example, use `"capture_server_config":["vllm_env","system_env"]` in the backend JSON to capture only environment information. Use `capture_server_config=all` with the key/value CLI syntax to capture all three supported sections. `all` does not include unknown response fields. These names select fields from the server response, not environment variables on the GuideLLM client. The exact contents depend on the server version; `system_env` is not necessarily a dump of process environment variables.
+
+Capture is disabled by default (`null`); an empty set/array also disables it. Booleans and unknown section names are rejected. The optional request uses the configured API key and `extras.headers`, has a five-second total deadline and a 1 MiB response limit, and does not follow redirects. A missing or denied endpoint, network failure, invalid response or unsupported format produces a warning and leaves the benchmark running without server metadata. Custom routes can be supplied through `api_routes`, for example `{"/server_info": "proxy/server_info"}`.
+
+Each selected section must be a JSON object. Missing or unsupported sections produce a warning and are omitted independently, preserving other valid selected sections. Empty objects are retained. Legacy text configurations are skipped because their credential fields cannot be reliably redacted; structured environment sections can still be captured when available. Depending on the vLLM version, `/server_info` may require `VLLM_SERVER_DEV_MODE=1`. This enables development endpoints beyond server information; consult [vLLM's security documentation](https://docs.vllm.ai/en/latest/usage/security/) before enabling it, and use an isolated benchmark deployment.
+
+GuideLLM applies best-effort filtering to every selected section:
+
+- Recognizable credential fields, including API keys, passwords, private keys, tokens, cookies and credential aliases, are redacted recursively. Additional exact names and suffixes include `ssh_key`, `encryption_key`, `signing_key`, `license_key`, `client_key`, `passphrase` and `pwd`. Related settings such as `signing_key_algorithm` and `client_key_file` remain intact. Unset values and boolean switches are preserved.
+- In environment records such as `{"name": "VLLM_API_KEY", "value": "..."}`, a recognizable sensitive name causes the `value` to be redacted. Records for ordinary settings, such as `CUDA_VISIBLE_DEVICES`, are retained.
+- User information in recognized scheme-based URLs (such as `postgres://user:password@host/db`) is replaced with `[REDACTED]`, retaining the host and path. Strings with ambiguous URL user information are omitted in full: for example, `redis://user:pa/ss@cache:6379/0`. This conservative rule can also omit a URL with a port or IPv6 authority followed by `@` in its path, query or fragment.
+- A sensitive flag in an argument list (such as `--api-key`) has its following value redacted. Free-form strings containing sensitive assignments, flags or `Authorization:`/`Proxy-Authorization:` headers are omitted in full rather than attempting to parse shell quoting or multiline credentials. This includes recognizable signature assignments such as `sig=` and `X-Amz-Signature=` in URLs. For example, an `env_vars` string containing `VLLM_API_KEY=...` is redacted as a whole.
+- Fields named `host`, `hostname`, `node_ip` or `master_addr`, or ending in `_host` (case-insensitive, treating hyphens as underscores), are redacted unless their value is exactly `localhost`, `127.0.0.1`, `::1`, an empty string or `null`.
+
+This does not guarantee that configuration or environment information is safe to publish. Hardware details, model paths, deployment names, URL hosts/paths and unrecognized secret formats may remain. Choose only the sections needed, leave capture disabled for confidential environments, and review the saved report before sharing it. `all` does not bypass filtering.
+
 ## Passing Sampling Parameters
 
 By default, GuideLLM does not set sampling parameters such as `temperature`, `top_p`, or `top_k` in its requests to the backend server. If you need to control these parameters during benchmarking, pass them through the backend `extras` field.
