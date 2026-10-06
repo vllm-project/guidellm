@@ -31,6 +31,7 @@ from guidellm.schemas import (
 )
 from guidellm.schemas.benchmark.goodput import GoodputSLO
 from guidellm.schemas.benchmark.transient import TransientPhaseConfig
+from guidellm.schemas.benchmark.warnings import BenchmarkWarningsArgs
 
 __all__ = [
     "Benchmark",
@@ -110,6 +111,10 @@ class BenchmarkConfig(StandardBaseDict):
             "Two-sided confidence level for the intervals reported alongside "
             "request-level metrics. None reports those metrics without intervals"
         ),
+    )
+    warnings: BenchmarkWarningsArgs = Field(
+        default_factory=BenchmarkWarningsArgs,
+        description="Post-benchmark warning checks and their thresholds",
     )
     profile: dict[str, Any] = Field(
         description="Profile instance coordinating multi-strategy execution",

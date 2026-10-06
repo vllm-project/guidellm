@@ -37,6 +37,7 @@ from guidellm.schemas.benchmark.outputs import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.profiles import ProfileArgs
 from guidellm.schemas.benchmark.random import RandomArgs
 from guidellm.schemas.benchmark.scenarios import get_builtin_scenarios
+from guidellm.schemas.benchmark.warnings import BenchmarkWarningsArgs
 from guidellm.schemas.data import (
     DataArgs,
     DataFinalizerArgs,
@@ -246,6 +247,13 @@ class BenchmarkArgs(ReloadableBaseModel):
         default_factory=lambda: default_kind("generative"),
         description="Configuration for metrics collection and request sampling.",
         json_schema_extra={"argument_alias": "metrics"},
+    )
+    warnings: BenchmarkWarningsArgs = Field(
+        default_factory=BenchmarkWarningsArgs,
+        description=(
+            "Post-benchmark warnings for a missed arrival schedule. "
+            "Each check can be disabled or given its own threshold."
+        ),
     )
 
     @model_validator(mode="after")
