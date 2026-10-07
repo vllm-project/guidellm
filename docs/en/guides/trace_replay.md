@@ -33,9 +33,11 @@ guidellm run \
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=replay \
-  --data kind=weka,source.kind=huggingface,source.source=semianalysisai/cc-traces-weka-no-subagents-051226 \
+  --data kind=weka,source.kind=huggingface,source.source=semianalysisai/cc-traces-weka-no-subagents-051226,max_context_len=32768 \
   --constraint kind=max_requests,count=30
 ```
+
+Increase max_context_len to the context length of your model server. Values approaching 1 million will need much more time to load. By default the replay clock waits until every conversation due inside `max_duration` is built, including a burst whose timestamps are a fraction of a second apart. Set `--profile kind=replay,min_prefetch=start` to wait only for conversations scheduled at time zero, `min_prefetch=scheduled` for every conversation due inside `max_duration`, or for a `max_requests` or `min_requests` count, `min_prefetch=<n>` for a specific count, or `min_prefetch=-1` to build the whole finite dataset first.
 
 **Mooncake dataset from `huggingface`**
 
@@ -110,6 +112,10 @@ The WEKA format expects a column with conversation UUIDs that is not wrapped wit
 
 Similar to Mooncake, WEKA uses prefix-based cache hash IDs. The original [specification](https://github.com/callanjfox/agentic-coding-analysis/blob/master/docs/TRACE_FORMAT.md) for the trace requires hash IDs to be 1 or greater, and for trailing hash IDs to be dropped if there are not enough input tokens to fill the hash ID block size. To accommodate for datasets which may not follow the specification exactly (ex. [semianalysisai/cc-traces-weka-no-subagents-051226](https://huggingface.co/datasets/semianalysisai/cc-traces-weka-no-subagents-051226)), GuideLLM will accept any non-negative integer as a valid hash ID, and will drop partially filled hash IDs if they exist.
 
+Published corpora such as that one include conversations with very large token counts. GuideLLM builds each conversation's prompt before the conversation can be scheduled, so an uncapped trace may not keep up with the replay clock on a typical run. Set `max_context_len` to the context length being benchmarked. That cap is a cumulative input+output token budget: the turn that would exceed it, and every later turn, are dropped. If the first turn already exceeds it, the conversation is skipped.
+
+By default GuideLLM's scheduler waits for all trace requests to be pre-loaded before starting the benchmark. This can add significant time to load the benchmark, but prevents GuideLLM from running behind the scheduled timestamps. If you want to lower the startup time, you can lower this value by setting `min_prefetch` in the profile to 0 for no pre-loading, a positive integer to pre-load a specific number of requests, `start` to only load the conversations that start at time `0`, or `scheduled` to load every conversation due inside `max_duration`. A `max_requests` or `min_requests` constraint makes `scheduled` preload that many items instead, including on a synthetic dataset. `max_requests` wins when both are set. After the run, GuideLLM warns if a conversation that should have started was never sent, or was queued after its scheduled start.
+
 GuideLLM will generate prompts starting from the first conversation. When the conversation ends, the next conversation will be used. Relative timestamps are offsets from the earliest request in the dataset, so later conversations can start later than the first.
 
 Hash IDs follow the per-row `hash_id_scope` field:
@@ -128,6 +134,7 @@ Tool-call events map onto GuideLLM's existing client tool-call pipeline. A reque
 | Argument                     | Default    | Description                                                                                           |
 | ---------------------------- | ---------- | ----------------------------------------------------------------------------------------------------- |
 | `conversation_id_column`     | "id"       | Column name for conversation UUIDs in the trace file                                                  |
+| `max_context_len`            | `None`     | Maximum cumulative input+output tokens per conversation. Unset keeps every turn                       |
 | `hash_ids_column`            | "hash_ids" | Column name for lists of hash IDs in the trace file                                                   |
 | `hash_id_block_size`         | 64         | Amount of tokens represented by one hash ID                                                           |
 | `tools`                      | `None`     | OpenAI-format tool definitions for tool-call turns. When unset, the built-in placeholder tool is used |

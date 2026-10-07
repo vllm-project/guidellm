@@ -15,6 +15,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
+from guidellm.data.schemas import IndefiniteDataset
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationParentRef,
@@ -501,7 +502,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             yield rand.choice(prefixes)
 
 
-class SyntheticTextDataset(IterableDataset):
+class SyntheticTextDataset(IndefiniteDataset, IterableDataset):
     def __init__(
         self,
         config: SyntheticTextDataArgs,

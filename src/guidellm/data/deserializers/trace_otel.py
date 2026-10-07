@@ -764,6 +764,24 @@ class OTELTraceFormat(TraceFormatBase):
         # OTEL overrides ``build_conversation_graph`` and sends recorded messages.
         return ""
 
+    def build_timing_graph(self, conversation: Dataset) -> ConversationGraphData:
+        """Build OTEL turn timestamps without synthesizing prompts.
+
+        Recorded messages are still unpacked so turn boundaries match
+        ``build_conversation_graph``. This path does not log.
+
+        :param conversation: One-row Dataset yielded by ``__iter__``.
+        :return: Linear graph for the unpacked span list
+        :raises InvalidRowError: If the conversation has no LLM spans to replay
+        """
+        spans = self._unpack_conversation(conversation)
+        rows = _llm_replay_spans(spans, self.config)
+        if not rows:
+            raise InvalidRowError(
+                "OTEL format: conversation has no LLM spans with token counts to replay"
+            )
+        return self._build_linear_chain(rows, spans)
+
     def build_conversation_graph(
         self,
         conversation: Dataset,

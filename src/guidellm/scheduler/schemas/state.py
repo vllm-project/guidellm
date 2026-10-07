@@ -11,7 +11,24 @@ __all__ = [
     "SchedulerProgress",
     "SchedulerState",
     "SchedulerUpdateAction",
+    "TraceConversationArrival",
 ]
+
+
+class TraceConversationArrival(StandardBaseModel):
+    """When one trace conversation became available to enqueue.
+
+    ``scheduled_offset`` is the earliest root-turn relative timestamp after
+    dataset time scaling. ``queued_at`` is the wall-clock time the generator
+    finished materializing that conversation.
+    """
+
+    scheduled_offset: float = Field(
+        description="Scheduled root-turn offset from the benchmark start, in seconds"
+    )
+    queued_at: float = Field(
+        description="Unix timestamp when the conversation was ready to enqueue"
+    )
 
 
 class SchedulerProgress(StandardBaseModel):
@@ -248,4 +265,11 @@ class SchedulerState(StandardBaseModel):
         default_factory=list,
         exclude=True,  # Avoid including this potentially large list in output
         description="Delays in yielding conversations from the data generator",
+    )
+    trace_conversation_arrivals: list[TraceConversationArrival] = Field(
+        default_factory=list,
+        exclude=True,  # Avoid including this potentially large list in output
+        description=(
+            "Enqueue time and scheduled root offset for each trace conversation"
+        ),
     )

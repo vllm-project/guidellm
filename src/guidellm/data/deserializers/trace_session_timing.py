@@ -16,6 +16,7 @@ __all__ = [
     "TraceSessionTiming",
     "graph_max_timestamp",
     "graph_min_timestamp",
+    "root_start_offset",
     "shift_graph_timestamps",
 ]
 
@@ -238,6 +239,27 @@ def shift_graph_timestamps(graph: ConversationGraphData, offset: float) -> None:
         if relative_timestamp is None:
             continue
         _set_turn_timestamp(turn, relative_timestamp + offset)
+
+
+def root_start_offset(graph: ConversationGraphData) -> float | None:
+    """Return the earliest relative timestamp among root turns.
+
+    Root turns have no parents. Child timestamps are ignored because
+    idle-gap replay retargets them from the parent.
+
+    :param graph: Conversation to inspect
+    :return: Minimum root timestamp, or None when no root turn is timed
+    """
+    timestamps: list[float] = []
+    for turn in graph.turns:
+        if turn.parents:
+            continue
+        timestamp = _turn_timestamp(turn)
+        if timestamp is not None:
+            timestamps.append(timestamp)
+    if not timestamps:
+        return None
+    return min(timestamps)
 
 
 def graph_min_timestamp(graph: ConversationGraphData) -> float:

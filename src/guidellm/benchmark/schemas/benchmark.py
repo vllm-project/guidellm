@@ -67,6 +67,22 @@ class GenerativeBenchmark(Benchmark[GenerativeBenchmarkAccumulator]):
             "Request details grouped by status: successful, incomplete, errored"
         ),
     )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Post-run warnings about this benchmark. Empty when nothing was "
+            "flagged. Trace replay uses this when conversations were missed "
+            "or queued after their scheduled start."
+        ),
+    )
+    unscheduled_conversations: int | None = Field(
+        default=None,
+        description=(
+            "Trace replay conversations that were due before queuing stopped "
+            "but were never enqueued. None when this run was not a single "
+            "trace replay. Zero when every due conversation was enqueued."
+        ),
+    )
 
     @computed_field  # type: ignore[prop-decorator]
     @property

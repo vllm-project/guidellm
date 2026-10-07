@@ -9,6 +9,7 @@ __all__ = [
     "DatasetDictType",
     "DatasetType",
     "GenerativeDatasetColumnType",
+    "IndefiniteDataset",
     "InvalidRowError",
 ]
 
@@ -36,6 +37,16 @@ DatasetType: TypeAlias = Dataset | IterableDataset
 
 
 DatasetDictType: TypeAlias = DatasetType | DatasetDict | IterableDatasetDict
+
+
+class IndefiniteDataset:
+    """
+    Marker for a dataset whose iteration never raises ``StopIteration``.
+
+    Synthetic generators use this so a full-dataset prefetch can fail before
+    the scheduler waits for an end that will not arrive. Finite file, trace,
+    and Hugging Face datasets do not inherit it.
+    """
 
 
 class DataNotSupportedError(Exception):

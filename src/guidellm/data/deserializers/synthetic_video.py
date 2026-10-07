@@ -14,6 +14,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
+from guidellm.data.schemas import IndefiniteDataset
 from guidellm.schemas.data.deserializers import SyntheticVideoDataArgs
 from guidellm.utils.random import IntegerRangeSampler
 from guidellm.utils.vision import synthesize_video
@@ -132,7 +133,7 @@ class _SyntheticVideoExamplesIterable(_BaseExamplesIterable):
         return self._state_dict
 
 
-class SyntheticVideoDataset(IterableDataset):
+class SyntheticVideoDataset(IndefiniteDataset, IterableDataset):
     def __init__(
         self,
         config: SyntheticVideoDataArgs,

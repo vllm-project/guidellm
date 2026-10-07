@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import Any, TypeVar
 
 import torch
@@ -14,7 +14,7 @@ from guidellm.data.preprocessors import (
     DataDependentPreprocessor,
     DatasetPreprocessor,
 )
-from guidellm.data.schemas import DatasetType
+from guidellm.data.schemas import DatasetType, IndefiniteDataset
 from guidellm.logger import logger
 from guidellm.schemas.data.loaders import TorchDataLoaderArgs
 from guidellm.utils.mixins import InfoMixin
@@ -24,6 +24,34 @@ __all__ = ["DatasetsIterator", "TorchDataLoader"]
 
 def _collate_first(batch: list) -> Any:
     return batch[0]
+
+
+def _reject_indefinite_full_prefetch(
+    min_prefetch: int,
+    datasets: Sequence[object],
+    samples: int,
+) -> None:
+    """
+    Raise when a full-dataset prefetch waits on a source that never ends.
+
+    A positive ``samples`` cap precaches a finite list, so the loader ends
+    even when the underlying datasets do not. A mix ends when any dataset is
+    finite, because iteration stops at the first exhausted dataset.
+
+    :param min_prefetch: Conversations required before the clock starts
+    :param datasets: Datasets the loader will iterate together
+    :param samples: Loader sample cap. Values above 0 make the source finite
+    :raises ValueError: If prefetch waits for the end of an indefinite source
+    """
+    if min_prefetch >= 0 or samples > 0:
+        return
+    if any(not isinstance(dataset, IndefiniteDataset) for dataset in datasets):
+        return
+    raise ValueError(
+        "min_prefetch=-1 preloads the entire dataset, but this data source "
+        "does not end. Set profile min_prefetch to a positive count, or set "
+        "samples to a positive cap."
+    )
 
 
 DataT = TypeVar("DataT")

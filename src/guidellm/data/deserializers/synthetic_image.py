@@ -14,6 +14,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializer,
     DatasetDeserializerFactory,
 )
+from guidellm.data.schemas import IndefiniteDataset
 from guidellm.schemas.data.deserializers import SyntheticImageDataArgs
 from guidellm.utils.random import IntegerRangeSampler
 from guidellm.utils.vision import synthesize_image
@@ -141,7 +142,7 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
         return self._state_dict
 
 
-class SyntheticImageDataset(IterableDataset):
+class SyntheticImageDataset(IndefiniteDataset, IterableDataset):
     def __init__(
         self,
         config: SyntheticImageDataArgs,

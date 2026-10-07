@@ -735,6 +735,40 @@ class TestWEKATraceFormat:
         )
 
     @pytest.mark.sanity
+    def test_replay_start_offsets_match_emitted_roots(
+        self, tmp_path: Path, deserializer, logot: Logot
+    ):
+        """
+        The timing-only schedule matches emitted root starts, including caps.
+
+        A conversation whose first turn exceeds ``max_context_len`` is omitted.
+        Building that schedule does not log the truncation; prompt generation does.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"id": "kept", "requests": ['
+            '{"t": 0.0, "in": 10, "out": 5, "hash_ids": []}, '
+            '{"t": 4.0, "in": 10, "out": 5, "hash_ids": []}, '
+            '{"t": 8.0, "in": 100, "out": 100, "hash_ids": []}]}\n'
+            '{"id": "skipped", "requests": ['
+            '{"t": 20.0, "in": 40, "out": 40, "hash_ids": []}]}\n',
+        )
+        ds = self.deserialize(deserializer, trace, max_context_len=30)
+        logot.assert_not_logged(debug("WEKA conversation 'skipped' truncated"))
+        assert ds.replay_start_offsets == [0.0]
+
+        rows = list(ds)
+        assert len(rows) == 1
+        turns = load_graph_turns(rows[0])
+        roots = [turn for turn in turns if not turn.parents]
+        assert [turn.columns["relative_timestamp_column"][0] for turn in roots] == [
+            ds.replay_start_offsets[0]
+        ]
+        assert [turn.node_id for turn in turns] == ["main_0", "main_1"]
+
+    @pytest.mark.sanity
     @pytest.mark.parametrize("hash_id_scope", [None, "global"])
     def test_multi_conversation_global_hash_id_scope_reuses_blocks(
         self,

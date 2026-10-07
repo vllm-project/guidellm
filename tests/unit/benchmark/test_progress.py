@@ -15,6 +15,7 @@ from guidellm.benchmark.progress import (
     CompositeBenchmarkerProgress,
     GenerativeConsoleBenchmarkerProgress,
     GenerativeLoggingBenchmarkerProgress,
+    _GenerativeProgressTaskState,
 )
 from guidellm.benchmark.schemas import (
     BenchmarkConfig,
@@ -226,3 +227,18 @@ async def test_queued_logs_share_rich_terminal(monkeypatch, accumulator):
     assert ": started |" in output.getvalue()
     assert ": completed |" in output.getvalue()
     assert sys.stderr is output
+
+
+@pytest.mark.sanity
+def test_prefetch_row_shows_loading_and_the_built_count():
+    """
+    A prefetch update labels the strategy row as loading and shows the count.
+
+    ## WRITTEN BY AI ##
+    """
+    state = _GenerativeProgressTaskState(strategy_type="replay")
+    state.show_prefetch(2, 5)
+    assert "loading" in state.formatted_progress_status
+    assert state.formatted_requests_summary == "2/5"
+    state.show_prefetch(3, None)
+    assert state.formatted_requests_summary == "3"

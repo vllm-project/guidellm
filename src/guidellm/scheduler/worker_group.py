@@ -15,7 +15,7 @@ import math
 import threading
 import time
 import uuid
-from collections.abc import AsyncIterator, Generator
+from collections.abc import AsyncIterator, Awaitable, Callable, Generator
 from multiprocessing import get_context
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import BaseManager
@@ -30,6 +30,7 @@ from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstrai
 from guidellm.scheduler.dag import DAGExecutionState
 from guidellm.scheduler.schemas import (
     BackendInterface,
+    ConversationGraph,
     ConversationT,
     DatasetIterT,
     RequestT,
@@ -37,7 +38,8 @@ from guidellm.scheduler.schemas import (
     SchedulerState,
     SchedulerUpdateAction,
 )
-from guidellm.scheduler.strategies import SchedulingStrategy
+from guidellm.scheduler.schemas.state import TraceConversationArrival
+from guidellm.scheduler.strategies import SchedulingStrategy, TraceReplayStrategy
 from guidellm.scheduler.worker import WorkerProcess
 from guidellm.schemas import RequestInfo
 from guidellm.settings import settings
@@ -49,6 +51,85 @@ from guidellm.utils.messaging import (
 )
 from guidellm.utils.pipe_stdout import PipeReaderThread
 from guidellm.utils.synchronous import wait_for_sync_objects
+
+_PREFETCH_LOG_INTERVAL_SEC = 10.0
+PrefetchProgress = Callable[[int, int | None], Awaitable[None]]
+
+
+def prefetch_load_message(built: int, target: int | None) -> str:
+    """
+    Format the dataset-load progress line.
+
+    :param built: Conversations built so far
+    :param target: Required count, or ``None`` when the whole dataset is loaded
+    :return: Log and display text for the current prefetch progress
+    """
+    if target is None:
+        return f"Loading dataset: {built} conversations"
+    return f"Loading dataset: {built}/{target} conversations"
+
+
+def resolve_min_prefetch(
+    min_prefetch: int | None,
+    *,
+    num_processes: int,
+    requests_limit: int | None,
+    zero_start_count: int,
+) -> int:
+    """
+    Choose how many conversations to build before the clock starts.
+
+    An explicit value is used as given. ``None`` waits for the greatest of
+    the worker count, the strategy concurrency cap, and trace conversations
+    due before the clock starts. An unset concurrency cap contributes 0, not
+    the global concurrency ceiling.
+
+    :param min_prefetch: Explicit count, ``0``, ``-1``, or ``None`` to compute
+    :param num_processes: Worker processes for this run
+    :param requests_limit: Strategy concurrency cap, or ``None`` when uncapped
+    :param zero_start_count: Trace conversations due before the clock starts
+    :return: Count passed to the prefetch wait. ``-1`` waits for the dataset
+    """
+    if min_prefetch is not None:
+        return min_prefetch
+    return max(num_processes, requests_limit or 0, zero_start_count)
+
+
+def prefetch_progress_target(resolved: int, schedule_length: int | None) -> int | None:
+    """
+    Choose the "out of" count shown while conversations are loading.
+
+    :param resolved: Wait count from :func:`resolve_min_prefetch`
+    :param schedule_length: Known trace length, used when waiting for the
+        whole dataset
+    :return: Required count, or ``None`` when the total is unknown
+    """
+    if resolved > 0:
+        return resolved
+    if resolved < 0:
+        return schedule_length
+    return None
+
+
+def _pending_queue_size(max_conc: int, min_prefetch: int) -> int:
+    """
+    Choose how many conversations the shared pending queue can hold.
+
+    Workers do not drain the queue until the clock starts. A positive prefetch
+    must fit, and ``-1`` is unlimited (``0``) so a finite dataset can be
+    exhausted. The size is one total for every worker, not a per-worker quota.
+
+    :param max_conc: Maximum concurrent requests for this run
+    :param min_prefetch: Conversations required before the clock starts
+    :return: Queue ``maxsize``. ``0`` means unlimited
+    """
+    size = max(1, math.floor(max_conc * settings.mp_max_pending_buffer_percent))
+    if min_prefetch > 0:
+        return max(size, min_prefetch)
+    if min_prefetch < 0:
+        return 0
+    return size
+
 
 __all__ = ["WorkerGroupState", "WorkerProcessGroup"]
 
@@ -107,6 +188,9 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         requests: DatasetIterT[RequestT],
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
+        min_prefetch: int | None = 0,
+        zero_start_count: int = 0,
+        schedule_length: int | None = None,
         **constraints: Constraint,
     ):
         """
@@ -115,11 +199,26 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         :param requests: Finite iterable of requests to process sequentially
         :param backend: Backend interface for processing requests
         :param strategy: Scheduling strategy for request timing and distribution
+        :param min_prefetch: Conversations to build before the clock starts.
+            ``None`` uses the worker count, strategy concurrency, and
+            ``zero_start_count``. ``0`` starts immediately. A positive count
+            sizes the shared pending queue to at least that many conversations.
+            ``-1`` leaves the queue unlimited so a finite dataset can be
+            exhausted first.
+        :param zero_start_count: Trace conversations due before the clock should
+            start. Used only when ``min_prefetch`` is ``None``
+        :param schedule_length: Known trace length shown as the load total
+            when ``min_prefetch`` is ``-1``
         :param constraints: Named constraints for controlling execution behavior
         """
         self.requests = iter(requests)
         self.backend = backend
         self.strategy = strategy
+        self.min_prefetch = min_prefetch
+        self.zero_start_count = zero_start_count
+        self.schedule_length = schedule_length
+        self.resolved_min_prefetch: int | None = None
+        self.prefetch_display_target: int | None = None
         self.constraints = constraints
 
         # Multiprocessing contexts and primitives, created in create_processes
@@ -183,9 +282,17 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             raise RuntimeError("num_processes resolved to 0; increase limits/config")
 
         per_proc_max_conc = max_conc // num_processes
-        max_pending_size = max(
-            1, math.floor(max_conc * settings.mp_max_pending_buffer_percent)
+        resolved = resolve_min_prefetch(
+            self.min_prefetch,
+            num_processes=num_processes,
+            requests_limit=self.strategy.requests_limit,
+            zero_start_count=self.zero_start_count,
         )
+        self.resolved_min_prefetch = resolved
+        self.prefetch_display_target = prefetch_progress_target(
+            resolved, self.schedule_length
+        )
+        max_pending_size = _pending_queue_size(max_conc, resolved)
         per_proc_max_buffer_size = 1
 
         # Initialize multiprocessing components
@@ -327,15 +434,30 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                     self.error_event.set()
                 return
 
-    async def start(self, start_time: float):
+    async def start(
+        self,
+        start_time: float,
+        *,
+        min_prefetch: int = 0,
+        on_prefetch: PrefetchProgress | None = None,
+    ):
         """
         Begin request processing at the specified start time.
 
         Initializes scheduler state and background tasks, then waits until the
         specified start time before beginning operations. Sets up inter-process
         communication and coordinates synchronized startup across all workers.
+        When ``min_prefetch`` is ``-1`` or positive, the generator runs first and
+        the clock is set only after that many conversations are built or the
+        dataset ends.
 
-        :param start_time: Unix timestamp when processing should begin
+        :param start_time: Unix timestamp when processing should begin. Ignored
+            when ``min_prefetch`` holds the clock; the start is then
+            ``time.time()`` plus the non-distributed start delay.
+        :param min_prefetch: Conversations required before the clock starts.
+            ``0`` starts immediately.
+        :param on_prefetch: Called with the built count and optional target while
+            the clock is held. Ignored when ``min_prefetch`` is ``0``.
         :raises RuntimeError: If workers encounter errors during startup or
             if create_processes() was not called first
         """
@@ -349,7 +471,12 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         ):
             raise RuntimeError("create_processes() must be called before start()")
 
-        self.strategy.init_processes_start(start_time=start_time)
+        resolved = getattr(self, "resolved_min_prefetch", None)
+        if resolved is not None:
+            min_prefetch = resolved
+        hold_clock = min_prefetch != 0
+        if not hold_clock:
+            self.strategy.init_processes_start(start_time=start_time)
         stop_send_requests_event = threading.Event()
         send_requests_stopped_event = threading.Event()
         self.state = WorkerGroupState[RequestT, ResponseT](
@@ -365,6 +492,8 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             error_event=self.error_event,
             messaging=self.messaging,
         )
+        if hold_clock:
+            self.state.hold_clock()
         await self.messaging.start(
             send_items=self.state.requests_generator(self.requests),
             receive_callback=self.state.received_callback,
@@ -372,6 +501,19 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             send_stop_criteria=[stop_send_requests_event],
             receive_stop_criteria=[self.shutdown_event],
         )
+
+        if hold_clock:
+            display_target = getattr(self, "prefetch_display_target", None)
+            if resolved is None:
+                display_target = prefetch_progress_target(min_prefetch, None)
+            await self._wait_for_min_prefetch(
+                min_prefetch,
+                on_prefetch,
+                display_target=display_target,
+            )
+            start_time = time.time() + settings.scheduler_start_delay_non_distributed
+            self.strategy.init_processes_start(start_time=start_time)
+            self.state.set_start_time(start_time)
 
         if (wait_time := start_time - time.time()) > 0:
             await asyncio.sleep(wait_time)
@@ -381,6 +523,75 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 or "an error occurred in one of the worker processes"
             )
             raise RuntimeError(f"error_event is set in WorkerProcessGroup: {detail}")
+
+    async def _wait_for_min_prefetch(
+        self,
+        min_prefetch: int,
+        on_prefetch: PrefetchProgress | None = None,
+        *,
+        display_target: int | None = None,
+    ) -> None:
+        """
+        Block until the prefetch requirement is met or the generator finishes.
+
+        Logs load progress when the wait starts and every 10 seconds after that.
+        Notifies ``on_prefetch`` when the built count changes.
+
+        :param min_prefetch: ``-1`` to wait for the generator, or a positive count
+        :param on_prefetch: Optional live-view callback for the built count
+        :param display_target: Required count shown as the load total. A
+            positive ``min_prefetch`` uses itself when this is omitted. ``-1``
+            shows this length when it is known, and a bare count otherwise.
+        :raises RuntimeError: If a worker fails while prefetch is in progress
+        """
+        if self.state is None or self.error_event is None:
+            raise RuntimeError("create_processes() must be called before start()")
+        target = display_target
+        if target is None and min_prefetch > 0:
+            target = min_prefetch
+        last_logged = time.monotonic()
+        last_built = await self._report_prefetch(on_prefetch, target, None)
+        while not self.state.prefetch_ready(min_prefetch):
+            if self.error_event.is_set():
+                detail = (
+                    self._worker_error_details
+                    or "an error occurred in one of the worker processes"
+                )
+                raise RuntimeError(
+                    f"error_event is set in WorkerProcessGroup: {detail}"
+                )
+            now = time.monotonic()
+            if now - last_logged >= _PREFETCH_LOG_INTERVAL_SEC:
+                logger.info(
+                    "{}",
+                    prefetch_load_message(self.state.conversations_built(), target),
+                )
+                last_logged = now
+            last_built = await self._report_prefetch(on_prefetch, target, last_built)
+            await asyncio.sleep(settings.mp_poll_interval)
+
+    async def _report_prefetch(
+        self,
+        on_prefetch: PrefetchProgress | None,
+        target: int | None,
+        last_built: int | None,
+    ) -> int:
+        """
+        Log the first load line and notify the live view when the count changes.
+
+        :param on_prefetch: Live-view callback, or ``None`` to skip it
+        :param target: Required count, or ``None`` for a full-dataset prefetch
+        :param last_built: Previous built count, or ``None`` before the first report
+        :return: Built count after this report
+        """
+        if self.state is None:
+            raise RuntimeError("create_processes() must be called before start()")
+        built = self.state.conversations_built()
+        if last_built is None:
+            logger.info("{}", prefetch_load_message(built, target))
+        if on_prefetch is not None and built != last_built:
+            await on_prefetch(built, target)
+        return built
 
     async def request_updates(
         self,
@@ -537,6 +748,34 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         return None
 
 
+def _trace_conversation_arrival(
+    strategy: SchedulingStrategy,
+    graph: ConversationGraph[RequestT],
+) -> TraceConversationArrival | None:
+    """Record when a replay conversation was ready, using its earliest root turn.
+
+    Child turns are omitted. Idle-gap replay moves their targets after the
+    parent finishes, which would hide a late session start.
+
+    :param strategy: Active scheduling strategy
+    :param graph: Conversation about to be enqueued
+    :return: Arrival record for trace replay, otherwise None
+    """
+    if not isinstance(strategy, TraceReplayStrategy):
+        return None
+    offsets: list[float] = []
+    for node_id in graph.root_node_ids:
+        timestamp = graph.nodes[node_id].settings.relative_timestamp
+        if timestamp is not None:
+            offsets.append(timestamp)
+    if not offsets:
+        return None
+    return TraceConversationArrival(
+        scheduled_offset=min(offsets),
+        queued_at=time.time(),
+    )
+
+
 class _StateUpdate(NamedTuple):
     """Internal state update result with control flags."""
 
@@ -603,6 +842,54 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self._queued_request_ids: set[str] = set()
         self._pending_request_ids: set[str] = set()
         self._processing_request_ids: set[str] = set()
+        # While false, duration constraints do not see the prefetch interval.
+        self._clock_running = True
+        self._conversations_built = 0
+
+    def hold_clock(self) -> None:
+        """Keep duration constraints from treating prefetch time as run time."""
+        self._clock_running = False
+
+    def set_start_time(self, start_time: float) -> None:
+        """
+        Record the clock time once prefetch has finished.
+
+        :param start_time: Unix timestamp when workers may send requests
+        """
+        with self._update_lock:
+            self.start_time = start_time
+            self._state.start_time = start_time
+            self._clock_running = True
+
+    def conversations_built(self) -> int:
+        """
+        Return how many conversations the generator has built.
+
+        :return: Conversations pulled from the request source so far
+        """
+        with self._update_lock:
+            return self._conversations_built
+
+    def prefetch_ready(self, min_prefetch: int) -> bool:
+        """
+        Report whether enough conversations are built to start the clock.
+
+        ``0`` is ready immediately. A positive count is ready once that many
+        conversations are built, or when the generator finishes with fewer.
+        ``-1`` stays unready until the generator finishes.
+
+        :param min_prefetch: Required count, ``0``, or ``-1`` to wait for the
+            generator
+        :return: True when the clock should start
+        """
+        with self._update_lock:
+            built = self._conversations_built
+            generator_done = self.stop_send_requests_event.is_set()
+        if min_prefetch == 0 or generator_done:
+            return True
+        if min_prefetch < 0:
+            return False
+        return built >= min_prefetch
 
     def _find_request_id(self, request: RequestT) -> str:
         if hasattr(request, "request_id"):
@@ -635,7 +922,11 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             for graph in requests:
                 # NOTE: This must be at the start of the loop
                 generation_delay = time.monotonic() - yield_attempted
-                self.update_state(generation_delay=generation_delay)
+                trace_arrival = _trace_conversation_arrival(self.strategy, graph)
+                self.update_state(
+                    generation_delay=generation_delay,
+                    trace_arrival=trace_arrival,
+                )
 
                 dag_state: DAGExecutionState[RequestT, ResponseT] = DAGExecutionState(
                     graph
@@ -776,6 +1067,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         info: RequestInfo | None = None,
         add_constraints: dict[str, Constraint] | None = None,
         generation_delay: float | None = None,
+        trace_arrival: TraceConversationArrival | None = None,
     ) -> _StateUpdate:
         """Update scheduler state and re-evaluate constraints.
 
@@ -787,6 +1079,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         :param add_constraints: Constraints to register before evaluation
         :param generation_delay: Conversation-level request-generator delay to
             record once per conversation, or ``None`` to skip
+        :param trace_arrival: Replay enqueue record for this conversation, or
+            ``None`` when the strategy is not trace replay
         :return: Copied scheduler state and stop flags
         """
         with self._update_lock:
@@ -798,8 +1092,12 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 self._update_state_request_counts(info)
             if generation_delay is not None:
                 self._state.generation_delay_samples.append(generation_delay)
+                self._conversations_built += 1
+            if trace_arrival is not None:
+                self._state.trace_conversation_arrivals.append(trace_arrival)
 
-            self._update_with_constraints(info)
+            if self._clock_running:
+                self._update_with_constraints(info)
 
             state_copy: SchedulerState = self._state.model_copy()
 
