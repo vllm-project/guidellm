@@ -28,8 +28,8 @@ def _request(
     ttft_seconds: float | None = 0.1,
     latency_seconds: float = 1.0,
     status: str = "completed",
+    start: float = 1000.0,
 ) -> RequestInfo:
-    start = 1000.0
     return RequestInfo(
         request_id=str(request_id),
         status=status,  # type: ignore[arg-type]
@@ -364,6 +364,51 @@ class TestTargetMoeConstraint:
         assert action.metadata["required_samples"] == expected
         assert action.progress.total_requests == expected
         assert action.progress.remaining_requests == expected - 100
+
+    @pytest.mark.sanity
+    def test_estimated_remaining_seconds(self):
+        """
+        Test that the remaining time divides the samples still needed by the
+        rate at which samples have completed so far.
+
+        ## WRITTEN BY AI ##
+        """
+        constraint = TargetMoeConstraint(moe=0.01, min_samples=100, check_interval=100)
+        state = SchedulerState()
+        action = None
+
+        # One completion every 0.1 seconds, a rate of 10 samples per second.
+        for index, ttft in enumerate(_lognormal_ttfts(100)):
+            info = _request(index, ttft_seconds=ttft, start=1000.0 + 0.1 * index)
+            action = constraint(state, info)
+
+        assert action is not None
+        remaining = action.metadata["required_samples"] - 100
+        assert remaining > 0
+        assert action.metadata["estimated_remaining_seconds"] == pytest.approx(
+            remaining / 10.0
+        )
+
+    @pytest.mark.sanity
+    def test_estimated_remaining_seconds_edges(self):
+        """
+        Test that the remaining time is zero once the target is reached and
+        unknown while no completion rate can be measured.
+
+        ## WRITTEN BY AI ##
+        """
+        reached = TargetMoeConstraint(moe=0.05, min_samples=30, check_interval=30)
+        unmeasured = TargetMoeConstraint(moe=0.001, min_samples=30, check_interval=30)
+
+        reached_action = _feed(reached, [0.1] * 30)
+        # Every sample completes at the same instant, so no rate is available.
+        unmeasured_action = _feed(unmeasured, _lognormal_ttfts(30))
+
+        assert reached_action is not None
+        assert unmeasured_action is not None
+        assert reached_action.metadata["estimated_remaining_seconds"] == 0.0
+        assert unmeasured_action.metadata["required_samples"] > 30
+        assert unmeasured_action.metadata["estimated_remaining_seconds"] is None
 
     @pytest.mark.sanity
     def test_request_latency_metric(self):

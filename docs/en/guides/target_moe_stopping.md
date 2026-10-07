@@ -13,7 +13,7 @@ The relative margin of error is the larger distance from the estimate to either 
 
 A percentile cannot be bounded at all until the sample is large enough: at 95% confidence that takes 72 requests for p95, 368 for p99 and 3688 for p999. The constraint does not check a percentile before that point.
 
-While the run is in progress, the constraint estimates how many samples the target still needs. The interval width shrinks with the square root of the sample count, so the estimate scales the current count by the squared ratio of the current margin to the target.
+While the run is in progress, the constraint estimates how many samples the target still needs. The interval width shrinks with the square root of the sample count, so the estimate scales the current count by the squared ratio of the current margin to the target. Dividing the samples still needed by the rate at which samples have completed so far gives an estimate of the remaining time.
 
 ## Usage
 
@@ -61,6 +61,7 @@ When the target is reached, the constraint appears under `end_processing_constra
 - **`lower`** / **`upper`** (float): Confidence bounds at the last check
 - **`relative_moe`** (float): Relative margin of error at the last check
 - **`required_samples`** (int): Estimated number of samples needed to reach the target
+- **`estimated_remaining_seconds`** (float): Estimated time until the target is reached, from the rate at which samples have completed so far
 
 ## Limitations
 

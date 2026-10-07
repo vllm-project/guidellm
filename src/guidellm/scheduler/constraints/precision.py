@@ -86,7 +86,8 @@ class TargetMoeConstraint(Constraint):
     computes a confidence interval for the configured statistic. Once the larger
     distance from the estimate to either bound falls to ``moe`` times the
     estimate, request queuing and local processing stop. The decision is kept
-    for the rest of the run.
+    for the rest of the run. Each check also estimates the samples and seconds
+    still needed to reach the target.
 
     The interval treats requests as independent draws. Requests issued under load
     share queue state, so it describes how precisely this run located its own
@@ -163,6 +164,9 @@ class TargetMoeConstraint(Constraint):
         self.upper: float | None = None
         self.relative_moe: float | None = None
         self.required_samples: int | None = None
+        self.estimated_remaining_seconds: float | None = None
+        self.first_sample_time: float | None = None
+        self.last_sample_time: float | None = None
         self.target_reached = False
         self._recorded_request_ids: set[str] = set()
 
@@ -199,6 +203,7 @@ class TargetMoeConstraint(Constraint):
                 "upper": self.upper,
                 "relative_moe": self.relative_moe,
                 "required_samples": self.required_samples,
+                "estimated_remaining_seconds": self.estimated_remaining_seconds,
                 "target_moe_reached": self.target_reached,
                 "stop_time": stop_time,
             },
@@ -226,6 +231,11 @@ class TargetMoeConstraint(Constraint):
         self.mean += delta / self.count
         self.sum_squares += delta * (value - self.mean)
 
+        if (completed_at := request_info.completed_at) is not None:
+            if self.first_sample_time is None:
+                self.first_sample_time = completed_at
+            self.last_sample_time = completed_at
+
     def _check_due(self) -> bool:
         return (
             self.count >= self.min_samples
@@ -234,6 +244,10 @@ class TargetMoeConstraint(Constraint):
 
     def _evaluate(self) -> None:
         self.last_checked_count = self.count
+        self._update_margin()
+        self.estimated_remaining_seconds = self._remaining_seconds()
+
+    def _update_margin(self) -> None:
         estimate, interval, minimum_count = self._interval()
         self.estimate = estimate
 
@@ -256,6 +270,25 @@ class TargetMoeConstraint(Constraint):
         # which extrapolates the samples still needed from the current spread.
         scaled = self.count * (self.relative_moe / self.moe) ** 2
         self.required_samples = max(self.count, minimum_count, math.ceil(scaled))
+
+    def _remaining_seconds(self) -> float | None:
+        if self.required_samples is None:
+            return None
+
+        remaining = max(0, self.required_samples - self.count)
+        if remaining == 0:
+            return 0.0
+
+        if (
+            self.first_sample_time is None
+            or self.last_sample_time is None
+            or self.last_sample_time <= self.first_sample_time
+        ):
+            return None
+
+        # Extrapolate at the rate samples have been arriving so far.
+        rate = (self.count - 1) / (self.last_sample_time - self.first_sample_time)
+        return remaining / rate
 
     def _interval(self) -> tuple[float, tuple[float, float] | None, int]:
         if self.statistic == "mean":
