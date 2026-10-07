@@ -2,47 +2,56 @@
 
 GuideLLM's `knee` profile estimates where output throughput stops increasing substantially as concurrency rises. This transition is the throughput knee. The profile runs an initial set of concurrency points, reports the knee, and optionally selects additional points around it to refine the estimate.
 
-Use `--profile kind=knee` to enable knee detection. Adaptive refinement is disabled by default.
+Use `--profile` with `kind=knee` and either an `initial_streams` list or `min_streams`, `max_streams`, and `count` to enable knee detection. Adaptive refinement is disabled by default.
 
 ## Basic Usage
 
-Calculate and report a knee from an existing set of concurrency points:
+Measure a chosen set of concurrency points and report a knee:
 
 ```bash
 guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000/v1 \
-  --profile kind=knee \
-  --override profile.streams 1,5,10,20,40,80,160 \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile '{"kind":"knee","initial_streams":[1,5,10,20,40,80,160]}' \
   --data kind=synthetic_text,prompt_tokens=1000,output_tokens=1000 \
   --constraint kind=max_duration,seconds=60 \
   --output kind=json,path=knee-benchmark.json
 ```
 
-To run additional concurrency points automatically, use these profile and override options:
+To run additional concurrency points automatically, set the adaptive options on the same profile:
 
 ```bash
---profile kind=knee,adaptive=true,points_each_side=5,max_step=3 \
---override profile.streams 1,5,10,20,40,80,160
+--profile '{"kind":"knee","initial_streams":[1,5,10,20,40,80,160],"adaptive":true,"points_each_side":5,"max_step":3}'
 ```
 
-The knee profile uses concurrent scheduling strategies and requires distinct positive integer stream counts. Initial points run in the supplied order. At least five completed concurrency points with output-throughput measurements are required to fit a knee. Choose a range that covers both rising throughput and a plateau; a curve that is flat or approximately linear produces `status: no_knee`.
+To generate an evenly spaced initial set instead, provide inclusive bounds and a point count:
+
+```bash
+--profile '{"kind":"knee","min_streams":1,"max_streams":9,"count":5}'
+```
+
+This example runs concurrency points `1, 3, 5, 7, 9`. Generated points are rounded to the nearest integer, with ties rounded upward. The bounds must contain enough integers to produce the requested number of distinct points. Use `initial_streams` when you need exact, unevenly spaced values.
+
+The knee profile uses concurrent scheduling strategies and requires at least five distinct positive integer concurrency points in increasing order. At least five completed concurrency points with output-throughput measurements are required to fit a knee. Choose a range that covers both rising throughput and a plateau; a curve that is flat or approximately linear produces `status: no_knee`.
 
 ## Configuration
 
-| Option             | Default  | Description                                                                 |
-| ------------------ | -------- | --------------------------------------------------------------------------- |
-| `streams`          | Required | Initial concurrency points to measure.                                      |
-| `adaptive`         | `false`  | Run additional concurrency points around the initial saturation estimate.   |
-| `points_each_side` | `5`      | Maximum number of grid points selected below and above the adaptive anchor. |
-| `max_step`         | `5`      | Largest integer spacing considered for the adaptive concurrency grid.       |
+| Option             | Default | Description                                                                 |
+| ------------------ | ------- | --------------------------------------------------------------------------- |
+| `initial_streams`  | —       | Exact initial concurrency points, at least five in increasing order.        |
+| `min_streams`      | —       | Lowest generated initial concurrency, inclusive.                            |
+| `max_streams`      | —       | Highest generated initial concurrency, inclusive.                           |
+| `count`            | —       | Number of generated points, at least five.                                  |
+| `adaptive`         | `false` | Run additional concurrency points around the initial saturation estimate.   |
+| `points_each_side` | `5`     | Maximum number of grid points selected below and above the adaptive anchor. |
+| `max_step`         | `5`     | Largest integer spacing considered for the adaptive concurrency grid.       |
 
-Set `streams` with `--override profile.streams`; the remaining options belong to the profile. `points_each_side` and `max_step` must be positive integers. All adaptive concurrency values are positive integers. GuideLLM removes concurrency points that were already measured before starting adaptive refinement. Standard profile timing options (`rampup_duration`, `warmup`, and `cooldown`) apply to both phases.
+Set either `initial_streams` or all three of `min_streams`, `max_streams`, and `count` on the knee profile. Both forms run as one benchmark. `points_each_side` and `max_step` must be positive integers. All adaptive concurrency values are positive integers. GuideLLM removes concurrency points that were already measured before starting adaptive refinement. Standard profile timing options (`rampup_duration`, `warmup`, and `cooldown`) apply to both phases.
 
 ## How the Knee Is Calculated
 
-GuideLLM uses successful output tokens per second as throughput and concurrent streams as load. It performs the following analysis:
+GuideLLM uses successful output tokens per second as throughput and concurrency as load. It performs the following analysis:
 
-1. Sort the measurements by concurrency and ignore measurements without throughput. The standalone fitting function averages duplicate concurrency measurements, but the knee profile requires distinct stream counts because repeated saturation detector decisions can be ambiguous.
+1. Sort the measurements by concurrency and ignore measurements without throughput. The standalone fitting function averages duplicate concurrency measurements, but the knee profile requires distinct concurrency points because repeated saturation detector decisions can be ambiguous.
 2. Normalize concurrency and throughput to comparable scales.
 3. Fit one line to the complete throughput curve.
 4. Try eligible breakpoints and fit a rising line before each breakpoint and a tail line after it.

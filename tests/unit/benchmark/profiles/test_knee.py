@@ -70,7 +70,9 @@ def _benchmark(streams, throughput=None, saturated=None):
 
 
 def _profile(**kwargs):
-    return KneeProfile(KneeProfileArgs(streams=INITIAL, max_step=3, **kwargs), 42, {})
+    return KneeProfile(
+        KneeProfileArgs(initial_streams=INITIAL, max_step=3, **kwargs), 42, {}
+    )
 
 
 def _run_profile(profile, make_benchmark=_benchmark):
@@ -93,7 +95,7 @@ def test_knee_profile_is_registered():
 
     ## WRITTEN BY AI ##
     """
-    profile = ProfileFactory.create(KneeProfileArgs(streams=INITIAL), 42, {})
+    profile = ProfileFactory.create(KneeProfileArgs(initial_streams=INITIAL), 42, {})
     assert isinstance(profile, KneeProfile)
     assert profile.conclusion is None
 
@@ -117,32 +119,41 @@ def test_knee_profile_refines_once_and_includes_last_result(adaptive):
     assert conclusion["final"] == analyze_knee(benchmarks).model_dump(mode="json")
     assert conclusion["final"]["throughput"]["knee"] == pytest.approx(20)
     assert len(conclusion["final"]["saturation"]["points"]) == len(benchmarks)
-    assert profile.info["streams"] == INITIAL
+    assert profile.info["initial_streams"] == INITIAL
     assert profile.info["kind"] == "knee"
     assert profile.next_strategy(None, None) is None
 
 
 @pytest.mark.sanity
 @pytest.mark.parametrize(
-    "case", ["linear", "flat", "insufficient", "disagreement", "measured"]
+    "case", ["linear", "flat", "disagreement", "measured", "generated"]
 )
 def test_knee_profile_skips_unhelpful_refinement(case):
     """Avoid extra runs when evidence or remaining grid points do not support them.
 
     ## WRITTEN BY AI ##
     """
-    streams = [1, 2, 3, 4] if case == "insufficient" else INITIAL
+    streams = INITIAL
     if case == "measured":
         streams = [1, 2, 3, 4, 5]
+    elif case == "generated":
+        streams = [1, 3, 5, 7, 9]
+    initial_options = (
+        {"min_streams": 1, "max_streams": 9, "count": 5}
+        if case == "generated"
+        else {"initial_streams": streams}
+    )
     profile = KneeProfile(
-        KneeProfileArgs(streams=streams, adaptive=True, points_each_side=2, max_step=1),
+        KneeProfileArgs(
+            adaptive=True, points_each_side=2, max_step=1, **initial_options
+        ),
         42,
         {},
     )
 
     def result(concurrency):
         throughput = None
-        if case == "linear":
+        if case in {"linear", "generated"}:
             throughput = concurrency * 100
         elif case == "flat":
             throughput = 100
@@ -152,20 +163,22 @@ def test_knee_profile_skips_unhelpful_refinement(case):
         return _benchmark(concurrency, throughput, saturated)
 
     benchmarks = _run_profile(profile, result)
-    assert len(benchmarks) == len(streams)
+    assert [benchmark.config.strategy.streams for benchmark in benchmarks] == streams
     assert profile.conclusion["adaptive_plan"]["status"] == "skipped"
     assert profile.conclusion["final"] == profile.conclusion["initial"]
 
 
 @pytest.mark.regression
 def test_knee_profile_can_refine_an_oversaturation_boundary_without_a_fit():
-    """Use temporal evidence when the initial sweep has too few points to fit.
+    """Use temporal evidence when throughput has no knee fit.
 
     ## WRITTEN BY AI ##
     """
-    initial = [1, 5, 10, 20]
+    initial = [1, 5, 10, 20, 40]
     profile = KneeProfile(
-        KneeProfileArgs(streams=initial, adaptive=True, points_each_side=1, max_step=1),
+        KneeProfileArgs(
+            initial_streams=initial, adaptive=True, points_each_side=1, max_step=1
+        ),
         42,
         {},
     )
@@ -240,6 +253,7 @@ async def test_profile_uses_one_benchmark_lifecycle_and_normal_report(
         "cooldown": 1.0,
     }
     if kind == "knee":
+        profile_args["initial_streams"] = profile_args.pop("streams")
         profile_args.update(adaptive=adaptive, max_step=3)
     output_path = tmp_path / "benchmarks.json"
     args = BenchmarkScenario.create(

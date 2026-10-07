@@ -249,7 +249,7 @@ def test_run_accepts_knee_profile(monkeypatch, adaptive):
             json.dumps(
                 {
                     "kind": "knee",
-                    "streams": [1, 5, 10, 20, 40],
+                    "initial_streams": [1, 5, 10, 20, 40],
                     "points_each_side": 3,
                     "max_step": 2,
                     **({"adaptive": True} if adaptive else {}),
@@ -261,7 +261,7 @@ def test_run_accepts_knee_profile(monkeypatch, adaptive):
     benchmark.assert_awaited_once()
     profile = benchmark.call_args.kwargs["args"].spec.profile
     assert profile.kind == "knee"
-    assert profile.streams == [1, 5, 10, 20, 40]
+    assert profile.initial_streams == [1, 5, 10, 20, 40]
     assert profile.adaptive is adaptive
     assert profile.points_each_side == 3
     assert profile.max_step == 2
@@ -269,16 +269,34 @@ def test_run_accepts_knee_profile(monkeypatch, adaptive):
 
 @pytest.mark.regression
 @pytest.mark.parametrize(
-    ("profile_option", "adaptive"),
+    ("adaptive", "profile_options", "expected"),
     [
-        ("kind=knee", False),
-        ("kind=knee,adaptive=true,points_each_side=5,max_step=3", True),
+        (
+            False,
+            {"initial_streams": [1, 5, 10, 20, 40, 80, 160]},
+            [1, 5, 10, 20, 40, 80, 160],
+        ),
+        (
+            True,
+            {
+                "initial_streams": [1, 5, 10, 20, 40, 80, 160],
+                "adaptive": True,
+                "points_each_side": 5,
+                "max_step": 3,
+            },
+            [1, 5, 10, 20, 40, 80, 160],
+        ),
+        (
+            False,
+            {"min_streams": 1, "max_streams": 9, "count": 5},
+            [1, 3, 5, 7, 9],
+        ),
     ],
 )
 def test_knee_profile_accepts_canonical_cli_options(
-    monkeypatch, profile_option, adaptive
+    monkeypatch, adaptive, profile_options, expected
 ):
-    """Use the documented knee profile and stream override syntax.
+    """Use one knee profile with either initial concurrency configuration.
 
     ## WRITTEN BY AI ##
     """
@@ -289,12 +307,9 @@ def test_knee_profile_accepts_canonical_cli_options(
         [
             "run",
             "--backend",
-            "kind=openai_http,target=http://localhost:8000/v1",
+            "kind=openai_http,target=http://localhost:8000",
             "--profile",
-            profile_option,
-            "--override",
-            "profile.streams",
-            "1,5,10,20,40,80,160",
+            json.dumps({"kind": "knee", **profile_options}),
             "--data",
             "kind=synthetic_text,prompt_tokens=1000,output_tokens=1000",
             "--constraint",
@@ -310,21 +325,11 @@ def test_knee_profile_accepts_canonical_cli_options(
     assert scenario.spec.profile.adaptive is adaptive
     assert scenario.spec.profile.points_each_side == 5
     assert scenario.spec.profile.max_step == (3 if adaptive else 5)
-    assert [benchmark.profile.streams for benchmark in scenario.get_benchmarks()] == [
-        [1],
-        [5],
-        [10],
-        [20],
-        [40],
-        [80],
-        [160],
-    ]
-    assert resolve_to_single_benchmark(scenario.get_benchmarks()).profile.streams == [
-        1,
-        5,
-        10,
-        20,
-        40,
-        80,
-        160,
-    ]
+    assert len(scenario.get_benchmarks()) == 1
+    assert scenario.spec.profile.resolved_initial_streams() == expected
+    assert (
+        resolve_to_single_benchmark(
+            scenario.get_benchmarks()
+        ).profile.resolved_initial_streams()
+        == expected
+    )

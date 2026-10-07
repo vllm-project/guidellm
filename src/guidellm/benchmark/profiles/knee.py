@@ -42,7 +42,8 @@ class KneeProfile(Profile):
     ):
         super().__init__(args, random_seed, constraints, **kwargs)
         self.args = args
-        self._streams = list(args.streams)
+        self._initial_streams = args.resolved_initial_streams()
+        self._streams = list(self._initial_streams)
         self._benchmarks: list[GenerativeBenchmark] = []
         self._initial: KneeAnalysis | None = None
         self._adaptive_plan: AdaptiveConcurrencyPlan | None = None
@@ -56,7 +57,7 @@ class KneeProfile(Profile):
         :return: Concurrent strategy types, one per possible benchmark
         """
         extra = 2 * self.args.points_each_side + 1 if self.args.adaptive else 0
-        return ["concurrent"] * (len(self.args.streams) + extra)
+        return ["concurrent"] * (len(self._initial_streams) + extra)
 
     @property
     def conclusion(self) -> dict[str, Any] | None:
@@ -98,7 +99,7 @@ class KneeProfile(Profile):
             )
 
         if self._initial is None and (
-            stopped or len(self._benchmarks) == len(self.args.streams)
+            stopped or len(self._benchmarks) == len(self._initial_streams)
         ):
             self._plan_refinement(stopped)
 

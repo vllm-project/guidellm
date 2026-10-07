@@ -154,11 +154,12 @@ Measures an initial set of concurrency points and estimates where output through
 
 ```bash
 guidellm run \
-  --profile kind=knee,adaptive=true,points_each_side=5,max_step=3 \
-  --override profile.streams 1,5,10,20,40,80,160
+  --profile '{"kind":"knee","initial_streams":[1,5,10,20,40,80,160],"adaptive":true,"points_each_side":5,"max_step":3}'
 ```
 
 The profile uses concurrent strategies for both phases and stores its initial analysis, adaptive plan, and final analysis in the report's `conclusions` list. See the [Knee Profile Guide](../guides/knee_detection.md) for configuration and calculation details.
+
+For evenly spaced starting points, use `--profile '{"kind":"knee","min_streams":1,"max_streams":9,"count":5}'`. Use `initial_streams` when you need to choose every concurrency point yourself.
 
 #### Constant Profile
 
