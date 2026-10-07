@@ -37,6 +37,7 @@ from guidellm.schemas.benchmark.outputs import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.profiles import ProfileArgs
 from guidellm.schemas.benchmark.random import RandomArgs
 from guidellm.schemas.benchmark.scenarios import get_builtin_scenarios
+from guidellm.schemas.benchmark.server_metrics import ServerMetricsArgs
 from guidellm.schemas.benchmark.warnings import (
     WarningRuleArgs,
     default_warning_rules,
@@ -258,6 +259,17 @@ class BenchmarkArgs(ReloadableBaseModel):
         default_factory=lambda: default_kind("generative"),
         description="Configuration for metrics collection and request sampling.",
         json_schema_extra={"argument_alias": "metrics"},
+    )
+    server_metrics: list[ServerMetricsArgs] = Field(  # type: ignore[assignment]
+        default_factory=list,
+        description=(
+            "Server metrics sources to scrape while each benchmark runs, such as "
+            "a vLLM Prometheus /metrics endpoint."
+        ),
+        examples=[
+            {"kind": "prometheus", "url": "http://localhost:8000/metrics"},
+        ],
+        json_schema_extra={"argument_alias": "server_metrics"},
     )
 
     @model_validator(mode="after")
