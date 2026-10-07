@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 import httpx
@@ -305,8 +305,12 @@ class OpenAIHTTPBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
+        # This timestamp is overridden if a trace event is handled
         request_info.timings.request_start = time.time()
-        response = await self._async_client.request(**request_kwargs)
+        response = await self._async_client.request(
+            **request_kwargs,
+            extensions={"trace": self._trace_request_start(request_info)},
+        )
         request_info.timings.request_end = time.time()
         response.raise_for_status()
         data = response.json()
@@ -341,9 +345,13 @@ class OpenAIHTTPBackend(Backend):
             raise RuntimeError("Backend not started up for process.")
 
         try:
+            # This timestamp is overridden if a trace event is handled
             request_info.timings.request_start = time.time()
 
-            async with self._async_client.stream(**request_kwargs) as stream:
+            async with self._async_client.stream(
+                **request_kwargs,
+                extensions={"trace": self._trace_request_start(request_info)},
+            ) as stream:
                 stream.raise_for_status()
                 end_reached = False
 
@@ -405,6 +413,25 @@ class OpenAIHTTPBackend(Backend):
             if not line.strip():
                 continue  # Skip blank lines
             yield line
+
+    @staticmethod
+    def _trace_request_start(
+        request_info: RequestInfo,
+    ) -> Callable[[str, dict[str, Any]], Awaitable[None]]:
+        """Return a trace hook that sets ``request_start`` at the first header write."""
+        recorded = False
+
+        async def trace(event_name: str, info: dict[str, Any]) -> None:
+            nonlocal recorded
+            if recorded or not event_name.endswith(".send_request_headers.started"):
+                return
+            request = info.get("request")
+            if request is not None and request.method == b"CONNECT":
+                return
+            recorded = True
+            request_info.timings.request_start = time.time()
+
+        return trace
 
     def _build_headers(
         self, existing_headers: dict[str, str] | None = None
