@@ -52,6 +52,14 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: Output Guide](outputs.md)
 
+- :material-alert-outline:{ .lg .middle } Warnings
+
+  ______________________________________________________________________
+
+  Configure post-benchmark warnings from metric paths, thresholds, and notes on `--metrics`, in a scenario file, or in the environment.
+
+  [:octicons-arrow-right-24: Warnings Guide](warnings.md)
+
 - :material-target:{ .lg .middle } Service Level Objectives
 
   ______________________________________________________________________
