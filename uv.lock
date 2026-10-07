@@ -3950,15 +3950,14 @@ wheels = [
 
 [[package]]
 name = "python-discovery"
-version = "1.4.2"
+version = "1.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
-    { name = "platformdirs" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0b/1a/cbbaf13b730abb0a16b964d984e19f2fe520c21a4dc664051359a3f5a9e7/python_discovery-1.4.2.tar.gz", hash = "sha256:8f3746c4b4968d22afbb97d36e1a0e5b66e6c0f297290f2e95f05b9b8bf18690", size = 70277, upload-time = "2026-06-11T16:10:42.383Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0c/57/250bd238b966cece44328235eb85290045d059265fdaf7527a3a958123db/python_discovery-1.6.1.tar.gz", hash = "sha256:cf87d3627dfb4412437fdd5b13eae402607722998d21567993aedbc59b23c15e", size = 84338, upload-time = "2026-09-18T01:31:53.971Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/82/a70006589557f267f15bd384c0642ad49f0d97b690c3a05b166b9dcbad3b/python_discovery-1.4.2-py3-none-any.whl", hash = "sha256:475803f53b7b2ed6e490e27373f9d8340f7d2eebf9acdaf645d7d714c97bb500", size = 33886, upload-time = "2026-06-11T16:10:41.192Z" },
+    { url = "https://files.pythonhosted.org/packages/16/7d/e9ffbadfbf89c93848412d04594135c4ae8c1d37d9e053b9c3ed718fabc4/python_discovery-1.6.1-py3-none-any.whl", hash = "sha256:d43fcdef879fe795352bd13ccf8d185ba5a9f86f36cfcd00529f596e737442b3", size = 38664, upload-time = "2026-09-18T01:31:52.448Z" },
 ]
 
 [[package]]
@@ -4865,14 +4864,14 @@ dependencies = [
     { name = "typing-extensions" },
 ]
 wheels = [
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp310-cp310-macosx_14_0_arm64.whl", upload-time = "2026-09-30T13:56:21Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp311-cp311-macosx_14_0_arm64.whl", upload-time = "2026-09-30T13:56:22Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp312-cp312-macosx_14_0_arm64.whl", upload-time = "2026-09-30T13:56:23Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp313-cp313-macosx_14_0_arm64.whl", upload-time = "2026-09-30T13:56:24Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp314-cp314-macosx_14_0_arm64.whl", upload-time = "2026-09-30T13:56:24Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp314-cp314t-macosx_14_0_arm64.whl", upload-time = "2026-09-30T13:56:25Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp315-cp315-macosx_14_0_arm64.whl", upload-time = "2026-09-30T13:56:25Z" },
-    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp315-cp315t-macosx_14_0_arm64.whl", upload-time = "2026-09-30T13:56:26Z" },
+    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:e3ac0a862f1e81a23bd2b9ff979c189a2154e731c06d4c530bfbf2642ff01ddf", upload-time = "2026-09-30T19:50:20Z" },
+    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:7b0670b545f1b732a3219966e6704b27398a32a764bc7cce065e40b142dcf8a1", upload-time = "2026-09-30T19:50:26Z" },
+    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:9cf3082d25560efb1eef921871595227c0cf305abb7761ca45b6b988ef6cdd45", upload-time = "2026-09-30T19:50:32Z" },
+    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:82762c7527079f1e17a771684362ed51400e3bc72942df30217e40f27c6816d7", upload-time = "2026-09-30T19:50:39Z" },
+    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:17b32fd68abe9429d936c643579e24465e7174a06c168bbfcc01395a881bc8af", upload-time = "2026-09-30T19:50:45Z" },
+    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp314-cp314t-macosx_14_0_arm64.whl", hash = "sha256:6fe25964e53113a8a1f5640be1103a982a426c07f8907fba48fcca1be1112202", upload-time = "2026-09-30T19:50:51Z" },
+    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp315-cp315-macosx_14_0_arm64.whl", hash = "sha256:729992e6b581de722989012547b7767ef8ac019bd060e34805f06a52ff9a120e", upload-time = "2026-09-30T19:50:56Z" },
+    { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1-cp315-cp315t-macosx_14_0_arm64.whl", hash = "sha256:3e4d7679866c4cd68258ccda7c51bcda150797eda095813f26fe63c07934cc21", upload-time = "2026-09-30T19:51:02Z" },
 ]
 
 [[package]]
@@ -5305,7 +5304,7 @@ wheels = [
 
 [[package]]
 name = "virtualenv"
-version = "21.5.1"
+version = "21.7.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "distlib" },
@@ -5314,9 +5313,9 @@ dependencies = [
     { name = "python-discovery" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f1/a5/81f987504738e6defeed61ec1c47e2aefab3c35d8eeb87e1b3f38cf28254/virtualenv-21.5.1.tar.gz", hash = "sha256:dca3bf98275a59c652b69d68e73433e597d977c2da9198882479d1a7188009c8", size = 4578798, upload-time = "2026-06-16T16:23:58.603Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/13/50/c9b84eb106d0db420b9878dac0a386c5791726f127ce20b06897f6e3a1e9/virtualenv-21.7.13.tar.gz", hash = "sha256:0355558b6f33619aab31347e43643b0ebc97f61ea3acf617b2b69e1f8a843d11", size = 5360306, upload-time = "2026-09-18T04:35:49.354Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2c/02/3623e6169bed617ed1e2d372f7c69f92ec28d54c4dfc997055c8578ec148/virtualenv-21.5.1-py3-none-any.whl", hash = "sha256:55aa670b67bbfb991b03fda39bd3276d92c419d702376e98c5df1c9989a26783", size = 4558820, upload-time = "2026-06-16T16:23:56.963Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/ce/e74453531b0c49a58d0e8a4f9bab4495705859fee4a4f7de27d58f4a791a/virtualenv-21.7.13-py3-none-any.whl", hash = "sha256:1bea5af7463f59c4719db48fe739579a2a4f569c96f26c086edda85c96da9f59", size = 5328680, upload-time = "2026-09-18T04:35:47.194Z" },
 ]
 
 [[package]]
