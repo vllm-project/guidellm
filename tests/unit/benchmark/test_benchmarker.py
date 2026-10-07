@@ -2,9 +2,11 @@
 
 import asyncio
 from functools import partial
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from pydantic import BaseModel
 
 from guidellm.benchmark import CompositeBenchmarkerProgress
 from guidellm.benchmark import benchmarker as module
@@ -125,3 +127,142 @@ async def _callback(arrivals, gates, finished, failure, index, hook, *args):
     }.get(failure)
     if index == 0 and hook == failing_hook:
         raise RuntimeError("observer failure")
+
+
+class _CompiledBenchmark(BaseModel):
+    start_time: float
+    end_time: float
+    server_metrics: list[Any] | None = None
+
+
+@pytest.mark.smoke
+@pytest.mark.asyncio
+async def test_server_metrics_collectors_wrap_each_benchmark(monkeypatch):
+    """Scrape around each benchmark's requests and attach its window summary.
+
+    ## WRITTEN BY AI ##
+    """
+    events: list[str] = []
+    collector = Mock()
+    collector.start = AsyncMock(side_effect=lambda: events.append("start"))
+    collector.stop = AsyncMock(side_effect=lambda: events.append("stop"))
+    collector.summarize.side_effect = lambda start, end: ("summary", start, end)
+
+    def strategies():
+        yield Mock(), {}
+        yield Mock(), {}
+
+    profile = Mock(completed_strategies=[])
+    profile.strategies_generator.side_effect = strategies
+    monkeypatch.setattr(module.InfoMixin, "extract_from_obj", lambda _: {})
+    monkeypatch.setattr(module, "BenchmarkConfig", Mock())
+    benchmark_class = Mock()
+    benchmark_class.compile.return_value = _CompiledBenchmark(
+        start_time=10.0, end_time=20.0
+    )
+
+    async def schedule(**kwargs):
+        events.append("requests")
+        yield None, None, None, Mock()
+
+    monkeypatch.setattr(module, "Scheduler", Mock(return_value=Mock(run=schedule)))
+
+    results = [
+        result
+        async for result in module.Benchmarker().run(
+            accumulator_class=Mock(),
+            benchmark_class=benchmark_class,
+            requests=[],
+            backend=Mock(),
+            profile=profile,
+            environment=Mock(),
+            warmup=Mock(),
+            cooldown=Mock(),
+            server_metrics=[collector],
+        )
+    ]
+
+    assert events == ["start", "requests", "stop"] * 2
+    assert [result.server_metrics for result in results] == [
+        [("summary", 10.0, 20.0)]
+    ] * 2
+
+
+@pytest.mark.sanity
+@pytest.mark.asyncio
+async def test_server_metrics_collectors_stop_when_requests_fail(monkeypatch):
+    """Stop scraping even when the benchmark's requests raise.
+
+    ## WRITTEN BY AI ##
+    """
+    collector = Mock(start=AsyncMock(), stop=AsyncMock())
+
+    def strategies():
+        yield Mock(), {}
+
+    profile = Mock(completed_strategies=[])
+    profile.strategies_generator.side_effect = strategies
+    monkeypatch.setattr(module.InfoMixin, "extract_from_obj", lambda _: {})
+    monkeypatch.setattr(module, "BenchmarkConfig", Mock())
+
+    async def schedule(**kwargs):
+        yield None, None, None, Mock()
+        raise RuntimeError("scheduler failure")
+
+    monkeypatch.setattr(module, "Scheduler", Mock(return_value=Mock(run=schedule)))
+
+    with pytest.raises(RuntimeError, match="scheduler failure"):
+        async for _ in module.Benchmarker().run(
+            accumulator_class=Mock(),
+            benchmark_class=Mock(),
+            requests=[],
+            backend=Mock(),
+            profile=profile,
+            environment=Mock(),
+            warmup=Mock(),
+            cooldown=Mock(),
+            server_metrics=[collector],
+        ):
+            pass
+
+    collector.start.assert_awaited_once()
+    collector.stop.assert_awaited_once()
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_server_metrics_collectors_are_all_stopped_after_errors(monkeypatch):
+    """Stop every started collector even when one fails to start or stop.
+
+    ## WRITTEN BY AI ##
+    """
+    first = Mock(start=AsyncMock(), stop=AsyncMock(side_effect=RuntimeError("stop")))
+    second = Mock(start=AsyncMock(), stop=AsyncMock())
+    failing = Mock(start=AsyncMock(side_effect=RuntimeError("start")), stop=AsyncMock())
+
+    def strategies():
+        yield Mock(), {}
+
+    profile = Mock(completed_strategies=[])
+    profile.strategies_generator.side_effect = strategies
+    monkeypatch.setattr(module.InfoMixin, "extract_from_obj", lambda _: {})
+    monkeypatch.setattr(module, "BenchmarkConfig", Mock())
+    monkeypatch.setattr(module, "Scheduler", Mock())
+
+    with pytest.raises(RuntimeError, match="start"):
+        async for _ in module.Benchmarker().run(
+            accumulator_class=Mock(),
+            benchmark_class=Mock(),
+            requests=[],
+            backend=Mock(),
+            profile=profile,
+            environment=Mock(),
+            warmup=Mock(),
+            cooldown=Mock(),
+            server_metrics=[first, second, failing],
+        ):
+            pass
+
+    first.stop.assert_awaited_once()
+    second.stop.assert_awaited_once()
+    failing.stop.assert_not_awaited()
