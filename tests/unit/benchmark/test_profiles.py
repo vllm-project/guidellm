@@ -68,10 +68,15 @@ def _make_mock_benchmark(
     throughput = SimpleNamespace(
         successful=SimpleNamespace(mean=request_throughput_mean),
     )
+    # One second per request, so Little's law gives the same rate to the sweep.
+    concurrency = SimpleNamespace(total=SimpleNamespace(mean=request_throughput_mean))
+    latency = SimpleNamespace(successful=SimpleNamespace(mean=1.0))
 
     return SimpleNamespace(
         scheduler_state=state,
         request_throughput=throughput,
+        request_concurrency=concurrency,
+        request_latency=latency,
     )
 
 
