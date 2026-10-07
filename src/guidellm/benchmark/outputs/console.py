@@ -17,6 +17,7 @@ from typing import Literal, cast
 
 from pydantic import Field
 
+from guidellm.benchmark.analysis import KneeDetectionConclusion
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import GenerativeBenchmarksReport
 from guidellm.schemas import DistributionSummary, StatusDistributionSummary
@@ -279,7 +280,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
     Renders benchmark results as formatted tables in the terminal, organizing metrics
     by category (run summary, request counts, latency, throughput, modality-specific)
-    with proper alignment and type-specific formatting for readability.
+    and displaying profile conclusions with proper alignment and formatting.
     """
 
     @classmethod
@@ -301,8 +302,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         """
         Print the complete benchmark report to the console.
 
-        Renders all metric tables including run summary, request counts, latency,
-        throughput, and modality-specific statistics to the console.
+        Renders metric tables and profile conclusions to the console.
 
         :param report: The completed benchmark report
         :return: Status message indicating output location
@@ -316,8 +316,54 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         self.print_request_counts_table(report)
         self.print_request_latency_table(report)
         self.print_server_throughput_table(report)
+        self.print_knee_profile_results(report)
 
         return "printed to console"
+
+    def print_knee_profile_results(self, report: GenerativeBenchmarksReport) -> None:
+        """
+        Print the final knee and adaptive plan from profile conclusions.
+
+        :param report: Completed report with optional knee profile conclusions
+        """
+        for entry in report.conclusions:
+            if entry.get("kind") != "knee_detection":
+                continue
+
+            conclusion = KneeDetectionConclusion.model_validate(entry)
+            result = conclusion.final.throughput
+            details: list[str] = []
+            status: Literal["success", "info"]
+            if result.status == "ok" and result.knee is not None:
+                title = (
+                    "Throughput knee: "
+                    f"{safe_format_number(result.knee, precision=2)} concurrent streams"
+                )
+                if result.saturation_concurrency is not None:
+                    saturation = safe_format_number(
+                        result.saturation_concurrency, precision=0
+                    )
+                    details.append(
+                        "First measured point at/above knee: "
+                        f"{saturation} concurrent streams"
+                    )
+                status = "success"
+            else:
+                title = "Throughput knee: not detected"
+                details.append(f"Reason: {result.reason}")
+                status = "info"
+
+            plan = conclusion.adaptive_plan
+            if plan.status == "ready":
+                details.append(
+                    "Adaptive points selected: "
+                    + ", ".join(str(value) for value in plan.concurrencies)
+                )
+            else:
+                details.append(f"Adaptive refinement skipped: {plan.reason}")
+
+            self.console.print("\n")
+            self.console.print_update(title, "\n".join(details), status=status)
 
     def print_run_summary_table(self, report: GenerativeBenchmarksReport):
         """
