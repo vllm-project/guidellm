@@ -36,6 +36,11 @@ from guidellm.schemas.benchmark.profiles import (
 from guidellm.schemas.benchmark.random import RandomArgs, StaticRandomArgs
 from guidellm.schemas.benchmark.scenarios import SCENARIO_DIR, get_builtin_scenarios
 from guidellm.schemas.benchmark.transient import TransientPhaseConfig
+from guidellm.schemas.benchmark.warnings import (
+    MetricRef,
+    WarningCondition,
+    WarningRuleArgs,
+)
 
 __all__ = [
     "SCENARIO_DIR",
@@ -53,6 +58,7 @@ __all__ = [
     "HTMLBenchmarkOutputArgs",
     "JSONBenchmarkOutputArgs",
     "KneeProfileArgs",
+    "MetricRef",
     "MetricsArgs",
     "PlotBenchmarkOutputArgs",
     "ProfileArgs",
@@ -63,6 +69,8 @@ __all__ = [
     "SynchronousProfileArgs",
     "ThroughputProfileArgs",
     "TransientPhaseConfig",
+    "WarningCondition",
+    "WarningRuleArgs",
     "YAMLBenchmarkOutputArgs",
     "args_model_config",
     "default_kind",
