@@ -21,6 +21,10 @@ from .error import (
     MaxGlobalErrorRateConstraint,
 )
 from .factory import ConstraintsInitializerFactory
+from .precision import (
+    TargetMoeConstraint,
+    TargetMoeConstraintInitializer,
+)
 from .request import (
     MaxDurationConstraint,
     MaxNumberConstraint,
@@ -47,5 +51,7 @@ __all__ = [
     "PydanticConstraintInitializer",
     "RequestsExhaustedConstraint",
     "SerializableConstraintInitializer",
+    "TargetMoeConstraint",
+    "TargetMoeConstraintInitializer",
     "UnserializableConstraintInitializer",
 ]
