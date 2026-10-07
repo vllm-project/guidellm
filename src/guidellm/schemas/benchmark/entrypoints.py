@@ -21,7 +21,6 @@ from pydantic import (
     AliasGenerator,
     ConfigDict,
     Field,
-    field_validator,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -260,24 +259,6 @@ class BenchmarkArgs(ReloadableBaseModel):
         description="Configuration for metrics collection and request sampling.",
         json_schema_extra={"argument_alias": "metrics"},
     )
-
-    @field_validator("metrics", mode="before")
-    @classmethod
-    def _default_metrics_kind(cls, value: Any) -> Any:
-        """
-        Supply the generative kind when metrics arrive without one.
-
-        ``GUIDELLM__SPEC__METRICS__WARNINGS`` builds a metrics object that
-        contains only the warning list. The registry still needs ``kind`` to
-        select ``GenerativeMetricsArgs``.
-
-        :param value: Metrics configuration from a scenario, the CLI, or the
-            environment
-        :return: The same value, with ``kind`` set when it was omitted
-        """
-        if isinstance(value, dict) and "kind" not in value:
-            return {"kind": "generative", **value}
-        return value
 
     @model_validator(mode="after")
     def _check_profile_supports_metrics(self) -> BenchmarkArgs:

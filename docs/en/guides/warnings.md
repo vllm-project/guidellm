@@ -100,24 +100,31 @@ guidellm run \
   --backend kind=openai_http,target=http://localhost:8000
 ```
 
-`metrics.warnings` replaces the built-in rules listed above. Include every rule you still want.
+`metrics.warnings` replaces the [built-in rules](#built-in-rules). Include every rule you still want.
 
 The same list can be passed on the command line. A JSON object is the practical form, the same way a service-level objective is passed:
 
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --metrics '{"kind":"generative","warnings":[{"code":"slow_ttft","metric":{"name":"time_to_first_token_ms.total"},"threshold":250,"note":"Time to first token is above 250 ms."}]}'
+  --profile kind=concurrent,streams=5 \
+  --constraint kind=max_duration,seconds=20 \
+  --data kind=synthetic_text,prompt_tokens=128,output_tokens=256  --metrics '{"kind":"generative","warnings":[{"code":"slow_ttft","metric":{"name":"time_to_first_token_ms.total"},"threshold":250,"note":"Time to first token is above 250 ms."}]}'
 ```
 
 ## Environment variable
 
 `GUIDELLM__SPEC__METRICS__WARNINGS` sets the same list for one run. The value is a JSON list.
 
+You must also set `GUIDELLM__SPEC__METRICS__KIND=generative` for this to work.
+
 ```bash
-GUIDELLM__SPEC__METRICS__WARNINGS='[{"code":"generation_delay","metric":{"name":"generation_delay","statistic":"mean"},"relative_to":{"name":"request_latency.total","statistic":"mean"},"threshold":0.25,"note":"Dataset generation is a large share of request time."}]' \
+GUIDELLM__SPEC__METRICS__KIND=generative GUIDELLM__SPEC__METRICS__WARNINGS='[{"code":"generation_delay","metric":{"name":"generation_delay","statistic":"mean"},"relative_to":{"name":"request_latency.total","statistic":"mean"},"threshold":0.25,"note":"Dataset generation is a large share of request time."}]' \
   guidellm run \
-  --backend kind=openai_http,target=http://localhost:8000
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=concurrent,streams=5 \
+  --constraint kind=max_duration,seconds=20 \
+  --data kind=synthetic_text,prompt_tokens=128,output_tokens=256
 ```
 
 An explicit `metrics.warnings` value from the scenario file or `--metrics` overrides the environment variable. Omitting `warnings` keeps the built-in rules.

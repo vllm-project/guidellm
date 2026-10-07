@@ -640,6 +640,10 @@ class TestBenchmarkScenarioEnvVars:
             "GUIDELLM__SPEC__METRICS__WARNINGS",
             '[{"code":"from_env","metric":{"name":"generation_delay"},"threshold":1}]',
         )
+        monkeypatch.setenv(
+            "GUIDELLM__SPEC__METRICS__KIND",
+            "generative",
+        )
 
         scenario = BenchmarkScenario.model_validate(
             {
