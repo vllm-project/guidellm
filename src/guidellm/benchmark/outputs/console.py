@@ -277,26 +277,6 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
 
 
 @GenerativeBenchmarkerOutput.register("console")
-def _warning_row(warning: BenchmarkWarning) -> Table:
-    """
-    Place the warning icon in a gutter and the text in the column beside it.
-
-    The note stays in the text column, so a wrapped message and the note share
-    the same left edge.
-
-    :param warning: Warning to render
-    :return: A borderless two-column row
-    """
-    body = Text(warning.message)
-    if warning.note:
-        body.append(f"\n{warning.note}")
-    row = Table.grid(padding=(0, 1))
-    row.add_column(no_wrap=True)
-    row.add_column()
-    row.add_row(Text(StatusIcons["warning"], style=Colors.warning), body)
-    return row
-
-
 class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
     """
     Console output formatter for benchmark reports.
@@ -389,6 +369,26 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
             self.console.print("\n")
             self.console.print_update(title, "\n".join(details), status=status)
 
+    @staticmethod
+    def _warning_row(warning: BenchmarkWarning) -> Table:
+        """
+        Place the warning icon in a gutter and the text in the column beside it.
+
+        The note stays in the text column, so a wrapped message and the note share
+        the same left edge.
+
+        :param warning: Warning to render
+        :return: A borderless two-column row
+        """
+        body = Text(warning.message)
+        if warning.note:
+            body.append(f"\n{warning.note}")
+        row = Table.grid(padding=(0, 1))
+        row.add_column(no_wrap=True)
+        row.add_column()
+        row.add_row(Text(StatusIcons["warning"], style=Colors.warning), body)
+        return row
+
     def print_warnings(self, report: GenerativeBenchmarksReport):
         """
         Print post-benchmark warnings, grouped by strategy.
@@ -406,7 +406,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 )
             )
             for warning in benchmark.warnings:
-                self.console.print(_warning_row(warning))
+                self.console.print(self._warning_row(warning))
 
     def print_run_summary_table(self, report: GenerativeBenchmarksReport):
         """

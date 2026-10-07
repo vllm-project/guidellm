@@ -13,8 +13,8 @@ from pydantic import BaseModel
 
 from guidellm.benchmark.schemas.metrics import GenerativeMetrics, SchedulerMetrics
 from guidellm.benchmark.schemas.warnings import BenchmarkWarning
+from guidellm.logger import logger
 from guidellm.schemas.benchmark.warnings import (
-    BenchmarkWarningsArgs,
     MetricRef,
     WarningCondition,
     WarningRuleArgs,
@@ -27,11 +27,11 @@ __all__ = ["BenchmarkWarningAnalyzer"]
 class BenchmarkWarningAnalyzer:
     """Evaluate configured metric rules against one compiled benchmark."""
 
-    def __init__(self, args: BenchmarkWarningsArgs):
+    def __init__(self, rules: list[WarningRuleArgs]):
         """
-        :param args: Rules to evaluate, including the default checks
+        :param rules: Rules to evaluate, including the default checks
         """
-        self.args = args
+        self.rules = rules
 
     def analyze(
         self,
@@ -44,100 +44,98 @@ class BenchmarkWarningAnalyzer:
 
         A rule with ``relative_to`` compares the ratio of two metrics. A rule
         without it compares the metric itself. A path that names a missing
-        field produces an ``unknown_metric`` warning. A field that is present
-        but null is skipped.
+        field is logged and reported here, because the interactive progress
+        display clears stderr when it finishes. A field that is present but
+        null is skipped.
 
         :param scheduler_metrics: Compiled scheduler timings
         :param metrics: Compiled request metrics
         :return: Warnings that fired, in rule order
         """
         warnings: list[BenchmarkWarning] = []
-        for rule in self.args.rules:
-            warning = _evaluate_rule(
+        for rule in self.rules:
+            _evaluate_rule(
                 rule,
+                warnings,
                 scheduler_metrics=scheduler_metrics,
                 metrics=metrics,
             )
-            if warning is not None:
-                warnings.append(warning)
         return warnings
-
-
-_CONTINUE = object()
-
-
-def _gate_condition(
-    rule: WarningRuleArgs,
-    *,
-    scheduler_metrics: SchedulerMetrics,
-    metrics: GenerativeMetrics,
-) -> BenchmarkWarning | None | object:
-    """
-    Apply the rule's ``when`` condition.
-
-    :param rule: Rule that may name a path and a required value
-    :param scheduler_metrics: Compiled scheduler timings
-    :param metrics: Compiled request metrics
-    :return: ``_CONTINUE`` when the rule should be evaluated, a warning when
-        the condition path is missing, or None when the value does not match
-    """
-    if rule.when is None:
-        return _CONTINUE
-
-    matched = _condition_matches(
-        rule.when,
-        scheduler_metrics=scheduler_metrics,
-        metrics=metrics,
-    )
-    if isinstance(matched, _UnresolvedMetric):
-        return _unknown_metric_warning(rule, matched.path)
-    if not matched:
-        return None
-    return _CONTINUE
 
 
 def _evaluate_rule(
     rule: WarningRuleArgs,
+    warnings: list[BenchmarkWarning],
     *,
     scheduler_metrics: SchedulerMetrics,
     metrics: GenerativeMetrics,
-) -> BenchmarkWarning | None:
+) -> None:
     """
-    Evaluate one rule.
+    Evaluate one rule and append any warning it produces.
 
     :param rule: Metric, optional baseline metric, and threshold
+    :param warnings: Warnings collected for this benchmark
     :param scheduler_metrics: Compiled scheduler timings
     :param metrics: Compiled request metrics
-    :return: The warning, or None when the rule is disabled, a metric does not
-        apply, or the value is within the threshold
     """
     if not rule.enabled:
-        return None
-
-    gated = _gate_condition(
+        return
+    if rule.when is not None and not _when_matches(
         rule,
+        warnings,
         scheduler_metrics=scheduler_metrics,
         metrics=metrics,
-    )
-    if gated is None or isinstance(gated, BenchmarkWarning):
-        return gated
+    ):
+        return
 
     observed = _resolve_metric(
+        rule,
         rule.metric,
+        warnings,
         scheduler_metrics=scheduler_metrics,
         metrics=metrics,
     )
-    if isinstance(observed, _UnresolvedMetric):
-        return _unknown_metric_warning(rule, observed.path)
     if observed is None or observed.count == 0:
-        return None
+        return
 
-    if rule.relative_to is None:
-        return _absolute_warning(rule, observed)
+    warning = (
+        _absolute_warning(rule, observed)
+        if rule.relative_to is None
+        else _ratio_warning(
+            rule,
+            observed,
+            warnings,
+            scheduler_metrics=scheduler_metrics,
+            metrics=metrics,
+        )
+    )
+    if warning is not None:
+        warnings.append(warning)
 
-    return _ratio_warning(
+
+def _when_matches(
+    rule: WarningRuleArgs,
+    warnings: list[BenchmarkWarning],
+    *,
+    scheduler_metrics: SchedulerMetrics,
+    metrics: GenerativeMetrics,
+) -> bool:
+    """
+    Apply the rule's ``when`` condition.
+
+    :param rule: Rule that names a path and a required value
+    :param scheduler_metrics: Compiled scheduler timings
+    :param metrics: Compiled request metrics
+    :return: Whether the path equals the required value. A missing path is
+        logged and does not match.
+    """
+    if rule.when is None:
+        return True
+
+    return _condition_matches(
         rule,
-        observed,
+        rule.when,
+        warnings,
         scheduler_metrics=scheduler_metrics,
         metrics=metrics,
     )
@@ -176,6 +174,7 @@ def _absolute_warning(
 def _ratio_warning(
     rule: WarningRuleArgs,
     observed: _MetricValue,
+    warnings: list[BenchmarkWarning],
     *,
     scheduler_metrics: SchedulerMetrics,
     metrics: GenerativeMetrics,
@@ -194,12 +193,12 @@ def _ratio_warning(
         return None
 
     baseline = _resolve_metric(
+        rule,
         rule.relative_to,
+        warnings,
         scheduler_metrics=scheduler_metrics,
         metrics=metrics,
     )
-    if isinstance(baseline, _UnresolvedMetric):
-        return _unknown_metric_warning(rule, baseline.path)
     if baseline is None or baseline.count == 0 or baseline.value <= 0:
         return None
 
@@ -224,33 +223,38 @@ def _ratio_warning(
     )
 
 
-def _unknown_metric_warning(rule: WarningRuleArgs, path: str) -> BenchmarkWarning:
+def _log_unknown_metric(
+    rule: WarningRuleArgs,
+    path: str,
+    warnings: list[BenchmarkWarning],
+) -> None:
     """
-    Warn that a rule named a path the compiled schemas do not have.
+    Record that a rule named a path the compiled schemas do not have.
+
+    The message is logged and stored on the benchmark. The interactive progress
+    display redirects stderr and clears it when the run finishes, so a log line
+    alone does not remain on screen. The rule's note is left off, because it
+    describes the condition the metric was meant to check.
 
     :param rule: Rule whose metric path failed to resolve
     :param path: Dotted path that was not found, or did not end on a metric
-    :return: A warning that names the path and the rule
+    :param warnings: Warnings collected for this benchmark
     """
-    return BenchmarkWarning(
-        code="unknown_metric",
-        message=(
-            f"Metric '{path}' in rule '{rule.code}' was not found on the "
-            "compiled scheduler or generative metrics."
-        ),
-        observed=0.0,
-        threshold=rule.threshold,
-        unit="seconds",
-        sample_count=0,
-        note=rule.note,
+    message = (
+        f"Metric '{path}' in rule '{rule.code}' was not found on the compiled "
+        "scheduler or generative metrics."
     )
-
-
-class _UnresolvedMetric:
-    """A metric path that is not on the schemas, or does not end on a metric."""
-
-    def __init__(self, path: str):
-        self.path = path
+    logger.warning(message)
+    warnings.append(
+        BenchmarkWarning(
+            code="unknown_metric",
+            message=message,
+            observed=0.0,
+            threshold=rule.threshold,
+            unit="seconds",
+            sample_count=0,
+        )
+    )
 
 
 class _MetricValue:
@@ -262,101 +266,155 @@ class _MetricValue:
         self.boolean = boolean
 
 
-class _Absent:
-    """A path segment that is not defined on the object being walked."""
-
-
 def _resolve_metric(
+    rule: WarningRuleArgs,
     ref: MetricRef,
+    warnings: list[BenchmarkWarning],
     *,
     scheduler_metrics: SchedulerMetrics,
     metrics: GenerativeMetrics,
-) -> _MetricValue | _UnresolvedMetric | None:
+) -> _MetricValue | None:
     """
     Read one metric path from the compiled scheduler or generative metrics.
 
     The first path segment selects whichever schema defines that field.
     Later segments walk into status breakdowns and nested summaries.
-    ``scale`` is applied to the statistic.
+    ``scale`` is applied to the statistic. A missing path is logged here.
 
+    :param rule: Rule that named the path, used when the path is missing
     :param ref: Dotted path and statistic
     :param scheduler_metrics: Compiled scheduler timings
     :param metrics: Compiled request metrics
-    :return: The statistic and sample count, an unresolved path, or None when
-        the field is present but null
+    :return: The statistic and sample count, or None when the field is missing
+        or present but null
     """
-    node = _walk_path(scheduler_metrics, ref.name)
-    if isinstance(node, _Absent):
-        node = _walk_path(metrics, ref.name)
-    if isinstance(node, _Absent):
-        return _UnresolvedMetric(ref.name)
+    root = _metric_root(
+        rule,
+        ref.name,
+        warnings,
+        scheduler_metrics=scheduler_metrics,
+        metrics=metrics,
+    )
+    if root is None:
+        return None
+    node = _walk_path(rule, root, ref.name, warnings)
     if node is None:
         return None
     resolved = _read_statistic(node, ref.statistic)
     if resolved is None:
-        return _UnresolvedMetric(ref.name)
+        _log_unknown_metric(rule, ref.name, warnings)
+        return None
     resolved.value *= ref.scale
     return resolved
 
 
-def _walk_path(root: BaseModel, path: str) -> Any:
-    """
-    Walk a dotted path through a metric schema.
-
-    :param root: Compiled metric model
-    :param path: Dotted field path
-    :return: The value at the path, None when a present field is null, or
-        ``_Absent`` when a segment is not defined
-    """
-    current: Any = root
-    for key in path.split("."):
-        if key == "":
-            return _Absent()
-        current = _step(current, key)
-        if isinstance(current, _Absent) or current is None:
-            return current
-    return current
-
-
-def _step(current: Any, key: str) -> Any:
-    """
-    Read one field from a model or one key from a dumped mapping.
-
-    :param current: Model or mapping reached so far
-    :param key: Next path segment
-    :return: The child value, None when that value is null, or ``_Absent``
-        when the segment is not on this object
-    """
-    if isinstance(current, BaseModel):
-        if key not in type(current).model_fields:
-            return _Absent()
-        return current.model_dump(include={key})[key]
-    if isinstance(current, dict):
-        if key not in current:
-            return _Absent()
-        return current[key]
-    return _Absent()
-
-
-def _condition_matches(
-    condition: WarningCondition,
+def _metric_root(
+    rule: WarningRuleArgs,
+    path: str,
+    warnings: list[BenchmarkWarning],
     *,
     scheduler_metrics: SchedulerMetrics,
     metrics: GenerativeMetrics,
-) -> bool | _UnresolvedMetric:
+) -> BaseModel | None:
+    """
+    Select the schema that defines the first segment of a metric path.
+
+    :param rule: Rule that named the path, logged when neither schema has it
+    :param path: Dotted field path
+    :param scheduler_metrics: Compiled scheduler timings
+    :param metrics: Compiled request metrics
+    :return: The schema to walk, or None when the first segment is unknown
+    """
+    first = path.split(".", 1)[0]
+    if first in type(scheduler_metrics).model_fields:
+        return scheduler_metrics
+    if first in type(metrics).model_fields:
+        return metrics
+    _log_unknown_metric(rule, path, warnings)
+    return None
+
+
+def _walk_path(
+    rule: WarningRuleArgs,
+    root: BaseModel,
+    path: str,
+    warnings: list[BenchmarkWarning],
+) -> Any:
+    """
+    Walk a dotted path through one metric schema.
+
+    :param rule: Rule that named the path, logged when a segment is missing
+    :param root: Compiled metric model selected by the first path segment
+    :param path: Dotted field path
+    :return: The value at the path, or None when a present field is null or a
+        segment is not defined
+    """
+    current: Any = root
+    for key in path.split("."):
+        if not _has_segment(current, key):
+            _log_unknown_metric(rule, path, warnings)
+            return None
+        current = _read_segment(current, key)
+        if current is None:
+            return None
+    return current
+
+
+def _has_segment(current: Any, key: str) -> bool:
+    """
+    :param current: Model or mapping reached so far
+    :param key: Next path segment
+    :return: Whether ``key`` is defined on ``current``
+    """
+    if key == "":
+        return False
+    if isinstance(current, BaseModel):
+        return key in type(current).model_fields
+    if isinstance(current, dict):
+        return key in current
+    return False
+
+
+def _read_segment(current: Any, key: str) -> Any:
+    """
+    Read one field from a model or one key from a dumped mapping.
+
+    :param current: Model or mapping that defines ``key``
+    :param key: Next path segment
+    :return: The child value, or None when that value is null
+    """
+    if isinstance(current, BaseModel):
+        return current.model_dump(include={key})[key]
+    return current[key]
+
+
+def _condition_matches(
+    rule: WarningRuleArgs,
+    condition: WarningCondition,
+    warnings: list[BenchmarkWarning],
+    *,
+    scheduler_metrics: SchedulerMetrics,
+    metrics: GenerativeMetrics,
+) -> bool:
     """
     Compare one path with the value a rule requires.
 
+    :param rule: Rule that named the path, logged when the path is missing
     :param condition: Path and the value it must equal
     :param scheduler_metrics: Compiled scheduler timings
     :param metrics: Compiled request metrics
-    :return: Whether the path equals the value, or an unresolved path
+    :return: Whether the path equals the value. A missing path does not match.
     """
-    node = _walk_path(scheduler_metrics, condition.name)
-    if isinstance(node, _Absent):
-        node = _walk_path(metrics, condition.name)
-    if isinstance(node, _Absent):
-        return _UnresolvedMetric(condition.name)
+    root = _metric_root(
+        rule,
+        condition.name,
+        warnings,
+        scheduler_metrics=scheduler_metrics,
+        metrics=metrics,
+    )
+    if root is None:
+        return False
+    node = _walk_path(rule, root, condition.name, warnings)
     if node is None:
         return False
     return _values_equal(node, condition.equals)

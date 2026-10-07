@@ -9,7 +9,6 @@ from pydantic import Field
 from guidellm.schemas.base.base import StandardBaseModel
 
 __all__ = [
-    "BenchmarkWarningsArgs",
     "MetricRef",
     "WarningCondition",
     "WarningRuleArgs",
@@ -78,7 +77,13 @@ class WarningRuleArgs(StandardBaseModel):
         default=True,
         description="Whether this rule is reported when its threshold is exceeded",
     )
-    code: str = Field(description="Stable identifier stored on the warning")
+    code: str = Field(
+        description=(
+            "Free-form tag stored on the warning. Any string is accepted. "
+            "Short snake_case tags are the convention, and the tag does not "
+            "have to match the metric name."
+        ),
+    )
     metric: MetricRef = Field(description="Metric the rule reads")
     relative_to: MetricRef | None = Field(
         default=None,
@@ -125,7 +130,10 @@ def default_warning_rules() -> list[WarningRuleArgs]:
                 scale=0.001,
             ),
             threshold=0.01,
-            note="This means that the benchmark was likely bottlenecked by the data generation.",
+            note=(
+                "This means that the benchmark was likely bottlenecked by the "
+                "data generation."
+            ),
         ),
         WarningRuleArgs(
             code="root_late",
@@ -138,18 +146,9 @@ def default_warning_rules() -> list[WarningRuleArgs]:
             metric=MetricRef(name="dataset_incomplete"),
             threshold=0,
             when=WarningCondition(name="strategy_type", equals="trace"),
-            note="The trace dataset was not fully loaded. This could result in late arrivals of trace conversations.",
+            note=(
+                "The trace dataset was not fully loaded. This could result in "
+                "late arrivals of trace conversations."
+            ),
         ),
     ]
-
-
-class BenchmarkWarningsArgs(StandardBaseModel):
-    """Rules evaluated after each benchmark is compiled."""
-
-    rules: list[WarningRuleArgs] = Field(
-        default_factory=default_warning_rules,
-        description=(
-            "Warnings to report. Each rule names a metric and a threshold, "
-            "or a metric divided by a second metric."
-        ),
-    )

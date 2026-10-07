@@ -27,6 +27,7 @@ from guidellm.schemas.benchmark import (
     GenerativeMetricsArgs,
     MetricsArgs,
 )
+from guidellm.schemas.benchmark.warnings import default_warning_rules
 from guidellm.utils.arg_string import ArgStringParser
 from guidellm.utils.typing import BLANK
 
@@ -629,6 +630,68 @@ class TestBenchmarkScenarioEnvVars:
         assert isinstance(scenario.spec.backend, OpenAIHTTPBackendArgs)
         assert scenario.spec.backend.target == "http://from-kwarg:8000"
 
+    def test_metrics_warnings_from_env(self, monkeypatch):
+        """
+        GUIDELLM__SPEC__METRICS__WARNINGS replaces the built-in warning rules.
+
+        ## WRITTEN BY AI ##
+        """
+        monkeypatch.setenv(
+            "GUIDELLM__SPEC__METRICS__WARNINGS",
+            '[{"code":"from_env","metric":{"name":"generation_delay"},"threshold":1}]',
+        )
+
+        scenario = BenchmarkScenario.model_validate(
+            {
+                "spec": {
+                    **_PIPELINE_DEFAULTS,
+                    "backend": {
+                        "kind": "openai_http",
+                        "target": "http://localhost:8000",
+                    },
+                }
+            }
+        )
+
+        assert isinstance(scenario.spec.metrics, GenerativeMetricsArgs)
+        assert [rule.code for rule in scenario.spec.metrics.warnings] == ["from_env"]
+
+    def test_metrics_warnings_override_env(self, monkeypatch):
+        """
+        An explicit metrics.warnings value overrides the environment variable.
+
+        ## WRITTEN BY AI ##
+        """
+        monkeypatch.setenv(
+            "GUIDELLM__SPEC__METRICS__WARNINGS",
+            '[{"code":"from_env","metric":{"name":"generation_delay"},"threshold":1}]',
+        )
+
+        scenario = BenchmarkScenario.model_validate(
+            {
+                "spec": {
+                    **_PIPELINE_DEFAULTS,
+                    "backend": {
+                        "kind": "openai_http",
+                        "target": "http://localhost:8000",
+                    },
+                    "metrics": {
+                        "kind": "generative",
+                        "warnings": [
+                            {
+                                "code": "from_spec",
+                                "metric": {"name": "generation_delay"},
+                                "threshold": 2,
+                            }
+                        ],
+                    },
+                }
+            }
+        )
+
+        assert isinstance(scenario.spec.metrics, GenerativeMetricsArgs)
+        assert [rule.code for rule in scenario.spec.metrics.warnings] == ["from_spec"]
+
 
 @pytest.mark.sanity
 class TestMetricsArgsValidation:
@@ -681,6 +744,49 @@ class TestMetricsArgsValidation:
         assert isinstance(args.metrics, GenerativeMetricsArgs)
         assert args.metrics.sample_size == 100
         assert args.metrics.prefer_response_metrics is False
+
+    def test_metrics_warnings_validate_and_default(self):
+        """
+        A metrics dict can set warning rules, and omitting them keeps the defaults.
+
+        ## WRITTEN BY AI ##
+        """
+        configured = BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "metrics": {
+                    "kind": "generative",
+                    "warnings": [
+                        {
+                            "code": "slow_ttft",
+                            "metric": {"name": "time_to_first_token_ms.total"},
+                            "threshold": 250,
+                        }
+                    ],
+                },
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+        omitted = BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "metrics": {"kind": "generative"},
+                **_PIPELINE_DEFAULTS,
+            }
+        )
+
+        assert isinstance(configured.metrics, GenerativeMetricsArgs)
+        assert [rule.code for rule in configured.metrics.warnings] == ["slow_ttft"]
+        assert isinstance(omitted.metrics, GenerativeMetricsArgs)
+        assert [rule.code for rule in omitted.metrics.warnings] == [
+            rule.code for rule in default_warning_rules()
+        ]
 
     def test_metrics_serialization_round_trip(self):
         """

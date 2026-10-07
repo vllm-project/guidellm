@@ -7,6 +7,8 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from logot import Logot
+from logot.logged import warning
 from pydantic import BaseModel
 
 from guidellm.benchmark.outputs.console import GenerativeBenchmarkerConsole
@@ -30,7 +32,6 @@ from guidellm.schemas import (
     UsageMetrics,
 )
 from guidellm.schemas.benchmark.warnings import (
-    BenchmarkWarningsArgs,
     MetricRef,
     WarningCondition,
     WarningRuleArgs,
@@ -119,7 +120,7 @@ def _generation_delay_rule(
 
 
 def _analyze(
-    args: BenchmarkWarningsArgs,
+    rules: list[WarningRuleArgs],
     strategy,
     generation_delay: list[float],
     request_latency: list[float],
@@ -157,7 +158,7 @@ def _analyze(
         ),
         root_dispatch_delay=root_dispatch_delay_distribution(requests or []),
     )
-    return BenchmarkWarningAnalyzer(args).analyze(
+    return BenchmarkWarningAnalyzer(rules).analyze(
         scheduler_metrics=cast("SchedulerMetrics", scheduler_metrics),
         metrics=cast("GenerativeMetrics", metrics),
     )
@@ -178,19 +179,19 @@ def test_generation_delay_warns_as_a_fraction_of_request_latency():
         note="Slow the dataset or raise the request rate. https://example.com/warnings",
     )
     fast = _analyze(
-        BenchmarkWarningsArgs(rules=[rule]),
+        [rule],
         ConcurrentStrategy(streams=4),
         [0.04, 0.04],
         [0.10, 0.10],
     )
     slow_request = _analyze(
-        BenchmarkWarningsArgs(rules=[rule]),
+        [rule],
         ConcurrentStrategy(streams=4),
         [0.04, 0.04],
         [10.0, 10.0],
     )
     long_run = _analyze(
-        BenchmarkWarningsArgs(rules=[rule]),
+        [rule],
         ConcurrentStrategy(streams=4),
         [0.04] * 20,
         [0.10] * 20,
@@ -220,13 +221,13 @@ def test_generation_delay_is_quiet_at_the_threshold_and_when_disabled():
     ## WRITTEN BY AI ##
     """
     at_threshold = _analyze(
-        BenchmarkWarningsArgs(rules=[_generation_delay_rule(0.25)]),
+        [_generation_delay_rule(0.25)],
         ConcurrentStrategy(streams=1),
         [0.025],
         [0.10],
     )
     disabled = _analyze(
-        BenchmarkWarningsArgs(rules=[_generation_delay_rule(0.25, enabled=False)]),
+        [_generation_delay_rule(0.25, enabled=False)],
         ConcurrentStrategy(streams=1),
         [5.0],
         [0.10],
@@ -238,50 +239,61 @@ def test_generation_delay_is_quiet_at_the_threshold_and_when_disabled():
 
 
 @pytest.mark.sanity
-def test_unknown_metric_path_warns():
+def test_unknown_metric_path_is_logged(logot: Logot):
     """
-    A path that is not on the compiled schemas warns.
+    A path that is not on the compiled schemas is logged and reported.
 
-    A disabled rule stays quiet. A field that exists and is null does not warn.
+    A disabled rule stays quiet and does not log.
 
     ## WRITTEN BY AI ##
     """
-    warnings = _analyze(
-        BenchmarkWarningsArgs(
-            rules=[
-                WarningRuleArgs(
-                    code="generation_delay",
-                    metric=MetricRef(name="generation_dealy", statistic="mean"),
-                    threshold=0.1,
-                )
-            ]
-        ),
-        ConcurrentStrategy(streams=1),
-        [0.01],
-        [1.0],
-    )
     disabled = _analyze(
-        BenchmarkWarningsArgs(
-            rules=[
-                WarningRuleArgs(
-                    enabled=False,
-                    code="generation_delay",
-                    metric=MetricRef(name="generation_dealy", statistic="mean"),
-                    threshold=0.1,
-                )
-            ]
-        ),
+        [
+            WarningRuleArgs(
+                enabled=False,
+                code="disabled_rule",
+                metric=MetricRef(name="generation_dealy", statistic="mean"),
+                threshold=0.1,
+            )
+        ],
         ConcurrentStrategy(streams=1),
         [0.01],
         [1.0],
     )
 
-    assert len(warnings) == 1
-    warning = warnings[0]
-    assert warning.code == "unknown_metric"
-    assert "generation_dealy" in warning.message
-    assert "generation_delay" in warning.message
     assert disabled == []
+    logot.assert_not_logged(
+        warning(
+            "Metric 'generation_dealy' in rule 'disabled_rule' was not found "
+            "on the compiled scheduler or generative metrics."
+        )
+    )
+
+    logged = _analyze(
+        [
+            WarningRuleArgs(
+                code="generation_delay",
+                metric=MetricRef(name="generation_dealy", statistic="mean"),
+                threshold=0.1,
+                note="Time to first token is above 5 ms.",
+            )
+        ],
+        ConcurrentStrategy(streams=1),
+        [0.01],
+        [1.0],
+    )
+
+    assert len(logged) == 1
+    assert logged[0].code == "unknown_metric"
+    assert "generation_dealy" in logged[0].message
+    assert "generation_delay" in logged[0].message
+    assert logged[0].note == ""
+    logot.assert_logged(
+        warning(
+            "Metric 'generation_dealy' in rule 'generation_delay' was not found "
+            "on the compiled scheduler or generative metrics."
+        )
+    )
 
 
 @pytest.mark.sanity
@@ -294,40 +306,36 @@ def test_generation_delay_warns_as_a_fraction_of_ttft():
     ## WRITTEN BY AI ##
     """
     warned = _analyze(
-        BenchmarkWarningsArgs(
-            rules=[
-                WarningRuleArgs(
-                    code="generation_delay_ttft",
-                    metric=MetricRef(name="generation_delay", statistic="mean"),
-                    relative_to=MetricRef(
-                        name="time_to_first_token_ms.total",
-                        statistic="mean",
-                        scale=0.001,
-                    ),
-                    threshold=0.01,
-                )
-            ]
-        ),
+        [
+            WarningRuleArgs(
+                code="generation_delay_ttft",
+                metric=MetricRef(name="generation_delay", statistic="mean"),
+                relative_to=MetricRef(
+                    name="time_to_first_token_ms.total",
+                    statistic="mean",
+                    scale=0.001,
+                ),
+                threshold=0.01,
+            )
+        ],
         ConcurrentStrategy(streams=1),
         [0.002],
         [],
         time_to_first_token_ms=[100.0],
     )
     quiet = _analyze(
-        BenchmarkWarningsArgs(
-            rules=[
-                WarningRuleArgs(
-                    code="generation_delay_ttft",
-                    metric=MetricRef(name="generation_delay", statistic="mean"),
-                    relative_to=MetricRef(
-                        name="time_to_first_token_ms.total",
-                        statistic="mean",
-                        scale=0.001,
-                    ),
-                    threshold=0.01,
-                )
-            ]
-        ),
+        [
+            WarningRuleArgs(
+                code="generation_delay_ttft",
+                metric=MetricRef(name="generation_delay", statistic="mean"),
+                relative_to=MetricRef(
+                    name="time_to_first_token_ms.total",
+                    statistic="mean",
+                    scale=0.001,
+                ),
+                threshold=0.01,
+            )
+        ],
         ConcurrentStrategy(streams=1),
         [0.0005],
         [],
@@ -352,7 +360,7 @@ def test_ratio_message_keeps_sub_millisecond_precision():
     ## WRITTEN BY AI ##
     """
     warnings = _analyze(
-        BenchmarkWarningsArgs(rules=[_generation_delay_rule(0.01)]),
+        [_generation_delay_rule(0.01)],
         ConcurrentStrategy(streams=1),
         [0.00024],
         [0.012],
@@ -388,21 +396,21 @@ def test_dataset_incomplete_warns_only_for_trace():
     ## WRITTEN BY AI ##
     """
     warned = _analyze(
-        BenchmarkWarningsArgs(rules=[_dataset_incomplete_rule()]),
+        [_dataset_incomplete_rule()],
         TraceReplayStrategy(),
         [],
         [],
         dataset_incomplete=True,
     )
     other_profile = _analyze(
-        BenchmarkWarningsArgs(rules=[_dataset_incomplete_rule()]),
+        [_dataset_incomplete_rule()],
         ConcurrentStrategy(streams=1),
         [],
         [],
         dataset_incomplete=True,
     )
     finished = _analyze(
-        BenchmarkWarningsArgs(rules=[_dataset_incomplete_rule()]),
+        [_dataset_incomplete_rule()],
         TraceReplayStrategy(),
         [],
         [],
@@ -428,15 +436,13 @@ def test_trace_root_lateness_ignores_later_turns():
     ## WRITTEN BY AI ##
     """
     warnings = _analyze(
-        BenchmarkWarningsArgs(
-            rules=[
-                WarningRuleArgs(
-                    code="trace_root_late",
-                    metric=MetricRef(name="root_dispatch_delay", statistic="max"),
-                    threshold=0.1,
-                )
-            ]
-        ),
+        [
+            WarningRuleArgs(
+                code="trace_root_late",
+                metric=MetricRef(name="root_dispatch_delay", statistic="max"),
+                threshold=0.1,
+            )
+        ],
         TraceReplayStrategy(),
         [0.01],
         [1.0],
@@ -475,14 +481,14 @@ def test_trace_root_lateness_uses_the_configured_statistic():
     )
 
     quiet = _analyze(
-        BenchmarkWarningsArgs(rules=[p95_rule]),
+        [p95_rule],
         TraceReplayStrategy(),
         [],
         [],
         requests,
     )
     warned = _analyze(
-        BenchmarkWarningsArgs(rules=[max_rule]),
+        [max_rule],
         TraceReplayStrategy(),
         [],
         [],
@@ -503,15 +509,13 @@ def test_first_turn_dispatch_delay_includes_every_profile():
     ## WRITTEN BY AI ##
     """
     warnings = _analyze(
-        BenchmarkWarningsArgs(
-            rules=[
-                WarningRuleArgs(
-                    code="trace_root_late",
-                    metric=MetricRef(name="root_dispatch_delay", statistic="max"),
-                    threshold=0.1,
-                )
-            ]
-        ),
+        [
+            WarningRuleArgs(
+                code="trace_root_late",
+                metric=MetricRef(name="root_dispatch_delay", statistic="max"),
+                threshold=0.1,
+            )
+        ],
         ConcurrentStrategy(streams=1),
         [],
         [],

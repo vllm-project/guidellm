@@ -21,6 +21,7 @@ from pydantic import (
     AliasGenerator,
     ConfigDict,
     Field,
+    field_validator,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -37,7 +38,10 @@ from guidellm.schemas.benchmark.outputs import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.profiles import ProfileArgs
 from guidellm.schemas.benchmark.random import RandomArgs
 from guidellm.schemas.benchmark.scenarios import get_builtin_scenarios
-from guidellm.schemas.benchmark.warnings import BenchmarkWarningsArgs
+from guidellm.schemas.benchmark.warnings import (
+    WarningRuleArgs,
+    default_warning_rules,
+)
 from guidellm.schemas.data import (
     DataArgs,
     DataFinalizerArgs,
@@ -107,6 +111,14 @@ class MetricsArgs(PydanticClassRegistryMixin["MetricsArgs"], ABC):
 
     kind: str = Field(
         description="The kind of metrics configuration to use.",
+    )
+    warnings: list[WarningRuleArgs] = Field(
+        default_factory=default_warning_rules,
+        description=(
+            "Post-benchmark warnings. Each rule names a metric and a threshold, "
+            "or a metric divided by a second metric. Omit the field to use the "
+            "built-in rules. Set the field to replace those rules."
+        ),
     )
 
 
@@ -248,13 +260,24 @@ class BenchmarkArgs(ReloadableBaseModel):
         description="Configuration for metrics collection and request sampling.",
         json_schema_extra={"argument_alias": "metrics"},
     )
-    warnings: BenchmarkWarningsArgs = Field(
-        default_factory=BenchmarkWarningsArgs,
-        description=(
-            "Post-benchmark warnings for a missed arrival schedule. "
-            "Each check can be disabled or given its own threshold."
-        ),
-    )
+
+    @field_validator("metrics", mode="before")
+    @classmethod
+    def _default_metrics_kind(cls, value: Any) -> Any:
+        """
+        Supply the generative kind when metrics arrive without one.
+
+        ``GUIDELLM__SPEC__METRICS__WARNINGS`` builds a metrics object that
+        contains only the warning list. The registry still needs ``kind`` to
+        select ``GenerativeMetricsArgs``.
+
+        :param value: Metrics configuration from a scenario, the CLI, or the
+            environment
+        :return: The same value, with ``kind`` set when it was omitted
+        """
+        if isinstance(value, dict) and "kind" not in value:
+            return {"kind": "generative", **value}
+        return value
 
     @model_validator(mode="after")
     def _check_profile_supports_metrics(self) -> BenchmarkArgs:

@@ -56,7 +56,7 @@ Whether you're interested in understanding the system architecture, exploring su
 
   ______________________________________________________________________
 
-  Configure post-benchmark warnings from metric paths, thresholds, and notes in a scenario file or the environment.
+  Configure post-benchmark warnings from metric paths, thresholds, and notes on `--metrics`, in a scenario file, or in the environment.
 
   [:octicons-arrow-right-24: Warnings Guide](warnings.md)
 

@@ -37,7 +37,6 @@ from guidellm.schemas.benchmark.random import RandomArgs, StaticRandomArgs
 from guidellm.schemas.benchmark.scenarios import SCENARIO_DIR, get_builtin_scenarios
 from guidellm.schemas.benchmark.transient import TransientPhaseConfig
 from guidellm.schemas.benchmark.warnings import (
-    BenchmarkWarningsArgs,
     MetricRef,
     WarningCondition,
     WarningRuleArgs,
@@ -50,7 +49,6 @@ __all__ = [
     "BenchmarkMetadata",
     "BenchmarkOutputArgs",
     "BenchmarkScenario",
-    "BenchmarkWarningsArgs",
     "CSVBenchmarkOutputArgs",
     "ConcurrentProfileArgs",
     "ConsoleBenchmarkOutputArgs",
