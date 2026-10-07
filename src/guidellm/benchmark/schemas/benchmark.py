@@ -24,6 +24,8 @@ from guidellm.benchmark.schemas.metrics import (
     GenerativeMetrics,
     SchedulerMetrics,
 )
+from guidellm.benchmark.schemas.warnings import BenchmarkWarning
+from guidellm.benchmark.warnings import BenchmarkWarningAnalyzer
 from guidellm.scheduler import SchedulerState
 from guidellm.schemas import (
     GenerativeRequestStats,
@@ -66,6 +68,10 @@ class GenerativeBenchmark(Benchmark[GenerativeBenchmarkAccumulator]):
         description=(
             "Request details grouped by status: successful, incomplete, errored"
         ),
+    )
+    warnings: list[BenchmarkWarning] = Field(
+        default_factory=list,
+        description="Post-benchmark warnings for a missed arrival schedule",
     )
 
     @computed_field  # type: ignore[prop-decorator]
@@ -148,15 +154,22 @@ class GenerativeBenchmark(Benchmark[GenerativeBenchmarkAccumulator]):
         :param scheduler_state: Final scheduler state after execution completion
         :return: Compiled generative benchmark instance with complete metrics
         """
+        metrics = GenerativeMetrics.compile(accumulator)
+        scheduler_metrics = SchedulerMetrics.compile(accumulator, scheduler_state)
+        warnings = BenchmarkWarningAnalyzer(accumulator.config.warnings).analyze(
+            scheduler_metrics=scheduler_metrics,
+            metrics=metrics,
+        )
         return GenerativeBenchmark(
             config=accumulator.config,
             scheduler_state=scheduler_state,
-            scheduler_metrics=SchedulerMetrics.compile(accumulator, scheduler_state),
-            metrics=GenerativeMetrics.compile(accumulator),
+            scheduler_metrics=scheduler_metrics,
+            metrics=metrics,
             requests=StatusBreakdown(
                 successful=accumulator.completed.get_sampled(),
                 incomplete=accumulator.incomplete.get_sampled(),
                 errored=accumulator.errored.get_sampled(),
                 total=None,
             ),
+            warnings=warnings,
         )

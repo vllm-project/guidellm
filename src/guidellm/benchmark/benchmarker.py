@@ -34,6 +34,10 @@ from guidellm.scheduler import (
     SchedulingStrategy,
 )
 from guidellm.schemas.benchmark import GoodputSLO, TransientPhaseConfig
+from guidellm.schemas.benchmark.warnings import (
+    WarningRuleArgs,
+    default_warning_rules,
+)
 from guidellm.utils.mixins import InfoMixin
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
@@ -71,6 +75,7 @@ class Benchmarker(
         ) = None,
         slo: GoodputSLO | None = None,
         confidence: float | None = 0.95,
+        warnings: list[WarningRuleArgs] | None = None,
     ) -> AsyncIterator[BenchmarkT]:
         """
         Execute benchmark runs across scheduling strategies in the profile.
@@ -93,6 +98,7 @@ class Benchmarker(
             toward goodput, or None to disable goodput measurement
         :param confidence: Two-sided confidence level for the intervals reported
             alongside request-level metrics, or None to omit them
+        :param warnings: Post-benchmark warning checks. None uses the defaults.
         :yield: Compiled benchmark result for each strategy execution
         :raises Exception: If benchmark execution or compilation fails
         """
@@ -131,6 +137,9 @@ class Benchmarker(
                     prefer_response_metrics=prefer_response_metrics,
                     slo=slo,
                     confidence=confidence,
+                    warnings=(
+                        default_warning_rules() if warnings is None else warnings
+                    ),
                     profile=InfoMixin.extract_from_obj(profile),
                     requests=InfoMixin.extract_from_obj(requests),
                     backend=InfoMixin.extract_from_obj(backend),
