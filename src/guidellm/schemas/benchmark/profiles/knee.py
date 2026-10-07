@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from itertools import pairwise
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
 
 from guidellm.schemas.benchmark.profiles.profile import ProfileArgs
-from guidellm.utils.imports import json
 
 __all__ = ["KneeProfileArgs"]
 
@@ -21,7 +20,7 @@ class KneeProfileArgs(ProfileArgs):
         default="knee",
         description="Profile type discriminator for throughput knee detection",
     )
-    initial_streams: list[Annotated[int, Field(gt=0, strict=True)]] | None = Field(
+    initial_streams: list[Annotated[int, Field(gt=0)]] | None = Field(
         default=None,
         min_length=5,
         description=(
@@ -33,19 +32,16 @@ class KneeProfileArgs(ProfileArgs):
     min_streams: int | None = Field(
         default=None,
         gt=0,
-        strict=True,
         description="Lowest initial concurrency when generating evenly spaced points",
     )
     max_streams: int | None = Field(
         default=None,
         gt=0,
-        strict=True,
         description="Highest initial concurrency when generating evenly spaced points",
     )
     count: int | None = Field(
         default=None,
         ge=5,
-        strict=True,
         description="Number of evenly spaced integer concurrency points to generate",
     )
     adaptive: bool = Field(
@@ -55,23 +51,13 @@ class KneeProfileArgs(ProfileArgs):
     points_each_side: int = Field(
         default=5,
         gt=0,
-        strict=True,
         description="Maximum number of adaptive grid points on each side of the anchor",
     )
     max_step: int = Field(
         default=5,
         gt=0,
-        strict=True,
         description="Largest integer spacing considered for the adaptive grid",
     )
-
-    @field_validator("initial_streams", mode="before")
-    @classmethod
-    def _parse_initial_streams(cls, value: Any) -> Any:
-        """Parse a JSON list of concurrencies from CLI configuration."""
-        if isinstance(value, str):
-            value = json.loads(value)
-        return value
 
     @field_validator("initial_streams")
     @classmethod
