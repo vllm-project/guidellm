@@ -305,7 +305,7 @@ class OpenAIHTTPBackend(Backend):
         if self._async_client is None:
             raise RuntimeError("Backend not started up for process.")
 
-        # Kept if no trace event fires, e.g. the request fails before sending
+        # This timestamp is overridden if a trace event is handled
         request_info.timings.request_start = time.time()
         response = await self._async_client.request(
             **request_kwargs,
@@ -345,7 +345,7 @@ class OpenAIHTTPBackend(Backend):
             raise RuntimeError("Backend not started up for process.")
 
         try:
-            # Kept if no trace event fires, e.g. the request fails before sending
+            # This timestamp is overridden if a trace event is handled
             request_info.timings.request_start = time.time()
 
             async with self._async_client.stream(
@@ -418,17 +418,7 @@ class OpenAIHTTPBackend(Backend):
     def _trace_request_start(
         request_info: RequestInfo,
     ) -> Callable[[str, dict[str, Any]], Awaitable[None]]:
-        """
-        Build an httpcore ``trace`` callback that records when a request is sent.
-
-        Sets ``request_start`` when httpcore starts writing the request headers, so
-        time spent waiting in the worker or opening a connection is not counted as
-        request time. Proxy ``CONNECT`` requests are skipped, and only the first
-        request is recorded, so a redirect keeps the original start.
-
-        :param request_info: Request tracking info to update
-        :return: Async callback for the httpx ``trace`` request extension
-        """
+        """Return a trace hook that sets ``request_start`` at the first header write."""
         recorded = False
 
         async def trace(event_name: str, info: dict[str, Any]) -> None:
