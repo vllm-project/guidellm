@@ -1,0 +1,25 @@
+name: 'Install APT packages'
+description: 'Installs packages, refreshing package indexes and retrying on failure'
+inputs:
+  packages:
+    description: 'Whitespace-separated list of APT packages to install'
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - name: Install packages
+      shell: bash
+      env:
+        APT_PACKAGES: ${{ inputs.packages }}
+      run: |
+        read -r -a packages <<< "${APT_PACKAGES//$'\n'/ }"
+        if [[ ${#packages[@]} -eq 0 ]]; then
+          echo "::error::At least one APT package is required."
+          exit 1
+        fi
+
+        sudo apt-get install -y -- "${packages[@]}" || {
+          echo "Package installation failed; refreshing package indexes and retrying."
+          sudo apt-get update &&
+            sudo apt-get install -y -- "${packages[@]}"
+        }
