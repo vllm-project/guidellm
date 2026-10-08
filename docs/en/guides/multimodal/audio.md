@@ -36,7 +36,9 @@ Next, the desired audio column within the deserializable data source must be sup
 - Local file paths (e.g., .wav, .mp3, .flac)
 - URLs pointing to audio files
 - Base64-encoded audio data
-- Numpy or PyTorch arrays with raw audio samples
+- Numpy or PyTorch arrays with raw audio samples (one-dimensional mono or channel-first arrays)
+
+Raw floating-point arrays require a sample rate. For example, an audio item can be provided as `{"data": samples, "sample_rate": 16000}`, where `samples` has shape `(num_samples,)` for mono or `(num_channels, num_samples)` for multiple channels.
 
 ### Data Column Mapping
 
