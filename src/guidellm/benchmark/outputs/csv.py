@@ -413,7 +413,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         self._add_field(headers, values, "Benchmark", "Type", benchmark.type_)
         self._add_field(headers, values, "Benchmark", "ID", benchmark.config.id_)
         self._add_field(
-            headers, values, "Benchmark", "Strategy", benchmark.config.strategy.type_
+            headers, values, "Benchmark", "Strategy", str(benchmark.config.strategy)
         )
         self._add_field(
             headers,

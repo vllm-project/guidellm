@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from guidellm.benchmark.outputs.csv import GenerativeBenchmarkerCSV
-from guidellm.scheduler import ThroughputStrategy
+from guidellm.scheduler import ConcurrentStrategy, ThroughputStrategy
 from guidellm.schemas import (
     SampleUncertainty,
     StatusDistributionSummary,
@@ -318,6 +318,35 @@ async def test_finalize_exports_tool_call_metrics(tmp_path: Path):
             and rows[2][index] == "Mean"
         )
         assert rows[3][column_index] == expected_mean
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+async def test_finalize_keeps_parameterized_strategy_label(tmp_path: Path):
+    """The Strategy column keeps the concurrent stream count (concurrent@N).
+
+    Exporting the discriminator (``strategy.type_``) instead would write a bare
+    ``concurrent`` for every concurrent row, so the rows of a multi-stream sweep
+    could not be told apart in the CSV.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = make_benchmark(
+        strategy=ConcurrentStrategy(streams=5),
+        rps=1.0,
+        tps=10.0,
+    )
+
+    output = GenerativeBenchmarkerCSV(output_path=tmp_path / "strategy.csv")
+    path = await output.finalize(report(benchmark))
+    rows = list(csv.reader(path.open()))
+
+    strategy_index = next(
+        index
+        for index, (group, name) in enumerate(zip(rows[0], rows[1], strict=True))
+        if group == "Benchmark" and name == "Strategy"
+    )
+    assert rows[3][strategy_index] == "concurrent@5"
 
 
 # Metrics read by GenerativeBenchmarkerCSV._add_request_latency_metrics.
