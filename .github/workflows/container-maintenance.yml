@@ -17,12 +17,13 @@ jobs:
   cleanup-container-tags:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete untagged images older than 2 weeks
+      - name: Delete PR and untagged images older than 2 weeks
         uses: snok/container-retention-policy@d3bdcf5ce9b05f685154e4a16c39233b245e3d53 # v3.1.0
         with:
           account: ${{ github.repository_owner }}
           token: ${{ github.token }}
           image-names: ${{ github.event.repository.name }}
+          image-tags: "pr-*"  # This will match pr-N, pr-N-amd64, pr-N-arm64
           cut-off: 2w
           dry-run: false
 
