@@ -646,10 +646,8 @@ class Serializer:
         payload_type: str | bytes
         delimiter: str | bytes
         if isinstance(payload, bytes):
-            payload_len_output = payload_len.to_bytes(
-                length=(payload_len.bit_length() + 7) // 8 if payload_len > 0 else 1,
-                byteorder="big",
-            )
+            # Decimal digits cannot contain the delimiter, unlike raw length bytes.
+            payload_len_output = str(payload_len).encode("ascii")
             match type_:
                 case "pydantic":
                     payload_type = b"P"
@@ -722,7 +720,7 @@ class Serializer:
                 raise ValueError("Unknown type character in packed data")
 
             len_end = data.index(b"|", 2)
-            payload_len = int.from_bytes(data[2:len_end], "big")
+            payload_len = int(data[2:len_end])
             payload_b = data[len_end + 1 : len_end + 1 + payload_len]
             remaining_b = (
                 data[len_end + 1 + payload_len :]

@@ -49,6 +49,35 @@ class GenricModelWrapper(Generic[SampleModelT]):
 class TestMessageEncoding:
     """Test suite for MessageEncoding class."""
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize("payload_size", [124, 380, 31744, 31868])
+    @pytest.mark.parametrize("container", ["model", "list", "mapping"])
+    @pytest.mark.parametrize("encoding", [None, "msgpack", "msgspec"])
+    def test_sequence_length_containing_delimiter_roundtrip(
+        self, payload_size, container, encoding
+    ):
+        """Round-trip models whose binary length contains the delimiter byte.
+
+        ## WRITTEN BY AI ##
+        """
+        try:
+            instance = MessageEncoding(serialization="sequence", encoding=encoding)
+        except ImportError:
+            pytest.skip("Required encoding library not available")
+        instance.register_pydantic(SampleModel)
+        empty = SampleModel(name="", value=1)
+        overhead = len(instance.serializer.to_sequence_pydantic(empty))
+        model = SampleModel(name="x" * (payload_size - overhead), value=1)
+        obj = (
+            [model, model]
+            if container == "list"
+            else {"first": model, "second": model}
+            if container == "mapping"
+            else model
+        )
+
+        assert instance.decode(instance.encode(obj)) == obj
+
     @pytest.fixture(
         params=[
             {"serialization": None, "encoding": None},
