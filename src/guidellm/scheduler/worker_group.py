@@ -657,6 +657,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                         agent_id=node.agent_id,
                         parent_node_ids=incoming_map[node_id],
                         preceding_nodes=dag_state.preceding_nodes[node_id],
+                        conversation_node_count=len(graph.nodes),
                         status="queued",
                         scheduler_process_id=0,
                         scheduler_start_time=self.start_time,

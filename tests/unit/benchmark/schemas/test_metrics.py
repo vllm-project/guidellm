@@ -1433,6 +1433,7 @@ def _make_turn_stats(
     request_end: float,
     prompt_tokens: int = 8,
     status: str = "completed",
+    conversation_node_count: int | None = None,
 ) -> GenerativeRequestStats:
     """Build a streaming request placed at a given turn of a conversation.
 
@@ -1453,6 +1454,7 @@ def _make_turn_stats(
             request_id=request_id,
             conversation_id=conversation_id,
             turn_index=turn_index,
+            conversation_node_count=conversation_node_count,
             status=status,
             timings=timings,
         ),
@@ -1534,3 +1536,164 @@ class TestTurnMetrics:
 
         assert metrics.generation_delay.count == 0
         assert metrics.generation_delay.mean == 0.0
+
+
+class TestConversationMetrics:
+    """
+    Verify per-conversation distributions for multi-turn workloads.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_single_turn_workload_reports_no_conversations(self):
+        """
+        Leave conversation metrics unset when every conversation has one request.
+
+        ## WRITTEN BY AI ##
+        """
+        successful = _make_conversations(n_conversations=3, n_turns=1)
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                successful, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 100.0
+            )
+        )
+
+        assert metrics.conversations is None
+
+    @pytest.mark.sanity
+    def test_conversation_time_and_tokens(self):
+        """
+        Each three-turn conversation runs turns of 1 s every 2 s, so it lasts
+        5 s, is active for 3 s and idle for 2 s, with 8 + 16 + 24 prompt
+        tokens and 3 * 9 output tokens.
+
+        ## WRITTEN BY AI ##
+        """
+        successful = _make_conversations(n_conversations=4, n_turns=3)
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                successful, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 100.0
+            )
+        )
+
+        conversations = metrics.conversations
+        assert conversations is not None
+        assert conversations.conversation_totals.successful == 4
+        assert conversations.conversation_totals.total == 4
+        expected = (
+            ("request_count", conversations.request_count, 3.0),
+            ("duration", conversations.duration, 5.0),
+            ("active_time", conversations.active_time, 3.0),
+            ("idle_time", conversations.idle_time, 2.0),
+            ("prompt_token_count", conversations.prompt_token_count, 48.0),
+            ("output_token_count", conversations.output_token_count, 27.0),
+            (
+                "output_tokens_per_second",
+                conversations.output_tokens_per_second,
+                27.0 / 5.0,
+            ),
+        )
+        for name, distribution, value in expected:
+            assert distribution.successful.count == 4, name
+            assert distribution.successful.mean == pytest.approx(value), name
+
+    @pytest.mark.regression
+    def test_overlapping_requests_count_once_in_active_time(self):
+        """
+        A subagent request running inside its parent's interval adds no
+        active time, so idle time stays positive. Summing request latencies
+        would give 6 s of activity in a 6 s conversation and no idle time.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        successful = [
+            _make_turn_stats("main", "c0", 0, base, base + 0.1, base + 4.0),
+            _make_turn_stats("sub", "c0", 1, base + 1.0, base + 1.1, base + 2.0),
+            _make_turn_stats("next", "c0", 1, base + 5.0, base + 5.1, base + 6.0),
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(successful, base, base + 100.0)
+        )
+
+        conversations = metrics.conversations
+        assert conversations is not None
+        assert conversations.duration.successful.mean == pytest.approx(6.0)
+        assert conversations.active_time.successful.mean == pytest.approx(5.0)
+        assert conversations.idle_time.successful.mean == pytest.approx(1.0)
+
+    @pytest.mark.sanity
+    def test_conversation_status(self):
+        """
+        A conversation is errored if any request errored, incomplete if a
+        request was cancelled or never sent, and successful otherwise.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+
+        def turn(conversation_id: str, index: int, status: str = "completed"):
+            start = base + index * 2.0
+            return _make_turn_stats(
+                request_id=f"{conversation_id}-t{index}",
+                conversation_id=conversation_id,
+                turn_index=index,
+                request_start=start,
+                first_token=start + 0.1,
+                request_end=start + 1.0,
+                status=status,
+                conversation_node_count=3,
+            )
+
+        accumulator = _make_accumulator(
+            [
+                *(turn("done", index) for index in range(3)),
+                *(turn("truncated", index) for index in range(2)),
+                *(turn("cancelled", index) for index in range(2)),
+                *(turn("failed", index) for index in range(2)),
+            ],
+            base,
+            base + 100.0,
+        )
+        accumulator.incomplete.requests_stats = [turn("cancelled", 2, "cancelled")]
+        accumulator.errored.requests_stats = [turn("failed", 2, "errored")]
+        metrics = GenerativeMetrics.compile(accumulator)
+
+        conversations = metrics.conversations
+        assert conversations is not None
+        totals = conversations.conversation_totals
+        assert (totals.successful, totals.incomplete, totals.errored) == (1, 2, 1)
+        assert totals.total == 4
+        assert conversations.request_count.incomplete.mean == pytest.approx(2.5)
+        assert conversations.request_count.errored.mean == pytest.approx(3.0)
+
+    @pytest.mark.regression
+    def test_conversation_crossing_window_is_measured_in_full(self):
+        """
+        A conversation with a request inside the window is measured from all
+        of its requests, including one that ended before the window opened.
+        A conversation entirely before the window is not reported.
+
+        ## WRITTEN BY AI ##
+        """
+        successful = _make_conversations(n_conversations=4, n_turns=3)
+        window_start = SCHEDULE_BASE_TIME + 3.0
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(successful, window_start, SCHEDULE_BASE_TIME + 100.0)
+        )
+
+        conversations = metrics.conversations
+        assert conversations is not None
+        assert conversations.conversation_totals.total == 4
+        assert conversations.request_count.successful.mean == pytest.approx(3.0)
+        assert conversations.duration.successful.mean == pytest.approx(5.0)
+        assert metrics.request_totals.successful == 11
+
+        late_start = SCHEDULE_BASE_TIME + 6.0
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(successful, late_start, SCHEDULE_BASE_TIME + 100.0)
+        )
+
+        assert metrics.conversations is not None
+        assert metrics.conversations.conversation_totals.total == 3
