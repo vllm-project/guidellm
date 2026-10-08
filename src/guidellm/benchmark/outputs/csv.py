@@ -138,6 +138,9 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 self._add_server_throughput_metrics(
                     benchmark, benchmark_headers, benchmark_values
                 )
+                self._add_slo_attainment_metrics(
+                    benchmark, benchmark_headers, benchmark_values
+                )
                 for modality_name in MODALITY_METRICS:
                     self._add_modality_metrics(
                         benchmark,
@@ -627,6 +630,11 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
             headers.append(["Server Throughput", "SLO Attainment", ""])
             attainment = benchmark.metrics.slo_attainment
             values.append("" if attainment is None else attainment)
+            token_goodput = benchmark.metrics.output_token_goodput
+            headers.append(["Server Throughput", "Output Token Goodput/Sec", "mean"])
+            values.append(
+                "" if token_goodput is None else token_goodput.successful.mean
+            )
         self._add_stats_for_metric(
             headers,
             values,
@@ -683,6 +691,36 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
             "Token Streaming",
             "Iter Tokens/Iter",
         )
+
+    def _add_slo_attainment_metrics(
+        self,
+        benchmark: GenerativeBenchmark,
+        headers: list[list[str]],
+        values: list[str | int | float],
+    ):
+        if benchmark.config.slo is None:
+            return
+        by_metric = benchmark.metrics.slo_attainment_by_metric or {}
+        for name, threshold in benchmark.config.slo.model_dump(
+            exclude_none=True
+        ).items():
+            summary = by_metric.get(name)
+            units = "ms/token" if name == "tpot_ms" else "ms"
+            fields = (
+                (f"Threshold ({units})", threshold),
+                (
+                    "Conforming Requests",
+                    None if summary is None else summary.conforming_requests,
+                ),
+                (
+                    "Determined Requests",
+                    None if summary is None else summary.determined_requests,
+                ),
+                ("Attainment", None if summary is None else summary.attainment),
+            )
+            for label, value in fields:
+                headers.append(["SLO Attainment", name, label])
+                values.append("" if value is None else value)
 
     def _add_modality_metrics(
         self,

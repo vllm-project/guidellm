@@ -14,6 +14,7 @@ from guidellm.benchmark.outputs.console import (
     ConsoleTableColumnsCollection,
     GenerativeBenchmarkerConsole,
 )
+from guidellm.benchmark.schemas.metrics import SLOAttainmentSummary
 from guidellm.scheduler import ConcurrentStrategy
 from guidellm.schemas import (
     ConfidenceInterval,
@@ -23,6 +24,7 @@ from guidellm.schemas import (
     StatusBreakdown,
     StatusDistributionSummary,
 )
+from guidellm.schemas.benchmark import GoodputSLO
 
 # Metrics read by GenerativeBenchmarkerConsole.print_server_throughput_table.
 THROUGHPUT_TABLE_METRICS = (
@@ -125,6 +127,8 @@ def _make_throughput_benchmark(
         **dict.fromkeys(THROUGHPUT_TABLE_METRICS, distribution),
         slo_attainment=attainment,
         request_goodput=goodput,
+        output_token_goodput=None,
+        slo_attainment_by_metric=None,
     )
 
     return SimpleNamespace(
@@ -161,6 +165,71 @@ class TestServerThroughputTableGoodput:
 
     ## WRITTEN BY AI ##
     """
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("token_rate", [0.0, 12.5, None])
+    def test_output_token_goodput_renders_zero_and_unavailable(self, token_rate):
+        """Distinguish a zero token rate from unavailable usage counts.
+
+        ## WRITTEN BY AI ##
+        """
+        benchmark = _make_throughput_benchmark(attainment=0.5, goodput=None)
+        if token_rate is not None:
+            benchmark.metrics.output_token_goodput = (
+                StatusDistributionSummary.from_values([token_rate], [], [])
+            )
+        headers, values = _render_throughput_table([benchmark])
+
+        assert "Output Tok/Sec" in headers
+        assert values[-1] == ["--" if token_rate is None else f"{token_rate:.1f}"]
+
+    @pytest.mark.regression
+    def test_individual_objective_table_keeps_counts_and_missing_results(self, mocker):
+        """Render different objectives and old reports without inventing results.
+
+        ## WRITTEN BY AI ##
+        """
+        measured = _make_throughput_benchmark(attainment=0.5, goodput=None)
+        measured.config.slo = GoodputSLO(ttft_ms=200, tpot_ms=10)
+        measured.metrics.slo_attainment_by_metric = {
+            "ttft_ms": SLOAttainmentSummary(
+                conforming_requests=2, determined_requests=3
+            ),
+            "tpot_ms": SLOAttainmentSummary(),
+        }
+        legacy = _make_throughput_benchmark(attainment=0.5, goodput=None)
+        legacy.config.slo = GoodputSLO(e2el_ms=2000)
+        no_objectives = _make_throughput_benchmark(attainment=None, goodput=None)
+        output = GenerativeBenchmarkerConsole()
+        mocker.patch.object(output.console, "print")
+        table = mocker.patch.object(output.console, "print_table")
+
+        output.print_slo_attainment_table(
+            SimpleNamespace(benchmarks=[measured, legacy, no_objectives])
+        )
+
+        headers, values = table.call_args.args
+        columns = {
+            header[1]: column for header, column in zip(headers, values, strict=True)
+        }
+        assert columns["Objective"] == ["TTFT", "TPOT", "E2EL"]
+        assert columns["Passing"] == ["2", "0", "--"]
+        assert columns["Evaluated"] == ["3", "0", "--"]
+        assert columns["Attainment"] == ["66.7", "--", "--"]
+        assert columns["Units"] == ["ms", "ms/token", "ms"]
+
+    @pytest.mark.regression
+    def test_individual_objective_table_is_omitted_without_slos(self, mocker):
+        """Leave the console output unchanged for runs without objectives.
+
+        ## WRITTEN BY AI ##
+        """
+        output = GenerativeBenchmarkerConsole()
+        table = mocker.patch.object(output.console, "print_table")
+        output.print_slo_attainment_table(
+            SimpleNamespace(benchmarks=[_make_throughput_benchmark(None, None)])
+        )
+        table.assert_not_called()
 
     @pytest.mark.regression
     def test_omits_goodput_columns_without_objectives(self):
