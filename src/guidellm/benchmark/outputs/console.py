@@ -418,7 +418,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
         for benchmark in report.benchmarks:
             columns.add_value(
-                benchmark.config.strategy.type_,
+                str(benchmark.config.strategy),
                 group="Benchmark",
                 name="Strategy",
                 type_="text",
@@ -578,7 +578,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
         for benchmark in report.benchmarks:
             columns.add_value(
-                benchmark.config.strategy.type_,
+                str(benchmark.config.strategy),
                 group="Benchmark",
                 name="Strategy",
                 type_="text",
@@ -627,7 +627,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
         for benchmark in report.benchmarks:
             columns.add_value(
-                benchmark.config.strategy.type_,
+                str(benchmark.config.strategy),
                 group="Benchmark",
                 name="Strategy",
                 type_="text",
@@ -701,7 +701,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
         for benchmark in report.benchmarks:
             columns.add_value(
-                benchmark.config.strategy.type_,
+                str(benchmark.config.strategy),
                 group="Benchmark",
                 name="Strategy",
                 type_="text",
@@ -777,7 +777,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
         for benchmark in report.benchmarks:
             columns["labels"].add_value(
-                benchmark.config.strategy.type_,
+                str(benchmark.config.strategy),
                 group="Benchmark",
                 name="Strategy",
                 type_="text",

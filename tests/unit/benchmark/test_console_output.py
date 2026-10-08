@@ -14,6 +14,7 @@ from guidellm.benchmark.outputs.console import (
     ConsoleTableColumnsCollection,
     GenerativeBenchmarkerConsole,
 )
+from guidellm.scheduler import ConcurrentStrategy
 from guidellm.schemas import (
     ConfidenceInterval,
     DistributionSummary,
@@ -251,13 +252,18 @@ def _make_run_summary_benchmark(
     successful: int = 8,
     incomplete: int = 2,
     errored: int = 1,
+    strategy: object | None = None,
 ) -> SimpleNamespace:
     """Build a benchmark stub exposing every metric the run summary table reads.
 
     ## WRITTEN BY AI ##
     """
     return SimpleNamespace(
-        config=SimpleNamespace(strategy=SimpleNamespace(type_="constant")),
+        config=SimpleNamespace(
+            strategy=strategy
+            if strategy is not None
+            else SimpleNamespace(type_="constant")
+        ),
         start_time=1_700_000_000.0,
         end_time=1_700_000_060.0,
         duration=60.0,
@@ -321,6 +327,39 @@ class TestRunSummaryTable:
         assert any("8" in column for column in values)
         assert any("2" in column for column in values)
         assert any("1" in column for column in values)
+
+
+class TestRunSummaryTableStrategyLabel:
+    """
+    Verify the run summary Strategy column keeps its parameterized label.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.regression
+    def test_concurrent_rows_keep_their_stream_count(self):
+        """
+        Each concurrent sub-benchmark renders as ``concurrent@<streams>`` so the
+        rows stay distinguishable, instead of collapsing to a bare ``concurrent``.
+
+        Rendering the discriminator (``strategy.type_``) would label every
+        concurrent row ``concurrent`` in the final tables, even though the live
+        progress display tells them apart as ``concurrent@1`` / ``concurrent@2``.
+        The Strategy column must use ``str(strategy)`` to match.
+
+        ## WRITTEN BY AI ##
+        """
+        _, values = _render_run_summary_table(
+            [
+                _make_run_summary_benchmark(strategy=ConcurrentStrategy(streams=1)),
+                _make_run_summary_benchmark(strategy=ConcurrentStrategy(streams=2)),
+            ]
+        )
+
+        cells = [cell for column in values for cell in column]
+        assert "concurrent@1" in cells
+        assert "concurrent@2" in cells
+        assert "concurrent" not in cells
 
 
 def _render_latency_table_values(
