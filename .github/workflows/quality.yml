@@ -16,47 +16,10 @@ jobs:
         uses: ./.github/actions/run-tox
         with:
           python-version: ${{ inputs.python }}
-          tox-env: lint-check
-
-  type-checks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Run type checks
-        uses: ./.github/actions/run-tox
-        with:
-          python-version: ${{ inputs.python }}
-          tox-env: type-check
-
-  docs-checks:
-    if: inputs.python == '3.10'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Setup Python with UV
-        uses: ./.github/actions/python-uv
-        with:
-          python-version: ${{ inputs.python }}
-      - name: Install documentation dependencies
+          tox-env: lint-check,type-check,docs-build
+      - name: Verify pre-commit checks
         run: |
-          uv sync --frozen
-          uv pip install "mkdocs<2.0.0" mkdocs-material mike \
-            mkdocs-gen-files mkdocs-nav-weight mkdocs-section-index \
-            mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
-      - name: Build documentation
-        run: |
-          uv run --no-sync python docs/scripts/check_translations.py
-          uv run --no-sync mkdocs build --clean
+          # For some reason we can end up with a file at .venv which makes uv unhappy
+          rm -vf .venv
 
-  precommit-checks:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: ${{ inputs.python }}
-      - name: Install dependencies
-        run: pip install pre-commit
-      - name: Run pre-commit checks
-        run: SKIP=ruff-format pre-commit run --all-files
+          SKIP=ruff-format uv run --frozen --only-group env -- pre-commit run --all-files

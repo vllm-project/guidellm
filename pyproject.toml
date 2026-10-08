@@ -151,6 +151,17 @@ env = [
     "tox",
     "tox-uv",
 ]
+docs = [
+    "mkdocs<2.0.0",
+    "mkdocs-material",
+    "mike",
+    "mkdocs-gen-files",
+    "mkdocs-nav-weight",
+    "mkdocs-section-index",
+    "mkdocs-minify-plugin",
+    "mkdocstrings[python]",
+    "mkdocs-api-autonav",
+]
 dev = [
     {include-group = "build"},
     {include-group = "quality"},

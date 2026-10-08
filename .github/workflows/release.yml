@@ -73,7 +73,7 @@ jobs:
             echo "Error: Could not extract version from tag"
             exit 1
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
 
   docs-deploy:
     needs: extract-version
@@ -85,26 +85,16 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Setup Python with UV
-        uses: ./.github/actions/python-uv
-        with:
-          python-version: "3.13"
-      - name: Install mkdocs dependencies
+      - name: Configure git
         run: |
-          # Sync GuideLLM install
-          uv sync --frozen
-          # Install mkdocs
-          uv pip install "mkdocs<2.0.0" mkdocs-material mike \
-            mkdocs-gen-files mkdocs-nav-weight mkdocs-section-index \
-            mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
-      - name: Deploy docs
-        run: |
-          uv run --no-sync python docs/scripts/check_translations.py
-          VERSION="${{ needs.extract-version.outputs.version }}"
-          VERSION="${VERSION#v}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          uv run --no-sync mike deploy $VERSION stable --push --update-aliases
+      - name: Build & Deploy Docs
+        uses: ./.github/actions/run-tox
+        with:
+          python-version: "3.13"
+          tox-env: docs-build
+          tox-args: "mike deploy ${{ needs.extract-version.outputs.version }} stable --push --update-aliases"
 
   build-and-push-container:
     needs: extract-version
