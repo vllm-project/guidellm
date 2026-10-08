@@ -13,13 +13,19 @@ localized_nav = import_module("docs.scripts.localized_nav")
 
 
 @pytest.mark.regression
-def test_api_reference_title_is_localized_without_treating_route_as_title():
+def test_section_titles_are_localized_without_treating_routes_as_titles():
     """
-    Localize the plugin's section title, not its generated route name.
+    Load all section labels from the title map and leave generated routes unchanged.
 
     ## WRITTEN BY AI ##
     """
+    assert localized_nav._localized_title("Getting Started") == "快速开始"
+    assert localized_nav._localized_title("Guides") == "使用指南"
+    assert localized_nav._localized_title("Examples") == "示例"
+    assert localized_nav._localized_title("Developer") == "开发者"
     assert localized_nav._localized_title("API Reference") == "API 参考"
+    assert localized_nav._localized_title("Multimodal") == "多模态"
+    assert localized_nav._localized_title("  API   Reference  ") == "API 参考"
     assert localized_nav._localized_title("reference") == "reference"
 
 

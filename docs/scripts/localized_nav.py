@@ -10,6 +10,7 @@ only when they match the labels in :data:`ZH_SECTION_TITLES`.
 
 from __future__ import annotations
 
+import json
 import re
 import runpy
 from copy import copy
@@ -23,14 +24,11 @@ translation_routes = runpy.run_path(
     str(Path(__file__).resolve().parent / "check_translations.py")
 )["translation_routes"]
 
-ZH_SECTION_TITLES = {
-    "getting started": "快速开始",
-    "guides": "使用指南",
-    "examples": "示例",
-    "developer": "开发者",
-    "api reference": "API 参考",
-    "multimodal": "多模态",
-}
+ZH_SECTION_TITLES = json.loads(
+    (Path(__file__).resolve().parents[1] / "zh" / "title_map.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 
 def _route(page: Page) -> str:
