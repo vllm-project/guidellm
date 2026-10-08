@@ -5,6 +5,7 @@ repo_url: https://github.com/vllm-project/guidellm
 edit_uri: https://github.com/vllm-project/guidellm/tree/main/docs
 exclude_docs: |
   en/**/*.md
+  zh/title_map.json
 
 theme:
   name: material
@@ -104,6 +105,9 @@ plugins:
   - section-index
   - social
   - tags
+
+hooks:
+  - docs/scripts/localized_nav.py
 
 extra:
   generator: false
