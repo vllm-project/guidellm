@@ -19,4 +19,7 @@ jobs:
           tox-env: lint-check,type-check,docs-build
       - name: Verify pre-commit checks
         run: |
+          # For some reason we can end up with a file at .venv which makes uv unhappy
+          rm -vf .venv
+
           SKIP=ruff-format uv run --frozen --only-group env -- pre-commit run --all-files
