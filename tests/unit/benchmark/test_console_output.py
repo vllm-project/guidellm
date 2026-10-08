@@ -596,3 +596,155 @@ class TestUnsupportedPercentileMarker:
         for index, header in enumerate(headers):
             if header[0] in ("ITL", "TPOT") and header[-1] == "p95":
                 assert not values[index][0].endswith(UNSUPPORTED_PERCENTILE_MARKER)
+
+
+def _make_turn(turn_index: int, latency: float, completed: int) -> SimpleNamespace:
+    """Build a per-turn metrics stub with request latency `latency` seconds.
+
+    Each distribution holds a different multiple of `latency`, so a column
+    showing the wrong metric fails the assertions.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def distribution(value: float) -> StatusDistributionSummary:
+        return StatusDistributionSummary.from_values([value] * completed, [], [])
+
+    return SimpleNamespace(
+        turn_index=turn_index,
+        request_totals=SimpleNamespace(successful=completed),
+        prompt_token_count=distribution(100.0 * latency),
+        request_latency=distribution(latency),
+        time_to_first_token_ms=distribution(10.0 * latency),
+        inter_token_latency_ms=distribution(latency / 2.0),
+    )
+
+
+def _make_turn_benchmark(turns: list[SimpleNamespace] | None) -> SimpleNamespace:
+    """Build a benchmark stub exposing only the per-turn metrics.
+
+    ## WRITTEN BY AI ##
+    """
+    return SimpleNamespace(
+        config=SimpleNamespace(strategy=SimpleNamespace(type_="constant")),
+        metrics=SimpleNamespace(turns=turns),
+    )
+
+
+def _render_turn_table(benchmarks) -> dict[str, object]:
+    """Render the per-turn table, returning what was passed to print_table.
+
+    ## WRITTEN BY AI ##
+    """
+    captured: dict[str, object] = {}
+    output = GenerativeBenchmarkerConsole()
+    output.console.print = lambda *args, **kwargs: None
+    output.console.print_table = lambda headers, values, title=None: captured.update(
+        headers=headers, values=values, title=title
+    )
+    output.print_turn_latency_table(SimpleNamespace(benchmarks=benchmarks))
+
+    return captured
+
+
+def _turn_column(captured: dict[str, object], group: str, name: str) -> list[str]:
+    """Return the values of the column whose header starts with group and name.
+
+    ## WRITTEN BY AI ##
+    """
+    for header, values in zip(
+        captured["headers"],  # type: ignore[arg-type]
+        captured["values"],  # type: ignore[arg-type]
+        strict=True,
+    ):
+        if header[:2] == [group, name]:
+            return values
+    raise AssertionError(f"no column {group} / {name}")
+
+
+class TestTurnLatencyTable:
+    """
+    Verify the per-turn latency table for multi-turn workloads.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_single_turn_workload_prints_nothing(self):
+        """
+        Without per-turn metrics in any benchmark the table is not printed.
+
+        ## WRITTEN BY AI ##
+        """
+        captured = _render_turn_table([_make_turn_benchmark(None)])
+
+        assert captured == {}
+
+    @pytest.mark.sanity
+    def test_one_row_per_turn_of_each_benchmark(self):
+        """
+        Rows follow each benchmark's turns in order, with their own counts and
+        latencies.
+
+        ## WRITTEN BY AI ##
+        """
+        captured = _render_turn_table(
+            [
+                _make_turn_benchmark([_make_turn(0, 1.0, 4), _make_turn(1, 2.0, 3)]),
+                _make_turn_benchmark(
+                    [
+                        _make_turn(0, 3.0, 2),
+                        _make_turn(1, 4.0, 2),
+                        _make_turn(2, 5.0, 1),
+                    ]
+                ),
+            ]
+        )
+
+        assert captured["title"] == "Per-Turn Latency Statistics (Completed Requests)"
+        assert _turn_column(captured, "Benchmark", "Turn") == ["0", "1", "0", "1", "2"]
+        assert _turn_column(captured, "Requests", "Comp") == ["4", "3", "2", "2", "1"]
+        assert _turn_column(captured, "Request Latency", "Sec") == [
+            "1.0",
+            "2.0",
+            "3.0",
+            "4.0",
+            "5.0",
+        ]
+        assert _turn_column(captured, "TTFT", "ms") == [
+            "10.0",
+            "20.0",
+            "30.0",
+            "40.0",
+            "50.0",
+        ]
+        assert _turn_column(captured, "ITL", "ms") == [
+            "0.5",
+            "1.0",
+            "1.5",
+            "2.0",
+            "2.5",
+        ]
+        assert _turn_column(captured, "Input Tok", "Per Req") == [
+            "100.0",
+            "200.0",
+            "300.0",
+            "400.0",
+            "500.0",
+        ]
+
+    @pytest.mark.sanity
+    def test_benchmarks_without_turns_add_no_rows(self):
+        """
+        A benchmark without per-turn metrics adds no rows next to one with them.
+
+        ## WRITTEN BY AI ##
+        """
+        captured = _render_turn_table(
+            [
+                _make_turn_benchmark(None),
+                _make_turn_benchmark([_make_turn(0, 1.0, 1), _make_turn(1, 2.0, 1)]),
+            ]
+        )
+
+        assert _turn_column(captured, "Benchmark", "Turn") == ["0", "1"]
