@@ -9,11 +9,18 @@ jobs:
   tests:
     strategy:
       matrix:
-        python: ["3.10", "3.13"]
+        python: ["3.13"]
     uses: ./.github/workflows/testing.yml
     with:
       python: ${{ matrix.python }}
-      args: -m "smoke or sanity"
+
+  quality:
+    strategy:
+      matrix:
+        python: ["3.13"]
+    uses: ./.github/workflows/quality.yml
+    with:
+      python: ${{ matrix.python }}
 
   build-and-push-container:
     needs: [tests]
