@@ -37,6 +37,10 @@ from guidellm.schemas.benchmark.outputs import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.profiles import ProfileArgs
 from guidellm.schemas.benchmark.random import RandomArgs
 from guidellm.schemas.benchmark.scenarios import get_builtin_scenarios
+from guidellm.schemas.benchmark.warnings import (
+    WarningRuleArgs,
+    default_warning_rules,
+)
 from guidellm.schemas.data import (
     DataArgs,
     DataFinalizerArgs,
@@ -106,6 +110,14 @@ class MetricsArgs(PydanticClassRegistryMixin["MetricsArgs"], ABC):
 
     kind: str = Field(
         description="The kind of metrics configuration to use.",
+    )
+    warnings: list[WarningRuleArgs] = Field(
+        default_factory=default_warning_rules,
+        description=(
+            "Post-benchmark warnings. Each rule names a metric and a threshold, "
+            "or a metric divided by a second metric. Omit the field to use the "
+            "built-in rules. Set the field to replace those rules."
+        ),
     )
 
 

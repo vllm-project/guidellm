@@ -10,6 +10,7 @@ from contextlib import nullcontext
 from typing import Literal
 from unittest.mock import MagicMock, Mock, patch
 
+import httpcore
 import httpx
 import pytest
 from pydantic import ValidationError
@@ -1214,3 +1215,30 @@ async def test_resolve_responses_terminal_error(
                 assert responses[-1].text == "Partial answer"
     finally:
         await backend.process_shutdown()
+
+
+@pytest.mark.sanity
+@pytest.mark.asyncio
+@pytest.mark.parametrize("protocol", ["http11", "http2"])
+async def test_trace_request_start_records_first_request_headers(protocol: str):
+    """Record only the first request's header write and skip proxy tunnels.
+
+    ## WRITTEN BY AI ##
+    """
+    request_info = RequestInfo(timings=RequestTimings(request_start=1.0))
+    trace = OpenAIHTTPBackend._trace_request_start(request_info)
+    tunnel = httpcore.Request(b"CONNECT", "http://proxy:3128")
+    post = httpcore.Request(b"POST", "http://test/v1/chat/completions")
+    event = f"{protocol}.send_request_headers.started"
+
+    with patch("guidellm.backends.openai.http.time") as mock_time:
+        mock_time.time.side_effect = [2.0, 3.0]
+        await trace("connection.connect_tcp.started", {})
+        await trace(event, {"request": tunnel})
+        assert request_info.timings.request_start == 1.0
+
+        await trace(event, {"request": post})
+        assert request_info.timings.request_start == 2.0
+
+        await trace(event, {"request": post})
+        assert request_info.timings.request_start == 2.0

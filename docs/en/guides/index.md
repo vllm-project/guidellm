@@ -52,6 +52,14 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: Output Guide](outputs.md)
 
+- :material-alert-outline:{ .lg .middle } Warnings
+
+  ______________________________________________________________________
+
+  Configure post-benchmark warnings from metric paths, thresholds, and notes on `--metrics`, in a scenario file, or in the environment.
+
+  [:octicons-arrow-right-24: Warnings Guide](warnings.md)
+
 - :material-target:{ .lg .middle } Service Level Objectives
 
   ______________________________________________________________________
@@ -67,6 +75,14 @@ Whether you're interested in understanding the system architecture, exploring su
   Automatically detect and stop benchmarks when models become over-saturated to prevent wasted compute resources and ensure valid results.
 
   [:octicons-arrow-right-24: Over-Saturation Guide](over_saturation_stopping.md)
+
+- :material-chart-bell-curve-cumulative:{ .lg .middle } Knee Profile
+
+  ______________________________________________________________________
+
+  Find where throughput saturates and optionally run additional concurrency points around the detected knee.
+
+  [:octicons-arrow-right-24: Knee Profile Guide](knee_detection.md)
 
 - :material-wrench:{ .lg .middle } Tool Calling
 

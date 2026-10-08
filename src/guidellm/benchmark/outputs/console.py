@@ -16,12 +16,16 @@ from dataclasses import dataclass, field
 from typing import Literal, cast
 
 from pydantic import Field
+from rich.table import Table
+from rich.text import Text
 
+from guidellm.benchmark.analysis import KneeDetectionConclusion
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.schemas import GenerativeBenchmarksReport
+from guidellm.benchmark.schemas.warnings import BenchmarkWarning
 from guidellm.schemas import DistributionSummary, StatusDistributionSummary
 from guidellm.schemas.benchmark import BenchmarkOutputArgs
-from guidellm.utils.console import Console
+from guidellm.utils.console import Colors, Console, StatusIcons
 from guidellm.utils.functions import safe_format_number, safe_format_timestamp
 
 __all__ = [
@@ -279,7 +283,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
     Renders benchmark results as formatted tables in the terminal, organizing metrics
     by category (run summary, request counts, latency, throughput, modality-specific)
-    with proper alignment and type-specific formatting for readability.
+    and displaying profile conclusions with proper alignment and formatting.
     """
 
     @classmethod
@@ -301,8 +305,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         """
         Print the complete benchmark report to the console.
 
-        Renders all metric tables including run summary, request counts, latency,
-        throughput, and modality-specific statistics to the console.
+        Renders metric tables and profile conclusions to the console.
 
         :param report: The completed benchmark report
         :return: Status message indicating output location
@@ -316,8 +319,94 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         self.print_request_counts_table(report)
         self.print_request_latency_table(report)
         self.print_server_throughput_table(report)
+        self.print_knee_profile_results(report)
+        self.print_warnings(report)
 
         return "printed to console"
+
+    def print_knee_profile_results(self, report: GenerativeBenchmarksReport) -> None:
+        """
+        Print the final knee and adaptive plan from profile conclusions.
+
+        :param report: Completed report with optional knee profile conclusions
+        """
+        for entry in report.conclusions:
+            if entry.get("kind") != "knee_detection":
+                continue
+
+            conclusion = KneeDetectionConclusion.model_validate(entry)
+            result = conclusion.final.throughput
+            details: list[str] = []
+            status: Literal["success", "info"]
+            if result.status == "ok" and result.knee is not None:
+                title = (
+                    "Throughput knee: "
+                    f"{safe_format_number(result.knee, precision=2)} concurrent streams"
+                )
+                if result.saturation_concurrency is not None:
+                    saturation = safe_format_number(
+                        result.saturation_concurrency, precision=0
+                    )
+                    details.append(
+                        "First measured point at/above knee: "
+                        f"{saturation} concurrent streams"
+                    )
+                status = "success"
+            else:
+                title = "Throughput knee: not detected"
+                details.append(f"Reason: {result.reason}")
+                status = "info"
+
+            plan = conclusion.adaptive_plan
+            if plan.status == "ready":
+                details.append(
+                    "Adaptive points selected: "
+                    + ", ".join(str(value) for value in plan.concurrencies)
+                )
+            else:
+                details.append(f"Adaptive refinement skipped: {plan.reason}")
+
+            self.console.print("\n")
+            self.console.print_update(title, "\n".join(details), status=status)
+
+    @staticmethod
+    def _warning_row(warning: BenchmarkWarning) -> Table:
+        """
+        Place the warning icon in a gutter and the text in the column beside it.
+
+        The note stays in the text column, so a wrapped message and the note share
+        the same left edge.
+
+        :param warning: Warning to render
+        :return: A borderless two-column row
+        """
+        body = Text(warning.message)
+        if warning.note:
+            body.append(f"\n{warning.note}")
+        row = Table.grid(padding=(0, 1))
+        row.add_column(no_wrap=True)
+        row.add_column()
+        row.add_row(Text(StatusIcons["warning"], style=Colors.warning), body)
+        return row
+
+    def print_warnings(self, report: GenerativeBenchmarksReport):
+        """
+        Print post-benchmark warnings, grouped by strategy.
+
+        :param report: The benchmark report containing per-benchmark warnings
+        """
+        for benchmark in report.benchmarks:
+            if not benchmark.warnings:
+                continue
+            self.console.print("\n")
+            self.console.print(
+                Text.assemble(
+                    ("Warnings", Colors.warning),
+                    f" ({benchmark.config.strategy})",
+                )
+            )
+            for warning in benchmark.warnings:
+                self.console.print(self._warning_row(warning))
 
     def print_run_summary_table(self, report: GenerativeBenchmarksReport):
         """

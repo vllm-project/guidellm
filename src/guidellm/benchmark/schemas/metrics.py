@@ -127,6 +127,17 @@ class SchedulerMetrics(StandardBaseDict):
     processed_delay_avg: float = Field(
         description="Avg delay from finalization to processing completion (seconds)"
     )
+    dataset_incomplete: bool = Field(
+        default=False,
+        description=(
+            "True when the request iterator stopped before it was exhausted. "
+            "False when the scheduler registered requests_exhausted"
+        ),
+    )
+    strategy_type: str = Field(
+        default="",
+        description="Type identifier of the strategy that ran this benchmark",
+    )
 
     @classmethod
     def compile(
@@ -179,6 +190,10 @@ class SchedulerMetrics(StandardBaseDict):
             processed_delay_avg=(
                 accumulator.scheduler_metrics.processed_delay.mean or -1.0
             ),
+            dataset_incomplete=(
+                "requests_exhausted" not in scheduler_state.scheduler_constraints
+            ),
+            strategy_type=accumulator.config.strategy.type_,
         )
 
 
@@ -933,6 +948,32 @@ class GenerativeTurnMetrics(StandardBaseDict):
         return turns
 
 
+def root_dispatch_delay_distribution(
+    requests: list[GenerativeRequestStats],
+) -> DistributionSummary | None:
+    """
+    Dispatch delay for the first request of each conversation.
+
+    First turns are requests with ``preceding_nodes == 0``. Later turns are
+    omitted because a slow early turn moves them. ``turn_index`` is not used:
+    with some history modes every turn stays at index 0. A request with no
+    dispatch delay, which is the case when the profile has no arrival
+    schedule, is omitted.
+
+    :param requests: In-window requests, across every status
+    :return: The first-turn delays, or None when none of them have a dispatch delay
+    """
+    delays = [
+        delay
+        for request in requests
+        if request.info.preceding_nodes == 0
+        and (delay := request.request_dispatch_delay) is not None
+    ]
+    if not delays:
+        return None
+    return DistributionSummary.from_values(delays)
+
+
 class GenerativeMetrics(StandardBaseDict):
     """
     Comprehensive metrics for generative AI benchmarks.
@@ -990,6 +1031,13 @@ class GenerativeMetrics(StandardBaseDict):
             "Portion of dispatch delay after the predecessor had finished, "
             "including deserializer, queue, and worker lag. None when the "
             "strategy does not define an arrival schedule"
+        ),
+    )
+    root_dispatch_delay: DistributionSummary | None = Field(
+        default=None,
+        description=(
+            "Dispatch delay for the first request of each conversation. "
+            "Later turns are omitted. None when no first turn has a dispatch delay"
         ),
     )
     request_streaming_iterations_count: StatusDistributionSummary = Field(
@@ -1332,6 +1380,9 @@ class GenerativeMetrics(StandardBaseDict):
             request_scheduled_latency=scheduled_latency,
             turn_predecessor_delay=predecessor_delay,
             turn_scheduling_delay=scheduling_delay,
+            root_dispatch_delay=root_dispatch_delay_distribution(
+                [*successful, *incomplete, *errored],
+            ),
             request_streaming_iterations_count=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.info.timings.request_iterations or 0.0,
                 successful=successful,

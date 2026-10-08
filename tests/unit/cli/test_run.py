@@ -1,11 +1,13 @@
 """Tests for ``guidellm run`` CLI error translation."""
 
+import json
 from unittest.mock import AsyncMock
 
 import pytest
 from click.testing import CliRunner
 
 from guidellm.__main__ import cli
+from guidellm.benchmark.entrypoints import resolve_to_single_benchmark
 
 
 @pytest.mark.regression
@@ -224,3 +226,110 @@ def test_console_progress_selection(monkeypatch, options):
         assert not display
     else:
         assert display
+
+
+@pytest.mark.sanity
+@pytest.mark.parametrize("adaptive", [False, True])
+def test_run_accepts_knee_profile(monkeypatch, adaptive):
+    """Select knee detection through the existing profile CLI option.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = AsyncMock()
+    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            "kind=openai_http,target=http://localhost:8000",
+            "--data",
+            "kind=synthetic_text,prompt_tokens=8",
+            "--profile",
+            json.dumps(
+                {
+                    "kind": "knee",
+                    "initial_streams": [1, 5, 10, 20, 40],
+                    "points_each_side": 3,
+                    "max_step": 2,
+                    **({"adaptive": True} if adaptive else {}),
+                }
+            ),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    benchmark.assert_awaited_once()
+    profile = benchmark.call_args.kwargs["args"].spec.profile
+    assert profile.kind == "knee"
+    assert profile.initial_streams == [1, 5, 10, 20, 40]
+    assert profile.adaptive is adaptive
+    assert profile.points_each_side == 3
+    assert profile.max_step == 2
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("adaptive", "profile_options", "expected"),
+    [
+        (
+            False,
+            {"initial_streams": [1, 5, 10, 20, 40, 80, 160]},
+            [1, 5, 10, 20, 40, 80, 160],
+        ),
+        (
+            True,
+            {
+                "initial_streams": [1, 5, 10, 20, 40, 80, 160],
+                "adaptive": True,
+                "points_each_side": 5,
+                "max_step": 3,
+            },
+            [1, 5, 10, 20, 40, 80, 160],
+        ),
+        (
+            False,
+            {"min_streams": 1, "max_streams": 9, "count": 5},
+            [1, 3, 5, 7, 9],
+        ),
+    ],
+)
+def test_knee_profile_accepts_canonical_cli_options(
+    monkeypatch, adaptive, profile_options, expected
+):
+    """Use one knee profile with either initial concurrency configuration.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = AsyncMock()
+    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            "kind=openai_http,target=http://localhost:8000",
+            "--profile",
+            json.dumps({"kind": "knee", **profile_options}),
+            "--data",
+            "kind=synthetic_text,prompt_tokens=1000,output_tokens=1000",
+            "--constraint",
+            "kind=max_duration,seconds=60",
+            "--output",
+            "kind=json,path=knee-benchmark.json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    benchmark.assert_awaited_once()
+    scenario = benchmark.call_args.kwargs["args"]
+    assert scenario.spec.profile.kind == "knee"
+    assert scenario.spec.profile.adaptive is adaptive
+    assert scenario.spec.profile.points_each_side == 5
+    assert scenario.spec.profile.max_step == (3 if adaptive else 5)
+    assert len(scenario.get_benchmarks()) == 1
+    assert scenario.spec.profile.resolved_initial_streams() == expected
+    assert (
+        resolve_to_single_benchmark(
+            scenario.get_benchmarks()
+        ).profile.resolved_initial_streams()
+        == expected
+    )
