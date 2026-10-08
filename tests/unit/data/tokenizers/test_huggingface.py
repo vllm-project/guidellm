@@ -171,12 +171,22 @@ class TestHuggingFaceTokenizer:
         assert captured["kwargs"]["use_fast"] is False
 
     @pytest.mark.smoke
-    @pytest.mark.parametrize("name", ["qwen3:4b", "llama3.1:8b-instruct-fp16"])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "qwen3:4b",  # disallowed character
+            "q" * 97,  # longer than 96 characters
+            "-olama",  # starts with "-"
+            ".foo",  # starts with "."
+            "foo--bar",  # contains "--"
+            "a/b/c",  # more than one "/"
+        ],
+    )
     def test_invalid_name_fails_with_a_hint(
         self, monkeypatch: pytest.MonkeyPatch, name: str
     ):
-        """A server model name that is not a Hugging Face id fails before any
-        download, with a message that names the fix.
+        """A name that is not an existing path and breaks any Hugging Face repo
+        id rule fails before any download, with a message that names the fix.
 
         ### WRITTEN BY AI ###
         """
@@ -192,7 +202,7 @@ class TestHuggingFaceTokenizer:
         hint = "--tokenizer kind=huggingface_auto"
         with pytest.raises(ValueError, match=hint) as info:
             tokenizer()
-        assert repr(name) in str(info.value)
+        assert str(info.value).count(name) == 1
         assert info.value.__cause__ is None
         assert info.value.__suppress_context__
 

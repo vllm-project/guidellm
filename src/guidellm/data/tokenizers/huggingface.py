@@ -57,10 +57,9 @@ class HuggingFaceTokenizer(DataTokenizer):
             validate_repo_id(name)
         except HFValidationError as err:
             raise ValueError(
-                f"Cannot load a tokenizer for {name!r}: it is neither an existing "
-                "local path nor a valid Hugging Face repo id. The tokenizer defaults "
-                "to the model name reported by the server, which for servers such as "
-                "Ollama is not a Hugging Face id. Pass one explicitly, for example "
-                "--tokenizer kind=huggingface_auto,model=Qwen/Qwen3-4B "
-                f"(Hugging Face said: {err})"
+                f"Cannot load a tokenizer: {err} It is not an existing local path "
+                "either. The tokenizer defaults to the model name reported by the "
+                "server, which for servers such as Ollama is not a Hugging Face id. "
+                "Pass one explicitly, for example "
+                "--tokenizer kind=huggingface_auto,model=Qwen/Qwen3-4B"
             ) from None
