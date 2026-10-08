@@ -15,6 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install FFmpeg
+        uses: ./.github/actions/install-apt-packages
+        with:
+          packages: ffmpeg
       - name: Run unit tests
         uses: ./.github/actions/run-tox
         with:
@@ -26,6 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install FFmpeg
+        uses: ./.github/actions/install-apt-packages
+        with:
+          packages: ffmpeg
       - name: Run integration tests
         uses: ./.github/actions/run-tox
         with:
@@ -37,6 +45,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install FFmpeg
+        uses: ./.github/actions/install-apt-packages
+        with:
+          packages: ffmpeg
       - name: Run end-to-end tests
         uses: ./.github/actions/run-tox
         with:

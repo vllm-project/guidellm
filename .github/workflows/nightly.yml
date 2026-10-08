@@ -9,11 +9,18 @@ jobs:
   tests:
     strategy:
       matrix:
-        python: ["3.10", "3.13"]
+        python: ["3.13"]
     uses: ./.github/workflows/testing.yml
     with:
       python: ${{ matrix.python }}
-      args: -m "smoke or sanity"
+
+  quality:
+    strategy:
+      matrix:
+        python: ["3.13"]
+    uses: ./.github/workflows/quality.yml
+    with:
+      python: ${{ matrix.python }}
 
   build-and-push-container:
     needs: [tests]
@@ -34,21 +41,13 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Setup Python with UV
-        uses: ./.github/actions/python-uv
-        with:
-          python-version: "3.13"
-      - name: Install mkdocs dependencies
+      - name: Configure git
         run: |
-          # Sync GuideLLM install
-          uv sync --frozen
-          # Install mkdocs
-          uv pip install "mkdocs<2.0.0" mkdocs-material mike \
-            mkdocs-gen-files mkdocs-nav-weight mkdocs-section-index \
-            mkdocs-minify-plugin "mkdocstrings[python]" mkdocs-api-autonav
-      - name: Deploy docs
-        run: |
-          uv run --no-sync python docs/scripts/check_translations.py
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          uv run --no-sync mike deploy main --push --update-aliases
+      - name: Build & Deploy Docs
+        uses: ./.github/actions/run-tox
+        with:
+          python-version: "3.13"
+          tox-env: docs-build
+          tox-args: "mike deploy main --push --update-aliases"
