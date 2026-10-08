@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test report_smoke.test.mjs"
+    "test": "node --test report_smoke.test.mjs language_switcher.test.mjs"
   },
   "devDependencies": {
     "jsdom": "^26.1.0"
