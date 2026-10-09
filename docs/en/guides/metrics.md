@@ -118,6 +118,26 @@ Dispatch Delay, Turn Predecessor Delay, Turn Scheduling Delay, and Scheduled Lat
 - **Definition**: For the WebSocket backend, the mean of received-token timestamps minus the mean of sent-packet timestamps.
 - **Use Case**: Estimates the average send-to-receive lag across a request. It is approximate, since it assumes sent packets and received tokens line up evenly in time.
 
+## Multi-Turn Conversation Metrics
+
+These metrics are reported only for multi-turn workloads. They are unset (`null`) when every conversation has a single request, where they would repeat the request-level metrics.
+
+### Per-Turn Metrics
+
+- **Definition**: `turns` holds one entry per turn index, each with request counts and the request latency, prompt token, TTFT, and ITL distributions of the requests at that turn.
+- **Use Case**: Shows how latency changes as conversation history grows, for example whether prefix caching keeps TTFT flat on later turns. The pooled distributions hide this trend.
+
+### Conversation Metrics
+
+- **Definition**: `conversations` holds distributions with one value per conversation:
+  - `duration`: from the start of the conversation's first request to the end of its last request.
+  - `active_time`: time during which at least one of the conversation's requests was in progress. Overlapping requests, such as parallel subagent turns, are counted once.
+  - `idle_time`: `duration` minus `active_time`, the time spent between requests.
+  - `request_count`, `prompt_token_count`, and `output_token_count`: totals per conversation.
+  - `output_tokens_per_second`: total output tokens divided by `duration`, so idle time between requests lowers the rate.
+- **Status**: A conversation is errored when any of its requests errored, incomplete when a request was cancelled or the run stopped before every request in the conversation was sent, and successful otherwise. `conversation_totals` counts conversations by status, and each distribution is broken down the same way, so conversations cut short by the end of a run do not skew the successful figures.
+- **Use Case**: Describes what a user of a multi-turn application waits for end to end, and how much of that wait is spent between requests rather than on the server.
+
 ## Measurement Window, Warmup, and Cooldown
 
 Benchmark profiles can configure `warmup` and `cooldown` periods that bracket the active measurement window. Requests sent during warmup still run to completion, but reported metrics are scoped to the interval between `measure_start` (warmup ends) and `measure_end` (cooldown begins).
@@ -125,6 +145,7 @@ Benchmark profiles can configure `warmup` and `cooldown` periods that bracket th
 Not every metric applies that window the same way:
 
 - **Request-level metrics**: request totals, request latency, concurrency, and per-request token counts, etc. will include any request whose lifetime overlaps the measurement window, even when the request started during warmup or finished during cooldown.
+- **Conversation-level metrics**: include any conversation with at least one request in the window, and measure it from all of its requests, so a conversation that crosses a window boundary is not cut short.
 - **Event-level metrics**: TTFT, time to first output token (TTFOT), inter-token latency (ITL), and per-token throughput rates will include only events whose timestamps fall inside the window. A request can therefore appear in request totals while some or all of its token events are excluded.
 
 For token latencies specifically, GuideLLM filters on when the event occurs rather than on the whole request span:

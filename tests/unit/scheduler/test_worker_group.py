@@ -956,3 +956,55 @@ class TestRequestsGeneratorGenerationDelay:
 
         assert len(yielded[0].request_infos) == 2
         assert len(state._state.generation_delay_samples) == 1
+
+
+class TestRequestsGeneratorConversationNodeCount:
+    """Record the full conversation size on every queued request.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.sanity
+    def test_node_count_covers_nodes_never_queued(self):
+        """
+        When queueing stops part way through a conversation, the queued
+        requests still report the size of the whole conversation graph.
+
+        ## WRITTEN BY AI ##
+        """
+        messaging = Mock()
+        messaging.buffer_receive_queue = Mock()
+        state = WorkerGroupState(
+            start_time=time.time(),
+            processes=[],
+            strategy=SynchronousStrategy(),
+            constraints={
+                "max_requests": MaxNumberConstraint(
+                    args=MaxRequestsConstraintArgs(count=2),
+                ),
+            },
+            stop_send_requests_event=threading.Event(),
+            send_requests_stopped_event=threading.Event(),
+            requests_generated_event=multiprocessing.Event(),
+            constraint_reached_event=multiprocessing.Event(),
+            shutdown_event=multiprocessing.Event(),
+            error_event=multiprocessing.Event(),
+            messaging=messaging,
+        )
+        graph = ConversationGraph(
+            graph_id="g1",
+            nodes={
+                f"n{index}": ConversationNode(
+                    node_id=f"n{index}", agent_id="agent", request=f"r{index}"
+                )
+                for index in range(3)
+            },
+            edges=[],
+        )
+
+        yielded = list(state.requests_generator([graph]))
+
+        assert len(yielded) == 1
+        assert len(yielded[0].request_infos) == 2
+        for info in yielded[0].request_infos.values():
+            assert info.conversation_node_count == 3

@@ -11,6 +11,7 @@ performance metrics for request processing and queueing behavior.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Literal
 
 from pydantic import Field
@@ -31,6 +32,7 @@ from guidellm.schemas.benchmark import GoodputSLO
 
 __all__ = [
     "GenerativeAudioMetricsSummary",
+    "GenerativeConversationMetrics",
     "GenerativeImageMetricsSummary",
     "GenerativeMetrics",
     "GenerativeMetricsSummary",
@@ -948,6 +950,210 @@ class GenerativeTurnMetrics(StandardBaseDict):
         return turns
 
 
+class GenerativeConversationMetrics(StandardBaseDict):
+    """
+    Distributions over whole conversations in a multi-turn workload.
+
+    Per-request metrics describe each turn on its own, while a user of a
+    multi-turn application waits for the conversation as a whole. Each
+    distribution here has one value per conversation.
+
+    A conversation is errored when any of its requests errored, incomplete
+    when a request was cancelled or the run stopped before every request in
+    its graph was sent, and successful otherwise.
+    """
+
+    conversation_totals: StatusBreakdown[int, int, int, int] = Field(
+        description=(
+            "Conversation counts by status: successful, incomplete, errored, total"
+        )
+    )
+    request_count: StatusDistributionSummary = Field(
+        description="Distribution of the number of recorded requests per conversation"
+    )
+    duration: StatusDistributionSummary = Field(
+        description=(
+            "Distribution of seconds from the start of a conversation's first "
+            "request to the end of its last request"
+        )
+    )
+    active_time: StatusDistributionSummary = Field(
+        description=(
+            "Distribution of seconds during which at least one request of the "
+            "conversation was in progress. Requests that overlap, such as "
+            "parallel subagent turns, are counted once"
+        )
+    )
+    idle_time: StatusDistributionSummary = Field(
+        description=(
+            "Distribution of seconds of a conversation's duration with no "
+            "request in progress: duration minus active time"
+        )
+    )
+    prompt_token_count: StatusDistributionSummary = Field(
+        description="Distribution of total prompt tokens per conversation"
+    )
+    output_token_count: StatusDistributionSummary = Field(
+        description="Distribution of total output tokens per conversation"
+    )
+    output_tokens_per_second: StatusDistributionSummary = Field(
+        description=(
+            "Distribution of total output tokens divided by duration per "
+            "conversation, so idle time between requests lowers the rate"
+        )
+    )
+
+    @classmethod
+    def compile(
+        cls,
+        requests: tuple[
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+        ],
+        all_requests: tuple[
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+            list[GenerativeRequestStats],
+        ],
+    ) -> GenerativeConversationMetrics | None:
+        """
+        Compile per-conversation distributions, or None for a single-turn workload.
+
+        A conversation is reported when any of its requests is within the
+        measurement window, and is then measured from all of its requests, so
+        one that crosses a window boundary is not cut short.
+
+        :param requests: (successful, incomplete, errored) requests within the
+            measurement window, used to select conversations
+        :param all_requests: (successful, incomplete, errored) requests recorded
+            over the whole run, used to measure the selected conversations
+        :return: Conversation distributions, or None when no conversation has
+            more than one request, where they would only repeat the request
+            metrics
+        """
+        selected = {
+            req.info.conversation_id
+            for group in requests
+            for req in group
+            if req.info.conversation_id is not None
+        }
+        conversations: dict[str, list[GenerativeRequestStats]] = {}
+        statuses: dict[str, set[StatusTypes]] = {}
+        status_names: tuple[StatusTypes, StatusTypes, StatusTypes] = (
+            "successful",
+            "incomplete",
+            "errored",
+        )
+        for status, group in zip(status_names, all_requests, strict=True):
+            for req in group:
+                conversation_id = req.info.conversation_id
+                if conversation_id not in selected:
+                    continue
+                conversations.setdefault(conversation_id, []).append(req)
+                statuses.setdefault(conversation_id, set()).add(status)
+
+        def expected_size(conversation: list[GenerativeRequestStats]) -> int:
+            return max(
+                [len(conversation)]
+                + [
+                    req.info.conversation_node_count
+                    for req in conversation
+                    if req.info.conversation_node_count is not None
+                ]
+            )
+
+        if all(expected_size(conv) <= 1 for conv in conversations.values()):
+            return None
+
+        successful: list[list[GenerativeRequestStats]] = []
+        incomplete: list[list[GenerativeRequestStats]] = []
+        errored: list[list[GenerativeRequestStats]] = []
+        for conversation_id, conversation in conversations.items():
+            if "errored" in statuses[conversation_id]:
+                errored.append(conversation)
+            elif statuses[conversation_id] == {"successful"} and len(
+                conversation
+            ) == expected_size(conversation):
+                successful.append(conversation)
+            else:
+                incomplete.append(conversation)
+
+        def summarize(
+            function: Callable[[list[GenerativeRequestStats]], float | None],
+        ) -> StatusDistributionSummary:
+            return StatusDistributionSummary.from_values_function(
+                function=function,
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            )
+
+        return cls(
+            conversation_totals=StatusBreakdown(
+                successful=len(successful),
+                incomplete=len(incomplete),
+                errored=len(errored),
+                total=len(conversations),
+            ),
+            request_count=summarize(len),
+            duration=summarize(lambda conv: _conversation_times(conv)[0]),
+            active_time=summarize(lambda conv: _conversation_times(conv)[1]),
+            idle_time=summarize(
+                lambda conv: _conversation_times(conv)[0] - _conversation_times(conv)[1]
+            ),
+            prompt_token_count=summarize(
+                lambda conv: sum(req.prompt_tokens or 0 for req in conv)
+            ),
+            output_token_count=summarize(
+                lambda conv: sum(req.output_tokens or 0 for req in conv)
+            ),
+            output_tokens_per_second=summarize(
+                lambda conv: (
+                    sum(req.output_tokens or 0 for req in conv) / duration
+                    if (duration := _conversation_times(conv)[0]) > 0
+                    else None
+                )
+            ),
+        )
+
+
+def _conversation_times(
+    conversation: list[GenerativeRequestStats],
+) -> tuple[float, float]:
+    """
+    Duration and active time of a conversation, in seconds.
+
+    A request without a start time is treated as instantaneous at its end,
+    as in ``GenerativeRequestsAccumulator.get_within_range``.
+
+    :param conversation: Requests of one conversation
+    :return: Seconds from the first request start to the last request end,
+        and seconds covered by at least one request
+    """
+    intervals = sorted(
+        (
+            req.request_start_time
+            if req.request_start_time is not None
+            else req.request_end_time,
+            req.request_end_time,
+        )
+        for req in conversation
+    )
+    duration = max(end for _, end in intervals) - intervals[0][0]
+    active = 0.0
+    span_start, span_end = intervals[0]
+    for start, end in intervals[1:]:
+        if start > span_end:
+            active += span_end - span_start
+            span_start, span_end = start, end
+        else:
+            span_end = max(span_end, end)
+    active += span_end - span_start
+
+    return duration, active
+
+
 def root_dispatch_delay_distribution(
     requests: list[GenerativeRequestStats],
 ) -> DistributionSummary | None:
@@ -1124,6 +1330,14 @@ class GenerativeMetrics(StandardBaseDict):
             "Per-turn-position distributions for multi-turn workloads, one "
             "entry per observed turn index in ascending order. None when every "
             "request is at turn 0"
+        ),
+    )
+
+    conversations: GenerativeConversationMetrics | None = Field(
+        default=None,
+        description=(
+            "Per-conversation distributions for multi-turn workloads. None when "
+            "no conversation has more than one request"
         ),
     )
 
@@ -1533,5 +1747,13 @@ class GenerativeMetrics(StandardBaseDict):
                 requests=(successful, incomplete, errored),
                 first_token_requests=first_token_requests,
                 after_first_token_requests=after_first_token_requests,
+            ),
+            conversations=GenerativeConversationMetrics.compile(
+                requests=(successful, incomplete, errored),
+                all_requests=(
+                    accumulator.completed.requests_stats,
+                    accumulator.incomplete.requests_stats,
+                    accumulator.errored.requests_stats,
+                ),
             ),
         )
