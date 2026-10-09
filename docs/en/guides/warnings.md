@@ -140,3 +140,7 @@ Warnings (constant@2.00)
 ```
 
 The JSON report stores the same record on each benchmark under `warnings`, including `code`, `message`, `observed`, `threshold`, `unit`, `sample_count`, and `note`.
+
+The HTML report shows each warning as a card under the header. The card shows the message, and the note when one is set. A report with more than one run labels the card with that run's strategy.
+
+The CSV report stores that list in a single `Warnings` column. The cell is a JSON list of the same records, or `[]` when the run has none.

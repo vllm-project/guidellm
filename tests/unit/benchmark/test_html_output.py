@@ -17,6 +17,7 @@ from guidellm.benchmark.outputs.html import (
     build_report_view,
     render_html_report,
 )
+from guidellm.benchmark.schemas.warnings import BenchmarkWarning
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     ConcurrentStrategy,
@@ -472,6 +473,7 @@ def test_render_html_includes_embedded_assets():
     assert "__GUIDELLM_REPORT_JS__" not in html
     assert "__GUIDELLM_REPORT_JSON__" not in html
     assert "__GUIDELLM_STATIC_TABLE__" not in html
+    assert "__GUIDELLM_WARNINGS__" not in html
     assert "__GUIDELLM_KPI_RPS__" not in html
     assert "static-summary" in html
     assert "<noscript>" not in html
@@ -504,3 +506,103 @@ def test_render_html_includes_embedded_assets():
     assert "Subagents only" in html
     assert "Specific agents" not in html
     assert "turn-agent-checks" not in html
+    assert 'class="warning-card"' not in html
+
+
+def _sample_warning(*, message: str | None = None) -> BenchmarkWarning:
+    """
+    Build one warning record for HTML report fixtures.
+
+    ## WRITTEN BY AI ##
+    """
+    return BenchmarkWarning(
+        code="generation_delay",
+        message=message or "mean generation delay was 40% of mean request latency.",
+        observed=0.4,
+        threshold=0.25,
+        unit="ratio",
+        sample_count=1,
+        note="See https://example.com/warnings",
+    )
+
+
+@pytest.mark.sanity
+def test_warning_cards_include_message_and_note():
+    """
+    A warning becomes a card under the header with its message and note.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = _make_benchmark(
+        strategy=AsyncConstantStrategy(rate=2.0),
+        rps=2.0,
+        tps=40.0,
+    ).model_copy(update={"warnings": [_sample_warning()]})
+    view = build_report_view(_report(benchmark))
+    html = render_html_report(view)
+
+    assert view["warnings"] == [
+        {
+            "strategy": "constant@2.00",
+            "code": "generation_delay",
+            "message": "mean generation delay was 40% of mean request latency.",
+            "observed": 0.4,
+            "threshold": 0.25,
+            "unit": "ratio",
+            "sample_count": 1,
+            "note": "See https://example.com/warnings",
+        }
+    ]
+    assert 'class="warnings"' in html
+    assert 'class="warning-card"' in html
+    assert "mean generation delay was 40% of mean request latency." in html
+    assert "See https://example.com/warnings" in html
+    assert 'class="warning-card-context"' not in html
+
+
+@pytest.mark.sanity
+def test_warning_cards_label_each_run_in_a_multi_run_report():
+    """
+    Multi-run reports name the strategy on each warning card.
+
+    ## WRITTEN BY AI ##
+    """
+    first = _make_benchmark(
+        strategy=ConcurrentStrategy(streams=2),
+        rps=1.0,
+        tps=20.0,
+    ).model_copy(update={"warnings": [_sample_warning()]})
+    second = _make_benchmark(
+        strategy=ConcurrentStrategy(streams=4),
+        rps=2.0,
+        tps=50.0,
+        measure_start=1_700_000_010.0,
+    )
+    html = render_html_report(build_report_view(_report(first, second)))
+
+    assert "concurrent@2" in html
+    assert 'class="warning-card-context"' in html
+
+
+@pytest.mark.sanity
+def test_warning_card_escapes_message_html():
+    """
+    Warning text is escaped so it cannot inject markup into the report.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = _make_benchmark(
+        strategy=AsyncConstantStrategy(rate=2.0),
+        rps=2.0,
+        tps=40.0,
+    ).model_copy(
+        update={
+            "warnings": [
+                _sample_warning(message='delay <script>alert("x")</script>'),
+            ]
+        }
+    )
+    html = render_html_report(build_report_view(_report(benchmark)))
+
+    assert "<script>alert" not in html
+    assert "&lt;script&gt;" in html

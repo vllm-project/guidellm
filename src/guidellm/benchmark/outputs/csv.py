@@ -147,6 +147,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                     )
                 self._add_scheduler_info(benchmark, benchmark_headers, benchmark_values)
                 self._add_runtime_info(report, benchmark_headers, benchmark_values)
+                self._add_warnings(benchmark, benchmark_headers, benchmark_values)
                 self._add_interval_columns(
                     benchmark, benchmark_headers, benchmark_values
                 )
@@ -161,6 +162,32 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 writer.writerow(row)
 
         return output_path
+
+    def _add_warnings(
+        self,
+        benchmark: GenerativeBenchmark,
+        headers: list[list[str]],
+        values: list[str | int | float],
+    ) -> None:
+        """
+        Add the post-benchmark warnings for this run as one JSON list.
+
+        Written before the interval columns so those stay at the end of the
+        row. The list uses the same fields as the JSON report. A run with no
+        warnings stores an empty list.
+
+        :param benchmark: Benchmark data to extract warnings from
+        :param headers: List of header hierarchies to append to
+        :param values: List of values to append to
+        """
+        records = [warning.model_dump() for warning in benchmark.warnings]
+        self._add_field(
+            headers,
+            values,
+            "Warnings",
+            "Warnings",
+            json.dumps(records),
+        )
 
     def _add_interval_columns(
         self,
