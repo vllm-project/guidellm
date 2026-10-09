@@ -35,6 +35,15 @@ from guidellm.schemas.benchmark.profiles import (
 )
 from guidellm.schemas.benchmark.random import RandomArgs, StaticRandomArgs
 from guidellm.schemas.benchmark.scenarios import SCENARIO_DIR, get_builtin_scenarios
+from guidellm.schemas.benchmark.server_metrics import (
+    DEFAULT_VLLM_METRICS,
+    PrometheusServerMetricsArgs,
+    ServerCounterSeries,
+    ServerGaugeSeries,
+    ServerHistogramSeries,
+    ServerMetricsArgs,
+    ServerMetricsSummary,
+)
 from guidellm.schemas.benchmark.transient import TransientPhaseConfig
 from guidellm.schemas.benchmark.warnings import (
     MetricRef,
@@ -43,6 +52,7 @@ from guidellm.schemas.benchmark.warnings import (
 )
 
 __all__ = [
+    "DEFAULT_VLLM_METRICS",
     "SCENARIO_DIR",
     "AsyncProfileArgs",
     "BenchmarkArgs",
@@ -62,8 +72,14 @@ __all__ = [
     "MetricsArgs",
     "PlotBenchmarkOutputArgs",
     "ProfileArgs",
+    "PrometheusServerMetricsArgs",
     "RandomArgs",
     "ReplayProfileArgs",
+    "ServerCounterSeries",
+    "ServerGaugeSeries",
+    "ServerHistogramSeries",
+    "ServerMetricsArgs",
+    "ServerMetricsSummary",
     "StaticRandomArgs",
     "SweepProfileArgs",
     "SynchronousProfileArgs",

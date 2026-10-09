@@ -13,6 +13,7 @@ import pytest_asyncio
 from pydantic import ValidationError
 from sanic import Sanic
 
+from guidellm.benchmark.server_metrics import parse_prometheus_text
 from guidellm.mock_server.server import MockServer
 from guidellm.schemas.mock_server.config import MockServerConfig
 
@@ -211,6 +212,54 @@ class TestMockServerEndpoints:
             assert data["status"] == "healthy"
             assert "timestamp" in data
             assert isinstance(data["timestamp"], int | float)
+
+    @pytest.mark.smoke
+    @pytest.mark.asyncio
+    async def test_metrics_endpoint_counts_streamed_requests(
+        self, mock_server_instance
+    ):
+        """Count a streamed request as running until its body is fully sent.
+
+        ## WRITTEN BY AI ##
+        """
+        server_url, _ = mock_server_instance
+        families = ["vllm:num_requests_running", "vllm:request_success"]
+        running_key = ("vllm:num_requests_running", (("model_name", "test-model"),))
+        success_key = (
+            "vllm:request_success",
+            (("finished_reason", "stop"), ("model_name", "test-model")),
+        )
+        payload = {"model": "test-model", "prompt": "Hi", "max_tokens": 3}
+
+        async with httpx.AsyncClient() as client:
+            before = parse_prometheus_text(
+                (await client.get(f"{server_url}/metrics", timeout=5.0)).text,
+                families,
+                0.0,
+            )
+            async with client.stream(
+                "POST",
+                f"{server_url}/v1/completions",
+                json={**payload, "stream": True},
+                timeout=10.0,
+            ) as response:
+                lines = response.aiter_lines()
+                first_line = await anext(lines)
+                during = parse_prometheus_text(
+                    (await client.get(f"{server_url}/metrics", timeout=5.0)).text,
+                    families,
+                    0.0,
+                )
+                async for _ in lines:
+                    pass
+            after_response = await client.get(f"{server_url}/metrics", timeout=5.0)
+            after = parse_prometheus_text(after_response.text, families, 0.0)
+
+        assert first_line.startswith("data: ")
+        assert after_response.headers["content-type"].startswith("text/plain")
+        assert during.gauges[running_key] == before.gauges[running_key] + 1
+        assert after.gauges[running_key] == before.gauges[running_key]
+        assert after.counters[success_key] == before.counters.get(success_key, 0) + 1
 
     @pytest.mark.smoke
     @pytest.mark.asyncio

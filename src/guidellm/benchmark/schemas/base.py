@@ -30,6 +30,7 @@ from guidellm.schemas import (
     StatusDistributionSummary,
 )
 from guidellm.schemas.benchmark.goodput import GoodputSLO
+from guidellm.schemas.benchmark.server_metrics import ServerMetricsSummary
 from guidellm.schemas.benchmark.transient import TransientPhaseConfig
 from guidellm.schemas.benchmark.warnings import (
     WarningRuleArgs,
@@ -176,6 +177,14 @@ class Benchmark(StandardBaseDict, ABC, Generic[BenchmarkAccumulatorT]):
     logic to transform accumulated metrics and scheduler state into structured
     results with statistical summaries.
     """
+
+    server_metrics: list[ServerMetricsSummary] | None = Field(
+        default=None,
+        description=(
+            "Server metrics scraped during the benchmark, one summary per source, "
+            "or None when no server metrics sources were configured"
+        ),
+    )
 
     @property
     @abstractmethod

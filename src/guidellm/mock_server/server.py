@@ -22,7 +22,7 @@ from sanic.exceptions import NotFound
 from sanic.log import logger
 from sanic.logging.formatter import LegacyAccessFormatter, LegacyFormatter
 from sanic.request import File, Request
-from sanic.response import BaseHTTPResponse, HTTPResponse
+from sanic.response import BaseHTTPResponse, HTTPResponse, ResponseStream
 
 from guidellm.mock_server.handlers import (
     ChatCompletionsHandler,
@@ -30,6 +30,7 @@ from guidellm.mock_server.handlers import (
     ResponsesHandler,
     TokenizerHandler,
 )
+from guidellm.mock_server.metrics import MockServerMetrics
 from guidellm.mock_server.multimodal import estimate_audio_seconds
 from guidellm.schemas.mock_server import MockServerConfig
 
@@ -98,6 +99,7 @@ class MockServer:
         # optionally serialize them with a semaphore (lazy-created in the loop).
         self._accepted_generation_requests = 0
         self._concurrency_semaphore: asyncio.Semaphore | None = None
+        self.metrics = MockServerMetrics(config.model)
 
         self._setup_middleware()
         self._setup_routes()
@@ -143,9 +145,50 @@ class MockServer:
         self._accepted_generation_requests += 1
         semaphore = self._get_concurrency_semaphore()
         if semaphore is None:
-            return await handler(request)
+            return await self._run_tracked(handler, request)
+        self.metrics.request_queued()
         async with semaphore:
-            return await handler(request)
+            self.metrics.request_dequeued()
+            return await self._run_tracked(handler, request)
+
+    async def _run_tracked(
+        self,
+        handler: Callable[[Request], Awaitable[HTTPResponse]],
+        request: Request,
+    ) -> HTTPResponse:
+        """
+        Run a generation handler while tracking it in the server metrics.
+
+        A streamed response is only finished once its body has been written, so
+        its stream function is wrapped to record the end of the request.
+
+        :param handler: Async generation endpoint handler
+        :param request: Incoming Sanic request
+        :return: Handler response
+        """
+        started_at = self.metrics.request_started()
+        try:
+            resp = await handler(request)
+        except BaseException:
+            self.metrics.request_finished(started_at, success=False)
+            raise
+
+        if not isinstance(resp, ResponseStream):
+            self.metrics.request_finished(started_at, success=resp.status < 400)  # noqa: PLR2004
+            return resp
+
+        streaming_fn = resp.streaming_fn
+
+        async def tracked_stream(stream_response: ResponseStream) -> None:
+            completed = False
+            try:
+                await streaming_fn(stream_response)
+                completed = True
+            finally:
+                self.metrics.request_finished(started_at, success=completed)
+
+        resp.streaming_fn = tracked_stream
+        return resp
 
     def _audio_usage(self, file: File, text: str) -> dict[str, int | float]:
         """
@@ -203,6 +246,12 @@ class MockServer:
         @self.app.get("/health")
         async def health_check(_request: Request):
             return response.json({"status": "healthy", "timestamp": time.time()})
+
+        @self.app.get("/metrics")
+        async def metrics(_request: Request):
+            return response.text(
+                self.metrics.render(), content_type="text/plain; version=0.0.4"
+            )
 
         @self.app.get("/v1/models")
         async def list_models(_request: Request):

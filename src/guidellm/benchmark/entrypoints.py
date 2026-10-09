@@ -34,6 +34,7 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmarkAccumulator,
     GenerativeBenchmarksReport,
 )
+from guidellm.benchmark.server_metrics import ServerMetricsCollector
 from guidellm.data import (
     DataLoader,
     create_data_loader,
@@ -54,6 +55,7 @@ from guidellm.schemas.benchmark import (
     BenchmarkScenario,
     GenerativeMetricsArgs,
     ProfileArgs,
+    ServerMetricsArgs,
 )
 from guidellm.utils.console import Console
 from guidellm.utils.mixins import InfoMixin
@@ -309,6 +311,38 @@ async def resolve_profile(
     return profile
 
 
+async def resolve_server_metrics(
+    sources: list[ServerMetricsArgs],
+    console: Console | None = None,
+) -> list[ServerMetricsCollector]:
+    """
+    Resolve server metrics source specifications into collectors.
+
+    :param sources: List of ServerMetricsArgs specifying each source to scrape
+    :param console: Console instance for progress reporting, or None
+    :return: One collector per source, in order
+    """
+    if not sources:
+        return []
+
+    console_step = (
+        console.print_update_step(title="Resolving server metrics sources")
+        if console
+        else None
+    )
+
+    collectors = [ServerMetricsCollector.resolve(source) for source in sources]
+
+    if console_step:
+        console_step.finish(
+            title="Server metrics sources resolved",
+            details=[source.model_dump(mode="json") for source in sources],
+            status_level="success",
+        )
+
+    return collectors
+
+
 async def resolve_output_formats(
     outputs: list[BenchmarkOutputArgs],
     console: Console | None = None,
@@ -561,6 +595,9 @@ async def benchmark_generative_text(
     output_formats = await resolve_output_formats(
         outputs=benchmark_args.outputs, console=console
     )
+    server_metrics = await resolve_server_metrics(
+        sources=benchmark_args.server_metrics, console=console
+    )
 
     report = GenerativeBenchmarksReport(config=args)
     if console:
@@ -587,6 +624,7 @@ async def benchmark_generative_text(
         slo=metrics_args.slo,
         confidence=metrics_args.confidence,
         warnings=metrics_args.warnings,
+        server_metrics=server_metrics,
     ):
         # Completed benchmark
         if benchmark:

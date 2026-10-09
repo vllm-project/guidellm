@@ -84,6 +84,14 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: Knee Profile Guide](knee_detection.md)
 
+- :material-gauge:{ .lg .middle } Server Metrics
+
+  ______________________________________________________________________
+
+  Scrape a vLLM server's Prometheus metrics while benchmarks run to see queueing, KV cache usage and server-side latencies next to the client results.
+
+  [:octicons-arrow-right-24: Server Metrics Guide](server_metrics.md)
+
 - :material-wrench:{ .lg .middle } Tool Calling
 
   ______________________________________________________________________
