@@ -7,7 +7,7 @@ description: Review a GuideLLM translation pull request by number, detect its ta
 
 Accept a PR number as input, for example `$guidellm-review-translation 1273`. Detect the target language or languages from the PR; the user need not supply a language. Use `vllm-project/guidellm` unless the user specifies another repository. If the number is missing and cannot be inferred from the request, ask for it.
 
-Produce the report entirely in English for English-speaking reviewers. Target-language quotations and proposed corrections must include an English back-translation or explanation so readers can assess every finding without knowing that language. This task does not authorize editing the translation, posting GitHub comments or reviews, or contacting anyone.
+Write the report's explanations and recommendations in English for English-speaking reviewers. Target-language quotations and proposed corrections must include an English back-translation or explanation so readers can assess every finding without knowing that language. This task does not authorize editing the translation, posting GitHub comments or reviews, or contacting anyone.
 
 ## Retrieve and compare
 
@@ -49,6 +49,8 @@ Unverified suspicions are limitations, not established major errors or violation
 
 Use the following structure, in English. Keep it concise, but include every material finding.
 
+When comparing phrases in the table, you may quote the target-language text followed immediately by its literal English translation in parentheses. For example: English “perfect balance” becomes “合适的平衡” (“a suitable balance”). If a literal translation obscures an idiom's intended meaning, also explain that meaning in English; do not treat literal wording alone as evidence of an error.
+
 ```markdown
 I reviewed [PR #<NUMBER>](<PR_URL>) at commit `<SHORT_SHA>`, comparing <translated documents> with their English sources.
 
@@ -58,7 +60,7 @@ I reviewed [PR #<NUMBER>](<PR_URL>) at commit `<SHORT_SHA>`, comparing <translat
 
 | Location | Difference in translation | Assessment |
 | --- | --- | --- |
-| <Language, linked file, and passage> | <English source meaning, translated wording, and its English back-translation or explanation> | <Minor difference / acceptable adaptation / major error / Code of Conduct violation, with reason or impact> |
+| <Language, linked file, and passage> | <English source phrase or meaning; optionally quote the target-language phrase followed by its literal English translation in parentheses, with further English explanation as needed> | <Minor difference / acceptable adaptation / major error / Code of Conduct violation, with reason or impact> |
 
 **Code of Conduct:** <No violations found in the reviewed text, or findings with links to the applicable provisions of CODE_OF_CONDUCT.md.>
 
