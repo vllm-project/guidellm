@@ -1214,3 +1214,71 @@ class TestMockServerFailAfterAndConcurrency:
         # Two non-stream requests each sleep ~ttft (0.2s); serialized => slower
         # request should take at least ~0.3s when they contend for one slot.
         assert max(durations) >= 0.3
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_max_concurrent_requests_serializes_streaming(
+        self, concurrent_limit_mock_server
+    ):
+        """With max_concurrent_requests=1, overlapping streams complete serially.
+
+        ## WRITTEN BY AI ##
+        """
+        payload = {
+            "model": "concurrency-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 4,
+            "stream": True,
+        }
+
+        async def one_stream(client: httpx.AsyncClient) -> float:
+            async with client.stream(
+                "POST",
+                f"{concurrent_limit_mock_server}/v1/chat/completions",
+                json=payload,
+                timeout=30.0,
+            ) as response:
+                assert response.status_code == 200
+                async for _ in response.aiter_lines():
+                    pass
+            return asyncio.get_running_loop().time()
+
+        async with httpx.AsyncClient() as client:
+            finished = await asyncio.gather(
+                one_stream(client),
+                one_stream(client),
+            )
+
+        assert max(finished) - min(finished) >= 0.15
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_max_concurrent_requests_releases_slot_on_disconnect(
+        self, concurrent_limit_mock_server
+    ):
+        """A stream the client abandons still frees its slot for the next request.
+
+        ## WRITTEN BY AI ##
+        """
+        payload = {
+            "model": "concurrency-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 4,
+            "stream": True,
+        }
+        url = f"{concurrent_limit_mock_server}/v1/chat/completions"
+
+        async with httpx.AsyncClient() as client:
+            async with client.stream(
+                "POST", url, json=payload, timeout=30.0
+            ) as response:
+                assert response.status_code == 200
+                # Leave before reading any tokens.
+
+            # A leaked slot would block this request until the timeout.
+            follow_up = await asyncio.wait_for(
+                client.post(url, json={**payload, "stream": False}, timeout=30.0),
+                timeout=5.0,
+            )
+
+        assert follow_up.status_code == 200
