@@ -822,6 +822,21 @@ class GenerativeTurnMetrics(StandardBaseDict):
     inter_token_latency_ms: StatusDistributionSummary = Field(
         description="Distribution of inter-token latencies at this turn position"
     )
+    cached_token_count: StatusDistributionSummary = Field(
+        description=(
+            "Distribution of prompt tokens served from the prefix cache at this "
+            "turn position, over requests whose server reported a cached count"
+        )
+    )
+    prefix_cache_hit_rate: StatusBreakdown[
+        float | None, float | None, float | None, float | None
+    ] = Field(
+        description=(
+            "Cached prompt tokens divided by prompt tokens at this turn position, "
+            "over requests whose server reported a cached count, or None when "
+            "no request reported one"
+        )
+    )
 
     @classmethod
     def compile_by_turn(
@@ -900,6 +915,10 @@ class GenerativeTurnMetrics(StandardBaseDict):
         turns: list[GenerativeTurnMetrics] = []
         for turn_index in turn_indices:
             successful, incomplete, errored = at_turn(requests, turn_index)
+            cached = [
+                [req for req in group if req.cached_tokens is not None]
+                for group in (successful, incomplete, errored)
+            ]
             ttft_successful, ttft_incomplete, ttft_errored = at_turn(
                 first_token_requests, turn_index
             )
@@ -942,10 +961,36 @@ class GenerativeTurnMetrics(StandardBaseDict):
                         incomplete=itl_incomplete,
                         errored=itl_errored,
                     ),
+                    cached_token_count=StatusDistributionSummary.from_values_function(
+                        function=lambda req: req.cached_tokens or 0.0,
+                        successful=cached[0],
+                        incomplete=cached[1],
+                        errored=cached[2],
+                    ),
+                    prefix_cache_hit_rate=StatusBreakdown(
+                        successful=_prefix_cache_hit_rate(cached[0]),
+                        incomplete=_prefix_cache_hit_rate(cached[1]),
+                        errored=_prefix_cache_hit_rate(cached[2]),
+                        total=_prefix_cache_hit_rate(
+                            [req for group in cached for req in group]
+                        ),
+                    ),
                 )
             )
 
         return turns
+
+
+def _prefix_cache_hit_rate(requests: list[GenerativeRequestStats]) -> float | None:
+    """
+    :param requests: Requests whose server reported a cached token count
+    :return: Total cached tokens over total prompt tokens, or None when the
+        requests have no prompt tokens
+    """
+    prompt = sum(req.prompt_tokens or 0 for req in requests)
+    if not prompt:
+        return None
+    return sum(req.cached_tokens or 0 for req in requests) / prompt
 
 
 def root_dispatch_delay_distribution(
