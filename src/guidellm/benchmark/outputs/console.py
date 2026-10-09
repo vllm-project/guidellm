@@ -318,6 +318,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         self.print_tool_call_table(report)
         self.print_request_counts_table(report)
         self.print_request_latency_table(report)
+        self.print_turn_latency_table(report)
         self.print_server_throughput_table(report)
         self.print_knee_profile_results(report)
         self.print_warnings(report)
@@ -683,6 +684,55 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
             for value in column
         ):
             self.console.print(UNSUPPORTED_PERCENTILE_FOOTNOTE)
+
+    def print_turn_latency_table(self, report: GenerativeBenchmarksReport):
+        """
+        Print per-turn latency metrics for multi-turn workloads.
+
+        Each row covers one turn position of one benchmark, so the rows show how
+        latency changes as conversation history grows. Nothing is printed when
+        no benchmark has per-turn metrics, as for single-turn workloads.
+
+        :param report: The benchmark report containing per-turn metrics
+        """
+        if not any(benchmark.metrics.turns for benchmark in report.benchmarks):
+            return
+
+        columns = ConsoleTableColumnsCollection()
+
+        for benchmark in report.benchmarks:
+            for turn in benchmark.metrics.turns or []:
+                columns.add_value(
+                    benchmark.config.strategy.type_,
+                    group="Benchmark",
+                    name="Strategy",
+                    type_="text",
+                )
+                columns.add_value(
+                    turn.turn_index, group="Benchmark", name="Turn", precision=0
+                )
+                columns.add_value(
+                    turn.request_totals.successful,
+                    group="Requests",
+                    name="Comp",
+                    precision=0,
+                )
+                columns.add_stats(
+                    turn.prompt_token_count, group="Input Tok", name="Per Req"
+                )
+                columns.add_stats(
+                    turn.request_latency, group="Request Latency", name="Sec"
+                )
+                columns.add_stats(turn.time_to_first_token_ms, group="TTFT", name="ms")
+                columns.add_stats(turn.inter_token_latency_ms, group="ITL", name="ms")
+
+        headers, values = columns.get_table_data()
+        self.console.print("\n")
+        self.console.print_table(
+            headers,
+            values,
+            title="Per-Turn Latency Statistics (Completed Requests)",
+        )
 
     def print_server_throughput_table(self, report: GenerativeBenchmarksReport):
         """
