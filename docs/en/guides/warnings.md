@@ -10,13 +10,13 @@ These three rules run when `metrics.warnings` is omitted:
 
 - `generation_delay_ttft`:
   - Warn when the mean `generation_delay` is more than 1% of mean \`time_to_first_token_ms.total
-  - Means that the data generation is lagging by a great enough fraction of the server's TTFT that it's likely slowing down the benchmark.
+  - Means that the data generation is lagging by a great enough fraction of the server's TTFT that it's likely slowing down the benchmark. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
 - `root_late`:
   - Warn when the 95th percentile of `root_dispatch_delay` is greater than 0.2 seconds.
-  - This means that the first turn of conversations arrived later than the scheduler scheduled them. Often due to data lag.
+  - This means that the first turn of conversations arrived later than the scheduler scheduled them. Often due to data lag. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
 - `dataset_incomplete`:
   - Warn when `dataset_incomplete` is true during trace strategies.
-  - This means that the trace dataset was not fully loaded, which can result in late and missing arrivals of trace conversations, as many trace conversations have turns that are supposed to start at the beginning of the benchmark.
+  - This means that the trace dataset was not fully loaded, which can result in late and missing arrivals of trace conversations, as many trace conversations have turns that are supposed to start at the beginning of the benchmark. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
 
 See `default_warning_rules()` in `src/guidellm/schemas/benchmark/warnings.py` for where the defaults are set.
 
