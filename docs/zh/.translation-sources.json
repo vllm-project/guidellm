@@ -7,6 +7,11 @@
       "source_sha256": "a6f2f3095aa6b6b3c6b30f40f988275e264ae73c50a40590bba6441583ed9b36"
     },
     {
+      "source": "docs/en/getting-started/index.md",
+      "translation": "docs/zh/getting-started/index.md",
+      "source_sha256": "7f873ef5f69db141686127994e14cc57ea749975bec748e6b9dfd60b03868d08"
+    },
+    {
       "source": "docs/en/getting-started/install.md",
       "translation": "docs/zh/getting-started/install.md",
       "source_sha256": "2cc877926f72d888605a25f9028265e4c2627b97edd20cbcd51a1c44919f276f"
