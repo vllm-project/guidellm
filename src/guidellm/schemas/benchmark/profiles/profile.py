@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import contextlib
 from abc import ABC
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import (
     Field,
     NonNegativeFloat,
+    NonNegativeInt,
     field_validator,
 )
 
@@ -59,6 +60,13 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
     rampup_duration: NonNegativeFloat = Field(
         default=0.0,
         description=("Duration in seconds to ramp up the targeted scheduling rate"),
+    )
+    prefetch: NonNegativeInt | Literal["start"] = Field(
+        default=0,
+        description=(
+            "Number of requests to load before the run starts, or 'start' to "
+            "match the strategy startup concurrency when it is known"
+        ),
     )
     warmup: TransientPhaseConfig = Field(
         default_factory=TransientPhaseConfig,

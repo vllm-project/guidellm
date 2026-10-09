@@ -53,7 +53,7 @@ __all__ = [
 
 
 BenchmarkStatus: TypeAlias = Literal[
-    "pending", "warmup", "active", "cooldown", "compile", "completed"
+    "pending", "loading", "warmup", "active", "cooldown", "compile", "completed"
 ]
 
 
@@ -603,7 +603,10 @@ class _GenerativeProgressTaskState:
 
     @property
     def formatted_progress_status(self) -> str:
-        if self.benchmark_status == "warmup":
+        if self.benchmark_status == "loading":
+            status = "loading"
+            color = Colors.progress
+        elif self.benchmark_status == "warmup":
             status = "warmup"
             color = Colors.progress
         elif self.benchmark_status == "active":
@@ -626,7 +629,7 @@ class _GenerativeProgressTaskState:
 
     @property
     def formatted_requests_summary(self) -> str:
-        if self.benchmark_status == "pending":
+        if self.benchmark_status in {"pending", "loading"}:
             return " "
 
         return (
@@ -683,7 +686,7 @@ class _GenerativeProgressTaskState:
 
     @property
     def formatted_tokens_summary(self) -> str:
-        if self.benchmark_status == "pending":
+        if self.benchmark_status in {"pending", "loading"}:
             return " "
 
         return (
@@ -741,7 +744,7 @@ class _GenerativeProgressTaskState:
 
     @property
     def formatted_scheduler_stats(self) -> str:
-        if self.benchmark_status == "pending":
+        if self.benchmark_status in {"pending", "loading"}:
             return " "
 
         return (
@@ -776,6 +779,8 @@ class _GenerativeProgressTaskState:
     def start(self, strategy: SchedulingStrategy):
         self.strategy = strategy
         self.strategy_type = strategy.type_
+        if strategy.prefetch_count() > 0:
+            self.benchmark_status = "loading"
 
     def update(
         self,

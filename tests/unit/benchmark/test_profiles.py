@@ -39,6 +39,7 @@ from guidellm.schemas.benchmark import (
     ProfileArgs,
     SweepProfileArgs,
 )
+from guidellm.schemas.benchmark.profiles import SynchronousProfileArgs
 
 MULTI_PROFILE_FACTORIES = (
     "_make_async_profile",
@@ -568,3 +569,20 @@ class TestReportConclusions:
         report = self._collect([{"a": 1}, None, {"b": 2}])
 
         assert report.conclusions == [{"a": 1}, {"b": 2}]
+
+
+@pytest.mark.smoke
+def test_strategies_generator_copies_prefetch():
+    """
+    Profile prefetch is copied onto each generated strategy.
+
+    ## WRITTEN BY AI ##
+    """
+    profile = ProfileFactory.create(
+        SynchronousProfileArgs(prefetch="start"),
+        random_seed=0,
+    )
+    strategy, _constraints = next(profile.strategies_generator())
+
+    assert strategy.prefetch == "start"
+    assert strategy.prefetch_count() == 1

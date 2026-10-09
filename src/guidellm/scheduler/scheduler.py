@@ -10,6 +10,7 @@ various scenarios including LLM inference benchmarking.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from itertools import chain
 from typing import Generic
 
 from guidellm.scheduler.constraints import (
@@ -30,6 +31,37 @@ from guidellm.schemas import RequestInfo
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
 __all__ = ["Scheduler"]
+
+
+def _prefetch_requests(
+    requests: DatasetIterT[RequestT],
+    count: int,
+) -> DatasetIterT[RequestT]:
+    """
+    Load request graphs until ``count`` request nodes are buffered.
+
+    Graphs that cross the count are kept whole. A count of ``0`` or less
+    returns ``requests`` unchanged.
+
+    :param requests: Dataset iterable of conversation graphs
+    :param count: Number of request nodes to load before the run starts
+    :return: Buffered graphs followed by the remainder of the dataset
+    """
+    if count <= 0:
+        return requests
+
+    iterator = iter(requests)
+    buffered = []
+    fetched = 0
+    while fetched < count:
+        try:
+            graph = next(iterator)
+        except StopIteration:
+            break
+        buffered.append(graph)
+        fetched += len(graph.nodes)
+
+    return chain(buffered, iterator)
 
 
 class Scheduler(
@@ -115,6 +147,9 @@ class Scheduler(
                     local_strategy,
                     local_constraints,
                 ) = await env.sync_run_params(requests, strategy, constraints)
+                local_requests = _prefetch_requests(
+                    local_requests, local_strategy.prefetch_count()
+                )
 
                 # Setup the worker group, sync start with the environment
                 worker_group = WorkerProcessGroup[RequestT, ResponseT](

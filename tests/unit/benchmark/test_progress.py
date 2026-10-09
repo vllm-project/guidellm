@@ -15,13 +15,14 @@ from guidellm.benchmark.progress import (
     CompositeBenchmarkerProgress,
     GenerativeConsoleBenchmarkerProgress,
     GenerativeLoggingBenchmarkerProgress,
+    _GenerativeProgressTaskState,
 )
 from guidellm.benchmark.schemas import (
     BenchmarkConfig,
     GenerativeBenchmark,
     GenerativeBenchmarkAccumulator,
 )
-from guidellm.scheduler import SchedulerState, SynchronousStrategy
+from guidellm.scheduler import ConcurrentStrategy, SchedulerState, SynchronousStrategy
 from guidellm.schemas.benchmark.profiles import SynchronousProfileArgs
 
 
@@ -226,3 +227,24 @@ async def test_queued_logs_share_rich_terminal(monkeypatch, accumulator):
     assert ": started |" in output.getvalue()
     assert ": completed |" in output.getvalue()
     assert sys.stderr is output
+
+
+@pytest.mark.smoke
+def test_prefetch_shows_loading_until_update(accumulator):
+    """
+    Prefetch renders loading with blank summaries until the first update.
+
+    ## WRITTEN BY AI ##
+    """
+    task_state = _GenerativeProgressTaskState(strategy_type="concurrent")
+    task_state.start(ConcurrentStrategy(streams=4, prefetch=4))
+
+    assert task_state.benchmark_status == "loading"
+    assert "loading" in task_state.formatted_progress_status
+    assert task_state.formatted_requests_summary == " "
+    assert task_state.formatted_tokens_summary == " "
+    assert task_state.formatted_scheduler_stats == " "
+
+    task_state.update(accumulator, SchedulerState())
+
+    assert task_state.benchmark_status == "active"

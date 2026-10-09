@@ -80,6 +80,13 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         default=None,
         description="Maximum number of concurrent requests to allow",
     )
+    prefetch: NonNegativeInt | Literal["start"] = Field(
+        default=0,
+        description=(
+            "Number of requests to load before the run starts. "
+            "'start' matches this strategy's startup concurrency when it is known."
+        ),
+    )
 
     _processes_init_event: synchronize.Event | None = PrivateAttr(None)
     _processes_request_index: Synchronized[int] | None = PrivateAttr(None)
@@ -103,6 +110,20 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         :return: Maximum number of concurrent requests, None if unlimited
         """
         return None
+
+    def prefetch_count(self) -> NonNegativeInt:
+        """
+        Resolve how many requests to load before the run starts.
+
+        ``"start"`` uses :attr:`requests_limit` when this strategy defines a
+        startup concurrency, and ``0`` when that limit is unset.
+
+        :return: Number of request nodes to prefetch
+        """
+        if self.prefetch == "start":
+            return self.requests_limit or 0
+
+        return self.prefetch
 
     @property
     def defines_arrival_schedule(self) -> bool:
