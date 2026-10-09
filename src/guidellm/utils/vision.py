@@ -62,7 +62,7 @@ def encode_image(
     """
     if isinstance(image, str) and is_url(image):
         if encode_type == "base64":
-            response = httpx.get(image)
+            response = httpx.get(image, follow_redirects=True)
             response.raise_for_status()
             return encode_image(
                 image=response.content,
@@ -192,7 +192,7 @@ def image_dict_to_pil(item: dict[str, Any]) -> libs.Image:
         data = base64.b64decode(encoded)
         decoded_image = libs.PILImage.open(io.BytesIO(data))
     elif image_spec.startswith(("http://", "https://")):
-        response = httpx.get(image_spec)
+        response = httpx.get(image_spec, follow_redirects=True)
         response.raise_for_status()
         decoded_image = libs.PILImage.open(io.BytesIO(response.content))
     else:
@@ -231,7 +231,7 @@ def encode_video(
     """
     if isinstance(video, str) and is_url(video):
         if encode_type == "base64":
-            response = httpx.get(video)
+            response = httpx.get(video, follow_redirects=True)
             response.raise_for_status()
             return encode_video(video=response.content, encode_type="base64")
 
