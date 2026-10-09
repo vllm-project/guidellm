@@ -142,6 +142,9 @@ class TestSchedulingStrategy:
         assert SynchronousStrategy().prefetch_count() == 0
         assert SynchronousStrategy(prefetch=3).prefetch_count() == 3
         assert SynchronousStrategy(prefetch="start").prefetch_count() == 1
+        assert SynchronousStrategy(prefetch="all").prefetch == "all"
+        assert SynchronousStrategy(prefetch="all").prefetch_count() is None
+        assert SynchronousStrategy(prefetch=-1).prefetch == "all"
         assert ThroughputStrategy(prefetch="start").prefetch_count() == 0
         assert (
             ThroughputStrategy(max_concurrency=4, prefetch="start").prefetch_count()

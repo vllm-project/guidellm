@@ -157,6 +157,12 @@ class SyntheticVideoDataset(IterableDataset):
         if isinstance(self._ex_iterable, _SyntheticVideoExamplesIterable):
             self._ex_iterable.iteration_count = epoch
 
+    def is_infinite(self) -> bool:
+        """
+        :return: ``True`` because synthetic video generation does not end
+        """
+        return True
+
 
 @DatasetDeserializerFactory.register(_DESERIALIZER_TYPE)
 class SyntheticVideoDatasetDeserializer(DatasetDeserializer):

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from itertools import chain
-from typing import Generic
+from typing import Generic, Protocol, runtime_checkable
 
 from guidellm.scheduler.constraints import (
     Constraint,
@@ -33,20 +33,46 @@ from guidellm.utils.singleton import ThreadSafeSingletonMixin
 __all__ = ["Scheduler"]
 
 
+@runtime_checkable
+class InfiniteDataset(Protocol):
+    """Iterable that can report whether iteration ends."""
+
+    def is_infinite(self) -> bool:
+        """
+        :return: ``True`` when iteration does not stop on its own
+        """
+
+
 def _prefetch_requests(
     requests: DatasetIterT[RequestT],
-    count: int,
+    count: int | None,
 ) -> DatasetIterT[RequestT]:
     """
     Load request graphs until ``count`` request nodes are buffered.
 
     Graphs that cross the count are kept whole. A count of ``0`` or less
-    returns ``requests`` unchanged.
+    returns ``requests`` unchanged. ``None`` loads every graph, and raises
+    when the dataset reports that it is infinite.
 
     :param requests: Dataset iterable of conversation graphs
-    :param count: Number of request nodes to load before the run starts
+    :param count: Number of request nodes to load, or ``None`` to load all
     :return: Buffered graphs followed by the remainder of the dataset
+    :raises ValueError: If ``count`` is ``None`` and the dataset is infinite
     """
+    if count is None:
+        if isinstance(requests, InfiniteDataset) and requests.is_infinite():
+            raise ValueError(
+                "Cannot prefetch all requests from an infinite dataset. "
+                "Set data_loader.samples to a positive limit or choose a "
+                "finite dataset."
+            )
+        buffered = []
+        fetched = 0
+        for graph in requests:
+            buffered.append(graph)
+            fetched += len(graph.nodes)
+        return buffered
+
     if count <= 0:
         return requests
 

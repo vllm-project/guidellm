@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Iterator
-from typing import Any, TypeVar
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 import torch
 from torch.utils.data.dataloader import DataLoader as PyTorchDataLoader
@@ -24,6 +24,44 @@ __all__ = ["DatasetsIterator", "TorchDataLoader"]
 
 def _collate_first(batch: list) -> Any:
     return batch[0]
+
+
+@runtime_checkable
+class _InfiniteDataset(Protocol):
+    """Dataset that can report whether its iteration ends."""
+
+    def is_infinite(self) -> bool:
+        """
+        :return: ``True`` when iteration does not stop on its own
+        """
+
+
+def dataset_is_infinite(dataset: DatasetType) -> bool:
+    """
+    Whether one deserialized dataset iterates without end.
+
+    Sources that do not implement ``is_infinite`` are finite.
+
+    :param dataset: Dataset produced by a deserializer
+    :return: ``True`` when the dataset reports that it does not end
+    """
+    return isinstance(dataset, _InfiniteDataset) and dataset.is_infinite()
+
+
+def datasets_are_infinite(datasets: list[object], samples: int) -> bool:
+    """
+    Whether a loader over these datasets would iterate without end.
+
+    A positive ``samples`` cap makes the loader finite. Otherwise it is
+    infinite only when every dataset reports that it does not end.
+
+    :param datasets: Datasets produced by deserializers
+    :param samples: Loader sample cap; ``0`` or negative means no cap
+    :return: ``True`` when iteration does not stop on its own
+    """
+    if samples > 0:
+        return False
+    return bool(datasets) and all(dataset_is_infinite(item) for item in datasets)
 
 
 DataT = TypeVar("DataT")
@@ -148,6 +186,7 @@ class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
         random_seed: int = 42,
         **kwargs: Any,
     ):
+        self._samples = config.samples
         iterator: DatasetsIterator[DataT] = DatasetsIterator(
             datasets=datasets,
             data_samples=config.samples,
@@ -176,6 +215,22 @@ class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
         self.epoch += 1
 
         return super().__iter__()
+
+    def is_infinite(self) -> bool:
+        """
+        Whether prefetching every request would run without end.
+
+        A positive sample cap ends generation. Otherwise the loader is infinite
+        only when every dataset reports that it does not end.
+
+        :return: ``True`` when iteration does not stop on its own
+        """
+        if self._samples > 0:
+            return False
+        datasets = (
+            self.dataset.datasets if isinstance(self.dataset, DatasetsIterator) else []
+        )
+        return datasets_are_infinite(datasets, samples=self._samples)
 
     @property
     def info(self) -> dict[str, Any]:

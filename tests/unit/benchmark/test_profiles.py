@@ -586,3 +586,5 @@ def test_strategies_generator_copies_prefetch():
 
     assert strategy.prefetch == "start"
     assert strategy.prefetch_count() == 1
+    assert SynchronousProfileArgs(prefetch=-1).prefetch == "all"
+    assert SynchronousProfileArgs(prefetch="all").prefetch == "all"

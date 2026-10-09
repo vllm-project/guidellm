@@ -61,13 +61,21 @@ class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):
         default=0.0,
         description=("Duration in seconds to ramp up the targeted scheduling rate"),
     )
-    prefetch: NonNegativeInt | Literal["start"] = Field(
+    prefetch: NonNegativeInt | Literal["start", "all"] = Field(
         default=0,
         description=(
-            "Number of requests to load before the run starts, or 'start' to "
-            "match the strategy startup concurrency when it is known"
+            "Number of requests to load before the run starts, 'start' to "
+            "match the strategy startup concurrency when it is known, or "
+            "'all' (-1) to load every request from a finite dataset"
         ),
     )
+
+    @field_validator("prefetch", mode="before")
+    @classmethod
+    def _normalize_prefetch(cls, value: Any) -> Any:
+        if value in (-1, "-1", "all"):
+            return "all"
+        return value
     warmup: TransientPhaseConfig = Field(
         default_factory=TransientPhaseConfig,
         description="Warmup phase to exclude initial transient period",

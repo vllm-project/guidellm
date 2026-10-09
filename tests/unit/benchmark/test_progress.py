@@ -248,3 +248,9 @@ def test_prefetch_shows_loading_until_update(accumulator):
     task_state.update(accumulator, SchedulerState())
 
     assert task_state.benchmark_status == "active"
+
+    loading_all = _GenerativeProgressTaskState(strategy_type="synchronous")
+    loading_all.start(SynchronousStrategy(prefetch="all"))
+
+    assert loading_all.benchmark_status == "loading"
+    assert loading_all.formatted_requests_summary == " "
