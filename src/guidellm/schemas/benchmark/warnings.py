@@ -136,9 +136,15 @@ def default_warning_rules() -> list[WarningRuleArgs]:
             ),
         ),
         WarningRuleArgs(
-            code="root_late",
+            code="root_late_p95",
             metric=MetricRef(name="root_dispatch_delay", statistic="p95"),
-            threshold=0.2,
+            threshold=0.75,
+            note="This means that some conversations were loaded late.",
+        ),
+        WarningRuleArgs(
+            code="root_late_mean",
+            metric=MetricRef(name="root_dispatch_delay", statistic="mean"),
+            threshold=0.25,
             note="This means that conversations were loaded late.",
         ),
         WarningRuleArgs(
