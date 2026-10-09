@@ -1232,7 +1232,6 @@ class TestMockServerFailAfterAndConcurrency:
         }
 
         async def one_stream(client: httpx.AsyncClient) -> float:
-            started = asyncio.get_running_loop().time()
             async with client.stream(
                 "POST",
                 f"{concurrent_limit_mock_server}/v1/chat/completions",
@@ -1242,18 +1241,15 @@ class TestMockServerFailAfterAndConcurrency:
                 assert response.status_code == 200
                 async for _ in response.aiter_lines():
                     pass
-            return asyncio.get_running_loop().time() - started
+            return asyncio.get_running_loop().time()
 
         async with httpx.AsyncClient() as client:
-            durations = await asyncio.gather(
+            finished = await asyncio.gather(
                 one_stream(client),
                 one_stream(client),
             )
 
-        # Each stream waits ~ttft (0.2s) before its first token. Holding the slot
-        # for the whole stream means the second one cannot start until the first
-        # has finished, so it takes at least ~0.3s.
-        assert max(durations) >= 0.3
+        assert max(finished) - min(finished) >= 0.15
 
     @pytest.mark.regression
     @pytest.mark.asyncio
