@@ -116,14 +116,27 @@ guidellm run \
 
 - `prompt_tokens`: Average number of tokens in prompts. If nothing else is specified, all requests will have this number of tokens.
 - `prompt_tokens_stdev`: Standard deviation for prompt tokens. If not supplied and min/max are not specified, no deviation is applied. If not supplied and min/max are specified, a uniform distribution is used.
-- `prompt_tokens_min`: Minimum number of tokens in prompts. If unset and `prompt_tokens_stdev` is set, the minimum is 1.
-- `prompt_tokens_max`: Maximum number of tokens in prompts. If unset and `prompt_tokens_stdev` is set, the maximum is 5 times the standard deviation.
+- `prompt_tokens_min`: Minimum number of tokens in prompts. If unset, defaults to `max(1, prompt_tokens - 5 * prompt_tokens_stdev)` when a standard deviation is set, or `prompt_tokens` otherwise.
+- `prompt_tokens_max`: Maximum number of tokens in prompts. If unset, defaults to `prompt_tokens + 5 * prompt_tokens_stdev` when a standard deviation is set, or `prompt_tokens` otherwise.
 - `output_tokens`: Average number of tokens in outputs. Optional; omit when benchmarking endpoints that do not produce output tokens (for example embeddings).
 - `output_tokens_stdev`: Standard deviation for output tokens. If not supplied and min/max are not specified, no deviation is applied. If not supplied and min/max are specified, a uniform distribution is used.
-- `output_tokens_min`: Minimum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the minimum is 1.
-- `output_tokens_max`: Maximum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the maximum is 5 times the standard deviation.
-- `samples`: Number of samples to generate (default: 1000). More samples will increase the time taken to generate the dataset before benchmarking, but will also decrease the likelihood of caching requests.
-- `source`: Source text for generation (default: `data:prideandprejudice.txt.gz`). This can be any text file, URL containing a text file, or a compressed text file. The text is used to sample from at a word and punctuation granularity and then combined into a single string of the desired lengths.
+- `output_tokens_min`: Minimum number of tokens in outputs. If unset, defaults to `max(1, output_tokens - 5 * output_tokens_stdev)` when a standard deviation is set, or `output_tokens` otherwise.
+- `output_tokens_max`: Maximum number of tokens in outputs. If unset, defaults to `output_tokens + 5 * output_tokens_stdev` when a standard deviation is set, or `output_tokens` otherwise.
+
+With a standard deviation, token counts follow a normal distribution clipped to the configured bounds. Without one, differing bounds produce a uniform integer distribution. For example, `prompt_tokens=256,prompt_tokens_stdev=16` has default bounds of 176 and 336 tokens.
+
+Synthetic text is generated on demand; `samples` and `source` are not `synthetic_text` options. Use runtime constraints such as `--constraint kind=max_requests,count=1000` to stop the benchmark. To pre-generate a fixed pool of rows and reuse it across dataset iterations, set `samples` on the data loader:
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --data-loader kind=pytorch,samples=100
+```
+
+The default `samples=-1` streams rows instead of pre-generating a fixed pool. To benchmark prompts from an existing text file, use `--data kind=text_file,path=prompts.txt`; see [File-Based Datasets](#file-based-datasets).
 
 #### Notes
 
