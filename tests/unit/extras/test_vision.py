@@ -98,7 +98,7 @@ def test_encode_video_with_fixture(sample_video_file):
 
 
 def test_encode_video_with_url_base64():
-    """Test encoding a video URL with base64 encoding"""
+    """Test encoding a video URL with base64 encoding. ## WRITTEN BY AI ##"""
     test_url = "https://example.com/video.mp4"
     mock_video_content = b"fake video content"
 
@@ -110,7 +110,7 @@ def test_encode_video_with_url_base64():
 
         result = _vision_mod.encode_video(video=test_url, encode_type="base64")
 
-        mock_get.assert_called_once_with(test_url)
+        mock_get.assert_called_once_with(test_url, follow_redirects=True)
         assert result["type"] == "video_base64"
         assert result["video"].startswith("data:video/unknown;base64,")
         assert result["video_bytes"] == len(mock_video_content)

@@ -241,7 +241,7 @@ def _decode_audio(  # noqa: C901, PLR0912, PLR0915
     # If str or Path, assume file path or URL to encoded audio
     elif isinstance(audio, str | Path):
         if isinstance(audio, str) and is_url(audio):
-            response = httpx.get(audio)
+            response = httpx.get(audio, follow_redirects=True)
             response.raise_for_status()
             data = response.content
         else:
