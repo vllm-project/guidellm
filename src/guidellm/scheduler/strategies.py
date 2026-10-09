@@ -22,9 +22,16 @@ from abc import abstractmethod
 from multiprocessing import synchronize
 from multiprocessing.context import BaseContext
 from multiprocessing.sharedctypes import Synchronized
-from typing import Annotated, ClassVar, Literal, TypeVar
+from typing import Annotated, Any, ClassVar, Literal, TypeVar
 
-from pydantic import Field, NonNegativeFloat, NonNegativeInt, PositiveInt, PrivateAttr
+from pydantic import (
+    Field,
+    NonNegativeFloat,
+    NonNegativeInt,
+    PositiveInt,
+    PrivateAttr,
+    field_validator,
+)
 
 from guidellm.schemas import PydanticClassRegistryMixin, RequestInfo, RequestSettings
 from guidellm.utils.mixins import InfoMixin
@@ -80,6 +87,21 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         default=None,
         description="Maximum number of concurrent requests to allow",
     )
+    prefetch: NonNegativeInt | Literal["start", "all"] = Field(
+        default=0,
+        description=(
+            "Number of requests to load before the run starts. "
+            "'start' matches this strategy's startup concurrency when it is known. "
+            "'all' or -1 loads every request from a finite dataset."
+        ),
+    )
+
+    @field_validator("prefetch", mode="before")
+    @classmethod
+    def _normalize_prefetch(cls, value: Any) -> Any:
+        if value in (-1, "-1", "all"):
+            return "all"
+        return value
 
     _processes_init_event: synchronize.Event | None = PrivateAttr(None)
     _processes_request_index: Synchronized[int] | None = PrivateAttr(None)
@@ -103,6 +125,23 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         :return: Maximum number of concurrent requests, None if unlimited
         """
         return None
+
+    def prefetch_count(self) -> NonNegativeInt | None:
+        """
+        Resolve how many requests to load before the run starts.
+
+        ``"start"`` uses :attr:`requests_limit` when this strategy defines a
+        startup concurrency, and ``0`` when that limit is unset. ``"all"``
+        returns ``None``, meaning every request from a finite dataset.
+
+        :return: Number of request nodes to prefetch, or ``None`` to load all
+        """
+        if self.prefetch == "all":
+            return None
+        if self.prefetch == "start":
+            return self.requests_limit or 0
+
+        return self.prefetch
 
     @property
     def defines_arrival_schedule(self) -> bool:

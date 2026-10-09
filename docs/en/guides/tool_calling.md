@@ -144,12 +144,12 @@ guidellm run \
 
 The `tool_response_tokens_stdev`, `tool_response_tokens_min`, and `tool_response_tokens_max` fields work identically to the corresponding `prompt_tokens_*` / `output_tokens_*` variance parameters.
 
-**2. WEKA traces** -- tool-call turns come from the file (`stop` / `input_types`), but schemas do not. Pass `tools` and optionally `tool_response_tokens` on `--data kind=weka` the same way as synthetic data. Which turns call tools is not configurable; `tool_call_turns` does not apply.
+**2. WEKA traces** -- tool-call turns come from the file (`stop` / `input_types`), but schemas do not. Pass `tools` and optionally `tool_response_tokens` on `--data kind=weka` the same way as synthetic data. Which turns call tools is not configurable; `tool_call_turns` does not apply. Use `prefetch=all`, because every session has requests that start at or near 0.
 
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=replay \
+  --profile kind=replay,prefetch=all \
   --data '{"kind":"weka","source":{"kind":"json_file","path":"trace.jsonl"},"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}],"tool_response_tokens":50}' \
   --constraint kind=max_requests,count=30
 ```

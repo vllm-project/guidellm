@@ -227,10 +227,11 @@ Replays trace events using timestamps from a trace file dataset. See [Trace Repl
 guidellm run --profile kind=replay,time_scale=1.0
 ```
 
-| Profile parameter | Description                                                                                                            | Example                                         |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `time_scale`      | Time scale for intervals between trace events                                                                          | `--profile kind=replay,time_scale=2.0`          |
-| `schedule_turn`   | `idle_gap` (default) keeps the idle gap after each recorded request duration. `timestamp` targets each trace timestamp | `--profile kind=replay,schedule_turn=timestamp` |
+| Profile parameter | Description                                                                                                                                                                                                                                                         | Example                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| `time_scale`      | Time scale for intervals between trace events                                                                                                                                                                                                                       | `--profile kind=replay,time_scale=2.0`          |
+| `schedule_turn`   | `idle_gap` (default) keeps the idle gap after each recorded request duration. `timestamp` targets each trace timestamp                                                                                                                                              | `--profile kind=replay,schedule_turn=timestamp` |
+| `prefetch`        | Requests to load before the run clock starts. `0` (default) loads them as the run consumes them. A count loads that many request nodes. `start` matches startup concurrency when the strategy defines one. `all` or `-1` loads every request from a finite dataset. | `--profile kind=replay,prefetch=all`            |
 
 Wait caps and a data-side `time_scale` are set on `--data`. The profile `time_scale` is applied by the scheduler after those dataset timestamps are built, allowing multiple runs with different time scales.
 
@@ -284,7 +285,7 @@ Strategically choose between increasing parallelism and affecting request timing
 
 `--constraint kind=max_duration,seconds=<n>` stops in-flight waits as well as new request starts. Workers sleeping until a future replay timestamp are cancelled when the duration elapses.
 
-GuideLLM schedules trace rows in timestamp order. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. `--constraint kind=max_requests,count=1000` remains a runtime completion constraint; it does not truncate the trace dataset.
+GuideLLM schedules trace rows in timestamp order. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. `--constraint kind=max_requests,count=1000` remains a runtime completion constraint; it does not truncate the trace dataset. Set `prefetch` on the replay profile when requests are due before their graphs are built; see the replay profile `prefetch` row above. WEKA traces should use `prefetch=all`.
 
 Every format by default looks for the columns "timestamp", "input_length", and "output_length". If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
 

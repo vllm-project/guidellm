@@ -16,6 +16,11 @@ __all__ = [
 
 WarningStatistic = Literal["mean", "max", "p95", "sum"]
 
+_PREFETCH_GUIDE = (
+    "https://github.com/vllm-project/guidellm/blob/main/docs/en/guides/"
+    "troubleshooting.md#requests-load-after-they-are-due"
+)
+
 
 class MetricRef(StandardBaseModel):
     """A dotted path into the compiled metric schemas, and which summary to read.
@@ -132,14 +137,25 @@ def default_warning_rules() -> list[WarningRuleArgs]:
             threshold=0.01,
             note=(
                 "This means that the benchmark was likely bottlenecked by the "
-                "data generation."
+                f"data generation. See {_PREFETCH_GUIDE}"
             ),
         ),
         WarningRuleArgs(
-            code="root_late",
+            code="root_late_p95",
             metric=MetricRef(name="root_dispatch_delay", statistic="p95"),
-            threshold=0.2,
-            note="This means that conversations were loaded late.",
+            threshold=0.75,
+            note=(
+                "This means that some conversations were loaded late. See "
+                f"{_PREFETCH_GUIDE}"
+            ),
+        ),
+        WarningRuleArgs(
+            code="root_late_mean",
+            metric=MetricRef(name="root_dispatch_delay", statistic="mean"),
+            threshold=0.25,
+            note=(
+                f"This means that conversations were loaded late. See {_PREFETCH_GUIDE}"
+            ),
         ),
         WarningRuleArgs(
             code="dataset_incomplete",
@@ -148,7 +164,7 @@ def default_warning_rules() -> list[WarningRuleArgs]:
             when=WarningCondition(name="strategy_type", equals="trace"),
             note=(
                 "The trace dataset was not fully loaded. This could result in "
-                "late arrivals of trace conversations."
+                f"late arrivals of trace conversations. See {_PREFETCH_GUIDE}"
             ),
         ),
     ]

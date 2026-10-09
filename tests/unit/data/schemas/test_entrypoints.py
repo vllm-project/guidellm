@@ -14,7 +14,11 @@ import guidellm.data.deserializers  # noqa: F401
 import guidellm.data.finalizers  # noqa: F401
 import guidellm.data.loaders  # noqa: F401
 import guidellm.data.preprocessors  # noqa: F401
+from guidellm.data.deserializers.synthetic import SyntheticTextDataset
+from guidellm.data.deserializers.synthetic_image import SyntheticImageDataset
+from guidellm.data.deserializers.synthetic_video import SyntheticVideoDataset
 from guidellm.data.loaders.loader import DataLoaderRegistry
+from guidellm.data.loaders.torch import datasets_are_infinite
 from guidellm.data.tokenizers import TokenizerRegistry
 from guidellm.schemas.data import (
     DataArgs,
@@ -251,3 +255,22 @@ class TestDataTokenizerArgsRegistry:
         ### WRITTEN BY AI ###
         """
         assert DataTokenizerArgs.schema_discriminator == "kind"
+
+
+@pytest.mark.smoke
+def test_synthetic_datasets_report_that_they_are_infinite():
+    """
+    Synthetic dataset types are infinite, and other datasets are not.
+
+    ## WRITTEN BY AI ##
+    """
+    text = SyntheticTextDataset.__new__(SyntheticTextDataset)
+    image = SyntheticImageDataset.__new__(SyntheticImageDataset)
+    video = SyntheticVideoDataset.__new__(SyntheticVideoDataset)
+
+    assert text.is_infinite() is True
+    assert image.is_infinite() is True
+    assert video.is_infinite() is True
+    assert datasets_are_infinite([image], samples=-1) is True
+    assert datasets_are_infinite([image], samples=8) is False
+    assert datasets_are_infinite([image, object()], samples=-1) is False

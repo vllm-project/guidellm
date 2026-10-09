@@ -166,6 +166,12 @@ class SyntheticImageDataset(IterableDataset):
         if isinstance(self._ex_iterable, _SyntheticImageExamplesIterable):
             self._ex_iterable.iteration_count = epoch
 
+    def is_infinite(self) -> bool:
+        """
+        :return: ``True`` because synthetic image generation does not end
+        """
+        return True
+
 
 @DatasetDeserializerFactory.register(_DESERIALIZER_TYPE)
 class SyntheticImageDatasetDeserializer(DatasetDeserializer):

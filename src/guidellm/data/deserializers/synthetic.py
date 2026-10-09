@@ -533,6 +533,12 @@ class SyntheticTextDataset(IterableDataset):
         if isinstance(self._ex_iterable, _SyntheticTextExamplesIterable):
             self._ex_iterable.iteration_count = epoch
 
+    def is_infinite(self) -> bool:
+        """
+        :return: ``True`` because synthetic text generation does not end
+        """
+        return True
+
 
 @DatasetDeserializerFactory.register("synthetic_text")
 class SyntheticTextDatasetDeserializer(DatasetDeserializer):
