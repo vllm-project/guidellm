@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from guidellm.benchmark.outputs.csv import GenerativeBenchmarkerCSV
+from guidellm.benchmark.schemas.warnings import BenchmarkWarning
 from guidellm.scheduler import ConcurrentStrategy, ThroughputStrategy
 from guidellm.schemas import (
     SampleUncertainty,
@@ -258,6 +259,7 @@ async def test_finalize_aligns_columns_in_written_csv(tmp_path: Path):
         "_add_modality_metrics",
         "_add_scheduler_info",
         "_add_runtime_info",
+        "_add_warnings",
         "_add_interval_columns",
     ]:
         setattr(out, name, lambda *a, **k: None)
@@ -766,3 +768,43 @@ class TestIntervalColumns:
             if group == "Measurement Uncertainty" and name == "Confidence Level"
         )
         assert rows[3][index] == "0.9"
+
+
+@pytest.mark.asyncio
+@pytest.mark.sanity
+async def test_warnings_column_is_a_json_list(tmp_path: Path):
+    """
+    Each run stores its warnings in one JSON list before the interval columns.
+
+    A run with no warnings stores an empty list. The list uses the same fields
+    as the JSON report.
+
+    ## WRITTEN BY AI ##
+    """
+    warning = BenchmarkWarning(
+        code="generation_delay",
+        message="mean generation delay was 40% of mean request latency.",
+        observed=0.4,
+        threshold=0.25,
+        unit="ratio",
+        sample_count=1,
+        note="See https://example.com/warnings",
+    )
+    quiet = make_benchmark(strategy=ThroughputStrategy(), rps=1.0, tps=10.0)
+    warned = make_benchmark(
+        strategy=ThroughputStrategy(), rps=2.0, tps=20.0
+    ).model_copy(update={"warnings": [warning]})
+    output = GenerativeBenchmarkerCSV(output_path=tmp_path / "warnings.csv")
+    path = await output.finalize(report(quiet, warned))
+    rows = list(csv.reader(path.open()))
+
+    index = next(
+        column
+        for column, (group, name) in enumerate(zip(rows[0], rows[1], strict=True))
+        if group == "Warnings" and name == "Warnings"
+    )
+    interval_index = rows[0].index("Measurement Uncertainty")
+
+    assert index < interval_index
+    assert json.loads(rows[3][index]) == []
+    assert json.loads(rows[4][index]) == [warning.model_dump()]

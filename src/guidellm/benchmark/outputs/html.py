@@ -158,6 +158,10 @@ def render_html_report(view: dict[str, Any]) -> str:
             "__GUIDELLM_STATIC_TABLE__",
             _build_static_summary_table(view.get("runs") or []),
         )
+        .replace(
+            "__GUIDELLM_WARNINGS__",
+            _build_warnings_html(view),
+        )
     )
     for token, value in _static_text_defaults(view).items():
         html = html.replace(token, value)
@@ -205,9 +209,11 @@ def build_report_view(report: GenerativeBenchmarksReport) -> dict[str, Any]:
 
     header = _build_header(report, runs, peak_index, has_multi_turn=bool(by_turn))
     details = _build_details(benchmarks, runs)
+    warnings = _build_warning_cards(benchmarks, runs)
 
     return {
         "header": header,
+        "warnings": warnings,
         "runs": runs,
         "by_turn": by_turn,
         "turn_note": turn_note,
@@ -356,6 +362,76 @@ def _static_text_defaults(view: dict[str, Any]) -> dict[str, str]:
         "__GUIDELLM_KPI_ITL_P99__": _html_escape(_fmt_num(run.get("itl_p99_ms"))),
         "__GUIDELLM_KPI_ERROR__": _html_escape(_fmt_pct(run.get("error_rate"))),
     }
+
+
+def _build_warning_cards(
+    benchmarks: Sequence[GenerativeBenchmark],
+    runs: Sequence[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Collect the warning records shown as cards and stored in the report view.
+
+    :param benchmarks: Benchmarks in report order
+    :param runs: Compact rows aligned with ``benchmarks``
+    :return: One record per warning, including the run label it belongs to
+    """
+    cards: list[dict[str, Any]] = []
+    for benchmark, run in zip(benchmarks, runs, strict=True):
+        strategy = run.get("label") or run.get("strategy") or ""
+        for warning in benchmark.warnings:
+            cards.append(
+                {
+                    "strategy": strategy,
+                    "code": warning.code,
+                    "message": warning.message,
+                    "observed": warning.observed,
+                    "threshold": warning.threshold,
+                    "unit": warning.unit,
+                    "sample_count": warning.sample_count,
+                    "note": warning.note,
+                }
+            )
+    return cards
+
+
+def _build_warnings_html(view: dict[str, Any]) -> str:
+    """
+    Render warning cards for the top of the report.
+
+    A report with no warnings returns an empty string so the page does not
+    gain a blank gap. Multi-run reports label each card with its strategy.
+
+    :param view: Compact report dictionary from :func:`build_report_view`
+    :return: Escaped HTML for the warning section, or an empty string
+    """
+    warnings = view.get("warnings") or []
+    if not warnings:
+        return ""
+
+    header = view.get("header") or {}
+    show_strategy = bool(header.get("multi_run"))
+    cards: list[str] = []
+    for warning in warnings:
+        strategy = ""
+        if show_strategy:
+            label = _html_escape(warning.get("strategy") or "")
+            strategy = f'<p class="warning-card-context">{label}</p>'
+        note = warning.get("note") or ""
+        note_html = (
+            f'<p class="warning-card-note">{_html_escape(note)}</p>' if note else ""
+        )
+        message = _html_escape(warning.get("message") or "")
+        cards.append(
+            '<article class="warning-card">'
+            '<div class="warning-card-icon" aria-hidden="true">⚠</div>'
+            '<div class="warning-card-body">'
+            f"{strategy}"
+            f'<p class="warning-card-message">{message}</p>'
+            f"{note_html}"
+            "</div>"
+            "</article>"
+        )
+    return f'<section class="warnings" aria-label="Warnings">{"".join(cards)}</section>'
 
 
 def _build_static_summary_table(runs: Sequence[dict[str, Any]]) -> str:
