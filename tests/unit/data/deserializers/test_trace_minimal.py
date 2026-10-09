@@ -53,7 +53,13 @@ def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
 
 
 def load_graph_turns(row: dict) -> list[ConversationTurnData]:
-    graph = ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+    payload = row["conversation_turns"]
+    if isinstance(payload, ConversationGraphData):
+        graph = payload
+    elif isinstance(payload, str):
+        graph = ConversationGraphData.model_validate(json.loads(payload))
+    else:
+        graph = ConversationGraphData.model_validate(payload)
     return graph.turns
 
 
@@ -191,7 +197,9 @@ def test_trace_rows_are_independent_conversations(tmp_path: Path, kind: str) -> 
     iterator = iter(dataset)
     first = load_graph_turns(next(iterator))
     assert len(first) == 1
-    assert processor.decode.call_count == 1
+    # Mooncake decodes the new hash block into the table, then decodes the
+    # turn. Minimal traces decode the prompt once.
+    assert processor.decode.call_count == (2 if kind == "mooncake" else 1)
     conversations = [first, *(load_graph_turns(row) for row in iterator)]
     assert len(conversations) == 3
     assert all(len(turns) == 1 and not turns[0].parents for turns in conversations)
