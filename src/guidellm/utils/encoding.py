@@ -10,6 +10,7 @@ pipeline: object serialization (to dict/sequence) followed by binary encoding
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from typing import Any, ClassVar, Generic, Literal, TypeVar, cast
 
@@ -452,10 +453,13 @@ class Serializer:
         Convert object to sequence format with type-aware serialization.
 
         Handles Pydantic models, collections, and mappings with proper type
-        preservation through structured sequence encoding.
+        preservation through structured sequence encoding. Mapping keys are
+        encoded as a JSON array in their own length-prefixed sequence frame,
+        preserving JSON scalar keys without using delimiters to separate them.
 
         :param obj: Object to serialize to sequence format
         :return: Serialized sequence string or bytes
+        :raises TypeError: If model-containing mappings have non-JSON scalar keys
         """
         payload_type: PayloadType
         if isinstance(obj, BaseModel):
@@ -482,8 +486,16 @@ class Serializer:
             isinstance(value, BaseModel) for value in obj.values()
         ):
             payload_type = "collection_mapping"
-            keys = ",".join(str(key) for key in obj)
-            payload = keys.encode() + b"|"
+            keys = list(obj)
+            if any(
+                (not isinstance(key, str | int | float) and key is not None)
+                or (isinstance(key, float) and not math.isfinite(key))
+                for key in keys
+            ):
+                raise TypeError("Sequence mapping keys must be JSON scalar values")
+            payload = self.pack_next_sequence(
+                "python", self.to_sequence_python(keys), None
+            )
             for item in obj.values():
                 is_pydantic = isinstance(item, BaseModel)
                 payload = self.pack_next_sequence(
@@ -541,26 +553,24 @@ class Serializer:
         if type_ != "collection_mapping":
             raise ValueError(f"Invalid type for mapping sequence: {type_}")
 
-        if isinstance(payload, bytes):
-            keys_end = payload.index(b"|")
-            keys = payload[:keys_end].decode().split(",")
-            payload = payload[keys_end + 1 :]
-        else:
-            keys_end = payload.index("|")
-            keys = payload[:keys_end].split(",")
-            payload = payload[keys_end + 1 :]
+        keys_type, keys_payload, payload = self.unpack_next_sequence(payload)
+        keys = self.from_sequence_python(keys_payload)
+        if keys_type != "python" or not isinstance(keys, list):
+            raise ValueError("Invalid keys in mapping sequence")
 
         items = {}
-        index = 0
-        while payload:
+        for key in keys:
+            if not payload:
+                raise ValueError("Mapping keys and values must have the same length")
             type_, item_payload, payload = self.unpack_next_sequence(payload)
             if type_ == "pydantic":
-                items[keys[index]] = self.from_sequence_pydantic(item_payload)
+                items[key] = self.from_sequence_pydantic(item_payload)
             elif type_ == "python":
-                items[keys[index]] = self.from_sequence_python(item_payload)
+                items[key] = self.from_sequence_python(item_payload)
             else:
                 raise ValueError("Invalid type in mapping sequence")
-            index += 1
+        if payload:
+            raise ValueError("Mapping keys and values must have the same length")
         return items
 
     def to_sequence_pydantic(self, obj: BaseModel) -> str | bytes:
@@ -603,14 +613,15 @@ class Serializer:
 
         return model_class.model_validate_json(json_data)
 
-    def to_sequence_python(self, obj: Any) -> str | bytes:
+    def to_sequence_python(self, obj: Any) -> bytes:
         """
         Serialize Python object to JSON format.
 
         :param obj: Python object to serialize
-        :return: JSON string or bytes representation
+        :return: UTF-8 JSON bytes, matching Pydantic sequence payloads
         """
-        return json.dumps(obj)
+        data = json.dumps(obj)
+        return data if isinstance(data, bytes) else data.encode("utf-8")
 
     def from_sequence_python(self, data: str | bytes) -> Any:
         """

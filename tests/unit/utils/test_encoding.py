@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json as stdlib_json
 import uuid
 from typing import Any, Generic, TypeVar
 
@@ -12,6 +13,7 @@ from guidellm.schemas import (
     RequestInfo,
     RequestTimings,
 )
+from guidellm.utils import encoding as encoding_module
 from guidellm.utils.encoding import Encoder, MessageEncoding, Serializer
 
 
@@ -48,6 +50,66 @@ class GenricModelWrapper(Generic[SampleModelT]):
 
 class TestMessageEncoding:
     """Test suite for MessageEncoding class."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "keys",
+        [
+            ("a,b", "c"),
+            ("a|b", "c"),
+            (1, 2),
+            ("1", 1),
+            ("", "c"),
+            ('a"\\,\n|', "雪|逗,号"),
+            (False, True),
+            (None, 2.5),
+        ],
+    )
+    @pytest.mark.parametrize("encoding", [None, "msgpack", "msgspec"])
+    @pytest.mark.parametrize("stdlib", [False, True])
+    def test_sequence_mapping_keys_roundtrip(self, keys, encoding, stdlib, monkeypatch):
+        """Preserve mapping keys and their associated values with either JSON backend.
+
+        ## WRITTEN BY AI ##
+        """
+        if stdlib:
+            monkeypatch.setattr(encoding_module, "json", stdlib_json)
+        try:
+            instance = MessageEncoding(serialization="sequence", encoding=encoding)
+        except ImportError:
+            pytest.skip("Required encoding library not available")
+        instance.register_pydantic(SampleModel)
+        obj = {
+            keys[0]: SampleModel(name="first", value=1),
+            keys[1]: SampleModel(name="second", value=2),
+        }
+
+        decoded = instance.decode(instance.encode(obj))
+
+        assert decoded == obj
+        assert list(decoded) == list(obj)
+        assert [type(key) for key in decoded] == [type(key) for key in obj]
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("container", ["list", "mapping"])
+    @pytest.mark.parametrize("encoding", [None, "msgpack", "msgspec"])
+    def test_sequence_mixed_values_stdlib_roundtrip(
+        self, container, encoding, monkeypatch
+    ):
+        """Round-trip models and plain values when orjson is unavailable.
+
+        ## WRITTEN BY AI ##
+        """
+        monkeypatch.setattr(encoding_module, "json", stdlib_json)
+        try:
+            instance = MessageEncoding(serialization="sequence", encoding=encoding)
+        except ImportError:
+            pytest.skip("Required encoding library not available")
+        instance.register_pydantic(SampleModel)
+        values = [None, "雪|逗,号", SampleModel(name="last", value=3), 4]
+        obj = values if container == "list" else dict(enumerate(values))
+
+        assert instance.decode(instance.encode(obj)) == obj
 
     @pytest.mark.regression
     @pytest.mark.parametrize("payload_size", [124, 380, 31744, 31868])
@@ -423,6 +485,40 @@ class TestEncoder:
 
 class TestSerializer:
     """Test suite for Serializer class."""
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("key", [("a", "b"), b"a", float("inf"), float("nan")])
+    def test_sequence_mapping_rejects_non_json_keys(self, key):
+        """Reject keys that JSON would change rather than silently losing their type.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = Serializer("sequence")
+
+        with pytest.raises(TypeError, match="mapping keys must be JSON scalar"):
+            instance.serialize({key: SampleModel(name="first", value=1)})
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("value_count", [1, 3])
+    def test_sequence_mapping_rejects_key_value_count_mismatch(self, value_count):
+        """Reject malformed mappings rather than silently dropping keys or values.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = Serializer("sequence")
+        payload = instance.pack_next_sequence(
+            "python", instance.to_sequence_python(["a", "b"]), None
+        )
+        for value in range(value_count):
+            payload = instance.pack_next_sequence(
+                "python", instance.to_sequence_python(value), payload
+            )
+        message = instance.pack_next_sequence("collection_mapping", payload, None)
+
+        with pytest.raises(
+            ValueError, match="keys and values must have the same length"
+        ):
+            instance.deserialize(message)
 
     @pytest.fixture(params=[None, "dict", "sequence"], ids=["none", "dict", "sequence"])
     def valid_instances(self, request):
