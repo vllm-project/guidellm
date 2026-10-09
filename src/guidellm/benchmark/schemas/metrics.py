@@ -398,14 +398,26 @@ class GenerativeMetricsSummary(StandardBaseDict):
 
         # Calculate total distributions if both input and output have data
         if input_value_dist is not None and output_value_dist is not None:
+            # One total per request (input + output), not the two lists pooled
+            total_value_lists: dict[StatusTypes, list[float]] = {
+                status: [
+                    float(
+                        (metric[_TIMED_METRIC_INPUT_VALUE_INDEX] or 0.0)
+                        + (metric[_TIMED_METRIC_OUTPUT_VALUE_INDEX] or 0.0)
+                    )
+                    for metric in metrics
+                    if metric is not None
+                    and (
+                        metric[_TIMED_METRIC_INPUT_VALUE_INDEX] is not None
+                        or metric[_TIMED_METRIC_OUTPUT_VALUE_INDEX] is not None
+                    )
+                ]
+                for status, metrics in metrics_by_status.items()
+            }
             total_value_dist = StatusDistributionSummary.from_values(
-                successful=(
-                    input_value_lists["successful"] + output_value_lists["successful"]
-                ),
-                incomplete=(
-                    input_value_lists["incomplete"] + output_value_lists["incomplete"]
-                ),
-                errored=input_value_lists["errored"] + output_value_lists["errored"],
+                successful=total_value_lists["successful"],
+                incomplete=total_value_lists["incomplete"],
+                errored=total_value_lists["errored"],
             )
             total_rate_dist = StatusDistributionSummary.rate_distribution_from_timings(
                 successful=(
