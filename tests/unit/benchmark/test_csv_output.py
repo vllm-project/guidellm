@@ -6,12 +6,14 @@ from types import SimpleNamespace
 import pytest
 
 from guidellm.benchmark.outputs.csv import GenerativeBenchmarkerCSV
+from guidellm.benchmark.schemas.metrics import SLOAttainmentSummary
 from guidellm.scheduler import ConcurrentStrategy, ThroughputStrategy
 from guidellm.schemas import (
     SampleUncertainty,
     StatusDistributionSummary,
 )
 from guidellm.schemas.base.statistics import PERCENTILE_PROBABILITIES
+from guidellm.schemas.benchmark import GoodputSLO
 from tests.unit.benchmark.html_report_fixtures import (
     make_benchmark,
     metric_summary,
@@ -255,6 +257,7 @@ async def test_finalize_aligns_columns_in_written_csv(tmp_path: Path):
         "_add_request_counts",
         "_add_request_latency_metrics",
         "_add_server_throughput_metrics",
+        "_add_slo_attainment_metrics",
         "_add_modality_metrics",
         "_add_scheduler_info",
         "_add_runtime_info",
@@ -479,8 +482,11 @@ class TestServerThroughputGoodputColumns:
     """
 
     @staticmethod
-    def _render(attainment, goodput_mean):
-        """Render the throughput section for one benchmark and return headers."""
+    def _render(attainment, goodput_mean, token_goodput_mean=None):
+        """Render the throughput section for one benchmark and return headers.
+
+        ## WRITTEN BY AI ##
+        """
         goodput = (
             None
             if goodput_mean is None
@@ -509,6 +515,13 @@ class TestServerThroughputGoodputColumns:
                 **dict.fromkeys(metric_names, distribution),
                 slo_attainment=attainment,
                 request_goodput=goodput,
+                output_token_goodput=(
+                    None
+                    if token_goodput_mean is None
+                    else StatusDistributionSummary.from_values(
+                        [token_goodput_mean], [], []
+                    )
+                ),
             ),
         )
         csv_out = GenerativeBenchmarkerCSV.__new__(GenerativeBenchmarkerCSV)
@@ -517,6 +530,19 @@ class TestServerThroughputGoodputColumns:
         csv_out._add_server_throughput_metrics(benchmark, headers, values)
 
         return headers, values
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("token_rate", [0.0, 12.5, None])
+    def test_output_token_goodput_keeps_zero_and_blank_values(self, token_rate):
+        """Write a numeric zero for no good tokens and blank for missing counts.
+
+        ## WRITTEN BY AI ##
+        """
+        headers, values = self._render(0.5, 1.0, token_rate)
+        flat = [header[1] for header in headers]
+        assert values[flat.index("Output Token Goodput/Sec")] == (
+            "" if token_rate is None else token_rate
+        )
 
     @pytest.mark.regression
     def test_columns_present_when_nothing_conforms(self):
@@ -565,6 +591,59 @@ class TestServerThroughputGoodputColumns:
         assert "Successful Goodput/Sec" in flat
         assert values[flat.index("Successful Goodput/Sec")] == ""
         assert values[flat.index("SLO Attainment")] == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+async def test_written_goodput_columns_align_across_objectives(tmp_path: Path):
+    """Keep counts, fractions, zero rates and blanks aligned in the actual CSV.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmarks = [
+        make_benchmark(strategy=ThroughputStrategy(), rps=1.0, tps=10.0)
+        for _ in range(4)
+    ]
+    for index, objective, passing, evaluated in (
+        (1, "ttft_ms", 2, 3),
+        (2, "e2el_ms", 0, 0),
+        (3, "ttft_ms", 0, 2),
+    ):
+        benchmarks[index].config.slo = GoodputSLO(**{objective: 200})
+        benchmarks[index].metrics.slo_attainment_by_metric = {
+            objective: SLOAttainmentSummary(
+                conforming_requests=passing, determined_requests=evaluated
+            )
+        }
+    for index, rate in ((1, 12.5), (3, 0.0)):
+        benchmarks[
+            index
+        ].metrics.output_token_goodput = StatusDistributionSummary.from_values(
+            [rate], [], []
+        )
+    path = await GenerativeBenchmarkerCSV(
+        output_path=tmp_path / "goodput.csv"
+    ).finalize(report(*benchmarks))
+    with path.open() as file:
+        rows = list(csv.reader(file))
+    headers = list(zip(*rows[:3], strict=True))
+
+    assert len({len(row) for row in rows}) == 1
+    for header, expected in (
+        (
+            ("Server Throughput", "Output Token Goodput/Sec", "mean"),
+            ["", "12.5", "", "0.0"],
+        ),
+        (("SLO Attainment", "ttft_ms", "Conforming Requests"), ["", "2", "", "0"]),
+        (("SLO Attainment", "ttft_ms", "Determined Requests"), ["", "3", "", "2"]),
+        (("SLO Attainment", "e2el_ms", "Determined Requests"), ["", "", "0", ""]),
+        (("SLO Attainment", "e2el_ms", "Attainment"), ["", "", "", ""]),
+        (("SLO Attainment", "ttft_ms", "Threshold (ms)"), ["", "200.0", "", "200.0"]),
+    ):
+        assert [row[headers.index(header)] for row in rows[3:]] == expected
+    ttft = headers.index(("SLO Attainment", "ttft_ms", "Attainment"))
+    assert float(rows[4][ttft]) == pytest.approx(2 / 3)
+    assert rows[6][ttft] == "0.0"
 
 
 async def _write_interval_csv(tmp_path: Path, benchmark) -> list[list[str]]:

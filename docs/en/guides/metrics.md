@@ -51,6 +51,22 @@ These metrics provide a breakdown of the overall request statuses, helping users
 - **Definition**: The number of objective-conforming requests completed per second. Requests that complete but breach an objective count toward request rate and not toward goodput, so goodput is always at or below the request rate.
 - **Use Case**: Separates useful capacity from raw capacity. Past a server's saturation point the request rate can stay flat while goodput falls, because requests still complete but no longer complete quickly enough to be useful.
 
+### Per-Objective SLO Attainment
+
+- **Definition**: Independent attainment for each configured `ttft_ms`, `tpot_ms` or `e2el_ms` objective, reported in `slo_attainment_by_metric`. Each entry contains `conforming_requests`, `determined_requests` and `attainment` (a fraction between 0 and 1, or `null` when its denominator is zero). Thresholds remain in `config.slo`.
+- **Population**: Each objective includes successful requests with its own measurement and all errored requests. Incomplete requests are excluded. A request missing TTFT can still be evaluated against E2EL, so individual objectives can have different denominators. Combined `slo_attainment` continues to require every configured measurement; it is not an average of the individual fractions.
+- **Use Case**: Identifies which latency objective is breached when combined attainment is low. The console displays percentages and counts in a separate table; JSON and CSV retain fractions and counts.
+
+The TPOT objective continues to use `inter_token_latency_ms`, excluding the first token. Requests producing at most one token are undetermined for TPOT, while their other measurable objectives can still be evaluated. Threshold comparisons remain inclusive.
+
+### Output-Token Goodput
+
+- **Definition**: `output_token_goodput` is the distribution of output tokens per second from successful requests meeting **every** configured latency objective. It uses the same token-event accounting and measurement window as `output_tokens_per_second`, excluding token events outside that window. Its `successful.mean` is the average conforming output-token rate.
+- **Availability**: The metric is `null` when no objectives are configured, no request can be evaluated against all objectives, or a conforming request lacks an output usage token count. Streaming chunks are not assumed to contain one token each. A measured population with no conforming requests reports zero; missing counts on nonconforming requests do not invalidate the metric.
+- **Use Case**: Compares useful token throughput across workloads with different output lengths, including speculative decoding benchmarks where one streaming iteration may contain multiple tokens.
+
+Output usage counts follow the benchmark's existing response/request metric preference. Token timings use GuideLLM's existing interpolation between the first and last streaming iterations; they are not exact per-token timestamps. This reporting does not change combined attainment, request goodput, or the goodput profile's capacity-search decisions. Reports written before the new fields existed remain readable, with the new metrics unavailable.
+
 ### Output Tokens Per Second
 
 - **Definition**: The average number of output tokens generated per second as a throughput metric across all requests.
