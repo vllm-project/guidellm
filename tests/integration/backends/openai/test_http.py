@@ -6,6 +6,7 @@ import asyncio
 import json
 import socket
 import time
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -16,10 +17,12 @@ from guidellm.schemas.backends import OpenAIHTTPBackendArgs
 
 
 class _LocalChatServer:
-    """Chat completions server that logs request arrivals and redirects /redirect/*."""
+    """Keep-alive chat completions server that records connections and arrivals."""
 
-    def __init__(self, delay: float = 0.0):
+    def __init__(self, delay: float = 0.0, hold_open: bool = False):
         self.delay = delay
+        self.hold_open = hold_open
+        self.connections = 0
         self.received: list[float] = []
         self._server: asyncio.Server | None = None
 
@@ -40,6 +43,7 @@ class _LocalChatServer:
     async def _handle(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
+        self.connections += 1
         try:
             while True:
                 head = await reader.readuntil(b"\r\n\r\n")
@@ -52,33 +56,36 @@ class _LocalChatServer:
                 length = int(headers.get("content-length", "0"))
                 body = json.loads(await reader.readexactly(length) or b"{}")
                 if path.startswith("/redirect/"):
-                    location = path.removeprefix("/redirect")
                     writer.write(
                         b"HTTP/1.1 307 Temporary Redirect\r\n"
-                        + f"Location: {location}\r\n".encode()
+                        + f"Location: {path.removeprefix('/redirect')}\r\n".encode()
                         + b"Content-Length: 0\r\n\r\n"
                     )
-                    await writer.drain()
-                    continue
-                await asyncio.sleep(self.delay)
-                if body.get("stream"):
-                    content_type = "text/event-stream"
-                    payload = (
-                        b'data: {"choices": [{"delta": {"content": "Hi"}}]}\n\n'
-                        b"data: [DONE]\n\n"
+                elif body.get("stream"):
+                    await asyncio.sleep(self.delay)
+                    writer.write(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+                        b"Transfer-Encoding: chunked\r\n\r\n"
                     )
+                    for event in (
+                        b'data: {"choices": [{"delta": {"content": "Hi"}}]}\n\n',
+                        b"data: [DONE]\n\n",
+                    ):
+                        writer.write(b"%x\r\n%s\r\n" % (len(event), event))
+                    if self.hold_open:
+                        await writer.drain()
+                        await reader.read()
+                        return
+                    writer.write(b"0\r\n\r\n")
                 else:
-                    content_type = "application/json"
+                    await asyncio.sleep(self.delay)
                     payload = b'{"choices": [{"message": {"content": "Hi"}}]}'
-                writer.write(
-                    b"HTTP/1.1 200 OK\r\n"
-                    + f"Content-Type: {content_type}\r\n".encode()
-                    + f"Content-Length: {len(payload)}\r\n".encode()
-                    + b"Connection: close\r\n\r\n"
-                    + payload
-                )
+                    writer.write(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                        + f"Content-Length: {len(payload)}\r\n\r\n".encode()
+                        + payload
+                    )
                 await writer.drain()
-                return
         except (asyncio.IncompleteReadError, ConnectionError):
             return
         finally:
@@ -103,13 +110,20 @@ def _make_backend(target: str, stream: bool = True) -> OpenAIHTTPBackend:
     )
 
 
+async def _resolve_once(
+    backend: OpenAIHTTPBackend, request_info: RequestInfo | None = None
+) -> None:
+    request = GenerationRequest(columns={"text_column": ["Hello"]})
+    async for _ in backend.resolve(request, request_info or RequestInfo()):
+        pass
+
+
 async def _resolve_all(
     backend: OpenAIHTTPBackend,
     request_info: RequestInfo,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> float:
     """Resolve one request and return the time resolve was called."""
-    request = GenerationRequest(columns={"text_column": ["Hello"]})
     await backend.process_startup()
     if transport is not None:
         assert backend._async_client is not None
@@ -117,8 +131,7 @@ async def _resolve_all(
         backend._async_client = httpx.AsyncClient(transport=transport)
     try:
         called = time.time()
-        async for _ in backend.resolve(request, request_info):
-            pass
+        await _resolve_once(backend, request_info)
     finally:
         await backend.process_shutdown()
     return called
@@ -183,3 +196,50 @@ async def test_request_start_set_when_connection_fails():
         await _resolve_all(_make_backend(f"http://127.0.0.1:{port}"), request_info)
 
     assert request_info.timings.request_start is not None
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+@pytest.mark.parametrize("concurrency", [1, 4])
+async def test_streaming_requests_reuse_connections(concurrency: int):
+    """Reuse one connection per concurrent stream across sequential requests.
+
+    ## WRITTEN BY AI ##
+    """
+    async with _LocalChatServer() as server:
+        backend = _make_backend(server.url)
+        await backend.process_startup()
+        try:
+            for _ in range(3):
+                await asyncio.gather(
+                    *(_resolve_once(backend) for _ in range(concurrency))
+                )
+        finally:
+            await backend.process_shutdown()
+
+    assert len(server.received) == 3 * concurrency
+    assert server.connections == concurrency
+
+
+@pytest.mark.sanity
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+async def test_response_held_open_after_final_event():
+    """Stop reading a response held open after its final event.
+
+    ## WRITTEN BY AI ##
+    """
+    async with _LocalChatServer(hold_open=True) as server:
+        backend = _make_backend(server.url)
+        request_info = RequestInfo(request_id="test-id")
+        with patch("guidellm.backends.openai.http._READ_TO_END_TIMEOUT", 0.2):
+            started = time.time()
+            await _resolve_all(backend, request_info)
+            elapsed = time.time() - started
+
+    timings = request_info.timings
+    assert 0.2 <= elapsed < 1.0
+    assert timings.request_end is not None
+    assert timings.last_token_iteration is not None
+    assert timings.request_end - timings.last_token_iteration < 0.2

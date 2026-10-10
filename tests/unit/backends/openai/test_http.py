@@ -17,7 +17,11 @@ from pydantic import ValidationError
 from pytest_httpx import HTTPXMock, IteratorStream
 
 from guidellm.backends.backend import Backend
-from guidellm.backends.openai.http import OpenAIHTTPBackend
+from guidellm.backends.openai.http import (
+    OpenAIHTTPBackend,
+    _PerRequestPoolTransport,
+    _ReleasingStream,
+)
 from guidellm.backends.openai.request_handlers import (
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
@@ -1242,3 +1246,107 @@ async def test_trace_request_start_records_first_request_headers(protocol: str):
 
         await trace(event, {"request": post})
         assert request_info.timings.request_start == 2.0
+
+
+class _CountingChunks:
+    """Byte chunks that count how many were read."""
+
+    def __init__(self, chunks: list[bytes]):
+        self.chunks = chunks
+        self.read = 0
+
+    def __iter__(self):
+        for chunk in self.chunks:
+            self.read += 1
+            yield chunk
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("http_version", "expected_read"), [("HTTP/1.1", 3), ("HTTP/2", 2)]
+)
+async def test_stream_read_to_end_only_over_http11(
+    httpx_mock: HTTPXMock, http_version: str, expected_read: int
+):
+    """Read past the final event over HTTP/1.1 and stop at it over HTTP/2.
+
+    ## WRITTEN BY AI ##
+    """
+    chunks = _CountingChunks(
+        [
+            b'data: {"choices": [{"delta": {"content": "Hi"}}]}\n\n',
+            b"data: [DONE]\n\n",
+            b": end\n\n",
+        ]
+    )
+    httpx_mock.add_response(
+        url="http://test/v1/chat/completions",
+        http_version=http_version,
+        stream=IteratorStream(chunks),
+    )
+    backend = _make_backend(target="http://test", model="test-model", stream=True)
+    request = GenerationRequest(columns={"text_column": ["Hello"]})
+    await backend.process_startup()
+    try:
+        async for _ in backend.resolve(request, RequestInfo(request_id="test-id")):
+            pass
+    finally:
+        await backend.process_shutdown()
+
+    assert chunks.read == expected_read
+
+
+@pytest.mark.sanity
+@pytest.mark.asyncio
+async def test_releasing_stream_releases_once():
+    """Release once even when the stream is closed twice.
+
+    ## WRITTEN BY AI ##
+    """
+    released: list[bool] = []
+    stream = _ReleasingStream(httpx.ByteStream(b"data"), lambda: released.append(True))
+
+    assert [chunk async for chunk in stream] == [b"data"]
+    await stream.aclose()
+    await stream.aclose()
+    assert released == [True]
+
+
+@pytest.mark.sanity
+@pytest.mark.asyncio
+async def test_pool_transport_reuses_transport_after_error(httpx_mock: HTTPXMock):
+    """Return a transport to the pool when its request fails.
+
+    ## WRITTEN BY AI ##
+    """
+    httpx_mock.add_exception(httpx.ConnectError("refused"))
+    httpx_mock.add_response(json={})
+    transport = _PerRequestPoolTransport()
+
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(httpx.ConnectError):
+            await client.get("http://test/")
+        await client.get("http://test/")
+        assert len(transport._transports) == 1
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_pool_transport_separates_concurrent_requests(httpx_mock: HTTPXMock):
+    """Use one transport per in-flight request and reuse them afterwards.
+
+    ## WRITTEN BY AI ##
+    """
+
+    async def slow_response(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.05)
+        return httpx.Response(200, json={})
+
+    httpx_mock.add_callback(slow_response, is_reusable=True)
+    transport = _PerRequestPoolTransport()
+
+    async with httpx.AsyncClient(transport=transport) as client:
+        await asyncio.gather(*(client.get("http://test/") for _ in range(3)))
+        await asyncio.gather(*(client.get("http://test/") for _ in range(3)))
+        assert len(transport._transports) == 3
