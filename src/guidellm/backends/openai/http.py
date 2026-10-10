@@ -11,11 +11,13 @@ tracking with flexible parameter customization.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 import httpx
+from httpx._utils import get_environment_proxies
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.openai.common import FALLBACK_TIMEOUT
@@ -35,6 +37,60 @@ from guidellm.utils.dict import deep_filter
 __all__ = [
     "OpenAIHTTPBackend",
 ]
+
+_READ_TO_END_TIMEOUT = 1.0  # seconds
+
+
+class _ReleasingStream(httpx.AsyncByteStream):
+    """Response stream that calls ``release`` once when it is closed."""
+
+    def __init__(self, stream: httpx.AsyncByteStream, release: Callable[[], None]):
+        self._stream = stream
+        self._release: Callable[[], None] | None = release
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        async for chunk in self._stream:
+            yield chunk
+
+    async def aclose(self) -> None:
+        try:
+            await self._stream.aclose()
+        finally:
+            if self._release is not None:
+                release, self._release = self._release, None
+                release()
+
+
+class _PerRequestPoolTransport(httpx.AsyncBaseTransport):
+    """Give each in-flight request its own small connection pool."""
+
+    def __init__(self, **transport_kwargs: Any):
+        self._transport_kwargs = transport_kwargs
+        self._transports: list[httpx.AsyncHTTPTransport] = []
+        self._idle: list[httpx.AsyncHTTPTransport] = []
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        if self._idle:
+            transport = self._idle.pop()
+        else:
+            transport = httpx.AsyncHTTPTransport(**self._transport_kwargs)
+            self._transports.append(transport)
+        try:
+            response = await transport.handle_async_request(request)
+        except BaseException:
+            self._idle.append(transport)
+            raise
+        response.stream = _ReleasingStream(
+            cast("httpx.AsyncByteStream", response.stream),
+            lambda: self._idle.append(transport),
+        )
+        return response
+
+    async def aclose(self) -> None:
+        for transport in self._transports:
+            await transport.aclose()
+        self._transports.clear()
+        self._idle.clear()
 
 
 @Backend.register("openai_http")
@@ -87,6 +143,17 @@ class OpenAIHTTPBackend(Backend):
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
 
+        # Allow unlimited connections
+        limits = httpx.Limits(
+            max_connections=None,
+            max_keepalive_connections=None,
+            keepalive_expiry=5.0,  # default
+        )
+        transport_kwargs: dict[str, Any] = {
+            "verify": httpx.create_ssl_context(verify=self._args.verify),
+            "http2": self._args.http2,
+            "limits": limits,
+        }
         self._async_client = httpx.AsyncClient(
             http2=self._args.http2,
             timeout=httpx.Timeout(
@@ -96,12 +163,14 @@ class OpenAIHTTPBackend(Backend):
             ),
             follow_redirects=self._args.follow_redirects,
             verify=self._args.verify,
-            # Allow unlimited connections
-            limits=httpx.Limits(
-                max_connections=None,
-                max_keepalive_connections=None,
-                keepalive_expiry=5.0,  # default
-            ),
+            limits=limits,
+            transport=_PerRequestPoolTransport(**transport_kwargs),
+            mounts={
+                pattern: None
+                if url is None
+                else _PerRequestPoolTransport(proxy=url, **transport_kwargs)
+                for pattern, url in get_environment_proxies().items()
+            },
         )
         self._in_process = True
 
@@ -354,8 +423,9 @@ class OpenAIHTTPBackend(Backend):
             ) as stream:
                 stream.raise_for_status()
                 end_reached = False
+                lines = self._aiter_lines(stream)
 
-                async for chunk in self._aiter_lines(stream):
+                async for chunk in lines:
                     stream.raise_for_status()
                     iter_time = time.time()
 
@@ -392,7 +462,10 @@ class OpenAIHTTPBackend(Backend):
                     request_info.timings.last_token_iteration = iter_time
                     request_info.timings.token_iterations += iterations
 
-            request_info.timings.request_end = time.time()
+                request_info.timings.request_end = time.time()
+                if end_reached and stream.http_version == "HTTP/1.1":
+                    await self._read_to_end(lines)
+
             gen_response = request_handler.compile_streaming(request, arguments)
             request_handler.post_validation(gen_response)
             self._check_tool_call_expectations(request, gen_response)
@@ -413,6 +486,17 @@ class OpenAIHTTPBackend(Backend):
             if not line.strip():
                 continue  # Skip blank lines
             yield line
+
+    @staticmethod
+    async def _read_to_end(lines: AsyncIterator[str]) -> None:
+        """Read the rest of a response so its connection can be reused."""
+
+        async def consume() -> None:
+            async for _ in lines:
+                pass
+
+        with contextlib.suppress(asyncio.TimeoutError, httpx.HTTPError):
+            await asyncio.wait_for(consume(), timeout=_READ_TO_END_TIMEOUT)
 
     @staticmethod
     def _trace_request_start(
