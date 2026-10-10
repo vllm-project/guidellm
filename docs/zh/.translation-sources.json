@@ -7,6 +7,11 @@
       "source_sha256": "a6f2f3095aa6b6b3c6b30f40f988275e264ae73c50a40590bba6441583ed9b36"
     },
     {
+      "source": "docs/en/getting-started/analyze.md",
+      "translation": "docs/zh/getting-started/analyze.md",
+      "source_sha256": "1a3dd094af8e280879f426978ac60dd8d91556a397e9fdd08f08235d8e05fe1c"
+    },
+    {
       "source": "docs/en/getting-started/install.md",
       "translation": "docs/zh/getting-started/install.md",
       "source_sha256": "2cc877926f72d888605a25f9028265e4c2627b97edd20cbcd51a1c44919f276f"
