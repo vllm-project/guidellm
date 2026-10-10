@@ -7,6 +7,11 @@
       "source_sha256": "a6f2f3095aa6b6b3c6b30f40f988275e264ae73c50a40590bba6441583ed9b36"
     },
     {
+      "source": "docs/en/getting-started/benchmark.md",
+      "translation": "docs/zh/getting-started/benchmark.md",
+      "source_sha256": "dcfa8707805f8b2a1243b9198a86ef98e3d2ed078495082f0eb23839f22b12e8"
+    },
+    {
       "source": "docs/en/getting-started/install.md",
       "translation": "docs/zh/getting-started/install.md",
       "source_sha256": "2cc877926f72d888605a25f9028265e4c2627b97edd20cbcd51a1c44919f276f"
