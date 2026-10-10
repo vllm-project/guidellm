@@ -96,7 +96,7 @@ class SweepProfile(Profile):
             )
 
         if prev_strategy.type_ == "throughput":
-            self.throughput_rate = prev_benchmark.request_throughput.successful.mean
+            self.throughput_rate = self._saturated_rate(prev_benchmark)
             if self.synchronous_rate <= 0 and self.throughput_rate <= 0:
                 raise RuntimeError(
                     "Invalid rates in sweep; aborting. "
@@ -143,3 +143,25 @@ class SweepProfile(Profile):
                 random_seed=self.random_seed,
             )
         raise ValueError(f"Invalid strategy type: {self.args.strategy_type}")
+
+    @staticmethod
+    def _saturated_rate(benchmark: Benchmark) -> float:
+        """
+        Estimate the request rate the server sustains under the throughput load.
+
+        By Little's law the completion rate is the mean number of requests in
+        flight divided by the mean request latency. The throughput strategy
+        keeps its concurrency from the first request, so this estimate does not
+        count the wait for the first completions as idle time the way the mean
+        request rate does, and it holds whether requests complete spread out or
+        in waves.
+
+        :param benchmark: Compiled benchmark from the throughput strategy
+        :return: Requests per second, or the mean request rate when no
+            successful request latency was measured
+        """
+        latency = benchmark.request_latency.successful.mean
+        if latency <= 0:
+            return benchmark.request_throughput.successful.mean
+
+        return benchmark.request_concurrency.total.mean / latency
