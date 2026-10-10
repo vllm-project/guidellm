@@ -24,6 +24,7 @@ class _LocalChatServer:
         self.hold_open = hold_open
         self.connections = 0
         self.received: list[float] = []
+        self.paths: list[str] = []
         self._server: asyncio.Server | None = None
 
     async def __aenter__(self) -> _LocalChatServer:
@@ -50,6 +51,7 @@ class _LocalChatServer:
                 self.received.append(time.time())
                 request_line, *header_lines = head.decode().split("\r\n")
                 path = request_line.split(" ")[1]
+                self.paths.append(path)
                 headers = dict(
                     line.lower().split(": ", 1) for line in header_lines if ": " in line
                 )
@@ -243,3 +245,26 @@ async def test_response_held_open_after_final_event():
     assert timings.request_end is not None
     assert timings.last_token_iteration is not None
     assert timings.request_end - timings.last_token_iteration < 0.2
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+async def test_requests_use_environment_proxy(monkeypatch: pytest.MonkeyPatch):
+    """Send requests through the proxy set in the environment.
+
+    ## WRITTEN BY AI ##
+    """
+    async with _LocalChatServer() as proxy:
+        monkeypatch.setenv("http_proxy", proxy.url)
+        monkeypatch.delenv("no_proxy", raising=False)
+        monkeypatch.delenv("NO_PROXY", raising=False)
+        backend = _make_backend("http://guidellm.invalid")
+        await backend.process_startup()
+        try:
+            await _resolve_once(backend)
+        finally:
+            await backend.process_shutdown()
+
+    assert len(proxy.paths) == 1
+    assert proxy.paths[0].startswith("http://guidellm.invalid/")

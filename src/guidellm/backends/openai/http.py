@@ -17,6 +17,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, cast
 
 import httpx
+from httpx._utils import get_environment_proxies
 
 from guidellm.backends.backend import Backend
 from guidellm.backends.openai.common import FALLBACK_TIMEOUT
@@ -148,6 +149,11 @@ class OpenAIHTTPBackend(Backend):
             max_keepalive_connections=None,
             keepalive_expiry=5.0,  # default
         )
+        transport_kwargs: dict[str, Any] = {
+            "verify": httpx.create_ssl_context(verify=self._args.verify),
+            "http2": self._args.http2,
+            "limits": limits,
+        }
         self._async_client = httpx.AsyncClient(
             http2=self._args.http2,
             timeout=httpx.Timeout(
@@ -158,11 +164,13 @@ class OpenAIHTTPBackend(Backend):
             follow_redirects=self._args.follow_redirects,
             verify=self._args.verify,
             limits=limits,
-            transport=_PerRequestPoolTransport(
-                verify=httpx.create_ssl_context(verify=self._args.verify),
-                http2=self._args.http2,
-                limits=limits,
-            ),
+            transport=_PerRequestPoolTransport(**transport_kwargs),
+            mounts={
+                pattern: None
+                if url is None
+                else _PerRequestPoolTransport(proxy=url, **transport_kwargs)
+                for pattern, url in get_environment_proxies().items()
+            },
         )
         self._in_process = True
 
