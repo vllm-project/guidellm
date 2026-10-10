@@ -70,8 +70,10 @@ class TraceDataArgs(DataArgs):
         ge=1,
         description=(
             "Pack sessions so at least this many overlap during steady state. "
-            "The first N sessions start together; each later session starts as soon "
-            "as session i-N ends, but never later than its original start."
+            "The first N non-instantaneous sessions start together; each later "
+            "session starts when overlap would fall below N, but never later than "
+            "its original start. Instantaneous sessions keep their original timing "
+            "and do not count toward the overlap target."
         ),
     )
     time_scale: float = Field(

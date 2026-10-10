@@ -167,6 +167,83 @@ class TestTraceSessionTimingInterSession:
 
 
 class TestTraceSessionTimingMinConcurrentSessions:
+    @pytest.mark.regression
+    def test_fills_the_first_finished_session_for_unequal_lengths(self):
+        """A short session's replacement starts before a longer peer finishes.
+
+        ## WRITTEN BY AI ##
+        """
+        sessions = [
+            _graph_with_timestamps([0.0, 100.0]),
+            _graph_with_timestamps([200.0, 201.0]),
+            _graph_with_timestamps([400.0, 405.0, 410.0]),
+            _graph_with_timestamps([600.0, 620.0]),
+        ]
+        timing = TraceSessionTiming(min_concurrent_sessions=2)
+        for session in sessions:
+            timing.apply(session)
+
+        assert _relative_timestamps(sessions[1]) == pytest.approx([0.0, 1.0])
+        assert _relative_timestamps(sessions[2]) == pytest.approx([1.0, 6.0, 11.0])
+        assert _relative_timestamps(sessions[3]) == pytest.approx([11.0, 31.0])
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("instant_index", "instant_time"), [(0, 0.0), (1, 250.0), (2, 400.0)]
+    )
+    def test_instantaneous_sessions_do_not_occupy_packing_lanes(
+        self, instant_index, instant_time
+    ):
+        """An instantaneous arrival does not delay a multi-turn replacement.
+
+        ## WRITTEN BY AI ##
+        """
+        spanning_sessions = [
+            _graph_with_timestamps([100.0, 200.0]),
+            _graph_with_timestamps([300.0, 310.0]),
+            _graph_with_timestamps([500.0, 520.0]),
+            _graph_with_timestamps([700.0, 720.0]),
+        ]
+        instantaneous = _graph_with_timestamps([instant_time])
+        sessions = spanning_sessions.copy()
+        sessions.insert(instant_index, instantaneous)
+        timing = TraceSessionTiming(min_concurrent_sessions=2)
+        for session in sessions:
+            timing.apply(session)
+
+        assert _relative_timestamps(instantaneous) == pytest.approx([instant_time])
+        assert _relative_timestamps(spanning_sessions[0]) == pytest.approx(
+            [100.0, 200.0]
+        )
+        assert _relative_timestamps(spanning_sessions[1]) == pytest.approx(
+            [100.0, 110.0]
+        )
+        assert _relative_timestamps(spanning_sessions[2]) == pytest.approx(
+            [110.0, 130.0]
+        )
+        assert _relative_timestamps(spanning_sessions[3]) == pytest.approx(
+            [130.0, 150.0]
+        )
+
+    @pytest.mark.regression
+    def test_keeps_existing_overlap_when_a_short_session_ends(self):
+        """Extra overlapping sessions do not replace a longer occupied lane.
+
+        ## WRITTEN BY AI ##
+        """
+        sessions = [
+            _graph_with_timestamps([0.0, 100.0]),
+            _graph_with_timestamps([0.0, 10.0]),
+            _graph_with_timestamps([0.0, 1.0]),
+            _graph_with_timestamps([200.0, 220.0]),
+        ]
+        timing = TraceSessionTiming(min_concurrent_sessions=2)
+        for session in sessions:
+            timing.apply(session)
+
+        assert _relative_timestamps(sessions[2]) == pytest.approx([0.0, 1.0])
+        assert _relative_timestamps(sessions[3]) == pytest.approx([10.0, 30.0])
+
     @pytest.mark.smoke
     def test_packs_sequential_sessions_to_target_overlap(self):
         """Sequential sessions are shifted earlier so N overlap in steady state.
