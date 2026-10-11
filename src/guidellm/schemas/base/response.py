@@ -89,6 +89,14 @@ class GenerationResponse(StandardBaseModel):
             "server-side timings and speculative-decoding acceptance."
         ),
     )
+    output_media: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "Generated non-text output artifacts, one dict per item, tagged "
+            "by 'modality' ('audio', 'image', 'video'); None for text-only "
+            "responses."
+        ),
+    )
 
     def compile_stats(
         self,
@@ -153,15 +161,18 @@ class GenerationResponse(StandardBaseModel):
         ):
             output_metrics_dict["tool_call_count"] = 0
 
-        return GenerativeRequestStats(
+        out_stats = GenerativeRequestStats(
             request_id=self.request_id,
             response_id=self.response_id,
             request_args=self.request_args,
             output=self.text,
             reasoning_output=self.reasoning_text,
             tool_calls=self.tool_calls,
+            output_media=self.output_media,
             info=info,
             input_metrics=UsageMetrics(**input_metrics_dict),
             output_metrics=UsageMetrics(**output_metrics_dict),
             response_metrics=self.response_metrics,
         )
+        out_stats.output_metrics.audio_rtf = out_stats.audio_rtf
+        return out_stats

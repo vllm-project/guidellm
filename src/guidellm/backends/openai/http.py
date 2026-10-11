@@ -270,6 +270,8 @@ class OpenAIHTTPBackend(Backend):
             max_tokens=self._args.max_tokens,
             server_history=self._args.server_history,
             multiturn_reasoning=self._args.multiturn_reasoning,
+            audio_output_sample_rate=self._args.audio_output_sample_rate,
+            audio_output_channels=self._args.audio_output_channels,
         )
 
         request_url = f"{self._args.target}/{request_path}"
@@ -327,7 +329,15 @@ class OpenAIHTTPBackend(Backend):
         )
         request_info.timings.request_end = time.time()
         await self._raise_for_status(response)
-        data = response.json()
+
+        data: Any
+        if getattr(request_handler, "raw_response", False):
+            data = response.content
+            if hasattr(request_handler, "set_response_headers"):
+                request_handler.set_response_headers(response.headers)
+        else:
+            data = response.json()
+
         gen_response = request_handler.compile_non_streaming(request, arguments, data)
         request_handler.post_validation(gen_response)
         try:
@@ -370,20 +380,30 @@ class OpenAIHTTPBackend(Backend):
                 stream=True,
             )
             end_reached = False
-            lines = self._aiter_lines(stream)
+            chunks: AsyncIterator[str | bytes]
+            if request_handler.raw_streaming:
+                chunks = self._aiter_raw_bytes(stream)
+            else:
+                chunks = self._aiter_lines(stream)
+
             try:
                 await self._raise_for_status(stream)
 
-                async for chunk in lines:
+                async for chunk in chunks:
                     stream.raise_for_status()
                     iter_time = time.time()
-
+                    if hasattr(request_handler, "set_streaming_arrival_time"):
+                        request_handler.set_streaming_arrival_time(iter_time)
                     if request_info.timings.first_request_iteration is None:
                         request_info.timings.first_request_iteration = iter_time
                     request_info.timings.last_request_iteration = iter_time
                     request_info.timings.request_iterations += 1
 
-                    iterations = request_handler.add_streaming_line(chunk)
+                    if isinstance(chunk, bytes):
+                        iterations = request_handler.add_streaming_chunk(chunk)
+                    else:
+                        iterations = request_handler.add_streaming_line(chunk)
+
                     if iterations is None or iterations <= 0 or end_reached:
                         end_reached = end_reached or iterations is None
                         if end_reached:
@@ -413,14 +433,17 @@ class OpenAIHTTPBackend(Backend):
 
                 request_info.timings.request_end = time.time()
             finally:
-                await self._close_stream(stream, lines, end_reached)
+                await self._close_stream(stream, chunks, end_reached)
+
+            if hasattr(request_handler, "mark_stream_complete"):
+                request_handler.mark_stream_complete()
 
             gen_response = request_handler.compile_streaming(request, arguments)
             request_handler.post_validation(gen_response)
             self._check_tool_call_expectations(request, gen_response)
             yield gen_response, request_info
         except asyncio.CancelledError as err:
-            # Yield current result to store iterative results before propagating
+            # Yield current result to store iterative results before propagating.
             yield request_handler.compile_streaming(request, arguments), request_info
             raise err
 
@@ -468,6 +491,17 @@ class OpenAIHTTPBackend(Backend):
             if not line.strip():
                 continue  # Skip blank lines
             yield line
+
+    async def _aiter_raw_bytes(self, stream: httpx2.Response) -> AsyncIterator[bytes]:
+        """
+        Asynchronously iterate over raw bytes chunks in an HTTP response stream.
+
+        :param stream: HTTP response object with streaming content
+        :yield: Raw bytes chunks as they arrive
+        """
+        async for chunk in stream.aiter_bytes():
+            if chunk:  # skip empty keep-alive chunks
+                yield chunk
 
     async def _close_stream(
         self, stream: httpx2.Response, lines: AsyncIterator[str], end_reached: bool

@@ -62,6 +62,10 @@ class GenerativeRequestStats(StandardBaseDict):
         default=None,
         description="Raw tool call payloads from the model response in OpenAI format",
     )
+    output_media: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Generated non-text output artifacts in OpenAI format",
+    )
     info: RequestInfo = Field(description="Request metadata and timing information")
     input_metrics: UsageMetrics = Field(
         description="Token usage statistics for the input prompt"
@@ -432,6 +436,17 @@ class GenerativeRequestStats(StandardBaseDict):
             return None
 
         return self.output_tokens / self.token_iterations
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def audio_rtf(self) -> float | None:
+        """:return: Real-time factor for generated audio, or None if not applicable."""
+        if self.output_metrics.audio_seconds is None or self.request_latency is None:
+            return None
+        if (self.request_latency is None or self.output_metrics.audio_seconds is None or
+            self.output_metrics.audio_seconds <= 0):
+            return None
+        return self.request_latency / float(self.output_metrics.audio_seconds)
 
     @property
     def first_token_iteration(self) -> float | None:

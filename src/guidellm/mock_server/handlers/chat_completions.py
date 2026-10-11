@@ -15,6 +15,7 @@ import json
 import math
 import time
 import uuid
+import base64
 from typing import Any
 
 from pydantic import ValidationError
@@ -36,6 +37,9 @@ from guidellm.mock_server.multimodal import (
     InvalidContentPartError,
     MultimodalPromptStats,
     accumulate_multimodal_content,
+    WAV_BYTES_PER_SECOND,
+    mock_pcm16,
+    mock_wav,
 )
 from guidellm.mock_server.utils import (
     MockTokenizer,
@@ -264,7 +268,30 @@ class ChatCompletionsHandler:
             system_fingerprint=f"fp_{uuid.uuid4().hex[:10]}",
         )
 
-        return response.json(chat_response.model_dump())
+        payload = chat_response.model_dump()
+        if (
+            req.modalities
+            and "audio" in req.modalities
+            and not self._should_return_tool_calls(req)
+        ):
+            pcm = mock_pcm16()
+            payload["choices"][0]["message"]["audio"] = {
+                "id": f"audio-{uuid.uuid4().hex[:16]}",
+                "data": base64.b64encode(mock_wav(pcm)).decode("ascii"),
+                "transcript": "",
+            }
+            payload["choices"][0]["audio_metadata"] = {
+                "format": "wav",
+                "sample_rate_hz": WAV_BYTES_PER_SECOND,
+                "frame_count": len(pcm) // 2,
+                "channels": 1,
+            }
+            if "text" not in req.modalities:
+                payload["choices"][0]["message"]["content"] = None
+                payload["usage"]["completion_tokens"] = 0
+                payload["usage"]["total_tokens"] = prompt_tokens
+
+        return response.json(payload)
 
     async def _handle_stream(
         self, req: ChatCompletionsRequest, multimodal_stats: MultimodalPromptStats

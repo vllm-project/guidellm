@@ -177,6 +177,27 @@ class UsageMetrics(StandardBaseDict):
     audio_bytes: int | None = Field(
         default=None, description="Number of audio bytes processed/generated."
     )
+    audio_rtf: float | None = Field(
+        default=None,
+        description=(
+            "Real-time factor for generated audio: client's end-to-end latency "
+            "(request_latency) divided by the produced audio duration (matches "
+            "vLLM-Omni formula."
+        ),
+    )
+    audio_underrun_seconds: float | None = Field(
+        default=None,
+        description=(
+            "Worst-case playback-buffer underrun for streamed/generated audio."
+        ),
+    )
+    audio_continuity_ok: int | None = Field(
+        default=None,
+        description=(
+            "1 if streamed audio stayed under the underrun threshold "
+            "(no audible gap), 0 if it did not, None when not applicable. "
+        ),
+    )
 
     # Tool call stats (subset of text_tokens)
     tool_call_tokens: int | None = Field(

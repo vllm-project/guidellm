@@ -33,6 +33,10 @@ from .synthetic_video import (
     SyntheticVideoDataset,
     SyntheticVideoDatasetDeserializer,
 )
+from .synthetic_audio import (
+    SyntheticAudioDataset,
+    SyntheticAudioDatasetDeserializer,
+)
 from .trace_common import (
     TraceDatasetDeserializer,
     TraceFormatBase,
@@ -73,6 +77,8 @@ __all__ = [
     "SyntheticTextDatasetDeserializer",
     "SyntheticVideoDataset",
     "SyntheticVideoDatasetDeserializer",
+    "SyntheticAudioDataset",
+    "SyntheticAudioDatasetDeserializer",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
     "TraceDatasetDeserializer",
