@@ -116,7 +116,7 @@ class WarningRuleArgs(StandardBaseModel):
 
 def default_warning_rules() -> list[WarningRuleArgs]:
     """
-    :return: Generation delay as a fraction of request latency and of time to
+    :return: Generation delay and worker loop lag as fractions of time to
         first token, late first turns measured in seconds, and an incomplete
         dataset for trace replay
     """
@@ -133,6 +133,20 @@ def default_warning_rules() -> list[WarningRuleArgs]:
             note=(
                 "This means that the benchmark was likely bottlenecked by the "
                 "data generation."
+            ),
+        ),
+        WarningRuleArgs(
+            code="loop_lag_ttft",
+            metric=MetricRef(name="first_token_loop_lag.total", statistic="mean"),
+            relative_to=MetricRef(
+                name="time_to_first_token_ms.total",
+                statistic="mean",
+                scale=0.001,
+            ),
+            threshold=0.1,
+            note=(
+                "This means that GuideLLM's workers were short of CPU, so time "
+                "to first token is likely overstated."
             ),
         ),
         WarningRuleArgs(

@@ -6,11 +6,14 @@ Rules live on the generative metrics configuration, under `metrics.warnings`. Se
 
 ## Built-in rules
 
-These three rules run when `metrics.warnings` is omitted:
+These four rules run when `metrics.warnings` is omitted:
 
 - `generation_delay_ttft`:
   - Warn when the mean `generation_delay` is more than 1% of mean \`time_to_first_token_ms.total
   - Means that the data generation is lagging by a great enough fraction of the server's TTFT that it's likely slowing down the benchmark.
+- `loop_lag_ttft`:
+  - Warn when the mean `first_token_loop_lag` is more than 10% of mean `time_to_first_token_ms.total`.
+  - This means that GuideLLM's workers were short of CPU and read responses late, so time to first token is likely overstated. Run GuideLLM with more CPU.
 - `root_late`:
   - Warn when the 95th percentile of `root_dispatch_delay` is greater than 0.2 seconds.
   - This means that the first turn of conversations arrived later than the scheduler scheduled them. Often due to data lag.
@@ -50,6 +53,7 @@ A path that is not on the compiled schemas is logged and printed with the other 
 - `inter_token_latency_ms.total`: inter-token latency, in milliseconds.
 - `request_dispatch_delay.total`: lateness against the scheduled start, in seconds. Null when the profile does not define an arrival schedule.
 - `root_dispatch_delay`: lateness of the first request of each conversation, in seconds. Later turns are omitted. Null when no first turn has a dispatch delay.
+- `first_token_loop_lag.total`: longest worker event-loop delay before each request's first token, in seconds.
 - `dataset_incomplete`: `true` when the scheduler stops queueing before the request iterator is exhausted. The scheduler records that the iterator finished only after the loader has yielded every conversation. A `max_requests` or `max_duration` stop therefore marks the dataset incomplete, and the built-in trace rule can fire on a run that was meant to stop early. `data_loader.samples` caps the iterator itself, so a run that consumes every yielded sample looks complete and does not fire.
 - `strategy_type`: strategy type identifier, such as `trace` or `concurrent`.
 

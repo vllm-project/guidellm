@@ -56,6 +56,8 @@ if TYPE_CHECKING:
 
 __all__ = ["WorkerProcess"]
 
+_LOOP_LAG_INTERVAL = 0.01  # seconds
+
 
 class WorkerProcess(Generic[RequestT, ResponseT]):
     """
@@ -145,6 +147,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.backend_started = False
         self.messaging_started = False
         self.turns_queue: list[DAGExecutionState[RequestT, ResponseT]] = []
+        self.awaiting_first_token: dict[str, RequestInfo] = {}
 
     def run(self):
         """
@@ -257,12 +260,14 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         Coordinates startup synchronization, processes requests until constraints are
         reached, then cancels pending requests until shutdown or error occurs.
         """
+        loop_lag_task: asyncio.Task | None = None
         try:
             # 1. Start up synchronization (backend, messaging, and other processes)
             # 2. Messaging startup, receive requests until requests_generated event
             await self._processing_startup()
 
             # 3. Run process requests loop until constraint_reached event
+            loop_lag_task = asyncio.create_task(self._monitor_loop_lag())
             processing_task = asyncio.create_task(self._process_requests_loop())
             await wait_for_sync_event(
                 self.constraint_reached_event,
@@ -277,6 +282,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # 4. Cancel pending requests until proc canceled (manual, shutdown, error)
             await self._cancel_requests_loop()
         finally:
+            if loop_lag_task is not None:
+                loop_lag_task.cancel()
             # 5. On cancel, shut down event, error event, or internal error:
             #    attempt to shut down this worker cleanly (stop backend and messaging)
             await self._processing_shutdown()
@@ -312,6 +319,21 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             self.messaging_started = False
 
         self.startup_completed = False
+
+    async def _monitor_loop_lag(self):
+        """Record event-loop lag on each request until its first token."""
+        while True:
+            start = time.time()
+            await asyncio.sleep(_LOOP_LAG_INTERVAL)
+            end = time.time()
+            lag = end - start - _LOOP_LAG_INTERVAL
+            for request_id, request_info in list(self.awaiting_first_token.items()):
+                timings = request_info.timings
+                first_token = timings.first_token_iteration
+                if first_token is not None and start > first_token:
+                    del self.awaiting_first_token[request_id]
+                elif lag > (timings.first_token_loop_lag or 0.0):
+                    timings.first_token_loop_lag = lag
 
     async def _process_requests_loop(self):
         """
@@ -456,6 +478,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             )
         finally:
             if request_info is not None:
+                self.awaiting_first_token.pop(request_info.request_id, None)
                 self.strategy.request_completed(request_info)
 
     def _prepare_node(
@@ -507,6 +530,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         # Prior messages sent with this request (``new`` edges restart at 0).
         request_info.history_len = len(history) if history else 0
         request_info.turn_index = state.compute_turn_index(node_id)
+        request_info.timings.first_token_loop_lag = 0.0
+        self.awaiting_first_token[request_info.request_id] = request_info
         async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
             request, request_info, history
         ):

@@ -1040,6 +1040,13 @@ class GenerativeMetrics(StandardBaseDict):
             "Later turns are omitted. None when no first turn has a dispatch delay"
         ),
     )
+    first_token_loop_lag: StatusDistributionSummary | None = Field(
+        default=None,
+        description=(
+            "Distribution of the longest worker event-loop delay before each "
+            "request's first token, in seconds"
+        ),
+    )
     request_streaming_iterations_count: StatusDistributionSummary = Field(
         description="Distribution of stream iterations for completed requests"
     )
@@ -1382,6 +1389,12 @@ class GenerativeMetrics(StandardBaseDict):
             turn_scheduling_delay=scheduling_delay,
             root_dispatch_delay=root_dispatch_delay_distribution(
                 [*successful, *incomplete, *errored],
+            ),
+            first_token_loop_lag=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.info.timings.first_token_loop_lag,
+                successful=first_token_requests[0],
+                incomplete=first_token_requests[1],
+                errored=first_token_requests[2],
             ),
             request_streaming_iterations_count=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.info.timings.request_iterations or 0.0,

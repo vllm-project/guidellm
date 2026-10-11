@@ -1534,3 +1534,69 @@ class TestTurnMetrics:
 
         assert metrics.generation_delay.count == 0
         assert metrics.generation_delay.mean == 0.0
+
+
+def _make_loop_lag_stats(
+    request_id: str, start: float, loop_lag: float | None
+) -> GenerativeRequestStats:
+    """Build a streamed request with the given first-token loop lag.
+
+    ## WRITTEN BY AI ##
+    """
+    timings = RequestTimings(
+        resolve_start=start,
+        resolve_end=start + 1.0,
+        request_start=start,
+        request_end=start + 1.0,
+        first_token_iteration=start + 0.1,
+        last_token_iteration=start + 1.0,
+        first_token_loop_lag=loop_lag,
+    )
+    return GenerativeRequestStats(
+        request_id=request_id,
+        info=RequestInfo(request_id=request_id, status="completed", timings=timings),
+        input_metrics=UsageMetrics(text_tokens=8),
+        output_metrics=UsageMetrics(text_tokens=8),
+    )
+
+
+class TestFirstTokenLoopLag:
+    """Compiled distribution of worker loop lag before the first token."""
+
+    @pytest.mark.sanity
+    def test_compile_reports_loop_lag_per_request(self):
+        """Compile one value per request and skip requests without one.
+
+        ## WRITTEN BY AI ##
+        """
+        requests = [
+            _make_loop_lag_stats("a", SCHEDULE_BASE_TIME + 1.0, 0.002),
+            _make_loop_lag_stats("b", SCHEDULE_BASE_TIME + 2.0, 0.006),
+            _make_loop_lag_stats("c", SCHEDULE_BASE_TIME + 3.0, None),
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(requests, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10.0)
+        )
+
+        assert metrics.first_token_loop_lag is not None
+        assert metrics.first_token_loop_lag.successful.count == 2
+        assert metrics.first_token_loop_lag.total.mean == pytest.approx(0.004)
+
+    @pytest.mark.smoke
+    def test_loop_lag_is_optional_for_existing_reports(self):
+        """Validate reports and requests written before loop lag was recorded.
+
+        ## WRITTEN BY AI ##
+        """
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                [_make_loop_lag_stats("a", SCHEDULE_BASE_TIME + 1.0, 0.002)],
+                SCHEDULE_BASE_TIME,
+                SCHEDULE_BASE_TIME + 10.0,
+            )
+        )
+        payload = metrics.model_dump()
+        del payload["first_token_loop_lag"]
+
+        assert GenerativeMetrics.model_validate(payload).first_token_loop_lag is None
+        assert RequestTimings.model_validate({}).first_token_loop_lag is None
