@@ -1449,7 +1449,6 @@ class _LoopBlockingBackend(MockBackend):
         _block_event_loop(self.block)
         request_info.timings.first_token_iteration = time.time()
         yield None, request_info
-        await asyncio.sleep(0.02)
         request_info.timings.request_end = time.time()
         yield f"response_for_{request}", request_info
 
@@ -1597,4 +1596,23 @@ class TestWorkerLoopLag:
 
         await _run_one_request(worker, "errored")
 
+        assert worker.awaiting_first_token == {}
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(5)
+    async def test_backend_with_engine_timestamps_is_not_tracked(self):
+        """Skip loop lag for a backend whose token times do not come from the loop.
+
+        ## WRITTEN BY AI ##
+        """
+
+        class EngineTimedBackend(_LoopBlockingBackend):
+            stamps_tokens_on_event_loop = False
+
+        worker = _loop_lag_worker(EngineTimedBackend(0.1))
+
+        request_info = await _run_one_request(worker, "completed")
+
+        assert request_info.timings.first_token_loop_lag is None
         assert worker.awaiting_first_token == {}
