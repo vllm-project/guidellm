@@ -32,6 +32,7 @@ from guidellm.utils.mixins import InfoMixin
 __all__ = [
     "AsyncConstantStrategy",
     "AsyncPoissonStrategy",
+    "AsyncRampStrategy",
     "ConcurrentStrategy",
     "SchedulingStrategy",
     "StrategyT",
@@ -43,7 +44,15 @@ __all__ = [
 
 
 StrategyType = Annotated[
-    Literal["synchronous", "concurrent", "throughput", "constant", "poisson", "trace"],
+    Literal[
+        "synchronous",
+        "concurrent",
+        "throughput",
+        "constant",
+        "ramp",
+        "poisson",
+        "trace",
+    ],
     "Valid strategy type identifiers for scheduling request patterns",
 ]
 
@@ -582,6 +591,87 @@ class AsyncConstantStrategy(SchedulingStrategy):
         :param request_info: Completed request metadata (unused)
         """
         _ = request_info  # request_info unused for async constant strategy
+
+
+@SchedulingStrategy.register("ramp")
+class AsyncRampStrategy(SchedulingStrategy):
+    """
+    Geometrically increasing request rate for finding a server's peak throughput.
+
+    Starts at ``start_rate`` and doubles the rate every ``doubling_interval``
+    seconds, with no upper bound, so it needs no estimate of the server's
+    capacity up front. It is meant to run until a constraint, typically
+    over-saturation detection, stops it.
+    """
+
+    type_: Literal["ramp"] = "ramp"  # type: ignore[assignment]
+    start_rate: float = Field(
+        description="Request rate in requests per second at the start of the ramp",
+        gt=0,
+    )
+    doubling_interval: float = Field(
+        description="Seconds it takes for the request rate to double",
+        gt=0,
+    )
+    max_concurrency: PositiveInt | None = Field(
+        default=None,
+        description="Maximum number of concurrent requests to schedule",
+    )
+
+    def __str__(self) -> str:
+        """
+        :return: String identifier with the starting rate
+        """
+        return f"ramp@{self.start_rate:.2f}"
+
+    @property
+    def defines_arrival_schedule(self) -> bool:
+        """
+        :return: Always True; targets are derived from an arrival schedule
+        """
+        return True
+
+    @property
+    def processes_limit(self) -> PositiveInt | None:
+        """
+        :return: Max concurrency if set, otherwise None for unlimited
+        """
+        return self.max_concurrency
+
+    @property
+    def requests_limit(self) -> PositiveInt | None:
+        """
+        :return: Max concurrency if set, otherwise None for unlimited
+        """
+        return self.max_concurrency
+
+    async def next_request_time(self, worker_index: NonNegativeInt) -> float:
+        """
+        Calculate the next request time on a rate that doubles every interval.
+
+        With the rate at ``start_rate * 2 ** (t / doubling_interval)``, the number
+        of requests sent by time ``t`` is
+        ``start_rate * doubling_interval / ln(2) * (2 ** (t / doubling_interval) - 1)``.
+        Inverting that for the request index gives its send time directly, so
+        every worker computes the same schedule without coordination.
+
+        :param worker_index: Unused for ramp strategy
+        :return: Start time plus the offset for this request's index
+        """
+        _ = worker_index  # unused
+        sent_before = self.next_request_index() - 1
+        start_time = await self.get_processes_start_time()
+        scale = self.start_rate * self.doubling_interval / math.log(2)
+
+        return start_time + self.doubling_interval * math.log2(1 + sent_before / scale)
+
+    def request_completed(self, request_info: RequestInfo):
+        """
+        Handle request completion (no-op for ramp strategy).
+
+        :param request_info: Completed request metadata (unused)
+        """
+        _ = request_info  # request_info unused for ramp strategy
 
 
 @SchedulingStrategy.register("poisson")
