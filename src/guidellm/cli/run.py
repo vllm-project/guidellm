@@ -51,9 +51,10 @@ __all__ = [
         ),
         click.Choice(tuple(get_builtin_scenarios().keys())),
     ),
+    multiple=True,
     help=(
-        "Builtin scenario name or path to config file. "
-        "CLI options override scenario settings."
+        "Builtin scenario name or path to a YAML/JSON config file. Repeat this "
+        "option to layer files in order. CLI options override scenario settings."
     ),
 )
 @click.option(

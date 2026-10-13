@@ -26,6 +26,7 @@ from guidellm.schemas.benchmark import (
     BenchmarkScenario,
     GenerativeMetricsArgs,
     MetricsArgs,
+    merge_scenario_files,
 )
 from guidellm.schemas.benchmark.warnings import default_warning_rules
 from guidellm.utils.arg_string import ArgStringParser
@@ -406,6 +407,146 @@ class TestBackendArgsTransformation:
 
 class TestBenchmarkScenario:
     """Test BenchmarkScenario validation and defaults."""
+
+    @pytest.mark.regression
+    def test_merge_scenario_files_preserves_matching_kind_attributes(self, tmp_path):
+        """
+        Later files can override individual attributes of the same registry kind.
+
+        ## WRITTEN BY AI ##
+        """
+        first_file = tmp_path / "first.yaml"
+        first_file.write_text(
+            yaml.safe_dump(
+                {
+                    "spec": {
+                        "backend": {
+                            "kind": "openai_http",
+                            "target": "http://localhost:8000",
+                        }
+                    }
+                }
+            )
+        )
+        second_file = tmp_path / "second.yaml"
+        second_file.write_text(
+            yaml.safe_dump(
+                {"spec": {"backend": {"kind": "openai_http", "model": "model"}}}
+            )
+        )
+
+        merged = merge_scenario_files([first_file, second_file])
+
+        assert merged["spec"]["backend"] == {
+            "kind": "openai_http",
+            "target": "http://localhost:8000",
+            "model": "model",
+        }
+
+    @pytest.mark.regression
+    def test_merge_scenario_files_replaces_different_kind_attributes(self, tmp_path):
+        """
+        A changed registry kind replaces the complete prior registry object.
+
+        ## WRITTEN BY AI ##
+        """
+        first_file = tmp_path / "first.yaml"
+        first_file.write_text(
+            yaml.safe_dump(
+                {
+                    "spec": {
+                        "constraint": {
+                            "kind": "max_duration",
+                            "seconds": 30,
+                        }
+                    }
+                }
+            )
+        )
+        second_file = tmp_path / "second.yaml"
+        second_file.write_text(
+            yaml.safe_dump(
+                {
+                    "spec": {
+                        "constraint": {
+                            "kind": "max_requests",
+                            "count": 10,
+                        }
+                    }
+                }
+            )
+        )
+
+        merged = merge_scenario_files([first_file, second_file])
+
+        assert merged["spec"]["constraint"] == {
+            "kind": "max_requests",
+            "count": 10,
+        }
+
+    @pytest.mark.regression
+    def test_merge_scenario_files_merges_metadata_config_files(self, tmp_path):
+        """
+        Existing metadata config-file objects are published in scenario order.
+
+        ## WRITTEN BY AI ##
+        """
+        first_file = tmp_path / "first.yaml"
+        first_file.write_text(
+            yaml.safe_dump(
+                {
+                    "metadata": {
+                        "config_files": [
+                            {"name": "first-entry", "owner": "first"},
+                        ]
+                    }
+                }
+            )
+        )
+        second_file = tmp_path / "second.yaml"
+        second_file.write_text(
+            yaml.safe_dump(
+                {
+                    "metadata": {
+                        "config_files": [
+                            {"name": "second-entry", "priority": 2},
+                        ]
+                    }
+                }
+            )
+        )
+
+        merged = merge_scenario_files([first_file, second_file])
+
+        assert merged["metadata"] == {
+            "config_files": [
+                {"name": "first-entry", "owner": "first"},
+                {"name": "second-entry", "priority": 2},
+            ]
+        }
+
+    @pytest.mark.regression
+    def test_merge_scenario_files_publishes_metadata_by_scenario(self, tmp_path):
+        """
+        Metadata without a config_files list is retained under its scenario name.
+
+        ## WRITTEN BY AI ##
+        """
+        first_metadata = {"labels": {"team": "one"}, "note": "first"}
+        first_file = tmp_path / "first.yaml"
+        first_file.write_text(yaml.safe_dump({"metadata": first_metadata}))
+        second_metadata = {"labels": {"team": "two"}}
+        second_file = tmp_path / "second.yaml"
+        second_file.write_text(yaml.safe_dump({"metadata": second_metadata}))
+
+        merged = merge_scenario_files([first_file, second_file])
+
+        assert merged["metadata"] == {
+            "config_files": [
+                {"name": "first.yaml", "metadata": first_metadata},
+                {"name": "second.yaml", "metadata": second_metadata},
+            ]
+        }
 
     @pytest.mark.sanity
     def test_create_scenario_with_minimal_spec(self):
