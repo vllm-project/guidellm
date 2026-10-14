@@ -1,5 +1,6 @@
 # E2E tests for successful benchmark scenarios with timing validation
 
+import json
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,58 @@ def test_max_seconds_benchmark(server: E2EServer, tmp_path: Path):
     # Validate successful requests have all expected fields
     successful_requests = benchmark["requests"]["successful"]
     assert_successful_requests_fields(successful_requests)
+
+
+@pytest.mark.timeout(60)
+@pytest.mark.regression
+@pytest.mark.parametrize(("e2el_ms", "expected_attainment"), [(1e6, 1.0), (1e-6, 0.0)])
+def test_slo_goodput_report(
+    server: E2EServer, tmp_path: Path, e2el_ms: float, expected_attainment: float
+):
+    """
+    Report independent objectives and conforming token rates through the CLI.
+
+    ## WRITTEN BY AI ##
+    """
+    report_name = "slo_benchmarks.json"
+    max_requests = 4
+    client = GuidellmClient(
+        target=server.get_url(), output_dir=tmp_path, outputs=report_name
+    )
+    metrics_config = json.dumps(
+        {"kind": "generative", "slo": {"ttft_ms": 1e6, "e2el_ms": e2el_ms}}
+    )
+    client.start_benchmark(
+        rate=4,
+        max_requests=max_requests,
+        data="kind=synthetic_text,prompt_tokens=64,output_tokens=16",
+        additional_args=f"--metrics '{metrics_config}'",
+    )
+    client.wait_for_completion(timeout=30)
+    assert_no_python_exceptions(client.stderr)
+
+    benchmark = load_benchmark_report(tmp_path / report_name)["benchmarks"][0]
+    assert len(benchmark["requests"]["successful"]) == max_requests
+    metrics = benchmark["metrics"]
+    assert metrics["slo_attainment"] == expected_attainment
+    assert metrics["slo_determined_requests"] == max_requests
+    assert metrics["slo_attainment_by_metric"] == {
+        "ttft_ms": {
+            "conforming_requests": max_requests,
+            "determined_requests": max_requests,
+            "attainment": 1.0,
+        },
+        "e2el_ms": {
+            "conforming_requests": int(max_requests * expected_attainment),
+            "determined_requests": max_requests,
+            "attainment": expected_attainment,
+        },
+    }
+    throughput = metrics["output_tokens_per_second"]["successful"]["mean"]
+    assert throughput > 0
+    assert metrics["output_token_goodput"]["successful"]["mean"] == pytest.approx(
+        throughput * expected_attainment
+    )
 
 
 @pytest.mark.timeout(60)
