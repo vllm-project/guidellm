@@ -783,35 +783,45 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
             if benchmark.config.slo is None:
                 continue
             by_metric = benchmark.metrics.slo_attainment_by_metric or {}
-            for name, threshold in benchmark.config.slo.model_dump(
-                exclude_none=True
-            ).items():
+            for index, (name, threshold) in enumerate(
+                benchmark.config.slo.model_dump(exclude_none=True).items()
+            ):
                 summary = by_metric.get(name)
                 attainment = None if summary is None else summary.attainment
                 columns.add_value(
-                    str(benchmark.config.strategy), name="Strategy", type_="text"
+                    str(benchmark.config.strategy) if index == 0 else "",
+                    group="Benchmark",
+                    name="Strategy",
+                    type_="text",
                 )
                 columns.add_value(
-                    name.removesuffix("_ms").upper(), name="Objective", type_="text"
+                    name.removesuffix("_ms").upper(),
+                    group="SLO",
+                    name="Objective",
+                    type_="text",
                 )
-                columns.add_value(threshold, name="Limit")
+                columns.add_value(threshold, group="SLO", name="Limit")
                 columns.add_value(
                     "ms/token" if name == "tpot_ms" else "ms",
+                    group="SLO",
                     name="Units",
                     type_="text",
                 )
                 columns.add_value(
                     None if summary is None else summary.conforming_requests,
+                    group="Requests",
                     name="Passing",
                     precision=0,
                 )
                 columns.add_value(
                     None if summary is None else summary.determined_requests,
+                    group="Requests",
                     name="Evaluated",
                     precision=0,
                 )
                 columns.add_value(
                     None if attainment is None else attainment * 100.0,
+                    group="Requests",
                     name="Attainment",
                     units="%",
                 )

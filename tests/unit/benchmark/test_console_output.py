@@ -169,7 +169,7 @@ class TestServerThroughputTableGoodput:
     @pytest.mark.regression
     @pytest.mark.parametrize("token_rate", [0.0, 12.5, None])
     def test_output_token_goodput_renders_zero_and_unavailable(self, token_rate):
-        """Distinguish a zero token rate from unavailable usage counts.
+        """Distinguish a zero token rate from unavailable goodput metrics.
 
         ## WRITTEN BY AI ##
         """
@@ -185,7 +185,7 @@ class TestServerThroughputTableGoodput:
 
     @pytest.mark.regression
     def test_individual_objective_table_keeps_counts_and_missing_results(self, mocker):
-        """Render different objectives and old reports without inventing results.
+        """Group objectives by benchmark, including duplicate strategy labels.
 
         ## WRITTEN BY AI ##
         """
@@ -212,6 +212,18 @@ class TestServerThroughputTableGoodput:
         columns = {
             header[1]: column for header, column in zip(headers, values, strict=True)
         }
+        assert [header[0] for header in headers] == [
+            "Benchmark",
+            "SLO",
+            "SLO",
+            "SLO",
+            "Requests",
+            "Requests",
+            "Requests",
+        ]
+        strategy = str(measured.config.strategy)
+        assert str(legacy.config.strategy) == strategy
+        assert columns["Strategy"] == [strategy, "", strategy]
         assert columns["Objective"] == ["TTFT", "TPOT", "E2EL"]
         assert columns["Passing"] == ["2", "0", "--"]
         assert columns["Evaluated"] == ["3", "0", "--"]

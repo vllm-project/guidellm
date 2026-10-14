@@ -1184,8 +1184,7 @@ class GenerativeMetrics(StandardBaseDict):
         description=(
             "Distribution of output tokens per second from successful requests "
             "meeting every objective, using the output throughput measurement "
-            "window. None when goodput cannot be evaluated or a conforming "
-            "request has no output usage token count"
+            "window and token-count fallback. None when goodput cannot be evaluated"
         ),
     )
     slo_attainment_by_metric: dict[str, SLOAttainmentSummary] | None = Field(
@@ -1288,20 +1287,16 @@ class GenerativeMetrics(StandardBaseDict):
             end_time=end_time,
         )
 
-        token_goodput = None
-        # Streaming iterations can bundle multiple tokens. Do not use the
-        # one-token-per-iteration fallback when usage counts are unavailable.
-        if all(stats.output_metrics.total_tokens is not None for stats in conforming):
-            token_goodput = (
-                StatusDistributionSummary.rate_distribution_from_timings_function(
-                    function=lambda req: req.output_tokens_timings,
-                    successful=conforming,
-                    incomplete=[],
-                    errored=[],
-                    start_time=start_time,
-                    end_time=end_time,
-                )
+        token_goodput = (
+            StatusDistributionSummary.rate_distribution_from_timings_function(
+                function=lambda req: req.output_tokens_timings,
+                successful=conforming,
+                incomplete=[],
+                errored=[],
+                start_time=start_time,
+                end_time=end_time,
             )
+        )
 
         return (
             len(conforming) / determined,

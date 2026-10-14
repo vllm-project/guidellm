@@ -965,8 +965,8 @@ class TestDetailedGoodputMetrics:
 
     @pytest.mark.regression
     @pytest.mark.parametrize("conforms", [True, False])
-    def test_missing_token_usage_does_not_count_streaming_chunks(self, conforms):
-        """Missing usage invalidates token goodput only for conforming requests.
+    def test_missing_token_usage_uses_existing_iteration_fallback(self, conforms):
+        """Use the output-throughput fallback only for SLO-conforming requests.
 
         ## WRITTEN BY AI ##
         """
@@ -988,12 +988,13 @@ class TestDetailedGoodputMetrics:
             )
         )
 
-        if conforms:
-            assert metrics.output_token_goodput is None
-            assert metrics.request_goodput.successful.mean == pytest.approx(0.2)
-        else:
-            assert metrics.output_token_goodput.successful.mean == pytest.approx(2.0)
-            assert metrics.request_goodput.successful.mean == pytest.approx(0.1)
+        assert metrics.output_tokens_per_second.successful.mean == pytest.approx(2.9)
+        assert metrics.output_token_goodput.successful.mean == pytest.approx(
+            2.9 if conforms else 2.0
+        )
+        assert metrics.request_goodput.successful.mean == pytest.approx(
+            0.2 if conforms else 0.1
+        )
 
     @pytest.mark.regression
     @pytest.mark.parametrize("zero_usage", [True, False])

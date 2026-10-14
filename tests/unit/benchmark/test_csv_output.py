@@ -534,7 +534,7 @@ class TestServerThroughputGoodputColumns:
     @pytest.mark.regression
     @pytest.mark.parametrize("token_rate", [0.0, 12.5, None])
     def test_output_token_goodput_keeps_zero_and_blank_values(self, token_rate):
-        """Write a numeric zero for no good tokens and blank for missing counts.
+        """Write numeric zero for no good tokens and blank for unavailable goodput.
 
         ## WRITTEN BY AI ##
         """
