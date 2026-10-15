@@ -16,11 +16,11 @@ from guidellm.data.deserializers.deserializer import (
 from guidellm.schemas.data.deserializers import SyntheticAudioDataArgs
 from guidellm.utils.audio import synthesize_audio
 
-
 __all__ = [
     "SyntheticAudioDataset",
     "SyntheticAudioDatasetDeserializer",
 ]
+
 
 class _SyntheticAudioExamplesIterable(_BaseExamplesIterable):
     """Examples iterable that yields rows of synthetic audio."""
@@ -31,11 +31,7 @@ class _SyntheticAudioExamplesIterable(_BaseExamplesIterable):
         self._state_dict: dict
 
     def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:
-        row_index = (
-            self._state_dict["row_index"]
-            if self._state_dict is not None
-            else 0
-        )
+        row_index = self._state_dict["row_index"] if self._state_dict is not None else 0
         while True:
             row = {
                 "audio": synthesize_audio(
@@ -79,15 +75,15 @@ class _SyntheticAudioExamplesIterable(_BaseExamplesIterable):
 
     def shuffle_data_sources(
         self,
-        generator: Any,
+        generator: Any,  # noqa: ARG002
     ) -> _SyntheticAudioExamplesIterable:
         return self
 
     def shard_data_sources(
         self,
-        num_shards: int,
-        index: int,
-        contiguous: bool = True,
+        num_shards: int,  # noqa: ARG002
+        index: int,  # noqa: ARG002
+        contiguous: bool = True,  # noqa: ARG002
     ) -> _SyntheticAudioExamplesIterable:
         return self
 

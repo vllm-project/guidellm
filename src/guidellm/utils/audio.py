@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
-from dataclasses import dataclass
 
 import httpx2
 
@@ -15,17 +15,18 @@ from guidellm.extras import torch
 from guidellm.logger import logger
 
 __all__ = [
-    "encode_audio",
+    "AudioContinuityStats",
+    "compute_audio_continuity",
     "decode_audio",
     "decode_audio_with_metadata",
+    "encode_audio",
     "is_url",
     "pcm16_append_b64_chunks",
-    "compute_audio_continuity",
-    "AudioContinuityStats",
     "synthesize_audio",
 ]
 
 DEFAULT_AUDIO_UNDERRUN_THRESHOLD_SEC = 0.1
+
 
 def is_url(text: Any) -> bool:
     return isinstance(text, str) and text.startswith(("http://", "https://"))
@@ -161,7 +162,11 @@ def decode_audio_with_metadata(audio: bytes) -> tuple[Any, int, float]:
     :return: Tuple of (sample_np_array, sample_rate, duration_sec).
     """
     audio_samples, _ = _decode_audio(audio)
-    return audio_samples.data.cpu().numpy(), audio_samples.sample_rate, audio_samples.duration_seconds
+    return (
+        audio_samples.data.cpu().numpy(),
+        audio_samples.sample_rate,
+        audio_samples.duration_seconds,
+    )
 
 
 def _decode_audio(  # noqa: C901, PLR0912, PLR0915
@@ -460,7 +465,8 @@ def compute_audio_continuity(
     :return: AudioContinuityStats. Fewer than 2 chunks -> trivially continuous.
     """
     n = len(chunk_arrival_times_s)
-    if n < 2 or n != len(chunk_bytes):
+    min_chunks_itl = 2
+    if n < min_chunks_itl or n != len(chunk_bytes):
         return AudioContinuityStats(0.0, 0, True)
 
     bytes_per_second = sample_rate * sample_width * channels

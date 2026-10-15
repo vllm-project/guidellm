@@ -21,7 +21,10 @@ from rich.text import Text
 
 from guidellm.benchmark.analysis import KneeDetectionConclusion
 from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
-from guidellm.benchmark.schemas import GenerativeBenchmarksReport
+from guidellm.benchmark.schemas import (
+    GenerativeBenchmarksReport,
+    GenerativeMetricsSummary,
+)
 from guidellm.benchmark.schemas.warnings import BenchmarkWarning
 from guidellm.schemas import DistributionSummary, StatusDistributionSummary
 from guidellm.schemas.benchmark import BenchmarkOutputArgs
@@ -536,7 +539,10 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
     def print_audio_table(self, report: GenerativeBenchmarksReport):
         """
-        Print audio-specific metrics table if any audio data exists.
+        Print audio usage and generation statistics for completed requests.
+
+        Usage metrics include per-request values and throughput. Generation
+        statistics show output distributions without throughput columns.
 
         :param report: The benchmark report containing audio metrics
         """
@@ -550,6 +556,29 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 ("seconds", "Seconds"),
                 ("bytes", "Bytes"),
             ],
+        )
+
+        distribution_types: tuple[StatTypesAlias, ...] = (
+            "median",
+            "mean",
+            "p95",
+        )
+        self._print_modality_table(
+            report=report,
+            modality="audio",
+            title="Audio Generation Statistics (Completed Requests)",
+            metric_groups=[
+                ("ttfp_ms", "Audio TTFP"),
+                ("rtf", "Audio RTF"),
+                ("underrun_seconds", "Audio Underrun"),
+                ("continuity_ok_rate", "Continuity OK"),
+            ],
+            output_statistics={
+                "ttfp_ms": ("ms", distribution_types),
+                "rtf": ("Ratio", distribution_types),
+                "underrun_seconds": ("Sec", distribution_types),
+                "continuity_ok_rate": ("Rate 0-1", ("mean",)),
+            },
         )
 
     def print_tool_call_table(self, report: GenerativeBenchmarksReport):
@@ -837,7 +866,26 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         modality: Literal["text", "image", "video", "audio", "tool_call"],
         title: str,
         metric_groups: list[tuple[str, str]],
+        *,
+        output_statistics: dict[str, tuple[str, tuple[StatTypesAlias, ...]]]
+        | None = None,
     ):
+        """
+        Print modality metrics using shared table renderer.
+
+        Metrics normally include input/output values and throughput. Metrics
+        configured in output_statistics show only output distributions, using
+        completed-request samples.
+
+        :param report: The benchmark report containing metric summaries
+        :param modality: Modality whose metrics are displayed
+        :param title: Table title
+        :param metric_groups: Ordered metric attribute names and display labels
+        :param output_statistics: Optional mapping from metric names to
+            (unit label, statistic types). These metrics omit input and
+            throughput columns and exclude missing completed-request samples.
+        :return: None.
+        """
         columns: dict[str, ConsoleTableColumnsCollection] = defaultdict(
             ConsoleTableColumnsCollection
         )
@@ -850,48 +898,61 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 type_="text",
             )
 
-            modality_metrics = getattr(benchmark.metrics, modality)
+            modality_metrics = dict(benchmark.metrics)[modality]
+            metric_summaries = dict(modality_metrics)
 
             for metric_attr, display_name in metric_groups:
-                metric_obj = getattr(modality_metrics, metric_attr, None)
-                input_stats: StatusDistributionSummary | None = (
-                    getattr(metric_obj, "input", None) if metric_obj else None
+                metric_obj: GenerativeMetricsSummary | None = metric_summaries.get(
+                    metric_attr
                 )
-                columns[f"{metric_attr}.input"].add_stats(
-                    input_stats,
-                    group=f"Input {display_name}",
-                    name="Per Request",
-                )
-                input_per_second_stats: StatusDistributionSummary | None = (
-                    getattr(metric_obj, "input_per_second", None)
-                    if metric_obj
-                    else None
-                )
-                columns[f"{metric_attr}.input"].add_stats(
-                    input_per_second_stats,
-                    group=f"Input {display_name}",
-                    name="Per Second",
-                    types=("median", "mean"),
-                )
-                output_stats: StatusDistributionSummary | None = (
-                    getattr(metric_obj, "output", None) if metric_obj else None
-                )
-                columns[f"{metric_attr}.output"].add_stats(
-                    output_stats,
-                    group=f"Output {display_name}",
-                    name="Per Request",
-                )
-                output_per_second_stats: StatusDistributionSummary | None = (
-                    getattr(metric_obj, "output_per_second", None)
-                    if metric_obj
-                    else None
-                )
-                columns[f"{metric_attr}.output"].add_stats(
-                    output_per_second_stats,
-                    group=f"Output {display_name}",
-                    name="Per Second",
-                    types=("median", "mean"),
-                )
+                output_stats = metric_obj.output if metric_obj is not None else None
+
+                if output_statistics and metric_attr in output_statistics:
+                    units, types = output_statistics[metric_attr]
+                    if output_stats is not None and output_stats.successful.count == 0:
+                        output_stats = None
+
+                    columns[f"{metric_attr}.output"].add_stats(
+                        output_stats,
+                        group=display_name,
+                        name=units,
+                        types=types,
+                    )
+                    continue
+
+                for direction, stats, per_second_stats in (
+                    (
+                        "input",
+                        metric_obj.input if metric_obj is not None else None,
+                        (
+                            metric_obj.input_per_second
+                            if metric_obj is not None
+                            else None
+                        ),
+                    ),
+                    (
+                        "output",
+                        output_stats,
+                        (
+                            metric_obj.output_per_second
+                            if metric_obj is not None
+                            else None
+                        ),
+                    ),
+                ):
+                    group = f"{direction.title()} {display_name}"
+                    metric_columns = columns[f"{metric_attr}.{direction}"]
+                    metric_columns.add_stats(
+                        stats,
+                        group=group,
+                        name="Per Request",
+                    )
+                    metric_columns.add_stats(
+                        per_second_stats,
+                        group=group,
+                        name="Per Second",
+                        types=("median", "mean"),
+                    )
 
         self._print_inp_out_tables(
             title=title,

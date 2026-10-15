@@ -11,11 +11,11 @@ handling for comprehensive benchmarking scenarios.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import math
 import time
 import uuid
-import base64
 from typing import Any
 
 from pydantic import ValidationError
@@ -34,10 +34,10 @@ from guidellm.mock_server.models import (
     Usage,
 )
 from guidellm.mock_server.multimodal import (
+    WAV_BYTES_PER_SECOND,
     InvalidContentPartError,
     MultimodalPromptStats,
     accumulate_multimodal_content,
-    WAV_BYTES_PER_SECOND,
     mock_pcm16,
     mock_wav,
 )
@@ -338,6 +338,14 @@ class ChatCompletionsHandler:
                 )
             )
 
+            if (
+                req.modalities
+                and "audio" in req.modalities
+                and "text" not in req.modalities
+                and not is_tool_call
+            ):
+                completion_tokens_count = 0
+
             if is_tool_call:
                 await self._stream_tool_call(
                     stream_response,
@@ -402,6 +410,36 @@ class ChatCompletionsHandler:
                 ],
             }
             await stream_response.write(f"data: {json.dumps(chunk_data)}\n\n")
+
+        if req.modalities and "audio" in req.modalities:
+            pcm = mock_pcm16()
+            half = len(pcm) // 2
+            for packet in (pcm[:half], pcm[half:]):
+                audio_chunk = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": req.model,
+                    "modality": "audio",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "content": base64.b64encode(mock_wav(packet)).decode(
+                                    "ascii"
+                                ),
+                            },
+                            "audio_metadata": {
+                                "format": "wav",
+                                "sample_rate_hz": WAV_BYTES_PER_SECOND,
+                                "frame_count": len(packet) // 2,
+                                "channels": 1,
+                            },
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                await stream_response.write(f"data: {json.dumps(audio_chunk)}\n\n")
 
         # Send final chunk with finish reason
         final_chunk = {

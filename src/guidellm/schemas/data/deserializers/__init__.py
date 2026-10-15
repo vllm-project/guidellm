@@ -14,6 +14,7 @@ from guidellm.schemas.data.deserializers.synthetic import (
     SyntheticTextPrefixBucketConfig,
     _require_mean_if_distribution_knobs,
 )
+from guidellm.schemas.data.deserializers.synthetic_audio import SyntheticAudioDataArgs
 from guidellm.schemas.data.deserializers.synthetic_image import (
     RESOLUTION_PRESETS,
     SyntheticImageDataArgs,
@@ -21,7 +22,6 @@ from guidellm.schemas.data.deserializers.synthetic_image import (
     parse_aspect_ratio,
 )
 from guidellm.schemas.data.deserializers.synthetic_video import SyntheticVideoDataArgs
-from guidellm.schemas.data.deserializers.synthetic_audio import SyntheticAudioDataArgs
 from guidellm.schemas.data.deserializers.trace_common import TraceDataArgs
 from guidellm.schemas.data.deserializers.trace_minimal import MinimalTraceFormatArgs
 from guidellm.schemas.data.deserializers.trace_mooncake import MooncakeTraceFormatArgs
@@ -41,8 +41,8 @@ __all__ = [
     "MinimalTraceFormatArgs",
     "MooncakeTraceFormatArgs",
     "OTELTraceFormatArgs",
-    "SyntheticImageDataArgs",
     "SyntheticAudioDataArgs",
+    "SyntheticImageDataArgs",
     "SyntheticTextDataArgs",
     "SyntheticTextPrefixBucketConfig",
     "SyntheticVideoDataArgs",

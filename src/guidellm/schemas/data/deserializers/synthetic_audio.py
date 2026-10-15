@@ -8,6 +8,7 @@ from guidellm.schemas.data.entrypoints import DataArgs
 
 __all__ = ["SyntheticAudioDataArgs"]
 
+
 @DataArgs.register("synthetic_audio")
 class SyntheticAudioDataArgs(DataArgs):
     """Arguments for synthetic audio dataset deserializer."""

@@ -13,9 +13,13 @@ from guidellm.utils import vision as guidellm_vision
 
 __all__ = ["MediaEncoder"]
 
+
 def _is_encoded_audio(item: Any) -> bool:
-    return (isinstance(item, dict) and item.get("type") == "audio_file" and
-            isinstance(item.get("audio"), bytes))
+    return (
+        isinstance(item, dict)
+        and item.get("type") == "audio_file"
+        and isinstance(item.get("audio"), bytes)
+    )
 
 
 def _is_encoded_image(item: Any) -> bool:

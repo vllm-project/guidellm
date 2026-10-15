@@ -25,6 +25,10 @@ from .synthetic import (
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
 )
+from .synthetic_audio import (
+    SyntheticAudioDataset,
+    SyntheticAudioDatasetDeserializer,
+)
 from .synthetic_image import (
     SyntheticImageDataset,
     SyntheticImageDatasetDeserializer,
@@ -32,10 +36,6 @@ from .synthetic_image import (
 from .synthetic_video import (
     SyntheticVideoDataset,
     SyntheticVideoDatasetDeserializer,
-)
-from .synthetic_audio import (
-    SyntheticAudioDataset,
-    SyntheticAudioDatasetDeserializer,
 )
 from .trace_common import (
     TraceDatasetDeserializer,
@@ -71,14 +71,14 @@ __all__ = [
     "MooncakeTraceFormat",
     "OTELTraceFormat",
     "ParquetFileDatasetDeserializer",
+    "SyntheticAudioDataset",
+    "SyntheticAudioDatasetDeserializer",
     "SyntheticImageDataset",
     "SyntheticImageDatasetDeserializer",
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
     "SyntheticVideoDataset",
     "SyntheticVideoDatasetDeserializer",
-    "SyntheticAudioDataset",
-    "SyntheticAudioDatasetDeserializer",
     "TarFileDatasetDeserializer",
     "TextFileDatasetDeserializer",
     "TraceDatasetDeserializer",

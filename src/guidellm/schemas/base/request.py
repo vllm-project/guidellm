@@ -180,10 +180,13 @@ class UsageMetrics(StandardBaseDict):
     audio_rtf: float | None = Field(
         default=None,
         description=(
-            "Real-time factor for generated audio: client's end-to-end latency "
-            "(request_latency) divided by the produced audio duration (matches "
-            "vLLM-Omni formula."
+            "Audio generation time divided by produced audio duration. "
+            "Speech uses request latency; streamed chat ends at the last audio event."
         ),
+    )
+    audio_ttfp_ms: float | None = Field(
+        default=None,
+        description="Time to first playable audio payload in milliseconds.",
     )
     audio_underrun_seconds: float | None = Field(
         default=None,
