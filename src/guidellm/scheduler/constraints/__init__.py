@@ -21,6 +21,7 @@ from .error import (
     MaxGlobalErrorRateConstraint,
 )
 from .factory import ConstraintsInitializerFactory
+from .ramp import RampSaturationConstraint
 from .request import (
     MaxDurationConstraint,
     MaxNumberConstraint,
@@ -45,6 +46,7 @@ __all__ = [
     "OverSaturationConstraint",
     "OverSaturationConstraintInitializer",
     "PydanticConstraintInitializer",
+    "RampSaturationConstraint",
     "RequestsExhaustedConstraint",
     "SerializableConstraintInitializer",
     "UnserializableConstraintInitializer",

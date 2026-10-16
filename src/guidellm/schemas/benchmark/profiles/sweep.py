@@ -28,5 +28,17 @@ class SweepProfileArgs(ProfileArgs):
     )
     max_concurrency: PositiveInt | None = Field(
         default=512,
-        description="Maximum concurrent requests to schedule",
+        description=(
+            "Maximum concurrent requests to schedule. With peak_detection='ramp', "
+            "it only applies when set explicitly."
+        ),
+    )
+    peak_detection: Literal["throughput", "ramp"] = Field(
+        default="throughput",
+        description=(
+            "How the sweep finds the top of its rate range. 'throughput' runs a "
+            "fixed-concurrency throughput step. 'ramp' raises the request rate "
+            "from the synchronous rate until completions fall behind what was "
+            "sent, and uses the highest completion rate it reached."
+        ),
     )

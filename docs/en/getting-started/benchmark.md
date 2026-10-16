@@ -218,6 +218,11 @@ guidellm run --profile kind=sweep,sweep_size=10,rampup_duration=10,strategy_type
 | `rampup_duration` | Rate rampup duration in seconds for throughput and constant strategy steps | `--profile kind=sweep,sweep_size=10,rampup_duration=10` |
 | `strategy_type`   | Strategy type for interpolated steps (`constant` or `poisson`)             | `--profile kind=sweep,strategy_type=poisson`            |
 | `max_concurrency` | Maximum concurrent requests to schedule                                    | `--profile kind=sweep,max_concurrency=10`               |
+| `peak_detection`  | How the sweep finds the top of its range (`throughput` or `ramp`)          | `--profile kind=sweep,peak_detection=ramp`              |
+
+The default `throughput` step runs at a fixed concurrency of 512, which can queue requests on a small server and inflate its latency, or fall short of capacity on a large one. With `peak_detection=ramp`, the sweep replaces that step with a ramp sized from the synchronous step: it starts at the synchronous rate and doubles every four synchronous latencies (at least two seconds). It stops sending once completions fall more than 25% short of what was sent one latency earlier, keeps measuring for three more latencies while the server works through what it already has, and uses the highest completion rate it saw as the top of the range. `max_concurrency` only applies to a ramp sweep when you set it.
+
+The ramp needs about log2(capacity × latency) doublings to saturate a server, so it takes longer on large servers. If a per-step limit such as `--max-seconds` ends it first, the console warns that the server was not saturated and the sweep range is a lower bound.
 
 #### Replay Profile
 

@@ -320,6 +320,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         self.print_request_latency_table(report)
         self.print_server_throughput_table(report)
         self.print_knee_profile_results(report)
+        self.print_sweep_ramp_results(report)
         self.print_warnings(report)
 
         return "printed to console"
@@ -368,6 +369,31 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
 
             self.console.print("\n")
             self.console.print_update(title, "\n".join(details), status=status)
+
+    def print_sweep_ramp_results(self, report: GenerativeBenchmarksReport) -> None:
+        """
+        Print the peak a sweep ramp found, and warn when it never saturated.
+
+        :param report: Completed report with optional sweep ramp conclusions
+        """
+        for entry in report.conclusions:
+            if entry.get("kind") != "sweep_ramp":
+                continue
+
+            peak = safe_format_number(entry.get("peak_rate"), precision=2)
+            self.console.print("\n")
+            if entry.get("peak_source") == "saturated":
+                self.console.print_update(
+                    f"Sweep ramp peak: {peak} req/s", status="success"
+                )
+            else:
+                self.console.print_update(
+                    f"Sweep ramp peak: {peak} req/s (server not saturated)",
+                    "The ramp stopped before the server saturated, so the sweep "
+                    "range may stop short of capacity. Give each step more time, "
+                    "for example with a higher --max-seconds.",
+                    status="warning",
+                )
 
     @staticmethod
     def _warning_row(warning: BenchmarkWarning) -> Table:

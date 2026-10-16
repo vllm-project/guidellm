@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from io import StringIO
 from types import SimpleNamespace
 
 import pytest
@@ -23,6 +24,7 @@ from guidellm.schemas import (
     StatusBreakdown,
     StatusDistributionSummary,
 )
+from guidellm.utils.console import Console
 
 # Metrics read by GenerativeBenchmarkerConsole.print_server_throughput_table.
 THROUGHPUT_TABLE_METRICS = (
@@ -635,3 +637,52 @@ class TestUnsupportedPercentileMarker:
         for index, header in enumerate(headers):
             if header[0] in ("ITL", "TPOT") and header[-1] == "p95":
                 assert not values[index][0].endswith(UNSUPPORTED_PERCENTILE_MARKER)
+
+
+def _render_sweep_ramp_results(conclusions: list[dict]) -> str:
+    buffer = StringIO()
+    output = GenerativeBenchmarkerConsole(
+        console=Console(file=buffer, width=120, force_terminal=False)
+    )
+    output.print_sweep_ramp_results(SimpleNamespace(conclusions=conclusions))  # type: ignore[arg-type]
+    return buffer.getvalue()
+
+
+class TestSweepRampResults:
+    @pytest.mark.sanity
+    def test_prints_the_peak_when_saturated(self):
+        """
+        A saturated ramp prints its peak without a warning.
+
+        ## WRITTEN BY AI ##
+        """
+        printed = _render_sweep_ramp_results(
+            [{"kind": "sweep_ramp", "peak_rate": 23.5, "peak_source": "saturated"}]
+        )
+
+        assert "Sweep ramp peak: 23.50 req/s" in printed
+        assert "not saturated" not in printed
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize("peak_source", ["not_saturated", "mean_rate"])
+    def test_warns_when_not_saturated(self, peak_source):
+        """
+        A ramp cut short before saturating is flagged as a lower bound.
+
+        ## WRITTEN BY AI ##
+        """
+        printed = _render_sweep_ramp_results(
+            [{"kind": "sweep_ramp", "peak_rate": 7.5, "peak_source": peak_source}]
+        )
+
+        assert "Sweep ramp peak: 7.50 req/s (server not saturated)" in printed
+        assert "--max-seconds" in printed
+
+    @pytest.mark.smoke
+    def test_ignores_other_conclusions(self):
+        """
+        Conclusions from other profiles print nothing here.
+
+        ## WRITTEN BY AI ##
+        """
+        assert _render_sweep_ramp_results([{"kind": "knee_detection"}]) == ""

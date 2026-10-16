@@ -45,17 +45,19 @@ class GuidellmClient:
 
     @staticmethod
     def _build_profile_config(
-        profile: str, rate: int, max_concurrency: int | None
+        profile: str, rate: int | None, max_concurrency: int | None
     ) -> str:
         """
         Build the ``--profile`` value, including an optional concurrency cap.
 
         :param profile: Type of rate control (constant, etc.)
-        :param rate: Request rate
+        :param rate: Request rate, or None for profiles without one
         :param max_concurrency: Cap on concurrent requests, or None for no cap
         :return: Comma-separated profile configuration string
         """
-        config = f"kind={profile},rate={rate}"
+        config = f"kind={profile}"
+        if rate is not None:
+            config += f",rate={rate}"
         if max_concurrency is not None:
             config += f",max_concurrency={max_concurrency}"
 
@@ -64,7 +66,7 @@ class GuidellmClient:
     def start_benchmark(
         self,
         profile: str = "constant",
-        rate: int = 10,
+        rate: int | None = 10,
         max_concurrency: int | None = None,
         max_seconds: int | None = None,
         max_requests: int | None = None,
@@ -80,7 +82,7 @@ class GuidellmClient:
         Start a guidellm benchmark command.
 
         :param profile: Type of rate control (constant, etc.)
-        :param rate: Request rate
+        :param rate: Request rate, or None for profiles without one
         :param max_concurrency: Cap on concurrent requests the scheduler dispatches
         :param max_seconds: Maximum duration in seconds
         :param max_requests: Maximum number of requests

@@ -22,7 +22,7 @@ from sanic.exceptions import NotFound
 from sanic.log import logger
 from sanic.logging.formatter import LegacyAccessFormatter, LegacyFormatter
 from sanic.request import File, Request
-from sanic.response import BaseHTTPResponse, HTTPResponse
+from sanic.response import BaseHTTPResponse, HTTPResponse, ResponseStream
 
 from guidellm.mock_server.handlers import (
     ChatCompletionsHandler,
@@ -144,8 +144,31 @@ class MockServer:
         semaphore = self._get_concurrency_semaphore()
         if semaphore is None:
             return await handler(request)
-        async with semaphore:
-            return await handler(request)
+
+        await semaphore.acquire()
+        try:
+            resp = await handler(request)
+        except BaseException:
+            semaphore.release()
+            raise
+
+        if not isinstance(resp, ResponseStream):
+            semaphore.release()
+            return resp
+
+        # A streaming handler returns before any tokens are generated; Sanic runs
+        # the generation afterwards through streaming_fn. Hold the slot until that
+        # finishes, including when the client disconnects mid-stream.
+        streaming_fn = resp.streaming_fn
+
+        async def stream_holding_slot(stream: BaseHTTPResponse | ResponseStream):
+            try:
+                await streaming_fn(stream)
+            finally:
+                semaphore.release()
+
+        resp.streaming_fn = stream_holding_slot
+        return resp
 
     def _audio_usage(self, file: File, text: str) -> dict[str, int | float]:
         """

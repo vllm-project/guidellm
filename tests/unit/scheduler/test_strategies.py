@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     AsyncPoissonStrategy,
+    AsyncRampStrategy,
     ConcurrentStrategy,
     SchedulingStrategy,
     StrategyT,
@@ -746,6 +747,86 @@ class TestAsyncPoissonStrategy:
             assert getattr(base_json_reconstructed, key) == value
 
 
+class TestAsyncRampStrategy:
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"start_rate": 0.0, "doubling_interval": 1.0},
+            {"start_rate": 1.0, "doubling_interval": 0.0},
+            {"start_rate": -1.0, "doubling_interval": 1.0},
+        ],
+    )
+    def test_invalid_initialization(self, kwargs):
+        """
+        Reject a non-positive start rate or doubling interval.
+
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValidationError):
+            AsyncRampStrategy(**kwargs)
+
+    @pytest.mark.smoke
+    def test_limits_follow_max_concurrency(self):
+        """
+        Processes and requests are bounded only by max_concurrency.
+
+        ## WRITTEN BY AI ##
+        """
+        unlimited = AsyncRampStrategy(start_rate=1.0, doubling_interval=2.0)
+        capped = AsyncRampStrategy(
+            start_rate=1.0, doubling_interval=2.0, max_concurrency=8
+        )
+
+        assert unlimited.processes_limit is None
+        assert unlimited.requests_limit is None
+        assert capped.processes_limit == 8
+        assert capped.requests_limit == 8
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_schedule_matches_closed_form(self):
+        """
+        Request n is sent when start_rate * T / ln2 * (2**(t/T) - 1) reaches n - 1.
+
+        ## WRITTEN BY AI ##
+        """
+        start_rate, interval, start_time = 4.0, 2.0, 1000.0
+        strategy = AsyncRampStrategy(start_rate=start_rate, doubling_interval=interval)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=100, mp_context=get_context()
+        )
+        strategy.init_processes_start(start_time)
+        scale = start_rate * interval / math.log(2)
+
+        for sent_before in range(50):
+            send_time = await strategy.next_request_time(0)
+            expected = start_time + interval * math.log2(1 + sent_before / scale)
+            assert send_time == pytest.approx(expected, rel=1e-12)
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_rate_doubles_each_interval(self):
+        """
+        Each doubling interval schedules about twice as many requests as the last.
+
+        ## WRITTEN BY AI ##
+        """
+        interval = 1.0
+        strategy = AsyncRampStrategy(start_rate=50.0, doubling_interval=interval)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=10000, mp_context=get_context()
+        )
+        strategy.init_processes_start(0.0)
+
+        counts = [0, 0, 0, 0]
+        while (send_time := await strategy.next_request_time(0)) < len(counts):
+            counts[int(send_time // interval)] += 1
+
+        for previous, current in zip(counts, counts[1:], strict=False):
+            assert current / previous == pytest.approx(2.0, rel=0.02)
+
+
 class TestDefinesArrivalSchedule:
     """
     Verify which strategies report an independent arrival schedule.
@@ -762,6 +843,7 @@ class TestDefinesArrivalSchedule:
             (ThroughputStrategy(), False),
             (AsyncConstantStrategy(rate=10.0), True),
             (AsyncPoissonStrategy(rate=10.0), True),
+            (AsyncRampStrategy(start_rate=1.0, doubling_interval=1.0), True),
             (TraceReplayStrategy(), True),
         ],
     )
