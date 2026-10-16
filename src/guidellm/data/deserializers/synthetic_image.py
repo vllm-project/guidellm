@@ -75,6 +75,7 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
             if width is None or height is None:
                 raise RuntimeError("Synthetic image dimensions were not resolved.")
 
+            images = []
             for img_idx in range(self.config.images_per_request):
                 encoded = synthesize_image(
                     width=width,
@@ -85,10 +86,8 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
                     seed=self.config.seed,
                     row_index=row_index * self.config.images_per_request + img_idx,
                 )
-                if self.config.images_per_request == 1:
-                    row["image"] = encoded
-                else:
-                    row[f"image_{img_idx}"] = encoded
+                images.append(encoded)
+            row["image"] = images[0] if self.config.images_per_request == 1 else images
 
             yield row_index, row
             row_index += 1
@@ -111,8 +110,7 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
         if self.config.images_per_request == 1:
             features["image"] = image_struct
         else:
-            for img_idx in range(self.config.images_per_request):
-                features[f"image_{img_idx}"] = image_struct
+            features["image"] = [image_struct]
         return Features(features)
 
     @property

@@ -106,7 +106,7 @@ class SyntheticImageDataArgs(SyntheticVisionDataArgs):
         default="gradient",
     )
     images_per_request: int = Field(
-        description="Number of images per emitted row.",
+        description="Number of images to attach to each request.",
         ge=1,
         default=1,
     )
