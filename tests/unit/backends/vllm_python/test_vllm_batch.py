@@ -1172,3 +1172,15 @@ class TestDeferredFlushLockGuard:
         await task
         # generate() must have been called exactly once
         started_backend._llm.generate.assert_called_once()
+
+
+@pytest.mark.sanity
+def test_batch_backend_does_not_stamp_tokens_on_event_loop():
+    """
+    Batch token times come from vLLM's request metrics, not the worker's loop.
+
+    ## WRITTEN BY AI ##
+    """
+    backend = _make_batch_backend(model="test-model")
+
+    assert backend.stamps_tokens_on_event_loop is False

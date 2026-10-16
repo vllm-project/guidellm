@@ -98,6 +98,11 @@ Dispatch Delay, Turn Predecessor Delay, Turn Scheduling Delay, and Scheduled Lat
 - **Definition**: The time taken to generate the first token of the output.
 - **Use Case**: Indicates the initial response time of the model, which is crucial for user-facing applications.
 
+### First Token Loop Lag
+
+- **Definition**: `first_token_loop_lag` is the longest delay of the worker's event loop between the backend starting a request and the request's first token, in seconds.
+- **Use Case**: Shows whether GuideLLM itself was short of CPU. A worker that falls behind records the first token late, which overstates Time to First Token. Values near zero mean the worker kept up.
+
 ### Inter-Token Latency (ITL)
 
 - **Definition**: The average time between generating consecutive tokens in the output, excluding the first token.

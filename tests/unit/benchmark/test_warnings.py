@@ -35,6 +35,7 @@ from guidellm.schemas.benchmark.warnings import (
     MetricRef,
     WarningCondition,
     WarningRuleArgs,
+    default_warning_rules,
 )
 from guidellm.utils.console import Console
 
@@ -81,6 +82,7 @@ class _MetricsFixture(BaseModel):
     request_latency: _LatencyBreakdown | None = None
     time_to_first_token_ms: _LatencyBreakdown | None = None
     root_dispatch_delay: DistributionSummary | None = None
+    first_token_loop_lag: _LatencyBreakdown | None = None
 
 
 def _distribution(values: list[float]) -> DistributionSummary | None:
@@ -127,6 +129,7 @@ def _analyze(
     requests: list[GenerativeRequestStats] | None = None,
     time_to_first_token_ms: list[float] | None = None,
     dataset_incomplete: bool = False,
+    first_token_loop_lag: list[float] | None = None,
 ):
     """
     Evaluate rules against the given generation and request-latency samples.
@@ -157,6 +160,13 @@ def _analyze(
             )
         ),
         root_dispatch_delay=root_dispatch_delay_distribution(requests or []),
+        first_token_loop_lag=(
+            None
+            if not first_token_loop_lag
+            else _LatencyBreakdown(
+                total=DistributionSummary.from_values(first_token_loop_lag)
+            )
+        ),
     )
     return BenchmarkWarningAnalyzer(rules).analyze(
         scheduler_metrics=cast("SchedulerMetrics", scheduler_metrics),
@@ -349,6 +359,36 @@ def test_generation_delay_warns_as_a_fraction_of_ttft():
     assert warning.observed == pytest.approx(0.02)
     assert warning.threshold == pytest.approx(0.01)
     assert "2%" in warning.message
+    assert quiet == []
+
+
+@pytest.mark.regression
+def test_default_loop_lag_rule_warns_above_a_tenth_of_ttft():
+    """
+    The built-in loop-lag rule warns when mean lag exceeds 10% of mean TTFT.
+
+    ## WRITTEN BY AI ##
+    """
+    rules = [rule for rule in default_warning_rules() if rule.code == "loop_lag_ttft"]
+    warned = _analyze(
+        rules,
+        ConcurrentStrategy(streams=1),
+        [],
+        [],
+        time_to_first_token_ms=[100.0],
+        first_token_loop_lag=[0.012],
+    )
+    quiet = _analyze(
+        rules,
+        ConcurrentStrategy(streams=1),
+        [],
+        [],
+        time_to_first_token_ms=[100.0],
+        first_token_loop_lag=[0.008],
+    )
+
+    assert [warning.code for warning in warned] == ["loop_lag_ttft"]
+    assert warned[0].observed == pytest.approx(0.12)
     assert quiet == []
 
 

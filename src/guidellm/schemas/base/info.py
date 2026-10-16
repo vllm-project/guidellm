@@ -114,6 +114,13 @@ class RequestTimings(StandardBaseDict):
         default=0,
         description="Number of content tokens received (openai_websocket backend)",
     )
+    first_token_loop_lag: float | None = Field(
+        default=None,
+        description=(
+            "Longest worker event-loop delay in seconds from when the backend "
+            "starts the request until its first token"
+        ),
+    )
     request_end: float | None = Field(
         default=None,
         description="Unix timestamp when the backend completed processing the request",
