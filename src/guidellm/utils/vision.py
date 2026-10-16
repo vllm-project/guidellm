@@ -42,6 +42,7 @@ def encode_image(
 
     Supported inputs include raw bytes, a file path, a URL, a base64 data URI,
     a NumPy array, a Pillow image, and a Hugging Face ``datasets.Image``.
+    Resizing retains at least one pixel along each computed image dimension.
 
     :param image: Image input to encode.
     :param width: Requested output width in pixels. Applies to downloaded URL
@@ -57,8 +58,8 @@ def encode_image(
         image is encoded as base64.
     :return: A mapping with the image representation type, encoded image, and
         pixel and byte counts when known (``None`` for an unprocessed URL).
-    :raises ValueError: If the input type is unsupported or resize options are
-        set while returning a URL.
+    :raises ValueError: If the input type is unsupported, resize dimensions are
+        nonpositive, or resize options are set while returning a URL.
     """
     if isinstance(image, str) and is_url(image):
         if encode_type == "base64":
@@ -136,6 +137,12 @@ def resize_image(
     if not isinstance(image, libs.Image):
         raise ValueError(f"Unsupported image type: {type(image)}")
 
+    if any(
+        value is not None and value <= 0
+        for value in (width, height, max_width, max_height, max_size)
+    ):
+        raise ValueError("Image resize dimensions must be positive")
+
     if width is not None and height is not None:
         return image.resize((width, height), libs.PILImage.Resampling.BILINEAR)
 
@@ -144,10 +151,10 @@ def resize_image(
 
     if width is not None:
         target_w = width
-        target_h = round(width / aspect)
+        target_h = max(1, round(width / aspect))
     elif height is not None:
         target_h = height
-        target_w = round(height * aspect)
+        target_w = max(1, round(height * aspect))
     else:
         target_w, target_h = orig_w, orig_h
 
@@ -161,8 +168,8 @@ def resize_image(
         scale_w = max_width / target_w if max_width else 1.0
         scale_h = max_height / target_h if max_height else 1.0
         scale = min(scale_w, scale_h, 1.0)  # never upscale
-        target_w = round(target_w * scale)
-        target_h = round(target_h * scale)
+        target_w = max(1, round(target_w * scale))
+        target_h = max(1, round(target_h * scale))
 
     if (target_w, target_h) != (orig_w, orig_h):
         image = image.resize((target_w, target_h), libs.PILImage.Resampling.BILINEAR)
