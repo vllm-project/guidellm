@@ -48,6 +48,57 @@ def generation_request():
     )
 
 
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("handler_type", "input_key", "output_key"),
+    [
+        (TextCompletionsRequestHandler, "prompt_tokens", "completion_tokens"),
+        (ChatCompletionsRequestHandler, "prompt_tokens", "completion_tokens"),
+        (ResponsesRequestHandler, "input_tokens", "output_tokens"),
+    ],
+)
+@pytest.mark.parametrize("text_details", [None, 10, 0])
+def test_multimodal_usage_preserves_server_totals(
+    handler_type, input_key, output_key, text_details
+):
+    """Count each modality once in the server's input and output totals.
+
+    ## WRITTEN BY AI ##
+    """
+    input_details = {
+        "image_tokens": 20,
+        "video_tokens": 30,
+        "audio_tokens": 40,
+        "cached_tokens": 50,
+    }
+    output_details = {"audio_tokens": 25}
+    input_text = 10 if text_details is None else text_details
+    output_text = 5 if text_details is None else text_details
+    if text_details is not None:
+        input_details["text_tokens"] = input_text
+        output_details["text_tokens"] = output_text
+        input_details[input_key] = input_text
+        output_details[output_key] = output_text
+    usage = {
+        input_key: input_text + 90,
+        output_key: output_text + 25,
+        f"{input_key}_details": input_details,
+        f"{output_key}_details": output_details,
+    }
+
+    input_metrics, output_metrics = handler_type().extract_metrics(usage, "Hello")
+
+    assert input_metrics.text_tokens == input_text
+    assert output_metrics.text_tokens == output_text
+    assert input_metrics.total_tokens == usage[input_key]
+    assert output_metrics.total_tokens == usage[output_key]
+    assert input_metrics.cached_tokens == 50
+    assert input_metrics.image_tokens == 20
+    assert input_metrics.video_tokens == 30
+    assert input_metrics.audio_tokens == 40
+    assert output_metrics.audio_tokens == 25
+
+
 class TestOpenAIRequestHandler:
     """Test cases for OpenAIRequestHandler protocol.
 
