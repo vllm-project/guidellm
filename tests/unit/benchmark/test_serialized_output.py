@@ -243,6 +243,41 @@ class TestFinalizeFormats:
         assert isinstance(parsed, dict)
         assert "config" in parsed
 
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("format_type", "file_name"),
+        [("json", "results/run1"), ("yaml", "report.txt")],
+    )
+    async def test_finalize_unrecognized_suffix_uses_format_type(
+        self,
+        tmp_path: Path,
+        minimal_report: GenerativeBenchmarksReport,
+        format_type: str,
+        file_name: str,
+    ):
+        """
+        An explicit path without a .json/.yaml/.yml suffix should be written in
+        the handler's format_type instead of raising after the benchmark ran.
+
+        ## WRITTEN BY AI ##
+        """
+        explicit_path = tmp_path / file_name
+        handler = GenerativeBenchmarkerSerialized(
+            output_path=explicit_path, format_type=format_type
+        )
+        result_path = await handler.finalize(minimal_report)
+
+        assert result_path == explicit_path
+        content = result_path.read_text()
+        if format_type == "json":
+            parsed = json.loads(content)
+        else:
+            with pytest.raises(json.JSONDecodeError):
+                json.loads(content)
+            parsed = yaml.safe_load(content)
+        assert "config" in parsed
+
 
 @pytest.mark.regression
 def test_report_round_trips_profile_conclusions(minimal_report):
