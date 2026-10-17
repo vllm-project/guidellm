@@ -383,6 +383,46 @@ def test_prefetch_all_exhausts_a_finite_dataset():
     assert _prefetch_requests(graphs, "all") == graphs
 
 
+@pytest.mark.smoke
+def test_prefetch_reports_loaded_nodes_toward_the_target():
+    """
+    Prefetch reports the loaded node count and target after each graph.
+
+    ## WRITTEN BY AI ##
+    """
+    graphs = [_graph(["a", "b"]), _graph(["c"])]
+    seen: list[tuple[int, int | None]] = []
+
+    prefetched = _prefetch_requests(
+        iter(graphs),
+        1,
+        on_fetched=lambda loaded, target: seen.append((loaded, target)),
+    )
+
+    assert seen == [(2, 1)]
+    assert next(prefetched) is graphs[0]
+
+
+@pytest.mark.smoke
+def test_prefetch_all_reports_loaded_nodes_without_a_target():
+    """
+    Loading every request reports the running count and no target.
+
+    ## WRITTEN BY AI ##
+    """
+    graphs = [_graph(["a"]), _graph(["b", "c"])]
+    seen: list[tuple[int, int | None]] = []
+
+    loaded = _prefetch_requests(
+        graphs,
+        "all",
+        on_fetched=lambda loaded, target: seen.append((loaded, target)),
+    )
+
+    assert seen == [(1, None), (3, None)]
+    assert loaded == graphs
+
+
 @pytest.mark.regression
 def test_prefetch_all_rejects_an_infinite_dataset():
     """

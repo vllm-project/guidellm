@@ -166,6 +166,7 @@ class Benchmarker(
                         backend=backend,
                         strategy=strategy,
                         env=environment,
+                        on_prefetch=(progress.on_requests_prefetched if progress else None),
                         **constraints or {},
                     ):
                         try:
@@ -179,6 +180,10 @@ class Benchmarker(
                                 await progress.on_benchmark_update(
                                     accumulator, scheduler_state
                                 )
+                                if progress:
+                                    await progress.on_benchmark_update(
+                                        accumulator, scheduler_state
+                                    )
                         except Exception as err:  # noqa: BLE001
                             logger.error(
                                 "Error updating benchmark estimate/progress: {}", err
