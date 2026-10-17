@@ -159,6 +159,7 @@ class Benchmarker(
                     backend=backend,
                     strategy=strategy,
                     env=environment,
+                    on_prefetch=(progress.on_requests_prefetched if progress else None),
                     **constraints or {},
                 ):
                     try:

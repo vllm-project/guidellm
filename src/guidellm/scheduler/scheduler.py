@@ -10,7 +10,7 @@ various scenarios including LLM inference benchmarking.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from itertools import chain
 from typing import Generic, Literal, Protocol, runtime_checkable
 
@@ -47,17 +47,20 @@ class InfiniteDataset(Protocol):
 def _prefetch_requests(
     requests: DatasetIterT[RequestT],
     count: int | Literal["all"],
+    on_fetched: Callable[[int, int | None], None] | None = None,
 ) -> DatasetIterT[RequestT]:
     """
     Load request graphs until ``count`` request nodes are buffered.
 
     Graphs that cross the count are kept whole. A count of ``0`` returns
     ``requests`` unchanged. ``"all"`` loads every graph, and raises when the
-    dataset reports that it is infinite.
+    dataset reports that it is infinite. ``on_fetched`` is called
+    with the loaded node count and the target after each graph.
 
     :param requests: Dataset iterable of conversation graphs
     :param count: Number of request nodes to load, or ``"all"`` to load every
         request
+    :param on_fetched: Optional sync callback ``(loaded, target)``
     :return: Buffered graphs followed by the remainder of the dataset
     :raises ValueError: If ``count`` is ``"all"`` and the dataset is infinite
     """
@@ -73,6 +76,8 @@ def _prefetch_requests(
         for graph in requests:
             buffered.append(graph)
             fetched += len(graph.nodes)
+            if on_fetched is not None:
+                on_fetched(fetched, None)
         return buffered
 
     if count == 0:
@@ -88,6 +93,8 @@ def _prefetch_requests(
             break
         buffered.append(graph)
         fetched += len(graph.nodes)
+        if on_fetched is not None:
+            on_fetched(fetched, count)
 
     return chain(buffered, iterator)
 
@@ -127,6 +134,7 @@ class Scheduler(
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         env: Environment[RequestT, ResponseT] | None,
+        on_prefetch: Callable[[int, int | None], None] | None = None,
         **constraints: Constraint | ConstraintInitializer,
     ) -> AsyncIterator[
         tuple[
@@ -150,6 +158,8 @@ class Scheduler(
         :param strategy: Scheduling strategy controlling request timing and distribution
         :param env: Environment interface for distributed coordination and
             synchronization. Defaults to NonDistributedEnvironment if None
+        :param on_prefetch: Optional sync callback ``(loaded, target)`` invoked
+            as request nodes are loaded before the run starts
         :param constraints: Runtime constraints for execution control (max_requests,
             max_duration, max_error_rate, etc.) as primitives, dictionaries, or
             constraint instances
@@ -179,6 +189,7 @@ class Scheduler(
                     _prefetch_requests,
                     local_requests,
                     local_strategy.prefetch_count(),
+                    on_fetched=on_prefetch,
                 )
 
                 # Setup the worker group, sync start with the environment
