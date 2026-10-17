@@ -84,6 +84,14 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: Knee Profile Guide](knee_detection.md)
 
+- :material-target-variant:{ .lg .middle } Target Margin of Error Stopping
+
+  ______________________________________________________________________
+
+  Stop benchmarks once a latency statistic has been measured to a requested precision, instead of after a fixed duration or request count.
+
+  [:octicons-arrow-right-24: Target Margin of Error Guide](target_moe_stopping.md)
+
 - :material-wrench:{ .lg .middle } Tool Calling
 
   ______________________________________________________________________
