@@ -34,6 +34,7 @@ from guidellm.benchmark.schemas import (
     GenerativeBenchmarkAccumulator,
     GenerativeBenchmarksReport,
 )
+from guidellm.collectors import CollectorProcess
 from guidellm.data import (
     DataLoader,
     create_data_loader,
@@ -52,6 +53,7 @@ from guidellm.schemas.benchmark import (
     BenchmarkArgs,
     BenchmarkOutputArgs,
     BenchmarkScenario,
+    CollectorArgs,
     GenerativeMetricsArgs,
     ProfileArgs,
 )
@@ -309,6 +311,38 @@ async def resolve_profile(
     return profile
 
 
+async def resolve_collectors(
+    collectors: list[CollectorArgs],
+    console: Console | None = None,
+) -> CollectorProcess | None:
+    """
+    Start a collector process for the configured collectors.
+
+    :param collectors: Arguments for each collector, in configuration order
+    :param console: Console instance for progress reporting, or None
+    :return: The started collector process, or None without any collectors
+    :raises RuntimeError: If a collector cannot be created
+    """
+    if not collectors:
+        return None
+
+    console_step = (
+        console.print_update_step(title="Starting collectors") if console else None
+    )
+
+    process = CollectorProcess(collectors)
+    await process.start()
+
+    if console_step:
+        console_step.finish(
+            title="Collectors started",
+            details=[collector.model_dump(mode="json") for collector in collectors],
+            status_level="success",
+        )
+
+    return process
+
+
 async def resolve_output_formats(
     outputs: list[BenchmarkOutputArgs],
     console: Console | None = None,
@@ -496,7 +530,7 @@ def resolve_to_single_benchmark(benchmarks: list[BenchmarkArgs]) -> BenchmarkArg
 # Main Entrypoints Functions
 
 
-async def benchmark_generative_text(
+async def benchmark_generative_text(  # noqa: C901
     args: BenchmarkScenario,
     progress: bool = True,
     console: Console | None = None,
@@ -569,28 +603,37 @@ async def benchmark_generative_text(
         )
         console.print("\n\n")
 
+    collectors = await resolve_collectors(
+        collectors=benchmark_args.collectors, console=console
+    )
+
     benchmarker: Benchmarker[
         GenerativeBenchmark, GenerationRequest, GenerationResponse
     ] = Benchmarker()
-    async for benchmark in benchmarker.run(
-        accumulator_class=GenerativeBenchmarkAccumulator,
-        benchmark_class=GenerativeBenchmark,
-        requests=request_loader,  # type: ignore[arg-type]
-        backend=backend,
-        profile=profile,
-        environment=NonDistributedEnvironment(),
-        progress=CompositeBenchmarkerProgress(trackers),
-        sample_size=metrics_args.sample_size,
-        warmup=warmup,
-        cooldown=cooldown,
-        prefer_response_metrics=metrics_args.prefer_response_metrics,
-        slo=metrics_args.slo,
-        confidence=metrics_args.confidence,
-        warnings=metrics_args.warnings,
-    ):
-        # Completed benchmark
-        if benchmark:
-            report.benchmarks.append(benchmark)
+    try:
+        async for benchmark in benchmarker.run(
+            accumulator_class=GenerativeBenchmarkAccumulator,
+            benchmark_class=GenerativeBenchmark,
+            requests=request_loader,  # type: ignore[arg-type]
+            backend=backend,
+            profile=profile,
+            environment=NonDistributedEnvironment(),
+            progress=CompositeBenchmarkerProgress(trackers),
+            sample_size=metrics_args.sample_size,
+            warmup=warmup,
+            cooldown=cooldown,
+            prefer_response_metrics=metrics_args.prefer_response_metrics,
+            slo=metrics_args.slo,
+            confidence=metrics_args.confidence,
+            warnings=metrics_args.warnings,
+            collectors=collectors,
+        ):
+            # Completed benchmark
+            if benchmark:
+                report.benchmarks.append(benchmark)
+    finally:
+        if collectors:
+            await collectors.shutdown()
 
     # Read after the final strategy so the conclusion reflects every benchmark,
     # including the last, whose config was captured before it ran.

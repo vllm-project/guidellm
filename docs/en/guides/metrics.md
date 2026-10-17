@@ -118,6 +118,11 @@ Dispatch Delay, Turn Predecessor Delay, Turn Scheduling Delay, and Scheduled Lat
 - **Definition**: For the WebSocket backend, the mean of received-token timestamps minus the mean of sent-packet timestamps.
 - **Use Case**: Estimates the average send-to-receive lag across a request. It is approximate, since it assumes sent packets and received tokens line up evenly in time.
 
+### Collector Metrics
+
+- **Definition**: Data gathered from outside GuideLLM while each benchmark runs, such as queued requests, KV cache usage and server-measured latencies scraped from a server's Prometheus endpoint. They are only collected when `--collector` is set.
+- **Use Case**: Explains client-side results from the server's point of view, for example whether latency rose because requests were queuing or the KV cache was full. See the [Collectors Guide](collectors.md).
+
 ## Measurement Window, Warmup, and Cooldown
 
 Benchmark profiles can configure `warmup` and `cooldown` periods that bracket the active measurement window. Requests sent during warmup still run to completion, but reported metrics are scoped to the interval between `measure_start` (warmup ends) and `measure_end` (cooldown begins).

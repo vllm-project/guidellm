@@ -341,7 +341,7 @@ layers = [
   "cli",
   "entrypoints",
   "benchmark | mock_server",
-  "data | backends",
+  "data | backends | collectors",
   "scheduler",
   # utils/extras/schemas can interdepend so treat
   # them as one layer and check with a separate rule

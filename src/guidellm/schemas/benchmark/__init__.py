@@ -2,6 +2,15 @@
 Centralized benchmark argument schemas for GuideLLM.
 """
 
+from guidellm.schemas.benchmark.collectors import (
+    DEFAULT_VLLM_METRICS,
+    CollectorArgs,
+    PrometheusCollectorArgs,
+    PrometheusCounterSeries,
+    PrometheusGaugeSeries,
+    PrometheusHistogramSeries,
+    PrometheusSummary,
+)
 from guidellm.schemas.benchmark.entrypoints import (
     BenchmarkArgs,
     BenchmarkMetadata,
@@ -43,6 +52,7 @@ from guidellm.schemas.benchmark.warnings import (
 )
 
 __all__ = [
+    "DEFAULT_VLLM_METRICS",
     "SCENARIO_DIR",
     "AsyncProfileArgs",
     "BenchmarkArgs",
@@ -50,6 +60,7 @@ __all__ = [
     "BenchmarkOutputArgs",
     "BenchmarkScenario",
     "CSVBenchmarkOutputArgs",
+    "CollectorArgs",
     "ConcurrentProfileArgs",
     "ConsoleBenchmarkOutputArgs",
     "GenerativeMetricsArgs",
@@ -62,6 +73,11 @@ __all__ = [
     "MetricsArgs",
     "PlotBenchmarkOutputArgs",
     "ProfileArgs",
+    "PrometheusCollectorArgs",
+    "PrometheusCounterSeries",
+    "PrometheusGaugeSeries",
+    "PrometheusHistogramSeries",
+    "PrometheusSummary",
     "RandomArgs",
     "ReplayProfileArgs",
     "StaticRandomArgs",

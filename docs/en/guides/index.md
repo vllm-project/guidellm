@@ -76,6 +76,14 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: Over-Saturation Guide](over_saturation_stopping.md)
 
+- :material-gauge:{ .lg .middle } Collectors
+
+  ______________________________________________________________________
+
+  Collect a vLLM server's Prometheus metrics while benchmarks run to see queueing, KV cache usage and server-side latencies next to the client results.
+
+  [:octicons-arrow-right-24: Collectors Guide](collectors.md)
+
 - :material-chart-bell-curve-cumulative:{ .lg .middle } Knee Profile
 
   ______________________________________________________________________
