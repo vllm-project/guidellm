@@ -11,7 +11,10 @@ from unittest.mock import Mock
 import pytest
 
 from guidellm.data.deserializers import DatasetDeserializerFactory
-from guidellm.data.deserializers.trace_common import TraceDatasetDeserializer
+from guidellm.data.deserializers.trace_common import (
+    _ENGLISH_WORDS,
+    TraceDatasetDeserializer,
+)
 from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
@@ -19,6 +22,30 @@ from guidellm.data.schemas.conversation_graph_data import (
 )
 from guidellm.schemas.data import MooncakeTraceFormatArgs
 from tests.unit.data.deserializers.trace_test_utils import trace_file_source
+
+
+def english_piece_processor() -> Mock:
+    """Tokenizer that decodes each id back to the English word it encoded."""
+    lexicon: dict[str, int] = {}
+    reverse: dict[int, str] = {}
+
+    def encode(text: str) -> list[int]:
+        ids: list[int] = []
+        for word in text.split():
+            token_id = lexicon.get(word)
+            if token_id is None:
+                token_id = len(lexicon) + 1
+                lexicon[word] = token_id
+                reverse[token_id] = f"{word} "
+            ids.append(token_id)
+        return ids
+
+    proc = Mock()
+    proc.encode.side_effect = encode
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: "".join(
+        reverse[token] for token in tokens
+    )
+    return proc
 
 
 def ascending_processor() -> Mock:
@@ -104,7 +131,13 @@ def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
 
 
 def load_graph_turns(row: dict) -> list[ConversationTurnData]:
-    graph = ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+    payload = row["conversation_turns"]
+    if isinstance(payload, ConversationGraphData):
+        graph = payload
+    elif isinstance(payload, str):
+        graph = ConversationGraphData.model_validate(json.loads(payload))
+    else:
+        graph = ConversationGraphData.model_validate(payload)
     return graph.turns
 
 
@@ -412,3 +445,37 @@ class TestMooncakeTraceFormat:
         assert all_distinct(siblings0)
         assert all_distinct(siblings1)
         assert pass0 != pass1
+
+    @pytest.mark.sanity
+    def test_prompt_contains_only_english_words(self, tmp_path: Path, deserializer):
+        """
+        A Mooncake prompt decodes to words from the English frequency list.
+
+        ## WRITTEN BY AI ##
+        """
+        block_size = 4
+        trace = write_trace(
+            tmp_path,
+            generate_trace(
+                1,
+                [
+                    TraceColumnGenerator("timestamp", lambda i: i),
+                    TraceColumnGenerator("input_length", lambda _: block_size + 2),
+                    TraceColumnGenerator("output_length", lambda _: 5),
+                    TraceColumnGenerator("hash_ids", lambda _: [1, 2]),
+                ],
+            ),
+        )
+        ds = deserializer(
+            config=MooncakeTraceFormatArgs(
+                source=trace_file_source(trace),
+                hash_id_block_size=block_size,
+            ),
+            processor_factory=english_piece_processor,
+            random_seed=7,
+        )
+        prompt = load_graph_turns(next(iter(ds)))[0].columns["text_column"][0]
+        words = prompt.split()
+        assert words
+        assert set(words) <= set(_ENGLISH_WORDS)
+        assert prompt.isascii()

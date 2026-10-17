@@ -6,10 +6,12 @@ requested input_length for replay benchmarks."""
 
 from __future__ import annotations
 
-import json
+import bisect
+import importlib.resources
 import math
+import random
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any, Protocol
+from typing import Any, NamedTuple, Protocol
 
 import numpy as np
 from datasets import (
@@ -45,17 +47,37 @@ from guidellm.schemas.data.deserializers import TraceDataArgs
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
+    "EnglishTokenBuffer",
+    "HashTokenBlock",
     "TraceDatasetDeserializer",
     "TraceFormatBase",
     "TraceFormatRegistry",
     "create_distinct_token_block",
     "create_prompt_from_hash_ids",
     "decode_prompt",
+    "decodes_hash_blocks_concatenatively",
     "duration_columns",
     "fill_hash_id_table",
     "generate_token_ids",
     "get_missing_columns",
+    "sample_english_word",
 ]
+
+# Offset from the dataset seed so the probe Faker does not alias a replay copy.
+# Replay copies use ``random_seed + copy_index * 1_000_003``.
+_PROBE_SEED_OFFSET = 1_000_003_007
+_MIN_PROBE_BLOCKS = 2
+_REPLACEMENT_CHAR = "\ufffd"
+
+
+class HashTokenBlock(NamedTuple):
+    """One synthetic hash-id block: token ids and the decode of those ids.
+
+    ``text`` is computed once, when the block is inserted into the hash table.
+    """
+
+    token_ids: tuple[int, ...]
+    text: str
 
 
 def decode_prompt(
@@ -67,6 +89,125 @@ def decode_prompt(
     if isinstance(decoded, list):
         return decoded[0] if decoded else ""
     return decoded
+
+
+_MIN_ENGLISH_WORDS = 2
+
+
+def _load_english_words() -> tuple[str, ...]:
+    """Load the packaged frequency-ordered English word list.
+
+    Lines are most common first. Comments and tokens that are not lowercase
+    ASCII letters are skipped. Order of first occurrence is kept.
+
+    :return: English words used for Zipf prompt sampling.
+    """
+    text = (
+        importlib.resources.files("guidellm.data.deserializers")
+        .joinpath("english_words.txt")
+        .read_text(encoding="utf-8")
+    )
+    words: list[str] = []
+    seen: set[str] = set()
+    for line in text.splitlines():
+        word = line.strip()
+        if not word or word.startswith("#"):
+            continue
+        if not word.isascii() or not word.isalpha() or not word.islower():
+            continue
+        if word in seen:
+            continue
+        seen.add(word)
+        words.append(word)
+    if len(words) < _MIN_ENGLISH_WORDS:
+        raise RuntimeError("English word list must contain at least two words")
+    return tuple(words)
+
+
+# Most-common-first English words. Synthetic prompts sample this list with
+# Zipf weights so frequent words stay frequent, and so blocks stay in one
+# language instead of mixing scripts from a multilingual vocab. The file
+# extends well past the most common words so rare ranks can be drawn.
+_ENGLISH_WORDS: tuple[str, ...] = _load_english_words()
+
+# Words per encode call. One chunk covers many hash blocks.
+_ENGLISH_CHUNK_WORDS = 512
+
+
+def _zipf_cumulative(word_count: int) -> tuple[float, ...]:
+    """Cumulative Zipf masses for ranks ``1 .. word_count`` (weight ``1/rank``)."""
+    weights = [1.0 / rank for rank in range(1, word_count + 1)]
+    total = sum(weights)
+    running = 0.0
+    cumulative: list[float] = []
+    for weight in weights:
+        running += weight / total
+        cumulative.append(running)
+    return tuple(cumulative)
+
+
+_ZIPF_CUMULATIVE = _zipf_cumulative(len(_ENGLISH_WORDS))
+
+
+def sample_english_word(rng: random.Random) -> str:
+    """Draw one English word with probability proportional to ``1/rank``.
+
+    Rank 1 is :data:`_ENGLISH_WORDS` index 0, the most common word.
+
+    :param rng: Generator advanced by this draw.
+    :return: A lowercase ASCII English word from the frequency list.
+    """
+    index = bisect.bisect_left(_ZIPF_CUMULATIVE, rng.random())
+    if index >= len(_ENGLISH_WORDS):
+        index = len(_ENGLISH_WORDS) - 1
+    return _ENGLISH_WORDS[index]
+
+
+class EnglishTokenBuffer:
+    """Cursor over token ids from Zipf-sampled English text.
+
+    Text is encoded in chunks. Callers take the next ``count`` ids, which
+    keeps block generation off the per-id encode path and off the multilingual
+    vocab.
+    """
+
+    def __init__(self) -> None:
+        self._tokens: list[int] = []
+        self._cursor = 0
+
+    def reset(self) -> None:
+        """Drop buffered ids so the next draw starts a new stretch of text."""
+        self._tokens.clear()
+        self._cursor = 0
+
+    def take(
+        self,
+        count: int,
+        processor: PreTrainedTokenizerBase,
+        rng: random.Random,
+    ) -> tuple[int, ...]:
+        """Return the next ``count`` token ids from the English stream.
+
+        :param count: Number of ids to return. Zero yields an empty tuple.
+        :param processor: Tokenizer used when the buffer must be extended.
+        :param rng: Generator for the Zipf word draws in an extension.
+        :return: ``count`` token ids from encoded English text.
+        """
+        if count <= 0:
+            return ()
+        while self._cursor + count > len(self._tokens):
+            self._extend(processor, rng)
+        start = self._cursor
+        self._cursor += count
+        return tuple(self._tokens[start : self._cursor])
+
+    def _extend(self, processor: PreTrainedTokenizerBase, rng: random.Random) -> None:
+        words = [sample_english_word(rng) for _ in range(_ENGLISH_CHUNK_WORDS)]
+        # Spaces stay in the encoded text so decoded blocks read as English words.
+        encoded = processor.encode(" ".join(words))
+        if not encoded:
+            raise ValueError("Tokenizer encoded English text to zero tokens")
+        self._tokens.extend(encoded)
 
 
 def generate_token_ids(
@@ -112,16 +253,99 @@ def duration_columns(row: dict, config: TraceDataArgs) -> dict[str, list[float]]
 
 def create_prompt_from_hash_ids(
     hash_ids: list[int],
-    hash_id_table: dict[int, tuple[int, ...]],
+    hash_id_table: dict[int, HashTokenBlock],
     processor: PreTrainedTokenizerBase,
+    *,
+    join_decoded_blocks: bool = False,
 ) -> str:
-    """Returns a synthetic prompt from `hash_ids` using pre-generated token blocks.
+    """Return a synthetic prompt from ``hash_ids`` using pre-generated token blocks.
 
-    Precondition: All ids in `hash_ids` appear in `hash_id_table`."""
-    prompt_token_ids = [
-        token for hash_id in hash_ids for token in hash_id_table[hash_id]
-    ]
+    When ``join_decoded_blocks`` is true, the prompt is the concatenation of
+    each block's cached decode. That is equal to decoding the concatenated
+    ids only for tokenizers that do not insert or merge text at piece
+    boundaries. A block whose decode contains U+FFFD is not closed (a later
+    token can complete a partial code unit), so that turn is decoded as one
+    sequence even if the tokenizer-level gate is on.
+
+    Precondition: every id in ``hash_ids`` is present in ``hash_id_table``.
+
+    :param hash_ids: Ordered hash IDs for one prompt.
+    :param hash_id_table: Mapping of hash ID to token block and cached decode.
+    :param processor: Tokenizer used when the blocks must be decoded together.
+    :param join_decoded_blocks: Use cached per-block strings. Set only after
+        :func:`decodes_hash_blocks_concatenatively` has passed.
+    :return: Synthetic prompt text for the hash-id prefix.
+    """
+    blocks = [hash_id_table[hash_id] for hash_id in hash_ids]
+    # Joining is not ``decode(all_ids)`` when the tokenizer rewrites boundaries.
+    blocks_are_closed = all(_REPLACEMENT_CHAR not in block.text for block in blocks)
+    if join_decoded_blocks and blocks_are_closed:
+        return "".join(block.text for block in blocks)
+    prompt_token_ids = [token for block in blocks for token in block.token_ids]
     return decode_prompt(processor, prompt_token_ids)
+
+
+def decodes_hash_blocks_concatenatively(
+    processor: PreTrainedTokenizerBase,
+    block_size: int,
+    random_seed: int,
+    sample_count: int = 4,
+    *,
+    use_english: bool = False,
+) -> bool:
+    """Return whether joining per-block decodes matches one full decode.
+
+    When ``use_english`` is true, blocks are sliced from a private
+    :class:`EnglishTokenBuffer`, the same pattern WEKA uses for hash blocks.
+    Otherwise blocks come from :func:`generate_token_ids`. Joining those
+    strings is not equal to ``decode`` of the concatenated ids for every
+    tokenizer: some insert spaces between pieces, and some merge bytes
+    across a block boundary (decoded as U+FFFD when the block is decoded
+    alone). A failed or inconclusive probe keeps the full-sequence decode.
+
+    The generator is private so this does not advance the replay copy's stream.
+
+    :param processor: Tokenizer under test.
+    :param block_size: Token count of one hash block.
+    :param random_seed: Dataset seed. Combined with a fixed offset so the
+        probe stream does not alias a replay copy.
+    :param sample_count: Number of synthetic blocks to compare. At least two.
+    :param use_english: Draw probe blocks from Zipf English text.
+    :return: True when every adjacent pair and the full chain concatenate.
+    """
+    if block_size <= 0 or sample_count < _MIN_PROBE_BLOCKS:
+        return False
+    try:
+        if use_english:
+            rng = random.Random(random_seed + _PROBE_SEED_OFFSET)  # noqa: S311
+            buffer = EnglishTokenBuffer()
+            blocks = [
+                buffer.take(block_size, processor, rng) for _ in range(sample_count)
+            ]
+        else:
+            faker = Faker()
+            faker.seed_instance(random_seed + _PROBE_SEED_OFFSET)
+            blocks = [
+                generate_token_ids(block_size, processor, faker)
+                for _ in range(sample_count)
+            ]
+        texts = [decode_prompt(processor, list(block)) for block in blocks]
+        if any(_REPLACEMENT_CHAR in text for text in texts):
+            return False
+        for index in range(len(blocks) - 1):
+            combined = list(blocks[index]) + list(blocks[index + 1])
+            if decode_prompt(processor, combined) != texts[index] + texts[index + 1]:
+                return False
+        chain = [token for block in blocks for token in block]
+        return decode_prompt(processor, chain) == "".join(texts)
+    except Exception:  # noqa: BLE001
+        # A tokenizer that cannot decode the probe must not abort dataset load
+        # or switch on a join that was never shown to match a full decode.
+        logger.debug(
+            "Hash-block decode probe failed; keeping full-sequence decode",
+            exc_info=True,
+        )
+        return False
 
 
 def create_distinct_token_block(
@@ -130,12 +354,20 @@ def create_distinct_token_block(
     processor: PreTrainedTokenizerBase,
     faker: Faker,
     max_attempts: int = 20,
+    english_buffer: EnglishTokenBuffer | None = None,
 ) -> tuple[int, ...]:
     """Constructs a new token block of `block_size` that does not appear in
-    `sibling_token_blocks`."""
+    `sibling_token_blocks`.
+
+    When ``english_buffer`` is set, the next ids are taken from that Zipf
+    English stream. Otherwise text is generated and encoded.
+    """
     attempt = 0
     while attempt < max_attempts:
-        token_ids = generate_token_ids(block_size, processor, faker)
+        if english_buffer is not None:
+            token_ids = english_buffer.take(block_size, processor, faker.random)
+        else:
+            token_ids = generate_token_ids(block_size, processor, faker)
         if token_ids not in sibling_token_blocks:
             return token_ids
         attempt += 1
@@ -146,38 +378,47 @@ def create_distinct_token_block(
 
 def fill_hash_id_table(
     ids: Sequence[int],
-    hash_id_table: dict[int, tuple[int, ...]],
+    hash_id_table: dict[int, HashTokenBlock],
     sibling_token_blocks: dict[Any, set[tuple[int, ...]]],
     processor: PreTrainedTokenizerBase,
     faker: Faker,
     tokens_for_hash_id: Callable[[int, int], int],
+    english_buffer: EnglishTokenBuffer | None = None,
 ) -> None:
     """Ensure each id has a distinct sibling-aware token block in ``hash_id_table``.
 
     Unseen hash IDs are allocated with :func:`create_distinct_token_block` so
     siblings under the same previous id receive different token blocks.
-    Existing entries are left unchanged.
+    Each new block is decoded once and stored next to its token ids.
+    Existing entries are left unchanged. Sibling distinctness compares token
+    ids only, not the decoded text.
 
     :param ids: Ordered hash IDs for one prompt.
     :param hash_id_table: Mapping of hash ID to token block. Mutated in place.
     :param sibling_token_blocks: Token blocks already used per previous hash ID.
         Mutated in place.
-    :param processor: Tokenizer used to generate synthetic token blocks.
+    :param processor: Tokenizer used to generate and decode synthetic blocks.
     :param faker: Random text source for synthetic tokens.
     :param tokens_for_hash_id: ``(idx, hash_id) -> block size`` for unseen IDs.
+    :param english_buffer: When set, new blocks are sliced from this English
+        stream instead of encoded Faker text.
     """
     for idx, hash_id in enumerate(ids):
         if hash_id not in hash_id_table:
             prev_id = None if idx == 0 else ids[idx - 1]
             sibling_token_blocks.setdefault(prev_id, set())
-            block = create_distinct_token_block(
+            token_ids = create_distinct_token_block(
                 tokens_for_hash_id(idx, hash_id),
                 sibling_token_blocks[prev_id],
                 processor,
                 faker,
+                english_buffer=english_buffer,
             )
-            hash_id_table[hash_id] = block
-            sibling_token_blocks[prev_id].add(block)
+            hash_id_table[hash_id] = HashTokenBlock(
+                token_ids=token_ids,
+                text=decode_prompt(processor, list(token_ids)),
+            )
+            sibling_token_blocks[prev_id].add(token_ids)
 
 
 def _seeded_faker(random_seed: int, copy_index: int) -> Faker:
@@ -211,6 +452,21 @@ class TraceFormatBase(Protocol):
         pass
 
     def reset_hash_tables(self) -> None: ...
+
+    def prepare_processor(
+        self,
+        processor: PreTrainedTokenizerBase,  # noqa: ARG002
+        random_seed: int,  # noqa: ARG002
+    ) -> None:
+        """Called once when the dataset tokenizer is loaded.
+
+        Formats that cache tokenizer-specific prompt state override this.
+        The default does nothing.
+
+        :param processor: Tokenizer used to build synthetic prompts.
+        :param random_seed: Dataset seed. Probe randomness must not consume
+            the replay Faker derived from this seed.
+        """
 
     def required_columns(self) -> Features: ...
 
@@ -367,14 +623,11 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                 packer.apply_pack(graph_data)
                 scaler.apply_scale(graph_data)
                 samples_count += len(graph_data.turns)
-                payload = json.dumps(graph_data.model_dump(mode="json"))
+                # The iterable is typed, so Hugging Face does not cast this
+                # column to a string. The finalizer accepts the model directly.
                 yield (
                     samples_count,
-                    {
-                        "conversation_turns": (
-                            payload.decode() if isinstance(payload, bytes) else payload
-                        )
-                    },
+                    {"conversation_turns": graph_data},
                 )
                 self.format.reset()
             if math.isfinite(copy_min):
@@ -507,4 +760,6 @@ class TraceDatasetDeserializer(DatasetDeserializer):
             )
         trace_format = TraceFormatRegistry.dispatch(config, dataset)
         _handle_column_search(config, trace_format)
-        return TraceDataset(config, trace_format, processor_factory(), random_seed)
+        processor = processor_factory()
+        trace_format.prepare_processor(processor, random_seed)
+        return TraceDataset(config, trace_format, processor, random_seed)

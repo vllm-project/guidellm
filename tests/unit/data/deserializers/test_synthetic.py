@@ -31,7 +31,12 @@ def _conversation_graph(row: dict) -> ConversationGraphData:
 
     ## WRITTEN BY AI ##
     """
-    return ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+    payload = row["conversation_turns"]
+    if isinstance(payload, ConversationGraphData):
+        return payload
+    if isinstance(payload, str):
+        return ConversationGraphData.model_validate(json.loads(payload))
+    return ConversationGraphData.model_validate(payload)
 
 
 def _main_turn_map(row: dict) -> dict[str, object]:

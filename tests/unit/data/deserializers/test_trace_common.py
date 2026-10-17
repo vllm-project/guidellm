@@ -1,5 +1,6 @@
 import dataclasses
 import json
+import random
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -15,11 +16,18 @@ from guidellm.data.deserializers import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.deserializers.trace_common import (
+    _ENGLISH_WORDS,
+    EnglishTokenBuffer,
+    HashTokenBlock,
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
+    create_prompt_from_hash_ids,
     decode_prompt,
+    decodes_hash_blocks_concatenatively,
+    fill_hash_id_table,
     generate_token_ids,
+    sample_english_word,
 )
 from guidellm.data.deserializers.trace_minimal import MinimalTraceFormat
 from guidellm.data.deserializers.trace_session_timing import TraceSessionTiming
@@ -57,6 +65,161 @@ def mock_processor() -> Mock:
 def test_decode_prompt(token_ids, expected):
     proc = mock_processor()
     assert decode_prompt(proc, token_ids) == expected
+
+
+def _space_joining_processor() -> Mock:
+    """Decode inserts a space between tokens, so block joins drop that space."""
+    proc = Mock()
+    proc.encode.side_effect = lambda text: list(range(len(text.split())))
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
+        f"tok{token}" for token in tokens
+    )
+    return proc
+
+
+def _piecewise_processor() -> Mock:
+    """Decode is the concatenation of per-token text, with no added separator."""
+    proc = Mock()
+    proc.encode.side_effect = lambda text: list(range(len(text.split())))
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: "".join(
+        f"t{token}" for token in tokens
+    )
+    return proc
+
+
+def _replacement_processor() -> Mock:
+    """Decode always emits U+FFFD, so blocks are not closed strings."""
+    proc = Mock()
+    proc.encode.side_effect = lambda text: list(range(len(text.split())))
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: "\ufffd"
+    return proc
+
+
+def _fill_two_blocks(proc: Mock) -> tuple[dict[int, HashTokenBlock], list[int]]:
+    faker = Faker()
+    faker.seed_instance(1)
+    table: dict[int, HashTokenBlock] = {}
+    fill_hash_id_table(
+        [1, 2],
+        table,
+        {},
+        proc,
+        faker,
+        lambda _idx, _hash_id: 4,
+    )
+    flat = [token for hash_id in (1, 2) for token in table[hash_id].token_ids]
+    return table, flat
+
+
+@pytest.mark.sanity
+def test_space_joining_decode_is_not_concatenative():
+    """
+    A decode that inserts spaces between tokens cannot use the join path.
+
+    ## WRITTEN BY AI ##
+    """
+    proc = _space_joining_processor()
+    assert (
+        decodes_hash_blocks_concatenatively(proc, block_size=4, random_seed=0) is False
+    )
+    table, flat = _fill_two_blocks(proc)
+    joined = "".join(table[hash_id].text for hash_id in (1, 2))
+    full = decode_prompt(proc, flat)
+    prompt = create_prompt_from_hash_ids([1, 2], table, proc, join_decoded_blocks=False)
+    assert prompt == full
+    assert prompt != joined
+
+
+@pytest.mark.sanity
+def test_joined_blocks_match_full_decode_when_concatenative():
+    """
+    When the probe passes, joining cached block text matches one decode.
+
+    ## WRITTEN BY AI ##
+    """
+    proc = _piecewise_processor()
+    assert (
+        decodes_hash_blocks_concatenatively(proc, block_size=4, random_seed=0) is True
+    )
+    table, flat = _fill_two_blocks(proc)
+    joined = "".join(table[hash_id].text for hash_id in (1, 2))
+    full = decode_prompt(proc, flat)
+    prompt = create_prompt_from_hash_ids([1, 2], table, proc, join_decoded_blocks=True)
+    assert prompt == full
+    assert prompt == joined
+
+
+@pytest.mark.sanity
+def test_replacement_character_disables_block_join():
+    """
+    A decode that emits U+FFFD is treated as not concatenative.
+
+    ## WRITTEN BY AI ##
+    """
+    proc = _replacement_processor()
+    assert (
+        decodes_hash_blocks_concatenatively(proc, block_size=4, random_seed=0) is False
+    )
+
+
+@pytest.mark.sanity
+def test_open_block_falls_back_to_full_decode():
+    """
+    A stored block containing U+FFFD is decoded with the rest of the turn.
+
+    ## WRITTEN BY AI ##
+    """
+    proc = _piecewise_processor()
+    table = {
+        1: HashTokenBlock(token_ids=(1, 2), text="t1t2\ufffd"),
+        2: HashTokenBlock(token_ids=(3, 4), text="t3t4"),
+    }
+    prompt = create_prompt_from_hash_ids([1, 2], table, proc, join_decoded_blocks=True)
+    assert prompt == decode_prompt(proc, [1, 2, 3, 4])
+    assert prompt != "t1t2\ufffdt3t4"
+
+
+@pytest.mark.sanity
+def test_zipf_draws_favor_the_most_common_word():
+    """
+    The first word in the frequency list is drawn more often than the last.
+
+    The list is long enough that ranks past 1,000 are real words, and those
+    rare ranks still appear.
+
+    ## WRITTEN BY AI ##
+    """
+    assert len(_ENGLISH_WORDS) >= 8_000
+    rare = set(_ENGLISH_WORDS[1_000:])
+    rng = random.Random(0)
+    draws = [sample_english_word(rng) for _ in range(20_000)]
+    assert draws.count(_ENGLISH_WORDS[0]) > draws.count(_ENGLISH_WORDS[-1])
+    assert rare.intersection(draws)
+
+
+@pytest.mark.sanity
+def test_english_buffer_encodes_ascii_words_from_the_list():
+    """
+    Chunks sent to encode are space-joined ASCII words from the English list.
+
+    ## WRITTEN BY AI ##
+    """
+    captured: list[str] = []
+
+    def encode(text: str) -> list[int]:
+        captured.append(text)
+        return list(range(len(text.split())))
+
+    proc = Mock()
+    proc.encode.side_effect = encode
+    taken = EnglishTokenBuffer().take(8, proc, random.Random(1))
+    assert len(taken) == 8
+    assert captured
+    text = captured[0]
+    assert text.isascii()
+    words = text.split(" ")
+    assert set(words) <= set(_ENGLISH_WORDS)
+    assert all(ord(char) < 128 for char in text)
 
 
 @pytest.mark.parametrize(
@@ -213,7 +376,12 @@ def generate_trace(num_rows: int, columns: list[TraceColumnGenerator]) -> str:
 
 
 def load_graph(row: dict) -> ConversationGraphData:
-    return ConversationGraphData.model_validate(json.loads(row["conversation_turns"]))
+    payload = row["conversation_turns"]
+    if isinstance(payload, ConversationGraphData):
+        return payload
+    if isinstance(payload, str):
+        return ConversationGraphData.model_validate(json.loads(payload))
+    return ConversationGraphData.model_validate(payload)
 
 
 def load_graph_turns(row: dict) -> list[ConversationTurnData]:

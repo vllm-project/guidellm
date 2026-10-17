@@ -20,6 +20,8 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.data.deserializers.trace_common import (
+    EnglishTokenBuffer,
+    HashTokenBlock,
     SingleTurnTraceFormat,
     TraceDatasetDeserializer,
     TraceFormatRegistry,
@@ -66,13 +68,19 @@ class MooncakeTraceFormat(SingleTurnTraceFormat):
     def __init__(self, config: MooncakeTraceFormatArgs, dataset: Dataset) -> None:
         self.config = config
         self.dataset = dataset
-        self._hash_id_table: dict[int, tuple[int, ...]] = {}
+        self._hash_id_table: dict[int, HashTokenBlock] = {}
         self._sibling_table: dict[Any, set[tuple[int, ...]]] = {}
+        self._english_buffer = EnglishTokenBuffer()
 
     def reset_hash_tables(self) -> None:
-        """Replace hash tables so this copy does not reuse earlier tokens."""
+        """Replace hash tables so this copy does not reuse earlier tokens.
+
+        The English buffer is cleared so the next pass draws a new stream
+        from that pass's generator.
+        """
         self._hash_id_table = {}
         self._sibling_table = {}
+        self._english_buffer.reset()
 
     def required_columns(self) -> Features:
         return Features({self.config.hash_ids_column: List(Value("int32"))})
@@ -108,5 +116,6 @@ class MooncakeTraceFormat(SingleTurnTraceFormat):
             lambda _idx, hash_id: _calculate_required_prompt_tokens(
                 self.config, row, hash_id
             ),
+            english_buffer=self._english_buffer,
         )
         return create_prompt_from_hash_ids(ids, self._hash_id_table, processor)
