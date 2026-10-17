@@ -807,7 +807,7 @@ class _GenerativeProgressTaskState:
             request_latency=accumulator.completed_metrics.request_latency.mean,
         )
         self._update_token_stats(
-            output_tokens=accumulator.completed_metrics.total_tokens.mean,
+            output_tokens=accumulator.completed_metrics.output_tokens.mean,
             output_tokens_rate=accumulator.completed_metrics.output_tokens.rate_per_second,
             prompt_tokens=accumulator.completed_metrics.prompt_tokens.mean,
             total_tokens_rate=accumulator.completed_metrics.total_tokens.rate_per_second,
