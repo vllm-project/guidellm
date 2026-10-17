@@ -12,6 +12,7 @@ from multiprocessing.synchronize import Barrier, Event
 from typing import Any, Generic, Literal, cast
 from unittest.mock import Mock, patch
 
+import culsans
 import pytest
 from pydantic import Field
 
@@ -314,6 +315,8 @@ class TestWorkerProcessGroup:
 
         group.messaging = Mock()
         group.messaging.get = mock_get
+        group.messaging.receive_stopped_event.is_set.return_value = True
+        group.messaging.buffer_receive_queue.empty.return_value = True
 
         results = [update async for update in group.request_updates()]
 
@@ -346,11 +349,74 @@ class TestWorkerProcessGroup:
 
         group.messaging = Mock()
         group.messaging.get = mock_get
+        group.messaging.receive_stopped_event.is_set.return_value = True
+        group.messaging.buffer_receive_queue.empty.return_value = True
 
         results = [update async for update in group.request_updates()]
 
         assert results == []
         group.state.update_state.assert_not_called()
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_request_updates_drains_buffer_filled_during_timeout(self):
+        """Delivery can finish between a timed-out get and its exception handler.
+
+        ## WRITTEN BY AI ##
+        """
+        group = WorkerProcessGroup(
+            requests=[], backend=MockBackend(), strategy=SynchronousStrategy()
+        )
+        group.error_event = threading.Event()
+        group.shutdown_event = threading.Event()
+        group.shutdown_event.set()
+        group.state = Mock()
+        buffer = culsans.Queue()
+        receive_stopped = threading.Event()
+        payload = ("response", "request", RequestInfo(status="completed"), Mock())
+        calls = 0
+
+        async def racing_get(*, timeout=None):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                buffer.put_nowait(payload)
+                receive_stopped.set()
+                raise asyncio.TimeoutError
+            return await asyncio.wait_for(buffer.async_get(), timeout=0.01)
+
+        group.messaging = Mock(
+            get=racing_get,
+            receive_stopped_event=receive_stopped,
+            buffer_receive_queue=buffer,
+        )
+        try:
+            assert [update async for update in group.request_updates()] == [payload]
+            group.state.update_state.assert_not_called()
+        finally:
+            await buffer.aclose()
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_request_updates_raises_worker_error_while_draining(self):
+        """Worker errors must still propagate after shutdown has been signalled.
+
+        ## WRITTEN BY AI ##
+        """
+        group = WorkerProcessGroup(
+            requests=[], backend=MockBackend(), strategy=SynchronousStrategy()
+        )
+        group.error_event = threading.Event()
+        group.shutdown_event = threading.Event()
+        group.shutdown_event.set()
+
+        async def failing_get(*, timeout=None):
+            group.error_event.set()
+            raise asyncio.TimeoutError
+
+        group.messaging = Mock(get=failing_get, receive_stopped_event=threading.Event())
+        with pytest.raises(RuntimeError, match="error_event is set"):
+            _ = [update async for update in group.request_updates()]
 
     @pytest.mark.xfail(reason="old and broken", run=False)
     @pytest.mark.smoke

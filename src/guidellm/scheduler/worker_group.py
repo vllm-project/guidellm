@@ -398,6 +398,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         Returns an async iterator of request updates including response, request,
         request scheduling info, and scheduler state. Updates occur on request queued,
         processing start, and completion. Response is None until processing completes.
+        Iteration ends only after receive threads stop and buffered updates are yielded.
 
         :return: Async iterator yielding (response, request, request_info, state)
             tuples where response is None until processing is complete
@@ -425,8 +426,19 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 yield response, request, request_info, scheduler_state
             except asyncio.TimeoutError:
                 if self.shutdown_event.is_set():  # type: ignore[union-attr]
-                    # Everything yielded, exit
-                    break
+                    # The final callback can signal shutdown before buffering its
+                    # update. Wait for all receive threads and drain their buffer,
+                    # including updates delivered while this get was timing out.
+                    receive_stopped = self.messaging.receive_stopped_event  # type: ignore[union-attr]
+                    receive_buffer = self.messaging.buffer_receive_queue  # type: ignore[union-attr]
+                    if (
+                        receive_stopped is not None
+                        and receive_stopped.is_set()
+                        and receive_buffer is not None
+                        and receive_buffer.empty()
+                    ):
+                        break
+                    continue
                 # Time-based constraints (max_duration) must be evaluated even when
                 # workers are sleeping until a future target start, because no
                 # request updates arrive during that wait.
