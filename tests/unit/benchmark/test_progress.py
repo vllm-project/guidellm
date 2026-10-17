@@ -232,7 +232,7 @@ async def test_queued_logs_share_rich_terminal(monkeypatch, accumulator):
 @pytest.mark.smoke
 def test_prefetch_shows_loading_until_update(accumulator):
     """
-    Prefetch renders loading with blank summaries until the first update.
+    Prefetch renders loading with the loaded request count until the first update.
 
     ## WRITTEN BY AI ##
     """
@@ -241,9 +241,16 @@ def test_prefetch_shows_loading_until_update(accumulator):
 
     assert task_state.benchmark_status == "loading"
     assert "loading" in task_state.formatted_progress_status
-    assert task_state.formatted_requests_summary == " "
+    assert task_state.formatted_requests_summary.endswith("0/4")
+    assert task_state.completed == 0
     assert task_state.formatted_tokens_summary == " "
     assert task_state.formatted_scheduler_stats == " "
+
+    task_state.note_prefetch(2, 4)
+
+    assert task_state.formatted_requests_summary.endswith("2/4")
+    assert task_state.completed == 0
+    assert task_state.progress == 0.0
 
     task_state.update(accumulator, SchedulerState())
 
@@ -253,4 +260,45 @@ def test_prefetch_shows_loading_until_update(accumulator):
     loading_all.start(SynchronousStrategy(prefetch="all"))
 
     assert loading_all.benchmark_status == "loading"
-    assert loading_all.formatted_requests_summary == " "
+    assert loading_all.formatted_requests_summary.endswith("0")
+    assert loading_all.prefetch_target is None
+    loading_all.note_prefetch(3, None)
+    assert loading_all.formatted_requests_summary.endswith("3")
+    assert loading_all.completed == 0
+
+
+@pytest.mark.sanity
+def test_prefetch_logs_loaded_count_then_waits_for_the_interval(monkeypatch):
+    """
+    The first prefetch update is logged, and the next waits for the log interval.
+
+    ## WRITTEN BY AI ##
+    """
+    now = [100.0]
+    monkeypatch.setattr(progress_module, "monotonic", lambda: now[0])
+    records = []
+    sink = progress_module.logger.add(
+        lambda message: records.append(message.record),
+        enqueue=False,
+        filter=lambda record: "progress_status" in record["extra"],
+    )
+    progress = GenerativeLoggingBenchmarkerProgress(interval=10)
+    try:
+        progress._index = 1
+        progress._state = _GenerativeProgressTaskState(strategy_type="synchronous")
+        progress._state.start(SynchronousStrategy(prefetch=4))
+        progress._started_at = 100.0
+        progress.on_requests_prefetched(2, 4)
+        now[0] = 105.0
+        progress.on_requests_prefetched(3, 4)
+        now[0] = 110.0
+        progress.on_requests_prefetched(4, 4)
+    finally:
+        progress_module.logger.remove(sink)
+
+    assert [record["extra"]["progress_status"] for record in records] == [
+        "loading",
+        "loading",
+    ]
+    assert "prefetched=2/4" in records[0]["message"]
+    assert "prefetched=4/4" in records[1]["message"]

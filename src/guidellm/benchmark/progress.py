@@ -88,6 +88,17 @@ class BenchmarkerProgress(Generic[BenchmarkAccumulatorT, BenchmarkT], ABC):
         :param strategy: Scheduling strategy configuration being executed
         """
 
+    def on_requests_prefetched(self, loaded: int, target: int | None) -> None:
+        """
+        Record request nodes loaded before the run starts.
+
+        The scheduler calls this synchronously from the prefetch loop.
+        Trackers that do not display loading progress keep the default.
+
+        :param loaded: Request nodes loaded so far
+        :param target: Request nodes to load, or ``None`` when loading all
+        """
+
     @abstractmethod
     async def on_benchmark_update(
         self, accumulator: BenchmarkAccumulatorT, scheduler_state: SchedulerState
@@ -158,6 +169,16 @@ class CompositeBenchmarkerProgress(
         await self._notify_progress(
             *(tracker.on_benchmark_start(strategy) for tracker in self.trackers)
         )
+
+    def on_requests_prefetched(self, loaded: int, target: int | None) -> None:
+        """
+        Forward a prefetch progress update to every tracker.
+
+        :param loaded: Request nodes loaded so far
+        :param target: Request nodes to load, or ``None`` when loading all
+        """
+        for tracker in self.trackers:
+            tracker.on_requests_prefetched(loaded, target)
 
     async def on_benchmark_update(
         self, accumulator: BenchmarkAccumulatorT, scheduler_state: SchedulerState
@@ -273,6 +294,18 @@ class GenerativeConsoleBenchmarkerProgress(
             self.tasks_progress.start_benchmark(strategy)
             self._sync_run_progress()
 
+    def on_requests_prefetched(self, loaded: int, target: int | None) -> None:
+        """
+        Update the loading bar with the number of prefetched requests.
+
+        :param loaded: Request nodes loaded so far
+        :param target: Request nodes to load, or ``None`` when loading all
+        """
+        if self.tasks_progress is not None:
+            self.tasks_progress.note_prefetch(loaded, target)
+            self._sync_run_progress()
+            self.refresh()
+
     async def on_benchmark_update(
         self,
         accumulator: GenerativeBenchmarkAccumulator,
@@ -353,6 +386,7 @@ class GenerativeLoggingBenchmarkerProgress(
         self._index = 0
         self._started_at = 0.0
         self._last_update = 0.0
+        self._logged_prefetch = False
 
     async def on_initialize(self, profile: Profile):
         """
@@ -363,6 +397,7 @@ class GenerativeLoggingBenchmarkerProgress(
         self.profile = profile
         self._index = 0
         self._state = None
+        self._logged_prefetch = False
 
     async def on_benchmark_start(self, strategy: SchedulingStrategy):
         """
@@ -374,7 +409,25 @@ class GenerativeLoggingBenchmarkerProgress(
         self._state = _GenerativeProgressTaskState(strategy_type=strategy.type_)
         self._state.start(strategy)
         self._started_at = monotonic()
+        self._logged_prefetch = False
         self._log_update("started")
+
+    def on_requests_prefetched(self, loaded: int, target: int | None) -> None:
+        """
+        Log prefetch progress on the first update and then on the log interval.
+
+        :param loaded: Request nodes loaded so far
+        :param target: Request nodes to load, or ``None`` when loading all
+        """
+        if self._state is None:
+            return
+        self._state.note_prefetch(loaded, target)
+        if (
+            not self._logged_prefetch
+            or monotonic() - self._last_update >= self.interval
+        ):
+            self._logged_prefetch = True
+            self._log_update("loading")
 
     async def on_benchmark_update(
         self,
@@ -417,14 +470,23 @@ class GenerativeLoggingBenchmarkerProgress(
             return
         state = self._state
         now = monotonic()
+        prefetched = ""
+        if status == "loading":
+            loaded = (
+                f"{state.prefetched_requests}/{state.prefetch_target}"
+                if state.prefetch_target is not None
+                else str(state.prefetched_requests)
+            )
+            prefetched = f"prefetched={loaded} | "
         logger.bind(benchmark_index=self._index, progress_status=status).info(
-            "Benchmark {} ({}): {} | elapsed={:.1f}s | "
+            "Benchmark {} ({}): {} | elapsed={:.1f}s | {}"
             "successful={} errored={} incomplete={} | "
             "requests/s={:.2f} output_tokens/s={:.2f}",
             self._index,
             state.strategy,
             status,
             now - self._started_at,
+            prefetched,
             state.successful_requests,
             state.errored_requests,
             state.cancelled_requests,
@@ -508,6 +570,22 @@ class _GenerativeProgressTasks(Progress):
                 **current_state.current,
             )
 
+    def note_prefetch(self, loaded: int, target: int | None):
+        """
+        Update the current task with the number of prefetched request nodes.
+
+        :param loaded: Request nodes loaded so far
+        :param target: Request nodes to load, or ``None`` when loading all
+        """
+        if self.current_index < 0 or self.current_index >= len(
+            self.benchmark_task_states
+        ):
+            return
+        current_state = self.benchmark_task_states[self.current_index]
+        current_state.note_prefetch(loaded, target)
+        if current_state.task_id is not None:
+            self.update(current_state.task_id, **current_state.current)
+
     def update_benchmark(
         self,
         accumulator: GenerativeBenchmarkAccumulator,
@@ -566,6 +644,8 @@ class _GenerativeProgressTaskState:
     queued_time: float = 0.0
     request_targeted_start_delay: float = 0.0
     scheduler_overheads_time: float = 0.0
+    prefetched_requests: int = 0
+    prefetch_target: int | None = None
 
     @property
     def current(self) -> dict[str, Any]:
@@ -582,7 +662,7 @@ class _GenerativeProgressTaskState:
 
     @property
     def completed(self) -> float:
-        if self.benchmark_status == "pending":
+        if self.benchmark_status == "pending" or self.benchmark_status == "loading":
             return 0.0
 
         if self.benchmark_status == "completed":
@@ -629,8 +709,16 @@ class _GenerativeProgressTaskState:
 
     @property
     def formatted_requests_summary(self) -> str:
-        if self.benchmark_status in {"pending", "loading"}:
+        if self.benchmark_status == "pending":
             return " "
+
+        if self.benchmark_status == "loading":
+            loaded = (
+                f"{self.prefetched_requests}/{self.prefetch_target}"
+                if self.prefetch_target is not None
+                else str(self.prefetched_requests)
+            )
+            return f"[{Colors.info}]Requests:[/{Colors.info}] {loaded}"
 
         return (
             f"[{Colors.info}]Req:[/{Colors.info}] "
@@ -783,6 +871,21 @@ class _GenerativeProgressTaskState:
         prefetch_count = strategy.prefetch_count()
         if prefetch_count == "all" or prefetch_count > 0:
             self.benchmark_status = "loading"
+            self.prefetched_requests = 0
+            self.prefetch_target = prefetch_count if prefetch_count != "all" else None
+            self.progress = 0.0
+
+    def note_prefetch(self, loaded: int, target: int | None):
+        """
+        Record how many request nodes have been loaded.
+
+        :param loaded: Request nodes loaded so far
+        :param target: Request nodes to load, or ``None`` when loading all
+        """
+        self.benchmark_status = "loading"
+        self.prefetched_requests = loaded
+        if target is not None:
+            self.prefetch_target = target
 
     def update(
         self,
