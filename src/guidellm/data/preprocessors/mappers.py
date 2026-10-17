@@ -95,6 +95,7 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
         "requeue_delay_column": ["requeue_delay"],
         "request_duration_column": ["duration", "request_duration"],
         "conversation_turns_column": ["conversation_turns"],
+        "model_column": ["model"],
     }
     column_name_pattern: str = (
         r"^(?P<full_name>(?P<match_name>({name})(es|s)?)([-_](?P<turn>\d+))?)$"

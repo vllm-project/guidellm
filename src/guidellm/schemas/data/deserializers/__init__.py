@@ -26,6 +26,7 @@ from guidellm.schemas.data.deserializers.trace_minimal import MinimalTraceFormat
 from guidellm.schemas.data.deserializers.trace_mooncake import MooncakeTraceFormatArgs
 from guidellm.schemas.data.deserializers.trace_otel import OTELTraceFormatArgs
 from guidellm.schemas.data.deserializers.trace_weka import WEKATraceFormatArgs
+from guidellm.schemas.data.deserializers.weighted_sampler import WeightedSamplerDataArgs
 
 __all__ = [
     "DEFAULT_SYNTHETIC_TOOLS",
@@ -47,6 +48,7 @@ __all__ = [
     "SyntheticVisionDataArgs",
     "TraceDataArgs",
     "WEKATraceFormatArgs",
+    "WeightedSamplerDataArgs",
     "_require_mean_if_distribution_knobs",
     "parse_aspect_ratio",
 ]
