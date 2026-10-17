@@ -7,6 +7,8 @@ pack caps run in original trace seconds, then remaining
 
 from __future__ import annotations
 
+import heapq
+
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
     ConversationTurnData,
@@ -153,8 +155,8 @@ class TraceSessionTiming:
     def _pack_min_concurrent_sessions(self, graph: ConversationGraphData) -> None:
         """Shift this session earlier so at least N sessions overlap.
 
-        The first N sessions start together. Each later session starts when
-        session ``i - N`` ends, which keeps N in flight during steady state.
+        The first N non-instantaneous sessions start together. Each later session
+        starts when fewer than N previously placed sessions would remain in flight.
         Sessions are never delayed past their current start. Instantaneous
         sessions (single-turn rows whose start equals end) are not shifted.
 
@@ -172,9 +174,6 @@ class TraceSessionTiming:
         if session_end == session_start:
             # Instantaneous (single-turn) session: packing cannot overlap
             # without collapsing distinct arrivals. Leave the start in place.
-            if self._first_session_start is None:
-                self._first_session_start = session_start
-            placed.append(session_end)
             return
 
         target_count = self.min_concurrent_sessions
@@ -185,12 +184,14 @@ class TraceSessionTiming:
             first_start = self._first_session_start
             target_start = first_start if first_start is not None else session_start
         else:
-            # Start when the session from N slots ago ends, filling that lane.
-            target_start = placed[len(placed) - target_count]
+            target_start = placed[0]
 
         new_start = min(session_start, target_start)
         self._shift_session(graph, session_start - new_start)
-        placed.append(new_start + (session_end - session_start))
+        heapq.heappush(placed, new_start + (session_end - session_start))
+        if len(placed) > target_count:
+            # The N latest ends determine when overlap falls below N.
+            heapq.heappop(placed)
 
     def _apply_time_scale(self, graph: ConversationGraphData) -> None:
         """Multiply timestamps and recorded durations after wait and pack caps."""
