@@ -38,7 +38,7 @@ A boolean metric compares as true or false. `True` is greater than a threshold o
 
 A status breakdown is not one distribution. `time_to_first_token_ms` has a separate summary for `successful`, `incomplete`, `errored`, and `total`. The path segment `.total` selects the summary that includes every status. `statistic: mean` then selects the mean of that summary. The two are independent, so the mean of time to first token is `time_to_first_token_ms.total` with `statistic: mean`. `request_latency.total` has the same shape. `generation_delay` is already one distribution, so its path has no status segment.
 
-A path that is not on the compiled schemas is logged and printed with the other warnings after the progress display finishes. A field that exists but is null is skipped. `root_dispatch_delay` covers only the first request of each conversation. It is null when none of those requests have a dispatch delay, which is the case for a profile with no arrival schedule.
+A path that is not on the compiled schemas is logged and printed with the other warnings after the progress display finishes. A field that exists but is null is skipped. `root_dispatch_delay` covers only the first request of each conversation. It is null for the throughput strategy, which targets every request at the run start, so its delay would be elapsed run time.
 
 ## Common metric paths
 
@@ -49,7 +49,7 @@ A path that is not on the compiled schemas is logged and printed with the other 
 - `time_per_output_token_ms.total`: average time per output token, in milliseconds.
 - `inter_token_latency_ms.total`: inter-token latency, in milliseconds.
 - `request_dispatch_delay.total`: lateness against the scheduled start, in seconds. Null when the profile does not define an arrival schedule.
-- `root_dispatch_delay`: lateness of the first request of each conversation, in seconds. Later turns are omitted. Null when no first turn has a dispatch delay.
+- `root_dispatch_delay`: lateness of the first request of each conversation, in seconds. Later turns are omitted. Null under the throughput strategy.
 - `dataset_incomplete`: `true` when the scheduler stops queueing before the request iterator is exhausted. The scheduler records that the iterator finished only after the loader has yielded every conversation. A `max_requests` or `max_duration` stop therefore marks the dataset incomplete, and the built-in trace rule can fire on a run that was meant to stop early. `data_loader.samples` caps the iterator itself, so a run that consumes every yielded sample looks complete and does not fire.
 - `strategy_type`: strategy type identifier, such as `trace` or `concurrent`.
 

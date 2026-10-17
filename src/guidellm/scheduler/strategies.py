@@ -155,6 +155,19 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         """
         return False
 
+    @property
+    def defines_root_dispatch_delay(self) -> bool:
+        """
+        Whether a conversation's first request has a meaningful dispatch delay.
+
+        The delay is measured against the targeted start time. A strategy that
+        targets every request at the benchmark start returns False, since that
+        delay is elapsed benchmark time rather than lateness.
+
+        :return: True if first-turn dispatch delay measures lateness
+        """
+        return True
+
     def init_processes_timings(
         self,
         worker_count: PositiveInt,
@@ -478,6 +491,13 @@ class ThroughputStrategy(SchedulingStrategy):
         :return: Max concurrency if set, otherwise None for unlimited
         """
         return self.max_concurrency
+
+    @property
+    def defines_root_dispatch_delay(self) -> bool:
+        """
+        :return: False, since every request targets the benchmark start
+        """
+        return False
 
     async def next_request_time(self, worker_index: int) -> float:
         """
