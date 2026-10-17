@@ -40,8 +40,16 @@ class OpenAIHTTPBackendArgs(BackendArgs):
     )
     model: str = Field(
         default_factory=str,
-        description="Huggingface model identifier or local path to a model",
-        examples=["gpt-4o", "Qwen/Qwen3-0.6B"],
+        description=(
+            "Huggingface model identifier, local path to a model, or a "
+            "comma-separated list of models for targets serving multiple "
+            "models on one endpoint (e.g. a base model with LoRA adapters). "
+            "When a list is given, the scheduler round-robins requests "
+            "across the entries at generation time (main process, immune "
+            "to worker isolation); the first entry is used for tokenizer "
+            "resolution and benchmark identity."
+        ),
+        examples=["gpt-4o", "Qwen/Qwen3-0.6B", "zai-org/GLM-5.3,agent-01,agent-02"],
     )
     request_format: Literal[
         "/v1/completions",
