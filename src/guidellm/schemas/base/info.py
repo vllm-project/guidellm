@@ -241,6 +241,14 @@ class RequestInfo(StandardBaseModel):
             "execution order (0-based). Independent of history_context."
         ),
     )
+    conversation_node_count: int | None = Field(
+        default=None,
+        description=(
+            "Number of nodes in the full conversation graph, including nodes "
+            "that were never queued because the run stopped first. None when "
+            "unknown."
+        ),
+    )
     node_id: str | None = Field(
         default=None,
         description="Node ID within a conversation graph, if applicable.",
