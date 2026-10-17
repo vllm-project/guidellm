@@ -11,6 +11,10 @@ Tool calling is supported with both `/v1/chat/completions` and `/v1/responses`. 
 - **`/v1/chat/completions`** uses `role: "assistant"` messages with a `tool_calls` array, followed by `role: "tool"` messages carrying tool results.
 - **`/v1/responses`** uses `function_call` items in the `input` array, followed by `function_call_output` items.
 
+When a response includes both text and tool calls, client-side history preserves both for follow-up requests. If `multiturn_reasoning` is enabled in the backend configuration, client-side history also includes reasoning text that GuideLLM has captured from the response.
+
+For `/v1/responses`, vLLM's `reasoning_text` content parts and `response.reasoning_text.delta` streaming events are not currently captured; support is tracked in [#1307](https://github.com/vllm-project/guidellm/issues/1307).
+
 For the full wire format of tool-call messages, see the [OpenAI function calling guide](https://developers.openai.com/api/docs/guides/function-calling).
 
 ## Mocked Client-side Tool Calls
