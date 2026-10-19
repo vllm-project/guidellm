@@ -79,6 +79,39 @@ def _render_latency_table_headers() -> str:
     return " ".join(str(header) for header in captured["headers"])  # type: ignore[union-attr]
 
 
+@pytest.mark.regression
+def test_audio_tables_include_audio_quality_distributions(monkeypatch):
+    """Wire audio latency and continuity summaries into the console output.
+
+    :param monkeypatch: Pytest monkeypatch fixture for capturing table settings.
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    output = GenerativeBenchmarkerConsole()
+    calls: list[dict[str, object]] = []
+
+    def capture_table(**kwargs: object) -> None:
+        """Capture one modality table's configuration."""
+        calls.append(kwargs)
+
+    monkeypatch.setattr(output, "_print_modality_table", capture_table)
+    output.print_audio_table(SimpleNamespace())
+
+    assert len(calls) == 2
+    assert calls[0]["modality"] == "audio"
+    assert calls[1]["modality"] == "audio"
+    assert calls[1]["metric_groups"] == [
+        ("ttfp_ms", "Audio TTFP"),
+        ("rtf", "Audio RTF"),
+        ("underrun_seconds", "Audio Underrun"),
+        ("continuity_ok_rate", "Continuity OK"),
+    ]
+    assert calls[1]["output_statistics"]["continuity_ok_rate"] == (
+        "Rate 0-1",
+        ("mean",),
+    )
+
+
 class TestRequestLatencyTable:
     """
     Verify which metrics the final console latency table exposes.

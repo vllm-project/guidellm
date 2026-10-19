@@ -100,7 +100,7 @@ async def test_resolve_streams_deltas_and_done() -> None:
     assert out[0][0] is None
     final_resp, _ = out[1]
     assert final_resp.text == "hi"
-    assert final_resp.input_metrics.audio_tokens == 5
+    assert final_resp.input_metrics.audio_tokens is None
     assert final_resp.output_metrics.text_tokens == 1
 
 
@@ -220,7 +220,7 @@ async def test_done_without_deltas_sets_first_token_and_prefetch_yield() -> None
     assert prefetch_info.timings.token_iterations == 1
     final_resp, final_info = out[1]
     assert final_resp.text == "only-done"
-    assert final_resp.input_metrics.audio_tokens == 2
+    assert final_resp.input_metrics.audio_tokens is None
     assert final_resp.output_metrics.text_tokens == 7
     assert final_info.timings.request_end is not None
 

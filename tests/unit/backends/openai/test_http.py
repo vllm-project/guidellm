@@ -5,6 +5,7 @@ Unit tests for OpenAIHTTPBackend implementation.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from collections.abc import AsyncIterator, Iterable
 from contextlib import nullcontext
@@ -23,6 +24,7 @@ from guidellm.backends.openai.request_handlers import (
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
 )
+from guidellm.mock_server.multimodal import mock_pcm16, mock_wav
 from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
@@ -88,6 +90,9 @@ class TestOpenAIHTTPBackend:
         the mock_handler, allowing tests to configure the mock as needed.
         """
         mock_handler = Mock(spec=OpenAIRequestHandler)
+        mock_handler.raw_response = False
+        mock_handler.raw_streaming = False
+        mock_handler.last_iteration_had_audio = False
         # Set default return value for format() method
         mock_handler.format.return_value = GenerationRequestArguments(
             body={"model": "test-model"}
@@ -1250,7 +1255,6 @@ async def test_trace_request_start_records_first_request_headers(protocol: str):
 
         await trace(event, {"request": post})
         assert request_info.timings.request_start == 2.0
-
         await trace(event, {"request": post})
         assert request_info.timings.request_start == 2.0
 
@@ -1461,3 +1465,162 @@ async def test_validate_and_models_send_extras_headers_and_params(
         sent = route.calls.last.request
         assert sent.headers["X-Api-Key"] == "secret"
         assert sent.url.params["api-version"] == "2024-10-21"
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_raw_speech_http_records_audio_timing(httpx2_mock: respx.Router):
+    """Propagate response layout and audio timing over raw HTTP streaming.
+
+    :param httpx2_mock: HTTP response fixture for the raw audio stream.
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    payload = b"\x00\x00" * 1600
+    httpx2_mock.route(url="http://test/v1/audio/speech").respond(
+        headers={
+            "Content-Type": "audio/pcm",
+            "X-Audio-Sample-Rate": "16000",
+            "X-Audio-Channels": "1",
+        },
+        content=_async_chunks([payload[:1000], payload[1000:]]),
+    )
+    backend = _make_backend(
+        target="http://test",
+        model="test-model",
+        validate_backend=False,
+        request_format="/v1/audio/speech",
+        extras=GenerationRequestArguments(
+            body={"response_format": "pcm", "stream_format": "audio"}
+        ),
+    )
+    request = GenerationRequest(columns={"text_column": ["Speak."]})
+    info = RequestInfo(request_id=request.request_id, status="pending")
+    await backend.process_startup()
+    try:
+        responses = [
+            response
+            async for response, _ in backend.resolve(request, info)
+            if response is not None
+        ]
+    finally:
+        await backend.process_shutdown()
+
+    assert responses[-1].output_media[0]["data"] == payload
+    assert responses[-1].output_metrics.audio_seconds == pytest.approx(0.1)
+    assert info.timings.first_audio_iteration is not None
+    assert info.timings.last_audio_iteration is not None
+    assert info.timings.first_token_iteration is None
+    assert info.timings.token_iterations == 0
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_chat_audio_sse_records_audio_without_text_iterations(
+    httpx2_mock: respx.Router,
+):
+    """Record first and last audio events from chat SSE separately from tokens.
+
+    :param httpx2_mock: HTTP response fixture for chat audio SSE.
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    audio = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+    event = {
+        "modality": "audio",
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"content": base64.b64encode(audio).decode("ascii")},
+                "audio_metadata": {
+                    "format": "wav",
+                    "sample_rate_hz": 16000,
+                    "frame_count": 1600,
+                    "channels": 1,
+                },
+            }
+        ],
+    }
+    httpx2_mock.route(url="http://test/v1/chat/completions").respond(
+        headers={"Content-Type": "text/event-stream"},
+        content=_async_chunks(
+            [
+                ("data: " + json.dumps(event) + "\n\n").encode(),
+                (
+                    b'data: {"choices":[{"index":0,"delta":{},'
+                    b'"finish_reason":"stop"}]}\n\n'
+                ),
+                b"data: [DONE]\n\n",
+            ]
+        ),
+    )
+    backend = _make_backend(
+        target="http://test",
+        model="test-model",
+        stream=True,
+        validate_backend=False,
+        request_format="/v1/chat/completions",
+        extras=GenerationRequestArguments(body={"modalities": ["audio"]}),
+    )
+    request = GenerationRequest(columns={"text_column": ["Speak."]})
+    info = RequestInfo(request_id=request.request_id, status="pending")
+    await backend.process_startup()
+    try:
+        responses = [
+            response
+            async for response, _ in backend.resolve(request, info)
+            if response is not None
+        ]
+    finally:
+        await backend.process_shutdown()
+
+    result = responses[-1]
+    assert result.output_media[0]["data"] == audio
+    assert result.output_metrics.audio_seconds == pytest.approx(0.1)
+    assert info.timings.first_audio_iteration is not None
+    assert info.timings.last_audio_iteration is not None
+    assert info.timings.first_token_iteration is None
+    assert info.timings.token_iterations == 0
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_raw_speech_uses_configured_pcm_layout_without_headers(
+    httpx2_mock: respx.Router,
+):
+    """Apply backend PCM layout hints when a server omits audio headers.
+
+    :param httpx_mock: HTTP response fixture for the raw PCM stream.
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    payload = b"\x00" * 9600
+    httpx2_mock.route(url="http://test/v1/audio/speech").respond(
+        headers={"Content-Type": "audio/pcm"},
+        content=_async_chunks([payload]),
+    )
+    backend = _make_backend(
+        target="http://test",
+        model="test-model",
+        validate_backend=False,
+        request_format="/v1/audio/speech",
+        audio_output_sample_rate=24000,
+        audio_output_channels=2,
+        extras=GenerationRequestArguments(
+            body={"response_format": "pcm", "stream_format": "audio"}
+        ),
+    )
+    request = GenerationRequest(columns={"text_column": ["Speak."]})
+    info = RequestInfo(request_id=request.request_id, status="pending")
+    await backend.process_startup()
+    try:
+        responses = [
+            response
+            async for response, _ in backend.resolve(request, info)
+            if response is not None
+        ]
+    finally:
+        await backend.process_shutdown()
+
+    assert responses[-1].output_metrics.audio_samples == 2400
+    assert responses[-1].output_metrics.audio_seconds == pytest.approx(0.1)

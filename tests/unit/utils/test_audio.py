@@ -673,3 +673,163 @@ def test_encode_audio_follows_redirects(httpx2_mock, status_code):
     assert result["audio_seconds"] == pytest.approx(0.1)
     assert result["format"] == "wav"
     assert len(httpx2_mock.calls) == 2
+
+
+@pytest.mark.regression
+def test_compute_audio_continuity_reports_playback_gap():
+    """Measure the largest playback deficit between packet arrivals.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    result = _audio_mod.compute_audio_continuity(
+        chunk_arrival_times_s=[0.0, 0.3],
+        chunk_bytes=[1600, 1600],
+        sample_rate=16000,
+    )
+
+    assert result.max_underrun_seconds == pytest.approx(0.25)
+    assert result.underrun_event_count == 1
+    assert result.is_continuous is False
+
+
+@pytest.mark.regression
+def test_compute_audio_continuity_handles_insufficient_or_invalid_layout():
+    """Treat fewer than two packets and invalid layouts as no measured gap.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    one_packet = _audio_mod.compute_audio_continuity(
+        chunk_arrival_times_s=[0.0],
+        chunk_bytes=[10],
+        sample_rate=16000,
+    )
+    mismatched = _audio_mod.compute_audio_continuity(
+        chunk_arrival_times_s=[0.0, 1.0],
+        chunk_bytes=[10],
+        sample_rate=16000,
+    )
+    invalid_rate = _audio_mod.compute_audio_continuity(
+        chunk_arrival_times_s=[0.0, 1.0],
+        chunk_bytes=[10, 10],
+        sample_rate=0,
+    )
+
+    assert one_packet.is_continuous is True
+    assert mismatched.is_continuous is True
+    assert invalid_rate.is_continuous is True
+    assert one_packet.max_underrun_seconds == 0
+
+
+@pytest.mark.regression
+def test_synthesize_audio_is_repeatable_and_reports_sample_metadata():
+    """Generate deterministic per-row waveforms and canonical audio metadata.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    with patch.object(_audio_mod, "_encode_audio", return_value=b"encoded") as encode:
+        first = _audio_mod.synthesize_audio(
+            duration_seconds=0.2,
+            sample_rate=16000,
+            audio_format="WAV",
+            seed=81,
+            row_index=4,
+        )
+        _audio_mod.synthesize_audio(
+            duration_seconds=0.2,
+            sample_rate=16000,
+            audio_format="WAV",
+            seed=81,
+            row_index=4,
+        )
+        _audio_mod.synthesize_audio(
+            duration_seconds=0.2,
+            sample_rate=16000,
+            audio_format="WAV",
+            seed=81,
+            row_index=5,
+        )
+
+    first_samples = encode.call_args_list[0].kwargs["samples"].data
+    repeat_samples = encode.call_args_list[1].kwargs["samples"].data
+    next_samples = encode.call_args_list[2].kwargs["samples"].data
+    assert torch.equal(first_samples, repeat_samples)
+    assert not torch.equal(first_samples, next_samples)
+    assert first["type"] == "audio_file"
+    assert first["audio"] == b"encoded"
+    assert first["format"] == "wav"
+    assert first["mimetype"] == "audio/wav"
+    assert first["audio_samples"] == 3200
+    assert first["audio_seconds"] == pytest.approx(0.2)
+    assert first["audio_bytes"] == len(b"encoded")
+    assert first["file_name"] == "synthetic_audio_81_4.wav"
+
+
+@pytest.mark.regression
+def test_synthesize_audio_silence_is_zero_valued():
+    """Produce zero-valued samples for the silence content option.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    with patch.object(_audio_mod, "_encode_audio", return_value=b"encoded") as encode:
+        _audio_mod.synthesize_audio(
+            duration_seconds=0.1,
+            sample_rate=8000,
+            content="silence",
+        )
+
+    waveform = encode.call_args.kwargs["samples"].data
+    assert torch.count_nonzero(waveform).item() == 0
+
+
+@pytest.mark.regression
+def test_synthesize_audio_noise_is_seeded():
+    """Generate reproducible noise for the same seed and row index.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    with patch.object(_audio_mod, "_encode_audio", return_value=b"encoded") as encode:
+        _audio_mod.synthesize_audio(
+            duration_seconds=0.1,
+            sample_rate=8000,
+            content="noise",
+            seed=45,
+            row_index=2,
+        )
+        _audio_mod.synthesize_audio(
+            duration_seconds=0.1,
+            sample_rate=8000,
+            content="noise",
+            seed=45,
+            row_index=2,
+        )
+
+    first = encode.call_args_list[0].kwargs["samples"].data
+    repeat = encode.call_args_list[1].kwargs["samples"].data
+    assert torch.equal(first, repeat)
+    assert torch.count_nonzero(first).item() > 0
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        ({"duration_seconds": 0}, "duration_seconds must be positive"),
+        ({"duration_seconds": 1, "sample_rate": 0}, "sample_rate must be positive"),
+        ({"duration_seconds": 1, "content": "chirp"}, "Unsupported synthetic audio"),
+    ],
+)
+def test_synthesize_audio_rejects_invalid_configuration(arguments, message):
+    """Reject invalid duration, sample rate, and waveform content.
+
+    :param arguments: Synthetic-audio options being validated.
+    :param message: Expected error text.
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    with pytest.raises(ValueError, match=message):
+        _audio_mod.synthesize_audio(**arguments)
