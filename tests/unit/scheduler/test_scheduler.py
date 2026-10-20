@@ -141,6 +141,7 @@ class TestScheduler:
             "backend",
             "strategy",
             "env",
+            "on_prefetch",
             "constraints",
         ]
         param_names = list(run_sig.parameters.keys())
