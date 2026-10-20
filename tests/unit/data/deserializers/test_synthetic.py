@@ -947,6 +947,70 @@ class TestSyntheticTextDatasetMultiturn:
         assert turns["main_2"].columns["prompt_tokens_count_column"] == [50]
         assert turns["main_0"].columns["output_tokens_count_column"] == [25]
 
+    @pytest.mark.regression
+    def test_branch_first_tokens_vary_across_conversations(self, mock_tokenizer):
+        """Branch first_* settings with a stdev give each conversation its own value."""
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50,
+            output_tokens=25,
+            turns=2,
+            branches=[
+                {
+                    "at_turn": 0,
+                    "turns": 1,
+                    "first_prompt_tokens": 100,
+                    "first_prompt_tokens_stdev": 30,
+                    "first_output_tokens": 40,
+                    "first_output_tokens_stdev": 10,
+                }
+            ],
+        )
+        dataset = iter(SyntheticTextDataset(config, mock_tokenizer, random_seed=7))
+        branch_turns = [
+            {turn.node_id: turn for turn in _conversation_graph(next(dataset)).turns}[
+                "branch_0_0"
+            ]
+            for _ in range(20)
+        ]
+
+        prompt_counts = [
+            turn.columns["prompt_tokens_count_column"][0] for turn in branch_turns
+        ]
+        output_counts = [
+            turn.columns["output_tokens_count_column"][0] for turn in branch_turns
+        ]
+        assert len(set(prompt_counts)) > 1
+        assert len(set(output_counts)) > 1
+
+    @pytest.mark.sanity
+    def test_branch_first_tokens_same_for_same_seed(self, mock_tokenizer):
+        """The same random seed gives the same branch first-turn sizes."""
+        config = SyntheticTextDataArgs(
+            prompt_tokens=50,
+            output_tokens=25,
+            turns=2,
+            branches=[
+                {
+                    "at_turn": 0,
+                    "turns": 1,
+                    "first_prompt_tokens": 100,
+                    "first_prompt_tokens_stdev": 30,
+                }
+            ],
+        )
+
+        def branch_prompt_counts() -> list[int]:
+            dataset = iter(SyntheticTextDataset(config, mock_tokenizer, random_seed=7))
+            return [
+                {
+                    turn.node_id: turn
+                    for turn in _conversation_graph(next(dataset)).turns
+                }["branch_0_0"].columns["prompt_tokens_count_column"][0]
+                for _ in range(10)
+            ]
+
+        assert branch_prompt_counts() == branch_prompt_counts()
+
     @pytest.mark.sanity
     def test_first_prompt_tokens_requires_mean(self):
         """Reject first_prompt_tokens_stdev without first_prompt_tokens.
