@@ -4830,6 +4830,36 @@ class TestResponsesRequestHandler:
         assert "".join(instance.streaming_tool_call_arguments[0]) == '{"loc":"SF"}'
 
     @pytest.mark.sanity
+    def test_streaming_tool_call_arguments_done_with_new_text(self, valid_instances):
+        """
+        Test that function_call_arguments.done counts as a token iteration when
+        its arguments differ from what the deltas streamed.
+        """
+        instance = valid_instances
+
+        lines = [
+            (
+                'data: {"type":"response.output_item.added",'
+                '"output_index":0,'
+                '"item":{"type":"function_call","name":"get_weather",'
+                '"call_id":"call_abc","arguments":""}}'
+            ),
+            (
+                'data: {"type":"response.function_call_arguments.delta",'
+                '"output_index":0,"delta":"{\\"loc\\""}'
+            ),
+            (
+                'data: {"type":"response.function_call_arguments.done",'
+                '"output_index":0,"arguments":"{\\"loc\\":\\"SF\\"}"}'
+            ),
+        ]
+
+        iterations = [instance.add_streaming_line(line) for line in lines]
+
+        assert iterations == [1, 1, 1]
+        assert "".join(instance.streaming_tool_call_arguments[0]) == '{"loc":"SF"}'
+
+    @pytest.mark.sanity
     def test_streaming_tool_call_arguments_done_without_deltas(self, valid_instances):
         """
         Test that function_call_arguments.done counts as a token iteration when
