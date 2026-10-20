@@ -71,7 +71,7 @@ def test_audio_html_report_exposes_quality_metrics_and_zero_values():
     benchmark = _make_benchmark(strategy=ConcurrentStrategy(streams=1), rps=1, tps=0)
     benchmark.metrics.audio = GenerativeAudioMetricsSummary.compile([stats], [], [])
 
-    html = html = render_html_report(build_report_view(_report(benchmark)))
+    html = render_html_report(build_report_view(_report(benchmark)))
 
     assert "TTFP (ms)" in html
     assert "Underrun (seconds)" in html

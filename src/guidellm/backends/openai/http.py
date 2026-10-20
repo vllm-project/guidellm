@@ -415,8 +415,8 @@ class OpenAIHTTPBackend(Backend):
 
                     # TTFOT: record the first content (non-reasoning) token.
                     if (
-                            request_info.timings.first_output_token_iteration is None
-                            and request_handler.last_iteration_had_content
+                        request_info.timings.first_output_token_iteration is None
+                        and request_handler.last_iteration_had_content
                     ):
                         request_info.timings.first_output_token_iteration = iter_time
 

@@ -2309,29 +2309,30 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
             )
 
     @staticmethod
-    def _align_audio_usage_for_chat_completions(
-            audio_usage: dict[str, Any],
+    def _align_audio_usage_for_chat_completions(  # noqa: C901
+        audio_usage: dict[str, Any],
     ) -> dict[str, Any]:
         """
         Align Audio/Realtime usage fields with the Chat Completions usage metrics.
 
         :param audio_usage: Usage data using Audio / Realtime keys.
         :return: A copy with Chat Completions keys added where needed.
-        :raises ValueError: If keys aliases are conflicting or usage details are invalid.
+        :raises ValueError: If keys aliases are conflicting or usage details are
+                invalid.
         """
         chat_usage = dict(audio_usage)
 
         for audio_key, chat_key in (
-                ("input_tokens", "prompt_tokens"),
-                ("output_tokens", "completion_tokens"),
+            ("input_tokens", "prompt_tokens"),
+            ("output_tokens", "completion_tokens"),
         ):
             audio_value = audio_usage.get(audio_key)
             chat_value = audio_usage.get(chat_key)
             # check that values are not both exist and contradict
             if (
-                    audio_value is not None
-                    and chat_value is not None
-                    and audio_value != chat_value
+                audio_value is not None
+                and chat_value is not None
+                and audio_value != chat_value
             ):
                 raise ValueError(
                     "[UNUSABLE_BACKEND_RESPONSE] conflicting usage fields "
@@ -2342,21 +2343,19 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
                 chat_usage[chat_key] = audio_value
 
         for audio_key, chat_key, chat_text_key in (
-                ("input_token_details", "prompt_tokens_details", "prompt_tokens"),
-                ("output_token_details", "completion_tokens_details", "completion_tokens"),
+            ("input_token_details", "prompt_tokens_details", "prompt_tokens"),
+            ("output_token_details", "completion_tokens_details", "completion_tokens"),
         ):
             audio_details = audio_usage.get(audio_key)
             chat_details = audio_usage.get(chat_key)
 
             if audio_details is not None and not isinstance(audio_details, dict):
                 raise ValueError(
-                    "[UNUSABLE_BACKEND_RESPONSE] invalid usage details "
-                    f"'{audio_key}'"
+                    f"[UNUSABLE_BACKEND_RESPONSE] invalid usage details '{audio_key}'"
                 )
             if chat_details is not None and not isinstance(chat_details, dict):
                 raise ValueError(
-                    "[UNUSABLE_BACKEND_RESPONSE] invalid usage details "
-                    f"'{chat_key}'"
+                    f"[UNUSABLE_BACKEND_RESPONSE] invalid usage details '{chat_key}'"
                 )
             if audio_details is None:
                 continue
@@ -2406,14 +2405,14 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
 
         # The parent's text fallback cannot classify an unsplit ASR input total.
         if input_details.get("prompt_tokens") is None and (
-                input_total_tokens is None or input_metrics.audio_tokens is None
+            input_total_tokens is None or input_metrics.audio_tokens is None
         ):
             input_metrics.text_tokens = None
 
         if input_metrics.audio_tokens is None and input_total_tokens is not None:
             if input_metrics.text_tokens is not None:
                 input_metrics.audio_tokens = (
-                        input_total_tokens - input_metrics.text_tokens
+                    input_total_tokens - input_metrics.text_tokens
                 )
             elif input_total_tokens == 0:
                 input_metrics.text_tokens = 0
@@ -2424,9 +2423,9 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
             input_metrics.audio_tokens,
         )
         if any(count is not None and count < 0 for count in input_counts) or (
-                input_total_tokens is not None
-                and sum(count for count in input_counts if count is not None)
-                > input_total_tokens
+            input_total_tokens is not None
+            and sum(count for count in input_counts if count is not None)
+            > input_total_tokens
         ):
             raise ValueError(
                 "[UNUSABLE_BACKEND_RESPONSE] input token counts are negative "
@@ -2438,8 +2437,8 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
 
         # Duration-only usage must not inherit the parent's missing-count zero.
         if (
-                output_details.get("completion_tokens") is None
-                and chat_usage.get("completion_tokens") is None
+            output_details.get("completion_tokens") is None
+            and chat_usage.get("completion_tokens") is None
         ):
             output_metrics.text_tokens = None
 

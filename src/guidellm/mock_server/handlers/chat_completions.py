@@ -289,7 +289,7 @@ class ChatCompletionsHandler:
             if "text" not in req.modalities:
                 payload["choices"][0]["message"]["content"] = None
                 payload["usage"]["completion_tokens"] = 0
-                payload["usage"]["total_tokens"] = prompt_tokens
+                payload["usage"]["total_tokens"] = prompt_tokens_count
 
         return response.json(payload)
 

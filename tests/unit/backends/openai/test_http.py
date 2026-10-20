@@ -38,7 +38,7 @@ from guidellm.schemas.backends import OpenAIHTTPBackendArgs
 from tests.unit.testing_utils import async_timeout
 
 
-async def _async_chunks(chunks: Iterable[bytes]) -> AsyncIterator[bytes]:
+async def _async_stream_chunks(chunks: Iterable[bytes]) -> AsyncIterator[bytes]:
     """Yield the chunks of a mocked streaming response one at a time."""
     for chunk in chunks:
         yield chunk
@@ -746,7 +746,7 @@ class TestOpenAIHTTPBackend:
     ):
         """Test resolve method handles asyncio.CancelledError during streaming."""
         httpx2_mock.route(url="http://test/v1/chat/completions").respond(
-            content=_async_chunks(
+            content=_async_stream_chunks(
                 [
                     b'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n',
                     b'data: {"choices": [{"delta": {"content": " world"}}]}\n\n',
@@ -1108,7 +1108,7 @@ class TestCheckToolCallExpectations:
         ]
 
         httpx2_mock.route(url="http://test/v1/chat/completions").respond(
-            content=_async_chunks(stream_chunks)
+            content=_async_stream_chunks(stream_chunks)
         )
 
         backend = _make_backend(
@@ -1199,7 +1199,7 @@ async def test_resolve_responses_terminal_error(
     )
     httpx2_mock.route(url="http://test/v1/responses").respond(
         headers={"Content-Type": "text/event-stream"},
-        content=_async_chunks(
+        content=_async_stream_chunks(
             [("data: " + json.dumps(event) + "\n\n").encode() for event in events]
         ),
     )
@@ -1483,7 +1483,7 @@ async def test_raw_speech_http_records_audio_timing(httpx2_mock: respx.Router):
             "X-Audio-Sample-Rate": "16000",
             "X-Audio-Channels": "1",
         },
-        content=_async_chunks([payload[:1000], payload[1000:]]),
+        content=_async_stream_chunks([payload[:1000], payload[1000:]]),
     )
     backend = _make_backend(
         target="http://test",
@@ -1521,7 +1521,7 @@ async def test_chat_audio_sse_records_audio_without_text_iterations(
 ):
     """Record first and last audio events from chat SSE separately from tokens.
 
-    :param httpx2_mock: HTTP response fixture for chat audio SSE.
+    :param httpx2_mock: Router serving the chat audio SSE responses.
     :return: None.
     ## WRITTEN BY AI ##
     """
@@ -1543,7 +1543,7 @@ async def test_chat_audio_sse_records_audio_without_text_iterations(
     }
     httpx2_mock.route(url="http://test/v1/chat/completions").respond(
         headers={"Content-Type": "text/event-stream"},
-        content=_async_chunks(
+        content=_async_stream_chunks(
             [
                 ("data: " + json.dumps(event) + "\n\n").encode(),
                 (
@@ -1590,14 +1590,14 @@ async def test_raw_speech_uses_configured_pcm_layout_without_headers(
 ):
     """Apply backend PCM layout hints when a server omits audio headers.
 
-    :param httpx_mock: HTTP response fixture for the raw PCM stream.
+    :param httpx2_mock: Router serving the raw PCM stream.
     :return: None.
     ## WRITTEN BY AI ##
     """
     payload = b"\x00" * 9600
     httpx2_mock.route(url="http://test/v1/audio/speech").respond(
         headers={"Content-Type": "audio/pcm"},
-        content=_async_chunks([payload]),
+        content=_async_stream_chunks([payload]),
     )
     backend = _make_backend(
         target="http://test",
@@ -1624,3 +1624,50 @@ async def test_raw_speech_uses_configured_pcm_layout_without_headers(
 
     assert responses[-1].output_metrics.audio_samples == 2400
     assert responses[-1].output_metrics.audio_seconds == pytest.approx(0.1)
+
+
+class _CountingChunks:
+    """Byte chunks that count how many were read."""
+
+    def __init__(self, chunks: list[bytes]):
+        self.chunks = chunks
+        self.read = 0
+
+    def __iter__(self):
+        for chunk in self.chunks:
+            self.read += 1
+            yield chunk
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("http_version", "expected_read"), [("HTTP/1.1", 3), ("HTTP/2", 2)]
+)
+async def test_stream_read_to_end_only_over_http11(
+    httpx2_mock: respx.Router, http_version: str, expected_read: int
+):
+    """Read past the final event over HTTP/1.1 and stop at it over HTTP/2.
+
+    ## WRITTEN BY AI ##
+    """
+    chunks = _CountingChunks(
+        [
+            b'data: {"choices": [{"delta": {"content": "Hi"}}]}\n\n',
+            b"data: [DONE]\n\n",
+            b": end\n\n",
+        ]
+    )
+    httpx2_mock.route(url="http://test/v1/chat/completions").respond(
+        http_version=http_version, content=_async_stream_chunks(chunks)
+    )
+    backend = _make_backend(target="http://test", model="test-model", stream=True)
+    request = GenerationRequest(columns={"text_column": ["Hello"]})
+    await backend.process_startup()
+    try:
+        async for _ in backend.resolve(request, RequestInfo(request_id="test-id")):
+            pass
+    finally:
+        await backend.process_shutdown()
+
+    assert chunks.read == expected_read
