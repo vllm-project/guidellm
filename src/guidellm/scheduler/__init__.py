@@ -27,7 +27,7 @@ from .constraints import (
     UnserializableConstraintInitializer,
 )
 from .environments import Environment, NonDistributedEnvironment
-from .scheduler import Scheduler
+from .scheduler import Scheduler, prefetch_requests
 from .schemas import (
     BackendInterface,
     BackendT,
@@ -83,6 +83,7 @@ __all__ = [
     "RequestT",
     "ResponseT",
     "Scheduler",
+    "prefetch_requests",
     "SchedulerMessagingPydanticRegistry",
     "SchedulerProgress",
     "SchedulerState",

@@ -9,7 +9,6 @@ various scenarios including LLM inference benchmarking.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator, Callable
 from itertools import chain
 from typing import Generic, Literal, Protocol, runtime_checkable
@@ -31,7 +30,7 @@ from guidellm.scheduler.worker_group import WorkerProcessGroup
 from guidellm.schemas import RequestInfo
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
-__all__ = ["Scheduler"]
+__all__ = ["Scheduler", "prefetch_requests"]
 
 
 @runtime_checkable
@@ -44,7 +43,7 @@ class InfiniteDataset(Protocol):
         """
 
 
-def _prefetch_requests(
+def prefetch_requests(
     requests: DatasetIterT[RequestT],
     count: int | Literal["all"],
     on_fetched: Callable[[int, int | None], None] | None = None,
@@ -134,7 +133,6 @@ class Scheduler(
         backend: BackendInterface[RequestT, ResponseT],
         strategy: SchedulingStrategy,
         env: Environment[RequestT, ResponseT] | None,
-        on_prefetch: Callable[[int, int | None], None] | None = None,
         **constraints: Constraint | ConstraintInitializer,
     ) -> AsyncIterator[
         tuple[
@@ -158,8 +156,6 @@ class Scheduler(
         :param strategy: Scheduling strategy controlling request timing and distribution
         :param env: Environment interface for distributed coordination and
             synchronization. Defaults to NonDistributedEnvironment if None
-        :param on_prefetch: Optional sync callback ``(loaded, target)`` invoked
-            as request nodes are loaded before the run starts
         :param constraints: Runtime constraints for execution control (max_requests,
             max_duration, max_error_rate, etc.) as primitives, dictionaries, or
             constraint instances
@@ -185,12 +181,6 @@ class Scheduler(
                     local_strategy,
                     local_constraints,
                 ) = await env.sync_run_params(requests, strategy, constraints)
-                local_requests = await asyncio.to_thread(
-                    _prefetch_requests,
-                    local_requests,
-                    local_strategy.prefetch_count(),
-                    on_fetched=on_prefetch,
-                )
 
                 # Setup the worker group, sync start with the environment
                 worker_group = WorkerProcessGroup[RequestT, ResponseT](

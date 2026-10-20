@@ -47,6 +47,7 @@ async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, fai
             )
 
     strategy = Mock()
+    strategy.prefetch_count = Mock(return_value=0)
 
     def strategies():
         yield strategy, {}

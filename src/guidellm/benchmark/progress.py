@@ -662,7 +662,7 @@ class _GenerativeProgressTaskState:
 
     @property
     def completed(self) -> float:
-        if self.benchmark_status == "pending" or self.benchmark_status == "loading":
+        if self.benchmark_status in {"pending", "loading"}:
             return 0.0
 
         if self.benchmark_status == "completed":

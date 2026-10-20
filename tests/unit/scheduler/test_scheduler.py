@@ -19,7 +19,7 @@ from guidellm.scheduler import (
     SchedulerState,
     SynchronousStrategy,
 )
-from guidellm.scheduler.scheduler import _prefetch_requests
+from guidellm.scheduler.scheduler import prefetch_requests
 from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
 from guidellm.schemas import RequestInfo, RequestSettings
 from guidellm.schemas.scheduler import (
@@ -141,7 +141,6 @@ class TestScheduler:
             "backend",
             "strategy",
             "env",
-            "on_prefetch",
             "constraints",
         ]
         param_names = list(run_sig.parameters.keys())
@@ -327,7 +326,7 @@ def test_prefetch_requests_buffers_nodes_and_keeps_crossing_graph():
         pulled.append("d")
         yield graphs[1]
 
-    prefetched = _prefetch_requests(source(), 2)
+    prefetched = prefetch_requests(source(), 2)
 
     assert pulled == []
     assert next(prefetched) is graphs[0]
@@ -350,7 +349,7 @@ def test_prefetch_requests_leaves_the_remainder():
             seen.append(graph.nodes["turn_0"].request.payload)
             yield graph
 
-    prefetched = _prefetch_requests(source(), 2)
+    prefetched = prefetch_requests(source(), 2)
 
     assert seen == ["a", "b"]
     assert next(prefetched).nodes["turn_0"].request.payload == "a"
@@ -369,7 +368,7 @@ def test_prefetch_requests_skips_zero():
     """
     graphs = [_graph(["a"])]
 
-    assert _prefetch_requests(graphs, 0) is graphs
+    assert prefetch_requests(graphs, 0) is graphs
 
 
 @pytest.mark.smoke
@@ -381,7 +380,7 @@ def test_prefetch_all_exhausts_a_finite_dataset():
     """
     graphs = [_graph(["a"]), _graph(["b"])]
 
-    assert _prefetch_requests(graphs, "all") == graphs
+    assert prefetch_requests(graphs, "all") == graphs
 
 
 @pytest.mark.smoke
@@ -394,7 +393,7 @@ def test_prefetch_reports_loaded_nodes_toward_the_target():
     graphs = [_graph(["a", "b"]), _graph(["c"])]
     seen: list[tuple[int, int | None]] = []
 
-    prefetched = _prefetch_requests(
+    prefetched = prefetch_requests(
         iter(graphs),
         1,
         on_fetched=lambda loaded, target: seen.append((loaded, target)),
@@ -414,7 +413,7 @@ def test_prefetch_all_reports_loaded_nodes_without_a_target():
     graphs = [_graph(["a"]), _graph(["b", "c"])]
     seen: list[tuple[int, int | None]] = []
 
-    loaded = _prefetch_requests(
+    loaded = prefetch_requests(
         graphs,
         "all",
         on_fetched=lambda loaded, target: seen.append((loaded, target)),
@@ -440,7 +439,7 @@ def test_prefetch_all_rejects_an_infinite_dataset():
             raise AssertionError("infinite dataset was iterated")
 
     with pytest.raises(ValueError, match="infinite dataset"):
-        _prefetch_requests(_Infinite(), "all")
+        prefetch_requests(_Infinite(), "all")
 
 
 def _wait_for_overlap(event: threading.Event, message: str) -> None:
