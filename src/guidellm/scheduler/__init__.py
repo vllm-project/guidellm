@@ -83,7 +83,6 @@ __all__ = [
     "RequestT",
     "ResponseT",
     "Scheduler",
-    "prefetch_requests",
     "SchedulerMessagingPydanticRegistry",
     "SchedulerProgress",
     "SchedulerState",
@@ -98,4 +97,5 @@ __all__ = [
     "UnserializableConstraintInitializer",
     "WorkerProcess",
     "WorkerProcessGroup",
+    "prefetch_requests",
 ]
