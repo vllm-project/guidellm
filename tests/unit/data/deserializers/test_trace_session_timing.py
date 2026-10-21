@@ -10,6 +10,7 @@ from guidellm.data.deserializers.trace_session_timing import (
 )
 from guidellm.data.schemas.conversation_graph_data import (
     ConversationGraphData,
+    ConversationParentRef,
     ConversationTurnData,
 )
 
@@ -29,6 +30,88 @@ def _graph_with_timestamps(
             )
         )
     return ConversationGraphData(turns=turns)
+
+
+def _graph_with_timestamps_and_durations(
+    timestamps: list[float],
+    durations: list[float],
+) -> ConversationGraphData:
+    turns = []
+    for index, (timestamp, duration) in enumerate(
+        zip(timestamps, durations, strict=True)
+    ):
+        turns.append(
+            ConversationTurnData(
+                node_id=f"n{index}",
+                columns={
+                    "text_column": [f"t{index}"],
+                    "relative_timestamp_column": [timestamp],
+                    "request_duration_column": [duration],
+                },
+            )
+        )
+    return ConversationGraphData(turns=turns)
+
+
+def _graph_with_parent_chain(
+    timestamps: list[float],
+    durations: list[float],
+) -> ConversationGraphData:
+    turns: list[ConversationTurnData] = []
+    for index, (timestamp, duration) in enumerate(
+        zip(timestamps, durations, strict=True)
+    ):
+        parents: list[ConversationParentRef] = []
+        if index > 0:
+            parents.append(ConversationParentRef(parent_node_id=f"n{index - 1}"))
+        turns.append(
+            ConversationTurnData(
+                node_id=f"n{index}",
+                parents=parents,
+                columns={
+                    "text_column": [f"t{index}"],
+                    "relative_timestamp_column": [timestamp],
+                    "request_duration_column": [duration],
+                },
+            )
+        )
+    return ConversationGraphData(turns=turns)
+
+
+def _graph_with_parallel_branches(
+    parent_duration: float,
+    branch_duration: float,
+) -> ConversationGraphData:
+    return ConversationGraphData(
+        turns=[
+            ConversationTurnData(
+                node_id="root",
+                columns={
+                    "text_column": ["root"],
+                    "relative_timestamp_column": [0.0],
+                    "request_duration_column": [parent_duration],
+                },
+            ),
+            ConversationTurnData(
+                node_id="left",
+                parents=[ConversationParentRef(parent_node_id="root")],
+                columns={
+                    "text_column": ["left"],
+                    "relative_timestamp_column": [10.0],
+                    "request_duration_column": [branch_duration],
+                },
+            ),
+            ConversationTurnData(
+                node_id="right",
+                parents=[ConversationParentRef(parent_node_id="root")],
+                columns={
+                    "text_column": ["right"],
+                    "relative_timestamp_column": [10.0],
+                    "request_duration_column": [branch_duration + 3.0],
+                },
+            ),
+        ]
+    )
 
 
 def _relative_timestamps(graph: ConversationGraphData) -> list[float | None]:
@@ -250,6 +333,182 @@ class TestTraceSessionTimingMinConcurrentSessions:
         assert _relative_timestamps(sessions[3]) == pytest.approx([60.5])
 
 
+class TestTraceSessionTimingMaxConcurrentSessions:
+    @pytest.mark.smoke
+    def test_staggers_equal_sessions_starting_together(self):
+        """Sessions that all start at 0 are delayed into waves of size N.
+
+        ## WRITTEN BY AI ##
+        """
+        sessions = [
+            _graph_with_timestamps([0.0, 10.0]),
+            _graph_with_timestamps([0.0, 10.0]),
+            _graph_with_timestamps([0.0, 10.0]),
+            _graph_with_timestamps([0.0, 10.0]),
+        ]
+        timing = TraceSessionTiming(max_concurrent_sessions=2)
+        for session in sessions:
+            timing.apply(session)
+        assert _relative_timestamps(sessions[0]) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(sessions[1]) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(sessions[2]) == pytest.approx([10.0, 20.0])
+        assert _relative_timestamps(sessions[3]) == pytest.approx([10.0, 20.0])
+
+    @pytest.mark.smoke
+    def test_does_not_delay_when_overlap_below_cap(self):
+        """Sessions already within the cap keep their original starts.
+
+        ## WRITTEN BY AI ##
+        """
+        first = _graph_with_timestamps([0.0, 40.0])
+        second = _graph_with_timestamps([0.0, 10.0])
+        timing = TraceSessionTiming(max_concurrent_sessions=2)
+        timing.apply(first)
+        timing.apply(second)
+        assert _relative_timestamps(first) == pytest.approx([0.0, 40.0])
+        assert _relative_timestamps(second) == pytest.approx([0.0, 10.0])
+
+    @pytest.mark.smoke
+    def test_preserves_intra_session_spacing(self):
+        """Delaying shifts a session as a unit.
+
+        ## WRITTEN BY AI ##
+        """
+        first = _graph_with_timestamps([0.0, 10.0])
+        second = _graph_with_timestamps([0.0, 5.0, 10.0])
+        timing = TraceSessionTiming(max_concurrent_sessions=1)
+        timing.apply(first)
+        timing.apply(second)
+        assert _relative_timestamps(second) == pytest.approx([10.0, 15.0, 20.0])
+
+    @pytest.mark.smoke
+    def test_unset_is_noop(self):
+        """Faithful replay leaves session starts unchanged when unset.
+
+        ## WRITTEN BY AI ##
+        """
+        first = _graph_with_timestamps([0.0, 10.0])
+        second = _graph_with_timestamps([0.0, 10.0])
+        timing = TraceSessionTiming()
+        timing.apply(first)
+        timing.apply(second)
+        assert _relative_timestamps(first) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(second) == pytest.approx([0.0, 10.0])
+
+    @pytest.mark.smoke
+    def test_does_not_collapse_zero_duration_sessions(self):
+        """Single-turn sessions keep distinct arrivals instead of spreading apart.
+
+        ## WRITTEN BY AI ##
+        """
+        sessions = [
+            _graph_with_timestamps([0.0]),
+            _graph_with_timestamps([0.5]),
+            _graph_with_timestamps([0.0]),
+            _graph_with_timestamps([0.5]),
+        ]
+        timing = TraceSessionTiming(max_concurrent_sessions=2)
+        for session in sessions:
+            timing.apply(session)
+        assert _relative_timestamps(sessions[0]) == pytest.approx([0.0])
+        assert _relative_timestamps(sessions[1]) == pytest.approx([0.5])
+        assert _relative_timestamps(sessions[2]) == pytest.approx([0.0])
+        assert _relative_timestamps(sessions[3]) == pytest.approx([0.5])
+
+    @pytest.mark.smoke
+    def test_staggers_single_turn_sessions_by_recorded_duration(self):
+        """Equal start times with duration occupy lanes until api_time elapses.
+
+        ## WRITTEN BY AI ##
+        """
+        sessions = [
+            _graph_with_timestamps_and_durations([0.0], [10.0]),
+            _graph_with_timestamps_and_durations([0.0], [10.0]),
+            _graph_with_timestamps_and_durations([0.0], [10.0]),
+            _graph_with_timestamps_and_durations([0.0], [10.0]),
+        ]
+        timing = TraceSessionTiming(max_concurrent_sessions=2)
+        for session in sessions:
+            timing.apply(session)
+        assert _relative_timestamps(sessions[0]) == pytest.approx([0.0])
+        assert _relative_timestamps(sessions[1]) == pytest.approx([0.0])
+        assert _relative_timestamps(sessions[2]) == pytest.approx([10.0])
+        assert _relative_timestamps(sessions[3]) == pytest.approx([10.0])
+
+    @pytest.mark.smoke
+    def test_holds_lane_for_serial_chain_with_equal_timestamps(self):
+        """A chain at one timestamp holds the lane for the sum of durations.
+
+        ## WRITTEN BY AI ##
+        """
+        first = _graph_with_parent_chain([0.0, 0.0], [5.0, 3.0])
+        second = _graph_with_timestamps_and_durations([0.0], [1.0])
+        timing = TraceSessionTiming(max_concurrent_sessions=1)
+        timing.apply(first)
+        timing.apply(second)
+        assert _relative_timestamps(second) == pytest.approx([8.0])
+
+    @pytest.mark.smoke
+    def test_holds_lane_for_longest_parallel_branch(self):
+        """Parallel branches extend occupancy to the longest completion time.
+
+        ## WRITTEN BY AI ##
+        """
+        first = _graph_with_parallel_branches(parent_duration=2.0, branch_duration=5.0)
+        second = _graph_with_timestamps_and_durations([0.0], [1.0])
+        timing = TraceSessionTiming(max_concurrent_sessions=1)
+        timing.apply(first)
+        timing.apply(second)
+        # root ends at 2; the longer branch ends at 10 + 8
+        assert _relative_timestamps(second) == pytest.approx([18.0])
+
+
+class TestTraceSessionTimingMinMaxConcurrentSessions:
+    @pytest.mark.smoke
+    def test_min_pulls_sequential_trace(self):
+        """min packs a sequential trace onto N lanes.
+
+        ## WRITTEN BY AI ##
+        """
+        sessions = [
+            _graph_with_timestamps([0.0, 10.0]),
+            _graph_with_timestamps([20.0, 30.0]),
+            _graph_with_timestamps([40.0, 50.0]),
+        ]
+        timing = TraceSessionTiming(
+            min_concurrent_sessions=2, max_concurrent_sessions=4
+        )
+        for session in sessions:
+            timing.apply(session)
+        assert _relative_timestamps(sessions[0]) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(sessions[1]) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(sessions[2]) == pytest.approx([10.0, 20.0])
+
+    @pytest.mark.smoke
+    def test_max_delays_simultaneous_trace(self):
+        """max staggers sessions that all start together.
+
+        ## WRITTEN BY AI ##
+        """
+        sessions = [
+            _graph_with_timestamps([0.0, 10.0]),
+            _graph_with_timestamps([0.0, 10.0]),
+            _graph_with_timestamps([0.0, 10.0]),
+            _graph_with_timestamps([0.0, 10.0]),
+            _graph_with_timestamps([0.0, 10.0]),
+        ]
+        timing = TraceSessionTiming(
+            min_concurrent_sessions=2, max_concurrent_sessions=4
+        )
+        for session in sessions:
+            timing.apply(session)
+        assert _relative_timestamps(sessions[0]) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(sessions[1]) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(sessions[2]) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(sessions[3]) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(sessions[4]) == pytest.approx([10.0, 20.0])
+
+
 class TestTraceSessionTimingTimeScale:
     @pytest.mark.smoke
     def test_scales_after_wait_caps(self):
@@ -369,3 +628,21 @@ class TestPackAfterCopyPlacement:
         assert _relative_timestamps(copy0_second) == pytest.approx([0.0, 10.0])
         assert _relative_timestamps(copy1_first) == pytest.approx([0.0, 10.0])
         assert _relative_timestamps(copy1_second) == pytest.approx([10.0, 20.0])
+
+    @pytest.mark.sanity
+    def test_later_copy_delayed_when_max_one(self):
+        """A second copy placed at the prior end is delayed when max=1.
+
+        ## WRITTEN BY AI ##
+        """
+        first = _graph_with_timestamps([0.0, 10.0])
+        second = _graph_with_timestamps([0.0, 10.0])
+        packer = TraceSessionTiming(max_concurrent_sessions=1)
+        TraceSessionTiming().apply_wait_caps(first)
+        shift_graph_timestamps(first, 0.0)
+        packer.apply_pack(first)
+        TraceSessionTiming().apply_wait_caps(second)
+        shift_graph_timestamps(second, 10.0)
+        packer.apply_pack(second)
+        assert _relative_timestamps(first) == pytest.approx([0.0, 10.0])
+        assert _relative_timestamps(second) == pytest.approx([10.0, 20.0])
