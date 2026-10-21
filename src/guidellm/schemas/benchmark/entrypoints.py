@@ -544,7 +544,11 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
             "to the output file but not otherwise used by GuideLLM)."
         ),
         examples=[
-            {"labels": {"name": "benchmark", "description": "Benchmark description"}}
+            {
+                "name": "benchmark",
+                "description": "Benchmark description",
+                "labels": {"label1": "value1", "label2": "value2"},
+            }
         ],
     )
     spec: BenchmarkArgs = Field(
