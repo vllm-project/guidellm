@@ -17,6 +17,7 @@ import logging
 import math
 import time
 from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import Any, cast
 
 from sanic import Sanic, response
@@ -271,58 +272,90 @@ class MockServer:
             packets.insert(0, wav[: len(wav) - len(pcm)])
 
         if stream_format == "audio":
-
-            async def send_raw(stream_response: ResponseStream) -> None:
-                """Write raw audio packets to the response stream.
-                :param stream_response: Sanic response stream receiving the packets.
-                :return: None, after all packets were written.
-                """
-                for packet in packets:
-                    await stream_response.write(packet)
-
             return ResponseStream(  # type: ignore[return-value]
-                send_raw,
+                partial(self._send_raw, packets=packets),
                 content_type=mime,
                 headers=audio_headers,
             )
 
-        async def send_sse(stream_response: ResponseStream) -> None:
-            """
-            Write speech audio events to the SSE response stream.
-            :param stream_response: Sanic response stream receiving the events.
-            :return: None, after the audio-done event was written.
-            """
-            for packet in packets:
-                event = {
-                    "type": "speech.audio.delta",
-                    "audio": base64.b64encode(packet).decode("ascii"),
-                    "response_format": audio_format,
-                    "sample_rate": sample_rate,
-                    "channels": 1,
-                }
-                await stream_response.write(
-                    f"event: speech.audio.delta\ndata: {json.dumps(event)}\n\n"
-                )
+        return ResponseStream(  # type: ignore[return-value]
+            partial(
+                self._send_sse,
+                packets=packets,
+                audio_format=audio_format,
+                sample_rate=sample_rate,
+            ),
+            content_type="text/event-stream",
+        )
 
-            done = {
-                "type": "speech.audio.done",
-                "usage": {
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "total_tokens": 0,
-                    "input_token_details": {
-                        "text_tokens": 0,
-                        "audio_tokens": 0,
-                    },
-                },
+    async def _send_raw(
+        self,
+        stream_response: BaseHTTPResponse | ResponseStream,
+        *,
+        packets: list[bytes],
+    ) -> None:
+        """Write raw audio packets to the response stream.
+        :param stream_response: Sanic response stream receiving the packets.
+        :param packets: Raw audio packets to write.
+        :return: None, after all packets were written.
+        """
+        raw_response: BaseHTTPResponse
+        if isinstance(stream_response, ResponseStream):
+            raw_response = cast("BaseHTTPResponse", stream_response.response)
+        else:
+            raw_response = stream_response
+
+        for packet in packets:
+            await raw_response.send(packet)
+
+    async def _send_sse(
+        self,
+        stream_response: BaseHTTPResponse | ResponseStream,
+        *,
+        packets: list[bytes],
+        audio_format: str,
+        sample_rate: int,
+    ) -> None:
+        """
+        Write speech audio events to the SSE response stream.
+        :param stream_response: Sanic response stream receiving the events.
+        :param packets: Audio packets to encode and send.
+        :param audio_format: Format of the audio packets.
+        :param sample_rate: Audio sample rate in Hz.
+        :return: None, after the audio-done event was written.
+        """
+        sse_response: BaseHTTPResponse
+        if isinstance(stream_response, ResponseStream):
+            sse_response = cast("BaseHTTPResponse", stream_response.response)
+        else:
+            sse_response = stream_response
+
+        for packet in packets:
+            event = {
+                "type": "speech.audio.delta",
+                "audio": base64.b64encode(packet).decode("ascii"),
+                "response_format": audio_format,
+                "sample_rate": sample_rate,
+                "channels": 1,
             }
-            await stream_response.write(
-                f"event: speech.audio.done\ndata: {json.dumps(done)}\n\n"
+            await sse_response.send(
+                f"event: speech.audio.delta\ndata: {json.dumps(event)}\n\n"
             )
 
-        return ResponseStream(  # type: ignore[return-value]
-            send_sse,
-            content_type="text/event-stream",
+        done = {
+            "type": "speech.audio.done",
+            "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "input_token_details": {
+                    "text_tokens": 0,
+                    "audio_tokens": 0,
+                },
+            },
+        }
+        await sse_response.send(
+            f"event: speech.audio.done\ndata: {json.dumps(done)}\n\n"
         )
 
     def _setup_middleware(self):

@@ -38,6 +38,7 @@ from guidellm.schemas import (
 )
 from guidellm.settings import settings
 from guidellm.utils.audio import (
+    AudioContinuityStats,
     compute_audio_continuity,
     decode_audio_with_metadata,
     pcm16_append_b64_chunks,
@@ -337,6 +338,9 @@ def _pcm16_layout(
     """
     Returning tuple contains: (sample_rate, channels, header_bytes, frame_count).
     """
+    sample_rate: int | None
+    channels: int | None
+
     if audio_format == "wav":
         if (
             len(data) < PCM_WAV_HEADER_SIZE
@@ -927,6 +931,21 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             response_metrics=self.response_metrics,
         )
 
+    def add_streaming_chunk(self, chunk: bytes) -> int | None:
+        """
+        Reject to process raw-byte requests for line-based completion handlers.
+
+        :param chunk: Raw response bytes.
+        :return: Zero for an empty chunk.
+        :raises ValueError: If a non-empty raw chunk is received.
+        """
+        if not chunk:
+            return 0
+        raise ValueError(
+            "[UNUSABLE_BACKEND_RESPONSE] raw-byte streaming is not supported "
+            "by this request handler"
+        )
+
     def add_streaming_line(self, line: str) -> int | None:
         """
         Process a single line from a text completion streaming response.
@@ -1023,6 +1042,131 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             raise NotImplementedError("Multiple completion choices are not supported")
         return choices, response.get("usage", {})
 
+    @staticmethod
+    def _extract_input_metrics(
+        input_details: dict[str, Any],
+        usage_metrics: dict[str, int],
+    ) -> UsageMetrics:
+        """
+        Extract input text and modality metrics (all that exist)
+
+        :param input_details: Detailed input token usage from the backend.
+        :param usage_metrics: Aggregate token usage counts.
+        :return: Input usage metrics.
+        """
+
+        input_multimodal_with_value = input_details.get("multimodal_tokens")
+        if not input_multimodal_with_value:
+            input_multimodal: dict[str, Any] = {}
+        elif isinstance(input_multimodal_with_value, dict):
+            input_multimodal = input_multimodal_with_value
+        else:
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] "
+                "prompt_tokens_details.multimodal_tokens must be an object"
+            )
+
+        input_image_tokens: int | None = input_multimodal.get(
+            "image", input_details.get("image_tokens")
+        )
+        input_video_tokens: int | None = input_multimodal.get(
+            "video", input_details.get("video_tokens")
+        )
+        input_audio_tokens: int | None = input_multimodal.get(
+            "audio", input_details.get("audio_tokens")
+        )
+
+        input_multimodal_tokens = 0
+        for count in (input_image_tokens, input_video_tokens, input_audio_tokens):
+            input_multimodal_tokens += count if count is not None else 0
+
+        input_text_tokens = input_details.get("prompt_tokens")
+        if input_text_tokens is None:
+            input_text_tokens = usage_metrics.get("prompt_tokens")
+            if input_text_tokens is None:
+                input_text_tokens = 0
+            else:
+                input_text_tokens -= input_multimodal_tokens
+                if input_text_tokens < 0:
+                    raise ValueError(
+                        "[UNUSABLE_BACKEND_RESPONSE] input modality token counts "
+                        "exceed the reported total prompt_tokens"
+                    )
+
+        return UsageMetrics(
+            text_tokens=input_text_tokens,
+            cached_tokens=input_details.get("cached_tokens"),
+            image_tokens=input_image_tokens,
+            video_tokens=input_video_tokens,
+            audio_tokens=input_audio_tokens,
+            audio_seconds=input_details.get("seconds"),
+        )
+
+    @staticmethod
+    def _extract_output_metrics(
+        output_details: dict[str, Any],
+        usage_metrics: dict[str, int],
+        text_words: int | None,
+        text_chars: int | None,
+    ) -> UsageMetrics:
+        """
+        Extract output text and modality metrics (all that available)
+
+        :param output_details: Detailed output token usage from the backend.
+        :param usage_metrics: Aggregate usage token counts.
+        :param text_words: Word count, or None when text is not applicable.
+        :param text_chars: Character count, or None when text is not applicable.
+        :return: Output usage metrics.
+        """
+
+        output_multimodal_with_value = output_details.get("multimodal_tokens")
+        if not output_multimodal_with_value:
+            output_multimodal: dict[str, Any] = {}
+        elif isinstance(output_multimodal_with_value, dict):
+            output_multimodal = output_multimodal_with_value
+        else:
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] "
+                "completion_tokens_details.multimodal_tokens must be an object"
+            )
+
+        output_image_tokens: int | None = output_multimodal.get(
+            "image", output_details.get("image_tokens")
+        )
+        output_video_tokens: int | None = output_multimodal.get(
+            "video", output_details.get("video_tokens")
+        )
+        output_audio_tokens: int | None = output_multimodal.get(
+            "audio", output_details.get("audio_tokens")
+        )
+
+        output_multimodal_tokens = 0
+        for count in (output_image_tokens, output_video_tokens, output_audio_tokens):
+            output_multimodal_tokens += count if count is not None else 0
+
+        output_text_tokens = output_details.get("completion_tokens")
+        if output_text_tokens is None:
+            output_text_tokens = usage_metrics.get("completion_tokens")
+            if output_text_tokens is None:
+                output_text_tokens = 0
+            else:
+                output_text_tokens -= output_multimodal_tokens
+                if output_text_tokens < 0:
+                    raise ValueError(
+                        "[UNUSABLE_BACKEND_RESPONSE] output modality token counts "
+                        "exceed the reported total completion_tokens"
+                    )
+
+        return UsageMetrics(
+            text_tokens=output_text_tokens,
+            text_words=text_words,
+            text_characters=text_chars,
+            image_tokens=output_image_tokens,
+            video_tokens=output_video_tokens,
+            audio_tokens=output_audio_tokens,
+            audio_seconds=output_details.get("seconds"),
+        )
+
     def extract_metrics(
         self, usage: dict[str, int | dict[str, int]] | None, text: str | None
     ) -> tuple[UsageMetrics, UsageMetrics]:
@@ -1050,95 +1194,19 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
                 text_characters=text_chars,
             )
 
-        input_details: dict[str, int] = cast(
-            "dict[str, int]", usage.get("prompt_tokens_details", {}) or {}
+        input_details: dict[str, Any] = cast(
+            "dict[str, Any]", usage.get("prompt_tokens_details", {}) or {}
         )
-        output_details: dict[str, int] = cast(
-            "dict[str, int]", usage.get("completion_tokens_details", {}) or {}
+        output_details: dict[str, Any] = cast(
+            "dict[str, Any]", usage.get("completion_tokens_details", {}) or {}
         )
         usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
 
-        input_multimodal = input_details.get("multimodal_tokens") or {}
-        output_multimodal = output_details.get("multimodal_tokens") or {}
-
-        input_image_tokens = input_multimodal.get(
-            "image", input_details.get("image_tokens")
-        )
-        input_video_tokens = input_multimodal.get(
-            "video", input_details.get("video_tokens")
-        )
-        input_audio_tokens = input_multimodal.get(
-            "audio", input_details.get("audio_tokens")
-        )
-        output_image_tokens = output_multimodal.get(
-            "image", output_details.get("image_tokens")
-        )
-        output_video_tokens = output_multimodal.get(
-            "video", output_details.get("video_tokens")
-        )
-        output_audio_tokens = output_multimodal.get(
-            "audio", output_details.get("audio_tokens")
-        )
-
-        input_multimodal_tokens = sum(
-            count
-            for count in (
-                input_image_tokens,
-                input_video_tokens,
-                input_audio_tokens,
-            )
-            if count is not None
-        )
-        input_text_tokens = input_details.get("prompt_tokens")
-        if input_text_tokens is None:
-            input_text_tokens = usage_metrics.get("prompt_tokens")
-            if input_text_tokens is None:
-                input_text_tokens = 0
-            else:
-                input_text_tokens -= input_multimodal_tokens
-                if input_text_tokens < 0:
-                    raise ValueError(
-                        "[UNUSABLE_BACKEND_RESPONSE] input modality token counts "
-                        "exceed the reported total prompt_tokens"
-                    )
-
-        output_multimodal_tokens = sum(
-            count
-            for count in (
-                output_image_tokens,
-                output_video_tokens,
-                output_audio_tokens,
-            )
-            if count is not None
-        )
-        output_text_tokens = output_details.get("completion_tokens")
-        if output_text_tokens is None:
-            output_text_tokens = usage_metrics.get("completion_tokens")
-            if output_text_tokens is None:
-                output_text_tokens = 0
-            else:
-                output_text_tokens -= output_multimodal_tokens
-                if output_text_tokens < 0:
-                    raise ValueError(
-                        "[UNUSABLE_BACKEND_RESPONSE] output modality token counts "
-                        "exceed the reported total completion_tokens"
-                    )
-
-        return UsageMetrics(
-            text_tokens=input_text_tokens,
-            cached_tokens=input_details.get("cached_tokens"),
-            image_tokens=input_image_tokens,
-            video_tokens=input_video_tokens,
-            audio_tokens=input_audio_tokens,
-            audio_seconds=input_details.get("seconds"),
-        ), UsageMetrics(
-            text_tokens=output_text_tokens,
-            text_words=text_words,
-            text_characters=text_chars,
-            image_tokens=output_image_tokens,
-            video_tokens=output_video_tokens,
-            audio_tokens=output_audio_tokens,
-            audio_seconds=output_details.get("seconds"),
+        return (
+            self._extract_input_metrics(input_details, usage_metrics),
+            self._extract_output_metrics(
+                output_details, usage_metrics, text_words, text_chars
+            ),
         )
 
 
@@ -1304,7 +1372,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return formatted_data
 
-    def _parse_output_media_from_content(
+    def _parse_output_media_from_content(  # noqa: C901
         self, content: Any
     ) -> tuple[str | None, list[dict[str, Any]]]:
         """
@@ -1325,11 +1393,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         text_parts: list[str] = []
         media: list[dict[str, Any]] = []
 
-        parser_classes = (
-            ModalityParserRegistry.registered_objects()
-            if ModalityParserRegistry.registry
-            else ()
-        )
+        try:
+            parser_classes = ModalityParserRegistry.registered_objects()
+        except ValueError:
+            parser_classes = ()
 
         for part in content:
             if not isinstance(part, dict):
@@ -1731,7 +1798,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             isinstance(transcript, str) and transcript for transcript in transcripts
         ):
             assistant["content"] = (assistant.get("content") or "") + "".join(
-                transcripts
+                transcript for transcript in transcripts if isinstance(transcript, str)
             )
             return
 
@@ -1818,8 +1885,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         self._output_sample_rate_hint = kwargs.get("audio_output_sample_rate")
         self._output_channels_hint = kwargs.get("audio_output_channels")
         self._requested_audio_format = "wav"
-        if arguments.body.get("audio"):
-            self._requested_audio_format = arguments.body.get("audio").get("format")
+        if isinstance(arguments.body, dict):
+            audio_settings = arguments.body.get("audio")
+            if isinstance(audio_settings, dict):
+                audio_format = audio_settings.get("format")
+                if isinstance(audio_format, str):
+                    self._requested_audio_format = audio_format
 
         _require_request_payload(
             arguments,
@@ -2139,7 +2210,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 if item.get("modality") == "audio":
                     by_choice.setdefault(index, []).append((item, arrival))
 
-            continuity = []
+            continuity: list[AudioContinuityStats] = []
             for packets in by_choice.values():
                 first_packet = packets[0][0]
                 sample_rate = first_packet.get("sample_rate")
@@ -2161,7 +2232,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     continuity = []
                     break
 
-                arrival_times: list[float] = [float(time_s) for _, time_s in packets]
+                arrival_times: list[float] = [
+                    cast("float", time_s) for _, time_s in packets
+                ]
                 chunks_bytes: list[int] = [
                     item["audio_samples"] * channels * 2 for item, _ in packets
                 ]
@@ -2396,12 +2469,12 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
             self._align_audio_usage_for_chat_completions(usage) if usage else usage
         )
         input_metrics, output_metrics = super().extract_metrics(chat_usage, text)
-        if not usage:
+        if not usage or chat_usage is None:
             return input_metrics, output_metrics
 
         input_details = chat_usage.get("prompt_tokens_details") or {}
         output_details = chat_usage.get("completion_tokens_details") or {}
-        input_total_tokens = chat_usage.get("prompt_tokens")
+        input_total_tokens = chat_usage.get("prompt_tokens") or 0
 
         # The parent's text fallback cannot classify an unsplit ASR input total.
         if input_details.get("prompt_tokens") is None and (
@@ -2633,9 +2706,11 @@ class SpeechRequestHandler(OpenAIRequestHandler):
             references.append(f"data:audio/{fmt};base64,{encoded}")
 
         if references:
-            arguments.body["ref_audio"] = (
-                references[0] if len(references) == 1 else references
-            )
+            body = arguments.body
+            if body is None:
+                body = {}
+                arguments.body = body
+            body["ref_audio"] = references[0] if len(references) == 1 else references
 
     def _configure_speech_streaming(
         self,
