@@ -532,6 +532,7 @@ def synthesize_audio(
     seed_seq = np.random.SeedSequence([int(seed) & 0xFFFFFFFF, int(row_index)])
     rng = np.random.Generator(np.random.PCG64(seed_seq))
 
+    waveform: np.ndarray
     if content == "silence":
         waveform = np.zeros(num_samples, dtype=np.float32)
     elif content == "noise":
