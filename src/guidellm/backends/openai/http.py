@@ -534,7 +534,10 @@ class OpenAIHTTPBackend(Backend):
                 yield chunk
 
     async def _close_stream(
-        self, stream: httpx2.Response, lines: AsyncIterator[str | bytes], end_reached: bool
+        self,
+        stream: httpx2.Response,
+        lines: AsyncIterator[str | bytes],
+        end_reached: bool,
     ) -> None:
         """Close a response, or read the rest of it in a task after its final event."""
         if not end_reached or stream.http_version != "HTTP/1.1":
@@ -545,7 +548,9 @@ class OpenAIHTTPBackend(Backend):
         task.add_done_callback(self._read_to_end_tasks.discard)
 
     @staticmethod
-    async def _read_to_end(stream: httpx2.Response, lines: AsyncIterator[str | bytes]) -> None:
+    async def _read_to_end(
+        stream: httpx2.Response, lines: AsyncIterator[str | bytes]
+    ) -> None:
         """Read the rest of a response within the time limit, then close it."""
 
         async def consume() -> None:
