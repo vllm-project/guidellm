@@ -2474,7 +2474,7 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
 
         input_details = chat_usage.get("prompt_tokens_details") or {}
         output_details = chat_usage.get("completion_tokens_details") or {}
-        input_total_tokens = chat_usage.get("prompt_tokens") or 0
+        input_total_tokens = chat_usage.get("prompt_tokens")
 
         # The parent's text fallback cannot classify an unsplit ASR input total.
         if input_details.get("prompt_tokens") is None and (
