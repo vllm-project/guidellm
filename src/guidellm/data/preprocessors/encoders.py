@@ -78,7 +78,7 @@ class MediaEncoder(DatasetPreprocessor):
     def _encode_audio(self, audio_items: list[Any]) -> list[Any]:
         encoded_audio = []
         for audio in audio_items:
-            if not _is_empty_media(audio):
+            if _is_empty_media(audio):
                 continue
             if _is_encoded_audio(audio):
                 encoded_audio.append(audio)

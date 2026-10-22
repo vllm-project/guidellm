@@ -523,8 +523,8 @@ async def test_excessive_ignored_events_raises(
 
 
 @pytest.mark.asyncio
-async def test_available_models_parses_response(respx_mock: respx.Router) -> None:
-    respx_mock.route(url="http://127.0.0.1:9/v1/models").respond(
+async def test_available_models_parses_response(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.route(url="http://127.0.0.1:9/v1/models").respond(
         json={"data": [{"id": "a"}, {"id": "b"}]}
     )
     be = _make_ws_backend(
@@ -538,9 +538,9 @@ async def test_available_models_parses_response(respx_mock: respx.Router) -> Non
 
 @pytest.mark.asyncio
 async def test_resolve_raises_when_no_model_and_empty_catalog(
-    respx_mock: respx.Router,
+    httpx2_mock: respx.Router,
 ) -> None:
-    respx_mock.route(url="http://127.0.0.1:9/v1/models").respond(json={"data": []})
+    httpx2_mock.route(url="http://127.0.0.1:9/v1/models").respond(json={"data": []})
     be = _make_ws_backend(
         target="http://127.0.0.1:9",
         model="",

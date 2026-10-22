@@ -43,7 +43,7 @@ def test_encode_image_url_preserves_resize_options(resize_kwargs, expected_size)
 @pytest.mark.regression
 @pytest.mark.parametrize("status_code", [301, 302, 303, 307, 308])
 @pytest.mark.parametrize("media_kind", ["image", "pil", "video"])
-def test_remote_media_follows_redirects(respx_mock, status_code, media_kind):
+def test_remote_media_follows_redirects(httpx2_mock, status_code, media_kind):
     """Encode the final media payload after relative and absolute redirects.
 
     ## WRITTEN BY AI ##
@@ -57,14 +57,14 @@ def test_remote_media_follows_redirects(respx_mock, status_code, media_kind):
 
     url = f"https://media.example/{media_kind}"
     final_url = f"https://cdn.example/{media_kind}"
-    respx_mock.route(url=url).respond(
+    httpx2_mock.route(url=url).respond(
         status_code=status_code, headers={"Location": "/asset"}
     )
-    respx_mock.route(url="https://media.example/asset").respond(
+    httpx2_mock.route(url="https://media.example/asset").respond(
         status_code=302,
         headers={"Location": final_url},
     )
-    respx_mock.route(url=final_url).respond(content=payload)
+    httpx2_mock.route(url=final_url).respond(content=payload)
 
     if media_kind == "image":
         assert encode_image(url, width=4) == encode_image(payload, width=4)
@@ -76,20 +76,20 @@ def test_remote_media_follows_redirects(respx_mock, status_code, media_kind):
         result = encode_video(url)
         assert base64.b64decode(result["video"].split(",", 1)[1]) == payload
         assert result["video_bytes"] == len(payload)
-    assert len(respx_mock.calls) == 3
+    assert len(httpx2_mock.calls) == 3
 
 
 @pytest.mark.regression
-def test_redirect_destination_error_is_reported(respx_mock):
+def test_redirect_destination_error_is_reported(httpx2_mock):
     """Keep HTTP error reporting for the final redirected response.
 
     ## WRITTEN BY AI ##
     """
     url = "https://media.example/image"
-    respx_mock.route(url=url).respond(
+    httpx2_mock.route(url=url).respond(
         status_code=302, headers={"Location": "/missing"}
     )
-    respx_mock.route(url="https://media.example/missing").respond(status_code=404)
+    httpx2_mock.route(url="https://media.example/missing").respond(status_code=404)
 
     with pytest.raises(httpx2.HTTPStatusError) as error:
         encode_image(url)
