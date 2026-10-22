@@ -913,6 +913,67 @@ class TestTextCompletionsRequestHandler:
         assert input_metrics.text_tokens == 10
         assert input_metrics.cached_tokens == 8
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("usage", "expected_input", "expected_output"),
+        [
+            # Modality tokens without a text-only count (e.g. OpenAI audio models)
+            (
+                {
+                    "prompt_tokens": 100,
+                    "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 80},
+                    "completion_tokens": 50,
+                    "completion_tokens_details": {"audio_tokens": 40},
+                },
+                (20, 100),
+                (10, 50),
+            ),
+            # OpenAI-style explicit text_tokens count
+            (
+                {
+                    "prompt_tokens": 100,
+                    "prompt_tokens_details": {"text_tokens": 20, "audio_tokens": 80},
+                    "completion_tokens": 50,
+                    "completion_tokens_details": {
+                        "text_tokens": 10,
+                        "audio_tokens": 40,
+                    },
+                },
+                (20, 100),
+                (10, 50),
+            ),
+            # vLLM-style explicit text-only count, including an image-only prompt
+            (
+                {
+                    "prompt_tokens": 576,
+                    "prompt_tokens_details": {"prompt_tokens": 0, "image_tokens": 576},
+                    "completion_tokens": 5,
+                },
+                (0, 576),
+                (5, 5),
+            ),
+        ],
+    )
+    def test_extract_metrics_modality_tokens_not_double_counted(
+        self, valid_instances, usage, expected_input, expected_output
+    ):
+        """
+        Per-modality tokens are part of the reported prompt/completion count, so
+        the total must match what the server reported.
+
+        ## WRITTEN BY AI ##
+        """
+        input_metrics, output_metrics = valid_instances.extract_metrics(
+            usage, "Test response"
+        )
+
+        assert (input_metrics.text_tokens, input_metrics.total_tokens) == (
+            expected_input
+        )
+        assert (output_metrics.text_tokens, output_metrics.total_tokens) == (
+            expected_output
+        )
+
 
 class TestChatCompletionsRequestHandler:
     """Test cases for ChatCompletionsRequestHandler.
@@ -3617,6 +3678,41 @@ class TestResponsesRequestHandler:
 
         assert input_metrics.text_tokens == 10
         assert input_metrics.cached_tokens == expected_cached_tokens
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("input_details", "output_details"),
+        [
+            ({"image_tokens": 80}, {"audio_tokens": 40}),
+            (
+                {"text_tokens": 20, "image_tokens": 80},
+                {"text_tokens": 10, "audio_tokens": 40},
+            ),
+        ],
+    )
+    def test_extract_metrics_modality_tokens_not_double_counted(
+        self, valid_instances, input_details, output_details
+    ):
+        """
+        Per-modality tokens are part of input_tokens/output_tokens, so the totals
+        must match what the server reported.
+
+        ## WRITTEN BY AI ##
+        """
+        usage = {
+            "input_tokens": 100,
+            "input_tokens_details": input_details,
+            "output_tokens": 50,
+            "output_tokens_details": output_details,
+        }
+
+        input_metrics, output_metrics = valid_instances.extract_metrics(
+            usage, "Test response"
+        )
+
+        assert input_metrics.text_tokens == 20
+        assert input_metrics.total_tokens == 100
+        assert output_metrics.total_tokens == 50
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(

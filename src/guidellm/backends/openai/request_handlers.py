@@ -346,6 +346,37 @@ def _apply_tool_call_metrics(
         output_metrics.mixed_content_tool_tokens = output_metrics.text_tokens
 
 
+_MODALITY_TOKEN_KEYS = ("image_tokens", "video_tokens", "audio_tokens")
+
+
+def _text_only_tokens(
+    total_tokens: int | None,
+    details: dict[str, int],
+    text_keys: tuple[str, ...],
+) -> int:
+    """Return the text-only share of a usage token count.
+
+    ``UsageMetrics.total_tokens`` sums text and per-modality tokens, so the text
+    count must exclude the image, video, and audio tokens reported in
+    ``details``. Servers report the overall count (``prompt_tokens``,
+    ``completion_tokens``, ...) with any per-modality tokens already included,
+    and only some also give an explicit text-only count. Without one, subtract
+    the modality tokens from the overall count rather than counting them twice.
+
+    :param total_tokens: Overall token count reported by the server
+    :param details: Per-modality usage breakdown reported by the server
+    :param text_keys: Keys in ``details`` that hold an explicit text-only count,
+        in order of preference
+    :return: Number of text-only tokens, never negative
+    """
+    for key in text_keys:
+        if (text_tokens := details.get(key)) is not None:
+            return text_tokens
+
+    modality_tokens = sum(details.get(key) or 0 for key in _MODALITY_TOKEN_KEYS)
+    return max((total_tokens or 0) - modality_tokens, 0)
+
+
 def _validate_text_response(response: GenerationResponse) -> None:
     """Reject a compiled response that has no usable output.
 
@@ -810,10 +841,10 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
 
         return UsageMetrics(
-            text_tokens=(
-                input_details.get("prompt_tokens")
-                or usage_metrics.get("prompt_tokens")
-                or 0
+            text_tokens=_text_only_tokens(
+                usage_metrics.get("prompt_tokens"),
+                input_details,
+                ("prompt_tokens", "text_tokens"),
             ),
             cached_tokens=input_details.get("cached_tokens"),
             image_tokens=input_details.get("image_tokens"),
@@ -821,10 +852,10 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             audio_tokens=input_details.get("audio_tokens"),
             audio_seconds=input_details.get("seconds"),
         ), UsageMetrics(
-            text_tokens=(
-                output_details.get("completion_tokens")
-                or usage_metrics.get("completion_tokens")
-                or 0
+            text_tokens=_text_only_tokens(
+                usage_metrics.get("completion_tokens"),
+                output_details,
+                ("completion_tokens", "text_tokens"),
             ),
             text_words=text_words,
             text_characters=text_chars,
@@ -2351,10 +2382,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         )
 
         return UsageMetrics(
-            text_tokens=(
-                input_details.get("text_tokens")
-                or usage_metrics.get("input_tokens")
-                or 0
+            text_tokens=_text_only_tokens(
+                usage_metrics.get("input_tokens"), input_details, ("text_tokens",)
             ),
             cached_tokens=input_details.get("cached_tokens"),
             image_tokens=input_details.get("image_tokens"),
@@ -2362,10 +2391,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             audio_tokens=input_details.get("audio_tokens"),
             audio_seconds=input_details.get("seconds"),
         ), UsageMetrics(
-            text_tokens=(
-                output_details.get("text_tokens")
-                or usage_metrics.get("output_tokens")
-                or 0
+            text_tokens=_text_only_tokens(
+                usage_metrics.get("output_tokens"), output_details, ("text_tokens",)
             ),
             text_words=text_words,
             text_characters=text_chars,
