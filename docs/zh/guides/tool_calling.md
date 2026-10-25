@@ -30,10 +30,9 @@ GuideLLM 目前支持模拟的客户端工具调用（`turn_type="client_tool_ca
 
 ### 使用合成数据进行服务端工具处理
 
-对于合成数据，可以通过 `server_tool_call_turns` 将用户轮次标记为由服务器处理。参数可以是整数 N（表示前 N 个轮次）、索引列表，或 `-1`（表示所有轮次）：
+对于合成数据，可以通过 `server_tool_call_turns` 将用户轮次标记为由服务器处理。参数可以是整数 N（表示前 N 个轮次）、索引列表，或 `-1`（表示所有轮次）。以下示例将三个轮次均标记为 `server_tool_call`，由服务器决定每轮是否调用工具：
 
 ```bash
-# 三个轮次均为 server_tool_call，由服务器决定每轮是否调用工具
 guidellm run \
   --backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}]}}}' \
   --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,server_tool_call_turns=-1 \
