@@ -114,6 +114,14 @@ Or with JSON:
 
 The API key is used to set the `Authorization: Bearer {api_key}` header in HTTP requests to the backend server.
 
+To keep the key out of command lines, environment dumps, and scenario files, point `api_key_file` at a file containing it instead (surrounding whitespace, such as a trailing newline, is stripped). `api_key` and `api_key_file` are mutually exclusive:
+
+```bash
+--backend kind=openai_http,target=https://api.openai.com/v1,api_key_file=/secrets/api-key,model=gpt-3.5-turbo
+```
+
+The same field can be set in a scenario file (`spec.backend.api_key_file`) or with the `GUIDELLM__SPEC__BACKEND__API_KEY_FILE` environment variable.
+
 > [!IMPORTANT]\
 > For security, avoid hardcoding API keys in scripts. Consider using environment variables or secure credential management tools when passing API keys via `--backend`.
 
