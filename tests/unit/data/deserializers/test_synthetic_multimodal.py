@@ -463,3 +463,26 @@ def test_full_dataset_reproducible_with_same_seed():
             hashlib.sha256(next(it_b)["image"]["image"].encode()).hexdigest()
         )
     assert digests_a == digests_b
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("dataset_cls", "config", "key"),
+    [
+        (SyntheticImageDataset, SyntheticImageDataArgs(width=32, height=32), "image"),
+        (
+            SyntheticVideoDataset,
+            SyntheticVideoDataArgs(width=32, height=32, frames=2),
+            "video",
+        ),
+    ],
+)
+def test_new_epoch_changes_media(dataset_cls, config, key):
+    """Each benchmark re-iterates the dataset and must get new media.
+
+    ## WRITTEN BY AI ##
+    """
+    dataset = dataset_cls(config=config)
+    first = next(iter(dataset))[key][key]
+
+    assert next(iter(dataset))[key][key] != first

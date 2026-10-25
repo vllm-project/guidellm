@@ -39,6 +39,7 @@ class _SyntheticVideoExamplesIterable(_BaseExamplesIterable):
         self.iteration_count = 0
 
     def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:
+        epoch = self.iteration_count
         iter_seed = self.random_seed + self.iteration_count
         self.iteration_count += 1
 
@@ -79,6 +80,7 @@ class _SyntheticVideoExamplesIterable(_BaseExamplesIterable):
                     video_bitrate=self.config.video_bitrate,
                     seed=self.config.seed,
                     row_index=row_index,
+                    epoch=epoch,
                 ),
             }
             if output_token_count is not None:

@@ -41,6 +41,7 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
         self.iteration_count = 0
 
     def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:
+        epoch = self.iteration_count
         iter_seed = self.random_seed + self.iteration_count
         self.iteration_count += 1
 
@@ -84,6 +85,7 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
                     jpeg_quality=self.config.jpeg_quality,
                     seed=self.config.seed,
                     row_index=row_index * self.config.images_per_request + img_idx,
+                    epoch=epoch,
                 )
                 if self.config.images_per_request == 1:
                     row["image"] = encoded
