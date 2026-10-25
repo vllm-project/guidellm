@@ -654,6 +654,46 @@ def test_openai_websocket_backend_args_invalid_request_format_rejected() -> None
         )
 
 
+@pytest.mark.sanity
+def test_openai_websocket_backend_args_reads_api_key_file(tmp_path) -> None:
+    """## WRITTEN BY AI ##"""
+    key_file = tmp_path / "api_key"
+    key_file.write_text("  sk-ws-secret\n", encoding="utf-8")
+
+    args = OpenAIWebSocketBackendArgs(
+        target="http://localhost:8000", api_key_file=key_file
+    )
+
+    assert args.api_key is not None
+    assert args.api_key.get_secret_value() == "sk-ws-secret"
+    assert "sk-ws-secret" not in json.dumps(args.model_dump(mode="json"))
+    assert OpenAIWebSocketBackend(args)._build_headers() == {
+        "Authorization": "Bearer sk-ws-secret"
+    }
+
+
+@pytest.mark.sanity
+def test_openai_websocket_backend_args_api_key_file_errors(tmp_path) -> None:
+    """## WRITTEN BY AI ##"""
+    key_file = tmp_path / "api_key"
+    key_file.write_text("sk-ws-secret", encoding="utf-8")
+    with pytest.raises(ValidationError, match="api_key_file") as exc_info:
+        OpenAIWebSocketBackendArgs(
+            target="http://localhost:8000", api_key="x", api_key_file=key_file
+        )
+    assert "sk-ws-secret" not in str(exc_info.value)
+
+    missing = tmp_path / "missing"
+    with pytest.raises(ValidationError, match=str(missing)):
+        OpenAIWebSocketBackendArgs(target="http://localhost:8000", api_key_file=missing)
+
+    key_file.write_text("\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match=str(key_file)):
+        OpenAIWebSocketBackendArgs(
+            target="http://localhost:8000", api_key_file=key_file
+        )
+
+
 @pytest.mark.asyncio
 async def test_resolve_records_round_trip_timings() -> None:
     """Round-trip send/receive timestamps are recorded during resolve.
