@@ -67,6 +67,21 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         ),
         examples=["x-session-id"],
     )
+    model_assignment: Literal["request", "conversation"] = Field(
+        default="request",
+        description=(
+            "Assignment strategy for the multi-model round-robin. "
+            "'request' (default) assigns the next list entry to each "
+            "request — maximum spread across models. 'conversation' "
+            "assigns one model per conversation and keeps it for all of "
+            "the conversation's turns, matching multi-tenant traffic "
+            "where a user keeps their model (e.g. their LoRA adapter) "
+            "for the whole session: the conversation's history stays "
+            "cacheable under a single model key and session-affinity "
+            "routers can pin the whole conversation to one backend."
+        ),
+        examples=["request", "conversation"],
+    )
     request_format: Literal[
         "/v1/completions",
         "/v1/chat/completions",

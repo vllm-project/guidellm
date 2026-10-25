@@ -1012,6 +1012,147 @@ class TestModelCycle:
             cycle.assign(req)
         assert all(r.model == "only-model" for r in requests)
 
+    def test_next_cycles_and_wraps(self):
+        """next() returns models in order and wraps around."""
+        from guidellm.scheduler.worker_group import _ModelCycle
+
+        cycle = _ModelCycle(["base", "agent-01", "agent-02"])
+        assert [cycle.next() for _ in range(4)] == [
+            "base",
+            "agent-01",
+            "agent-02",
+            "base",
+        ]
+
+    def test_next_empty_list_returns_none(self):
+        """next() on an empty cycle returns None."""
+        from guidellm.scheduler.worker_group import _ModelCycle
+
+        assert _ModelCycle([]).next() is None
+
+    def test_conversation_assignment_pins_model_per_conversation(self):
+        """
+        model_assignment='conversation' stamps every turn of a conversation
+        with one model and advances the cycle per conversation.
+
+        ## WRITTEN BY AI ##
+        """
+        state = TestRequestsGeneratorGenerationDelay()._build_state()
+
+        class FakeRequest:
+            def __init__(self, name: str):
+                self.name = name
+                self.model = None
+
+        def graph(graph_id: str, requests: list):
+            from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
+
+            return ConversationGraph(
+                graph_id=graph_id,
+                nodes={
+                    f"n{i}": ConversationNode(
+                        node_id=f"n{i}", agent_id="agent", request=req
+                    )
+                    for i, req in enumerate(requests)
+                },
+                edges=[],
+            )
+
+        graphs = [
+            graph("g1", [FakeRequest("r1a"), FakeRequest("r1b"), FakeRequest("r1c")]),
+            graph("g2", [FakeRequest("r2a"), FakeRequest("r2b")]),
+            graph("g3", [FakeRequest("r3a"), FakeRequest("r3b")]),
+        ]
+        yielded = list(
+            state.requests_generator(
+                graphs,
+                request_models=["base", "agent-01", "agent-02"],
+                model_assignment="conversation",
+            )
+        )
+
+        assert len(yielded) == 3
+        # every turn of conversation 1 -> 'base', 2 -> 'agent-01', 3 -> 'agent-02'
+        assert [n.request.model for n in yielded[0].nodes.values()] == [
+            "base",
+            "base",
+            "base",
+        ]
+        assert [n.request.model for n in yielded[1].nodes.values()] == [
+            "agent-01",
+            "agent-01",
+        ]
+        assert [n.request.model for n in yielded[2].nodes.values()] == [
+            "agent-02",
+            "agent-02",
+        ]
+
+    def test_request_assignment_advances_per_request(self):
+        """
+        Default model_assignment='request' keeps the per-request round-robin:
+        turns of one conversation get different models.
+
+        ## WRITTEN BY AI ##
+        """
+        state = TestRequestsGeneratorGenerationDelay()._build_state()
+
+        class FakeRequest:
+            def __init__(self, name: str):
+                self.name = name
+                self.model = None
+
+        from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
+
+        graphs = [
+            ConversationGraph(
+                graph_id="g1",
+                nodes={
+                    "n0": ConversationNode(
+                        node_id="n0", agent_id="agent", request=FakeRequest("r1a")
+                    ),
+                    "n1": ConversationNode(
+                        node_id="n1", agent_id="agent", request=FakeRequest("r1b")
+                    ),
+                    "n2": ConversationNode(
+                        node_id="n2", agent_id="agent", request=FakeRequest("r1c")
+                    ),
+                },
+                edges=[],
+            )
+        ]
+        yielded = list(
+            state.requests_generator(
+                graphs,
+                request_models=["base", "agent-01", "agent-02"],
+            )
+        )
+
+        assert [n.request.model for n in yielded[0].nodes.values()] == [
+            "base",
+            "agent-01",
+            "agent-02",
+        ]
+
+    def test_backend_model_assignment_property(self):
+        """Backend.model_assignment reads the argument; base defaults to 'request'."""
+        from guidellm.backends.backend import Backend
+        from guidellm.schemas.backends.openai_http import OpenAIHTTPBackendArgs
+        from guidellm.backends.openai.http import OpenAIHTTPBackend
+
+        conversation = OpenAIHTTPBackend(
+            OpenAIHTTPBackendArgs(
+                target="http://test",
+                model="base,agent-01",
+                model_assignment="conversation",
+            )
+        )
+        assert conversation.model_assignment == "conversation"
+
+        default = OpenAIHTTPBackend(
+            OpenAIHTTPBackendArgs(target="http://test", model="base,agent-01")
+        )
+        assert default.model_assignment == "request"
+
     def test_backend_request_models_property(self):
         """Backend.request_models returns the list; scheduler reads it publicly."""
         from guidellm.backends.backend import Backend

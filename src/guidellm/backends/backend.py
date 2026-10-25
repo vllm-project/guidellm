@@ -118,6 +118,19 @@ class Backend(
         return [model] if model else []
 
     @property
+    def model_assignment(self) -> str:
+        """
+        Multi-model assignment strategy for the round-robin.
+
+        Base implementation returns 'request' (next list entry per
+        request). Backends may override to return 'conversation' — one
+        model per conversation, kept for all of its turns.
+
+        :return: 'request' or 'conversation'
+        """
+        return "request"
+
+    @property
     def requests_limit(self) -> int | None:
         """
         :return: Maximum number of concurrent requests supported globally,

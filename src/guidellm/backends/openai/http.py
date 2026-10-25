@@ -200,6 +200,16 @@ class OpenAIHTTPBackend(Backend):
             if model.strip()
         ] or []
 
+    @property
+    def model_assignment(self) -> str:
+        """
+        Multi-model assignment strategy from the backend arguments.
+
+        :return: 'request' (round-robin per request) or 'conversation'
+            (one model per conversation, kept for all of its turns)
+        """
+        return getattr(self._args, "model_assignment", "request") or "request"
+
     async def resolve(  # type: ignore[override, misc]
         self,
         request: GenerationRequest,

@@ -370,10 +370,16 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             if self.backend and len(self.backend.request_models) > 1
             else None
         )
+        model_assignment = (
+            self.backend.model_assignment
+            if self.backend and request_models
+            else "request"
+        )
         await self.messaging.start(
             send_items=self.state.requests_generator(
                 self.requests,
                 request_models=request_models,
+                model_assignment=model_assignment,
             ),
             receive_callback=self.state.received_callback,
             send_stopped_event=send_requests_stopped_event,
@@ -564,11 +570,18 @@ class _ModelCycle:
         self._models = models
         self._index = 0
 
-    def assign(self, request) -> None:
+    def next(self) -> str | None:
+        """Return the next model in the cycle, or None when empty."""
         if not self._models:
-            return
-        request.model = self._models[self._index]
+            return None
+        model = self._models[self._index]
         self._index = (self._index + 1) % len(self._models)
+        return model
+
+    def assign(self, request) -> None:
+        model = self.next()
+        if model is not None:
+            request.model = model
 
 
 class WorkerGroupState(Generic[RequestT, ResponseT]):
@@ -642,6 +655,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         self,
         requests: DatasetIterT[RequestT],
         request_models: list[str] | None = None,
+        model_assignment: str = "request",
     ) -> Generator[ConversationT[RequestT], None, None]:
         """
         Generate request-info pairs for worker processing with constraint evaluation.
@@ -655,7 +669,14 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         worker dispatch — so the assignment is immune to multiprocessing
         isolation (each worker would otherwise see its own backend instance).
 
+        With model_assignment='conversation' the round-robin advances once
+        per conversation instead of once per request: every turn of a
+        conversation keeps the conversation's model.
+
         :param requests: Finite iterable of requests to process sequentially
+        :param request_models: Models to round-robin across (None disables)
+        :param model_assignment: 'request' (per request) or 'conversation'
+            (one model per conversation, kept for all of its turns)
         :return: Generator yielding conversation graphs for worker processing
         """
 
@@ -663,6 +684,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         # (e.g. multi-LoRA adapter benchmarking). The backend's default
         # model is used when the argument is not a list.
         model_cycle = _ModelCycle(request_models or [])
+        per_conversation = bool(request_models) and model_assignment == "conversation"
 
         try:
             count = 0
@@ -682,6 +704,17 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 for edge in graph.edges:
                     incoming_map[edge.target_node_id].append(edge.source_node_id)
 
+                # Conversation-pinned assignment: advance the cycle once
+                # per conversation and stamp every turn with it — a user
+                # keeps their model for the whole session, so the
+                # conversation's history stays cacheable under a single
+                # model key.
+                if per_conversation:
+                    conversation_model = model_cycle.next()
+                    if conversation_model is not None:
+                        for node_id in topo_dag_nodes:
+                            graph.nodes[node_id].request.model = conversation_model
+
                 for node_id in topo_dag_nodes:
                     node = graph.nodes[node_id]
                     count += 1
@@ -691,7 +724,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                     # Assign the round-robin model to this request (main
                     # process, before the multiprocessing queue). Workers
                     # pick up the pre-assigned model from the request.
-                    model_cycle.assign(node.request)
+                    if not per_conversation:
+                        model_cycle.assign(node.request)
 
                     request_info: RequestInfo = RequestInfo(
                         request_id=request_id,
