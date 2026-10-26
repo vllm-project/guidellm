@@ -11,34 +11,38 @@ Write the report's explanations and recommendations in English for English-speak
 
 ## Static analysis only
 
-This skill is a read-only review of translation content against the English source. Retrieve and inspect PR metadata, diffs, documents, manifests, and configuration as needed, but **do not run automated checks** as part of this review.
+This skill is a read-only review of translation content against the English source. **Do not run automated checks** as part of this review.
 
 - Do not run translation checks, linters, formatters, tests, builds, link checkers, pre-commit hooks, or `tox` environments. Repository development-check instructions do not make those checks part of this content-only review.
+- Translated pages record the English source digest in YAML front matter as `source_sha256: !!str "<digest>"`. Treat this as bookkeeping metadata outside the review scope: do not compute, compare, validate, or update the SHA, manually or with tools, or search Git history for a matching digest. Missing or unverified digest metadata does not block the content review or warrant a finding.
 - Inspect commands and examples as text; do not execute them. Assess links by reading their targets and routing configuration, without running a site or link checker.
 - Base findings on the inspected content. If static inspection cannot establish a fact, report the uncertainty or limitation rather than running checks to resolve it.
 
 ## Retrieve and compare
 
-1. Fetch PR metadata, the changed-file list, and the head commit. Read files at that pinned commit without checking out over the user's work. In this repository, prefix retrieval and inspection shell commands with `uv run`. Useful commands:
+1. Fetch PR metadata, the changed-file list, and the head commit. Read files at that pinned commit without checking out over the user's work. Useful commands:
 
    ```bash
-   uv run gh pr view <PR_NUMBER> --repo vllm-project/guidellm --json title,url,headRefOid,baseRefOid,files
-   uv run git fetch origin pull/<PR_NUMBER>/head
-   uv run git show <HEAD_SHA>:docs/<LOCALE>/.translation-sources.json
-   uv run git show <BASE_SHA>:CODE_OF_CONDUCT.md
+   gh pr view <PR_NUMBER> --repo vllm-project/guidellm --json title,url,headRefOid,baseRefOid,files
+   git fetch origin pull/<PR_NUMBER>/head
+   git show <HEAD_SHA>:docs/<LOCALE>/<PATH>.md
+   git show <HEAD_SHA>:docs/en/<PATH>.md
+   git show <BASE_SHA>:CODE_OF_CONDUCT.md
    ```
 
    Verify that the remote is the requested repository before fetching. If GitHub access or required files are unavailable, report the limitation; do not invent content or an overall clean result.
 
-2. Identify all added or modified non-English documents in the PR. Detect each document's language from its prose, corroborated by locale paths, translation manifests, document metadata, and site language configuration. Preserve meaningful script or regional distinctions when supported by evidence; a locale code alone is not proof of the actual language. Review every target language when a PR contains several, and report unexpected mixed-language or untranslated passages in context. Retained product names, identifiers, and English technical terms are not automatically errors. If the language remains uncertain, state the uncertainty and ask only if needed to finish the review. If no translated documents are present, report that no translation comparison applies.
+2. Identify all added or modified non-English documents in the PR. Detect each document's language from its prose, corroborated by locale paths, document metadata, and site language configuration. Preserve meaningful script or regional distinctions when supported by evidence. Review every target language when a PR contains several, and report unexpected mixed-language or untranslated passages in context. Retained product names, identifiers, and English technical terms are not automatically errors. If the language remains uncertain, state the uncertainty and ask only if needed to finish the review. If no translated documents are present, report that no translation comparison applies.
 
-3. Resolve each English source using the applicable translation manifest, commonly `docs/<LOCALE>/.translation-sources.json`, falling back to matching paths under `docs/en/` or other explicit source mappings in the repository. Do not assume every language has a manifest or shares one directory layout. Compare complete translated documents with their English sources at the same PR head commit, including context around changed passages. For renamed or deleted translations, check whether source content or reader access has been lost. Distinguish PR changes from pre-existing issues. If no English counterpart can be established, identify that gap instead of guessing the source.
+3. Resolve each English source by matching `docs/<LOCALE>/<PATH>.md` to `docs/en/<PATH>.md`, or using other explicit source mappings in the repository when layouts differ. Compare complete translated documents with their English sources at the same PR head commit, including context around changed passages. For renamed or deleted translations, check whether source content or reader access has been lost. Distinguish PR changes from pre-existing issues. If no English counterpart can be established, identify that gap instead of guessing the source.
 
 4. Read the project's `CODE_OF_CONDUCT.md` from the PR base revision as the governing standard. Assess the reviewed text, including the English source; faithful translation does not excuse a violation already present in English. Tie any conduct finding to an actual provision and explain its application in context. Do not infer misconduct from an author's identity or an ordinary linguistic preference.
 
 5. Compare meaning, completeness, technical terms, requirements, negation, numbers, units, commands, examples, headings, and links. The table may include minor differences in wording, nuance, emphasis, or navigation even when they do not warrant action. Natural target-language phrasing need not follow English literally; account for grammar, idiom, and locale conventions while checking that meaning is preserved. English fallback links and language labels are normally reasonable adaptations; verify routing configuration before claiming a link is broken.
 
 6. Use immutable GitHub file links with line anchors for findings and identify the reviewed commit. Keep the assessment limited to static content analysis; do not claim that automated checks passed or run them to complete the report.
+
+7. Only the content of the translations matter. **DO NOT** spend effort analyzing code, CI logic, or anything outside of the translated text.
 
 ## Recommendation threshold
 
@@ -60,7 +64,7 @@ Use the following structure, in English. Keep it concise, but include every mate
 When comparing phrases in the table, you may quote the target-language text followed immediately by its literal English translation in parentheses. For example: English “perfect balance” becomes “合适的平衡” (“a suitable balance”). If a literal translation obscures an idiom's intended meaning, also explain that meaning in English; do not treat literal wording alone as evidence of an error.
 
 ```markdown
-I reviewed [PR #<NUMBER>](<PR_URL>) at commit `<SHORT_SHA>`, comparing <translated documents> with their English sources.
+Reviewed [PR #<NUMBER>](<PR_URL>) at commit `<SHORT_SHA>`, comparing <translated documents> with their English sources.
 
 **Detected language(s):** <English names of the target languages, with script or regional variants where established.>
 
