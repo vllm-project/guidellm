@@ -1922,3 +1922,82 @@ class TestWEKATraceFormatArgsTools:
                 source=trace_file_source(tmp_path),
                 tool_response_tokens_stdev=1,
             )
+
+
+def concat_compatible_processor() -> Mock:
+    """Like ``compatible_processor`` but with a concatenating decode.
+
+    ``decode(a + b) == decode(a) + decode(b)`` holds, as it does for real
+    byte-level BPE tokenizers, so the per-block decoded-text cache composes
+    prompts byte-identically to decoding the full token list.
+    """
+    random.seed(0)
+    proc = Mock()
+    proc.encode.side_effect = lambda text: [
+        random.randint(0, 1000) for _ in range(len(text.split()))
+    ]
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: "".join(
+        f"<{t}>" for t in tokens
+    )
+    return proc
+
+
+class TestReuseDecodedBlocks:
+    def _run(self, trace: Path, *, block_size: int) -> list[str]:
+        config = WEKATraceFormatArgs(
+            source=trace_file_source(trace),
+            hash_id_block_size=block_size,
+        )
+        ds = TraceDatasetDeserializer()(
+            config=config,
+            processor_factory=concat_compatible_processor,
+            random_seed=42,
+        )
+        return [
+            turn.columns["text_column"][0] for turn in load_graph_turns(next(iter(ds)))
+        ]
+
+    @pytest.mark.regression
+    def test_decoded_blocks_reused_across_turns(self, tmp_path: Path):
+        """Decoded-block reuse is always on and stable across a conversation's turns.
+
+        Every turn shares hash id 1 as its first block, so with a concatenating
+        tokenizer (the invariant real byte-level BPE tokenizers satisfy) all turns'
+        prompts must begin with the same decoded first-block text while differing in
+        their distinct second block. The run is also deterministic. Byte-exact
+        equivalence to full-list decoding is covered by the
+        ``create_prompt_from_hash_ids`` helper tests.
+
+        ## WRITTEN BY AI ##
+        """
+        block_size = 64
+        n_in = block_size * 2
+        trace = write_trace(
+            tmp_path,
+            generate_weka_trace(
+                1,
+                4,
+                [TraceColumnGenerator("id", lambda i: f'"conv{i}"')],
+                [
+                    TraceColumnGenerator("t", lambda i: i),
+                    TraceColumnGenerator("in", lambda _: n_in),
+                    TraceColumnGenerator("out", lambda _: 5),
+                    TraceColumnGenerator("hash_ids", lambda i: [1, i + 2]),
+                ],
+            ),
+        )
+        prompts = self._run(trace, block_size=block_size)
+        assert len(prompts) == 4
+        # Deterministic across runs (stable cache output).
+        assert self._run(trace, block_size=block_size) == prompts
+        # Distinct second blocks -> every turn's prompt is distinct.
+        assert len(set(prompts)) == 4
+        # Shared first block (hash id 1) -> a common non-empty decoded prefix.
+        shared = prompts[0]
+        for prompt in prompts[1:]:
+            limit = min(len(shared), len(prompt))
+            idx = 0
+            while idx < limit and shared[idx] == prompt[idx]:
+                idx += 1
+            shared = shared[:idx]
+        assert shared
