@@ -6585,6 +6585,37 @@ class TestSpeechRequestHandler:
         )
 
     @pytest.mark.regression
+    @pytest.mark.parametrize("audio_format", ["mp3", "flac"])
+    def test_encoded_stream_chunks_are_retained_without_pcm_ttfp(
+        self, generation_request, audio_format
+    ):
+        """Retain encoded chunks without interpreting them as PCM frames.
+
+        :param generation_request: Basic generation request fixture.
+        :param audio_format: Encoded format outside the PCM/WAV streaming contract.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        handler.format(
+            generation_request,
+            audio_output_channels=1,
+            extras=GenerationRequestArguments(
+                body={
+                    "response_format": audio_format,
+                    "stream_format": "audio",
+                }
+            ),
+        )
+        payload = b"encoded audio packet"
+        handler.set_streaming_arrival_time(1.0)
+
+        assert handler.add_streaming_chunk(payload) == 0
+        assert handler.streaming_audio_chunks == [payload]
+        assert handler.streaming_audio_arrivals == [1.0]
+        assert not handler.last_iteration_had_audio
+
+    @pytest.mark.regression
     @pytest.mark.parametrize("terminal", [False, True])
     def test_speech_sse_requires_terminal_event(self, generation_request, terminal):
         """Require speech.audio.done before accepting an SSE response.
@@ -6747,6 +6778,75 @@ class TestSpeechRequestHandler:
         assert result.use_request_output_metrics is False
 
     @pytest.mark.regression
+    def test_non_streaming_pcm_uses_configured_layout_without_headers(
+        self, generation_request
+    ):
+        """Measure headerless PCM from the configured sample-rate and channels.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            audio_output_sample_rate=24000,
+            audio_output_channels=1,
+            extras=GenerationRequestArguments(body={"response_format": "pcm"}),
+        )
+
+        result = handler.compile_non_streaming(
+            generation_request,
+            arguments,
+            b"\x00\x00" * 2400,
+        )
+        handler.post_validation(result)
+
+        assert result.output_media[0]["data"] == b"\x00\x00" * 2400
+        assert result.output_media[0]["format"] == "pcm"
+        assert result.output_metrics.audio_bytes == 4800
+        assert result.output_metrics.audio_samples == 2400
+        assert result.output_metrics.audio_seconds == pytest.approx(0.1)
+
+    @pytest.mark.regression
+    def test_non_streaming_pcm_without_layout_preserves_audio(self, generation_request):
+        """Keep non-streaming PCM when no layout metadata or hints are available.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(body={"response_format": "pcm"}),
+        )
+        payload = b"\x00\x00" * 100
+
+        with (
+            patch(
+                "guidellm.backends.openai.request_handlers.decode_audio_with_metadata"
+            ) as decode_audio,
+            patch(
+                "guidellm.backends.openai.request_handlers.logger.warning"
+            ) as warning,
+        ):
+            result = handler.compile_non_streaming(
+                generation_request, arguments, payload
+            )
+        handler.post_validation(result)
+
+        decode_audio.assert_not_called()
+        warning.assert_called_once()
+        assert "leaving sample count and duration unknown" in str(
+            warning.call_args.args[0]
+        )
+        assert result.output_media[0]["data"] == payload
+        assert result.output_metrics.audio_bytes == len(payload)
+        assert result.output_metrics.audio_samples is None
+        assert result.output_metrics.audio_seconds is None
+
+    @pytest.mark.regression
     def test_non_streaming_wav_uses_embedded_layout(self, generation_request):
         """Read WAV sample rate and frames directly from its container header.
 
@@ -6766,6 +6866,98 @@ class TestSpeechRequestHandler:
         assert result.output_media[0]["data"] == audio
         assert result.output_metrics.audio_samples == 6000
         assert result.output_metrics.audio_seconds == pytest.approx(0.25)
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("audio_format", ["wav", "mp3", "flac", "opus"])
+    def test_non_pcm_response_formats_use_container_decoder(
+        self, generation_request, audio_format
+    ):
+        """Decode supported non-streaming containers and retain their original bytes.
+
+        :param generation_request: Basic generation request fixture.
+        :param audio_format: Documented encoded speech response format.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(body={"response_format": audio_format}),
+        )
+        payload = b"encoded response bytes"
+        decoded_samples = MagicMock()
+        decoded_samples.shape = (1, 2400)
+
+        with patch(
+            "guidellm.backends.openai.request_handlers.decode_audio_with_metadata",
+            return_value=(decoded_samples, 24000, 0.1),
+        ) as decode_audio:
+            result = handler.compile_non_streaming(
+                generation_request,
+                arguments,
+                payload,
+            )
+
+        decode_audio.assert_called_once_with(payload)
+        handler.post_validation(result)
+        assert result.output_media[0]["data"] == payload
+        assert result.output_media[0]["format"] == audio_format
+        assert result.output_metrics.audio_samples == 2400
+        assert result.output_metrics.audio_seconds == pytest.approx(0.1)
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("stream_format", ["audio", "sse"])
+    def test_completed_pcm_stream_without_layout_preserves_audio(
+        self, generation_request, stream_format
+    ):
+        """Keep completed streamed PCM when the server omits layout metadata.
+
+        :param generation_request: Basic generation request fixture.
+        :param stream_format: Raw-byte or SSE speech streaming mode.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(
+                body={"response_format": "pcm", "stream_format": stream_format}
+            ),
+        )
+        payload = b"\x00\x00" * 100
+
+        if stream_format == "audio":
+            handler.add_streaming_chunk(payload)
+            handler.mark_stream_complete()
+        else:
+            delta = {
+                "type": "speech.audio.delta",
+                "audio": base64.b64encode(payload).decode("ascii"),
+                "response_format": "pcm",
+            }
+            handler.add_streaming_line("data: " + json.dumps(delta))
+            handler.add_streaming_line('data: {"type":"speech.audio.done","usage":{}}')
+
+        with (
+            patch(
+                "guidellm.backends.openai.request_handlers.decode_audio_with_metadata"
+            ) as decode_audio,
+            patch(
+                "guidellm.backends.openai.request_handlers.logger.warning"
+            ) as warning,
+        ):
+            result = handler.compile_streaming(generation_request, arguments)
+        handler.post_validation(result)
+
+        decode_audio.assert_not_called()
+        warning.assert_called_once()
+        assert "leaving sample count and duration unknown" in str(
+            warning.call_args.args[0]
+        )
+        assert result.output_media[0]["data"] == payload
+        assert result.output_metrics.audio_bytes == len(payload)
+        assert result.output_metrics.audio_samples is None
+        assert result.output_metrics.audio_seconds is None
 
     @pytest.mark.regression
     def test_decode_failure_is_not_swallowed(self, generation_request):
@@ -6791,21 +6983,41 @@ class TestSpeechRequestHandler:
             handler.compile_non_streaming(generation_request, arguments, b"X" * 44)
 
     @pytest.mark.regression
-    def test_incomplete_encoded_audio_frame_is_rejected(self, generation_request):
-        """Reject malformed encoded output ending midway through a PCM frame.
+    @pytest.mark.parametrize(
+        ("payload", "channels", "message"),
+        [
+            (b"\x00", None, "incomplete PCM16 sample"),
+            (b"\x00\x00", 2, "incomplete PCM16 frame"),
+        ],
+    )
+    def test_incomplete_pcm16_sample_or_frame_is_rejected(
+        self,
+        generation_request,
+        payload,
+        channels,
+        message,
+    ):
+        """Reject PCM16 data that ends inside a sample or known channel frame.
 
         :param generation_request: Basic generation request fixture.
+        :param payload: PCM bytes ending before a complete sample or frame.
+        :param channels: Known channel count, or None when it is unavailable.
+        :param message: Expected validation error text.
         :return: None.
         ## WRITTEN BY AI ##
         """
         handler = SpeechRequestHandler()
+        format_kwargs = {"audio_output_sample_rate": 24000}
+        if channels is not None:
+            format_kwargs["audio_output_channels"] = channels
         arguments = handler.format(
             generation_request,
-            extras=GenerationRequestArguments(body={"response_format": "wav"}),
+            extras=GenerationRequestArguments(body={"response_format": "pcm"}),
+            **format_kwargs,
         )
 
-        with pytest.raises(ValueError, match="incomplete PCM16 frame"):
-            handler.compile_non_streaming(generation_request, arguments, b"\x00")
+        with pytest.raises(ValueError, match=message):
+            handler.compile_non_streaming(generation_request, arguments, payload)
 
     @pytest.mark.regression
     def test_raw_pcm_without_layout_keeps_duration_unknown(self, generation_request):

@@ -26,6 +26,7 @@ from guidellm.backends.openai.modality_parsers import (
     ModalityOutputParser,
     ModalityParserRegistry,
 )
+from guidellm.logger import logger
 from guidellm.scheduler import HistoryT
 from guidellm.schemas import (
     GenerationRequest,
@@ -50,6 +51,7 @@ WS_AUDIO_CHUNKS_BODY_KEY = "audio_chunks"
 PCM_WAV_HEADER_SIZE = 44
 WAV_FMT_CHUNK_SIZE = 16
 PCM_BITS_PER_SAMPLE = 16
+PCM16_BYTES_PER_SAMPLE = PCM_BITS_PER_SAMPLE // 8
 
 __all__ = [
     "WS_AUDIO_CHUNKS_BODY_KEY",
@@ -2510,15 +2512,20 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
 @OpenAIRequestHandlerFactory.register("/v1/audio/speech")
 class SpeechRequestHandler(OpenAIRequestHandler):
     """
-    Request handler for OpenAI/vLLM-Omni text-to-speech (TTS), for
+    Request handler for OpenAI / vLLM-Omni text-to-speech (TTS), for
     /v1/audio/speech OpenAI endpoint.
     Response shape depends on streaming mode:
-      - Non-streaming (default): raw audio bytes; usage in response headers
-        (x-vllm-omni-*), read via set_response_headers().
+      - Non-streaming (default, stream=false and no stream_format): raw binary audio;
+        usage from response headers (x-vllm-omni-*),  via set_response_headers().
       - SSE streaming (with stream=true, the vLLM-Omni streaming default):
         speech.audio.delta/.done/.error text events -- reuses the existing
         line-oriented streaming loop with the underneath audio payload.
-      - Raw byte streaming (stream_format="audio"): for raw PCM/WAV
+      - Raw byte streaming (stream_format="audio"): raw PCM/WAV bytes
+
+      Response modes:
+      - Non-streaming (stream=false and no stream_format): complete binary audio.
+      - SSE (stream=true or stream_format="sse"): speech.audio.* events.
+      - Raw audio (stream_format="audio"): streamed PCM or WAV bytes.
     """
 
     raw_response: ClassVar[bool] = True
@@ -2757,17 +2764,39 @@ class SpeechRequestHandler(OpenAIRequestHandler):
         self.streaming_audio_arrivals.append(self._streaming_arrival_time)
         self._streamed_audio_bytes_seen += len(chunk)
 
-        header_bytes = PCM_WAV_HEADER_SIZE if audio_format == "wav" else 0
-        channels = self._response_channels or self._output_channels_hint or 1
-        if audio_format == "wav":
-            self._streamed_audio_header = (self._streamed_audio_header + chunk)[:44]
-            if len(self._streamed_audio_header) == PCM_WAV_HEADER_SIZE:
-                channels = (
-                    int.from_bytes(self._streamed_audio_header[22:24], "little")
-                    or channels
-                )
+        # Keep encoded chunks, but don't interpret them as pcm for TTFP.
+        if audio_format not in ("pcm", "pcm16", "wav"):
+            self._last_iteration_had_audio = False
+            return
 
-        bytes_per_frame = 2 * channels
+        header_bytes = PCM_WAV_HEADER_SIZE if audio_format == "wav" else 0
+        channels = self._response_channels or self._output_channels_hint
+        if audio_format == "wav":
+            self._streamed_audio_header = (self._streamed_audio_header + chunk)[
+                :PCM_WAV_HEADER_SIZE
+            ]
+            if len(self._streamed_audio_header) < PCM_WAV_HEADER_SIZE:
+                self._last_iteration_had_audio = False
+                return
+
+            wav_layout = _pcm16_layout(
+                self._streamed_audio_header,
+                audio_format,
+                None,
+                None,
+            )
+            if wav_layout is None:
+                # Do not count container/header bytes as playable audio.
+                self._last_iteration_had_audio = False
+                return
+
+            channels = wav_layout[1]
+
+        if type(channels) is not int or channels <= 0:
+            self._last_iteration_had_audio = False
+            return
+
+        bytes_per_frame = PCM16_BYTES_PER_SAMPLE * channels
         previous_frames = max(0, previous_bytes - header_bytes) // bytes_per_frame
         current_frames = (
             max(0, self._streamed_audio_bytes_seen - header_bytes) // bytes_per_frame
@@ -2783,7 +2812,11 @@ class SpeechRequestHandler(OpenAIRequestHandler):
         complete: bool = True,
     ) -> tuple[int, int, int, int] | None:
         """
-        Populate duration and frame counts from generated audio.
+        Populate audio sample and duration metrics when the layout is known.
+
+        Headerless PCM remains with unknown layout-dependent metrics when
+        no server metadata or configured layout hints are available. Encoded
+        containers are decoded after having the complete response.
 
         :param output_metrics: Metrics updated in place.
         :param data: Accumulated encoded audio or PCM16 bytes.
@@ -2813,11 +2846,23 @@ class SpeechRequestHandler(OpenAIRequestHandler):
         if not complete:
             return None
 
-        if audio_format not in ("pcm", "pcm16"):
-            bytes_per_frame = 2 * (channels or 1)
-            size = len(data)
-            if (size - int(size / bytes_per_frame) * bytes_per_frame) > 0:
-                raise ValueError("[UNUSABLE_BACKEND_RESPONSE] incomplete PCM16 frame")
+        if audio_format in ("pcm", "pcm16"):
+            if len(data) % PCM16_BYTES_PER_SAMPLE:
+                raise ValueError("[UNUSABLE_BACKEND_RESPONSE] incomplete PCM16 sample")
+
+            if type(channels) is int and channels > 0:
+                bytes_per_frame = PCM16_BYTES_PER_SAMPLE * channels
+                if len(data) % bytes_per_frame:
+                    raise ValueError(
+                        "[UNUSABLE_BACKEND_RESPONSE] incomplete PCM16 frame"
+                    )
+
+            logger.warning(
+                "PCM speech output has no usable sample-rate/channel layout; "
+                "preserving audio bytes and leaving sample count and duration "
+                "unknown. Configure audio_output_sample_rate and "
+                "audio_output_channels to calculate them."
+            )
             return None
 
         try:
