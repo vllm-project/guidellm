@@ -6395,7 +6395,7 @@ def test_chat_stream_preserves_interleaved_partial_tool_arguments():
     ],
 )
 def test_responses_stream_final_arguments_override_fragments(final_arguments, expected):
-    """Honor authoritative final arguments without losing streams that lack them.
+    """Preserve partial arguments and honor final arguments after resuming a stream.
 
     ## WRITTEN BY AI ##
     """
@@ -6427,7 +6427,12 @@ def test_responses_stream_final_arguments_override_fragments(final_arguments, ex
                 **final_arguments,
             }
         )
-    for event in events:
+    handler.add_streaming_line("data: " + json.dumps(events[0]))
+    partial = handler.compile_streaming(request, arguments)
+    assert partial.tool_calls is not None
+    assert partial.tool_calls[0].function.arguments == '{"city":"'
+
+    for event in events[1:]:
         handler.add_streaming_line("data: " + json.dumps(event))
 
     response = handler.compile_streaming(request, arguments)
