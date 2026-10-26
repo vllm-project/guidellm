@@ -6,6 +6,7 @@ import base64
 import hashlib
 import io
 import tempfile
+from itertools import islice
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -486,3 +487,43 @@ def test_new_epoch_changes_media(dataset_cls, config, key):
     first = next(iter(dataset))[key][key]
 
     assert next(iter(dataset))[key][key] != first
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("dataset_cls", "config"),
+    [
+        (
+            SyntheticImageDataset,
+            SyntheticImageDataArgs(
+                width=8, height=8, output_tokens=256, output_tokens_stdev=64
+            ),
+        ),
+        (
+            SyntheticVideoDataset,
+            SyntheticVideoDataArgs(
+                width=8,
+                height=8,
+                frames=1,
+                output_tokens=256,
+                output_tokens_stdev=64,
+            ),
+        ),
+    ],
+)
+def test_output_tokens_do_not_reuse_seeds(dataset_cls, config):
+    """A later pass must not replay another seed's output token counts.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def output_counts(dataset) -> list[int]:
+        return [row["output_tokens_count_0"] for row in islice(iter(dataset), 8)]
+
+    dataset_42 = dataset_cls(config=config, random_seed=42)
+    pass_1 = output_counts(dataset_42)
+    pass_2 = output_counts(dataset_42)
+    seed_43 = output_counts(dataset_cls(config=config, random_seed=43))
+
+    assert pass_2 != pass_1
+    assert pass_2 != seed_43
