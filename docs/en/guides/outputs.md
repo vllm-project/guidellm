@@ -111,6 +111,27 @@ guidellm run \
 
 The `--metrics` option also accepts `prefer_response_metrics` (default `true`), which controls whether server-reported token counts are preferred over client-calculated counts when both are available. This rarely needs to be changed.
 
+### Embedded Media in JSON and YAML
+
+JSON and YAML outputs preserve embedded media by default (`include_media=true`) so retained requests can be reconstructed for replay. To omit recognized media payloads from an individual output, set `include_media=false`. This replaces multipart file contents, media data URLs, and explicit inline audio/image/file payloads with metadata. It applies to retained request arguments and recognized media in the saved configuration.
+
+For example, re-export a report to two smaller sharing copies and a lossless copy:
+
+```bash
+guidellm export benchmarks.json \
+  --output kind=json,path=share.json,include_media=false \
+  --output kind=yaml,path=share.yaml,include_media=false \
+  --output kind=json,path=replay.json,include_media=true
+```
+
+The same output options work with `guidellm run`. Each output has an independent policy: omitting media does not change the in-memory report, another output, or the requests sent to the server. Transcriptions, ordinary prompt/output text, and lightweight metrics remain available.
+
+Replacement metadata includes `omitted: true`, a serialized character count, filename/MIME type when available, and decoded byte count when the Base64 encoding is explicit. Multipart argument serialization does not distinguish original bytes from text, so its metadata reports the serialized character count without guessing a decoded size.
+
+An omitted-media copy cannot reconstruct the removed payloads for replay. Keep a lossless copy when replay is required. This option is not general secret or personal-data redaction: opaque/free-form encodings, ordinary text, headers, filenames, and remote URLs can still contain sensitive information. It does not fetch or remove external files and does not reduce payload retention during benchmark execution.
+
+When saving through Python, use `report.save_file("share.json", include_media=False)` for the same output-time policy.
+
 ### Reloading Results
 
 JSON files can be reloaded into Python for further analysis using the `GenerativeBenchmarksReport` class. Below is a sample code snippet for reloading results:
