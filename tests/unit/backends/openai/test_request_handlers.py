@@ -2270,17 +2270,6 @@ class TestChatCompletionsRequestHandler:
         assert response.output_metrics.mixed_content_tool_tokens is None
         assert response.output_metrics.tool_call_count is None
 
-    @pytest.mark.smoke
-    def test_initialization_has_streaming_tool_calls(self, valid_instances):
-        """
-        Test ChatCompletionsRequestHandler initializes streaming_tool_calls.
-
-        ## WRITTEN BY AI ##
-        """
-        instance = valid_instances
-        assert hasattr(instance, "streaming_tool_calls")
-        assert instance.streaming_tool_calls == {}
-
     @pytest.mark.sanity
     def test_format_strips_tool_choice_without_tools(self, valid_instances):
         """
@@ -4751,17 +4740,6 @@ class TestResponsesRequestHandler:
         assert response.output_metrics.mixed_content_tool_tokens is None
         assert response.output_metrics.tool_call_count is None
 
-    @pytest.mark.smoke
-    def test_initialization_has_streaming_tool_calls(self, valid_instances):
-        """
-        Test ResponsesRequestHandler initializes streaming_tool_calls.
-
-        ## WRITTEN BY AI ##
-        """
-        instance = valid_instances
-        assert hasattr(instance, "streaming_tool_calls")
-        assert instance.streaming_tool_calls == {}
-
     @pytest.mark.sanity
     def test_format_tool_call_overrides(self, valid_instances):
         """
@@ -6352,3 +6330,109 @@ class TestRequestPayloadRequired:
         )
 
         assert result.body["prompt"] == "from extras"
+
+
+@pytest.mark.regression
+def test_chat_stream_preserves_interleaved_partial_tool_arguments():
+    """Preserve exact per-call arguments when a stream is compiled and resumed.
+
+    ## WRITTEN BY AI ##
+    """
+    handler = ChatCompletionsRequestHandler()
+    request = GenerationRequest(columns={"text_column": ["route this"]})
+    arguments = handler.format(request)
+    deltas = [
+        {
+            "index": 3,
+            "id": "late",
+            "function": {"name": "save", "arguments": '{"city":"'},
+        },
+        {
+            "index": 1,
+            "id": "early",
+            "function": {"name": "count", "arguments": '{"n":'},
+        },
+        {"index": 3, "function": {"arguments": "Łódź"}},
+    ]
+    for delta in deltas:
+        handler.add_streaming_line(
+            "data: " + json.dumps({"choices": [{"delta": {"tool_calls": [delta]}}]})
+        )
+
+    partial = handler.compile_streaming(request, arguments)
+    assert partial.tool_calls is not None
+    assert [call.function.arguments for call in partial.tool_calls] == [
+        '{"n":',
+        '{"city":"Łódź',
+    ]
+
+    for delta in [
+        {"index": 1, "function": {"arguments": "2}"}},
+        {"index": 3, "function": {"arguments": '"}'}},
+    ]:
+        handler.add_streaming_line(
+            "data: " + json.dumps({"choices": [{"delta": {"tool_calls": [delta]}}]})
+        )
+    response = handler.compile_streaming(request, arguments)
+    assert response.tool_calls is not None
+    assert [
+        (call.id, call.function.name, call.function.arguments)
+        for call in response.tool_calls
+    ] == [
+        ("early", "count", '{"n":2}'),
+        ("late", "save", '{"city":"Łódź"}'),
+    ]
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("final_arguments", "expected"),
+    [
+        (None, '{"city":"Łódź"}'),
+        ({}, '{"city":"Łódź"}'),
+        ({"arguments": '{"city":"Warsaw"}'}, '{"city":"Warsaw"}'),
+        ({"arguments": ""}, ""),
+    ],
+)
+def test_responses_stream_final_arguments_override_fragments(final_arguments, expected):
+    """Honor authoritative final arguments without losing streams that lack them.
+
+    ## WRITTEN BY AI ##
+    """
+    handler = ResponsesRequestHandler()
+    request = GenerationRequest(columns={"text_column": ["route this"]})
+    arguments = handler.format(request)
+    events = [
+        {
+            "type": "response.output_item.added",
+            "output_index": 2,
+            "item": {
+                "type": "function_call",
+                "call_id": "call_2",
+                "name": "save",
+                "arguments": '{"city":"',
+            },
+        },
+        {
+            "type": "response.function_call_arguments.delta",
+            "output_index": 2,
+            "delta": 'Łódź"}',
+        },
+    ]
+    if final_arguments is not None:
+        events.append(
+            {
+                "type": "response.function_call_arguments.done",
+                "output_index": 2,
+                **final_arguments,
+            }
+        )
+    for event in events:
+        handler.add_streaming_line("data: " + json.dumps(event))
+
+    response = handler.compile_streaming(request, arguments)
+    assert response.tool_calls is not None
+    assert [
+        (call.id, call.function.name, call.function.arguments)
+        for call in response.tool_calls
+    ] == [("call_2", "save", expected)]
