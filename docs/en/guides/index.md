@@ -76,6 +76,14 @@ Whether you're interested in understanding the system architecture, exploring su
 
   [:octicons-arrow-right-24: Over-Saturation Guide](over_saturation_stopping.md)
 
+- :material-gauge:{ .lg .middle } Collectors
+
+  ______________________________________________________________________
+
+  Gather data from outside GuideLLM while benchmarks run, such as a server's Prometheus metrics, and store it next to the client results.
+
+  [:octicons-arrow-right-24: Collectors Guide](collectors.md)
+
 - :material-chart-bell-curve-cumulative:{ .lg .middle } Knee Profile
 
   ______________________________________________________________________

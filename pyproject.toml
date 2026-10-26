@@ -37,7 +37,7 @@ dynamic = ["version"]
 name = "guidellm"
 description = "Guidance platform for deploying and managing large language models."
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.10.0,<4.0"
+requires-python = ">=3.11.0,<4.0"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Red Hat" }]
 keywords = [
@@ -114,19 +114,19 @@ build = [
 ]
 quality = [
     # code quality
-    "mypy~=2.1.0",
-    "ruff~=0.15.20",
-    "import-linter~=2.13.0",
+    "mypy~=2.4.0",
+    "ruff~=0.17.2",
+    "import-linter~=2.15.0",
 
     # docs quality
     "mdformat~=1.0.0",
     "mdformat-footnote~=0.1.3",
-    "mdformat-frontmatter~=2.0.10",
+    "mdformat-frontmatter~=2.1.2",
     "mdformat-gfm~=1.0.0",
 
     # type-checking
-    "pandas-stubs",
-    "types-PyYAML~=6.0.1",
+    "pandas-stubs~=3.0.5.260914",
+    "types-PyYAML~=6.0.12.20260906",
 
     # link checking
     "mkdocs-linkcheck~=1.0.6",
@@ -138,12 +138,12 @@ test = [
     "pytest~=9.1.1",
     "pytest-asyncio~=1.4.0",
     "pytest-cov~=7.1.0",
-    "pytest-mock~=3.15.1",
-    "pytest-rerunfailures~=16.4",
+    "pytest-mock~=3.17.0",
+    "pytest-rerunfailures~=16.7.0",
     "pytest-timeout~=2.4.0",
     "pytest-httpx2~=1.0.0",
     "respx~=0.23.1",
-    "trio~=0.33.0",
+    "trio~=0.34.0",
     "logot~=1.7.0",
 ]
 env = [
@@ -191,11 +191,12 @@ profile = "black"
 
 [tool.mypy]
 files = ["src/guidellm"]
-python_version = '3.10'
+python_version = '3.11'
 warn_redundant_casts = true
 warn_unused_ignores = false
 show_error_codes = true
 namespace_packages = true
+num_workers = "auto"
 exclude = ["venv", ".tox"]
 
 # Silence "type import errors" as our 3rd-party libs does not have types
@@ -205,21 +206,16 @@ follow_imports = 'silent'
 [[tool.mypy.overrides]]
 module = [
     "datasets.*",
-    "transformers.*",
-    "setuptools.*",
-    "setuptools_git_versioning.*",
-    "torchcodec.*",
-    "vllm",
     "vllm.*"
 ]
 ignore_missing_imports = true
 
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 88
 indent-width = 4
-exclude = ["build", "dist", "env", ".venv*"]
+extend-exclude = ["build", "dist", "*.md"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -228,18 +224,20 @@ line-ending = "lf"
 
 [tool.ruff.lint]
 ignore = [
-    "COM812",  # ignore trailing comma errors due to older Python versions
-    "PD011",   # ignore .values usage since ruff assumes it's a Pandas DataFrame
-    "PLR0913", # ignore too many arguments in function definitions
-    "PLW1514", # allow Path.open without encoding
-    "RET505",  # allow `else` blocks
-    "RET506",  # allow `else` blocks
-    "S311",    # allow standard pseudo-random generators
-    "TC001",   # ignore imports used only for type checking
-    "TC002",   # ignore imports used only for type checking
-    "TC003",   # ignore imports used only for type checking
-    "FIX002",  # Allow TODO comments
-    "FIX004",  # Allow HACK comments
+    "COM812",   # ignore trailing comma errors due to older Python versions
+    "PD011",    # ignore .values usage since ruff assumes it's a Pandas DataFrame
+    "PLR0913",  # ignore too many arguments in function definitions
+    "PLW1514",  # allow Path.open without encoding
+    "RET505",   # allow `else` blocks
+    "RET506",   # allow `else` blocks
+    "S311",     # allow standard pseudo-random generators
+    "TC001",    # ignore imports used only for type checking
+    "TC002",    # ignore imports used only for type checking
+    "TC003",    # ignore imports used only for type checking
+    "FIX002",   # Allow TODO comments
+    "FIX004",   # Allow HACK comments
+    "ASYNC109", # Overzealous rule about functions with `timeout` argument
+    "PLR0917",  # Don't judge my positional arguments
 ]
 select = [
     # Rules reference: https://docs.astral.sh/ruff/rules/
@@ -341,7 +339,7 @@ layers = [
   "cli",
   "entrypoints",
   "benchmark | mock_server",
-  "data | backends",
+  "data | backends | collectors",
   "scheduler",
   # utils/extras/schemas can interdepend so treat
   # them as one layer and check with a separate rule

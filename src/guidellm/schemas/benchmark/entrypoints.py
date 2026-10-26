@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 from abc import ABC
+from collections.abc import Sequence
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, ClassVar, Literal
 
@@ -32,6 +34,7 @@ from guidellm.schemas import (
     standard_model_config,
 )
 from guidellm.schemas.backends import BackendArgs
+from guidellm.schemas.benchmark.collectors import CollectorArgs
 from guidellm.schemas.benchmark.goodput import GoodputSLO
 from guidellm.schemas.benchmark.outputs import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.profiles import ProfileArgs
@@ -50,7 +53,7 @@ from guidellm.schemas.data import (
 )
 from guidellm.schemas.scheduler import ConstraintArgs
 from guidellm.utils.arg_string import ArgStringParser
-from guidellm.utils.dict import deep_update
+from guidellm.utils.typing import BLANK
 
 __all__ = [
     "BenchmarkArgs",
@@ -58,6 +61,7 @@ __all__ = [
     "BenchmarkScenario",
     "GenerativeMetricsArgs",
     "MetricsArgs",
+    "merge_scenario_files",
 ]
 
 
@@ -84,6 +88,119 @@ def default_kind(kind: str) -> dict[str, Any]:
 def default_kind_list(*kinds: str) -> list[dict[str, Any]]:
     """Default factory for lists of argument models to set the 'kind' field."""
     return [default_kind(kind) for kind in kinds]
+
+
+def _merge_config_values(base: Any, override: Any) -> Any:
+    """Merge configuration values, replacing incompatible registry objects."""
+    if not isinstance(base, dict) or not isinstance(override, dict):
+        return deepcopy(override)
+
+    # A registry object is identified by its ``kind`` discriminator. A change
+    # in kind means that the old object's fields are no longer applicable. When
+    # the kinds match, retain the normal recursive merge so a later file can
+    # override only selected attributes.
+    if "kind" in base and "kind" in override and base["kind"] != override["kind"]:
+        return deepcopy(override)
+
+    merged = deepcopy(base)
+    for key, value in override.items():
+        if value is BLANK:
+            continue
+        if key in merged:
+            merged[key] = _merge_config_values(merged[key], value)
+        else:
+            merged[key] = deepcopy(value)
+    return merged
+
+
+def _resolve_scenario_path(scenario: Path | str) -> Path:
+    """Resolve a built-in scenario name or validate a scenario file path."""
+    if isinstance(scenario, str) and scenario in (
+        builtin_scenarios := get_builtin_scenarios()
+    ):
+        return builtin_scenarios[scenario]
+
+    scenario_path = Path(scenario)
+    if scenario_path.exists() and scenario_path.is_file():
+        return scenario_path
+
+    raise ValueError(f"Scenario '{scenario}' not found.")
+
+
+def _load_scenario_file(scenario_path: Path) -> dict[str, Any]:
+    """Load one scenario file and unwrap benchmark report configurations."""
+    with scenario_path.open() as file:
+        if scenario_path.suffix == ".json":
+            scenario_data = json.load(file)
+        elif scenario_path.suffix in {".yaml", ".yml"}:
+            scenario_data = yaml.safe_load(file)
+        else:
+            raise ValueError(
+                f"Unsupported scenario file format: {scenario_path.suffix}"
+            )
+
+    if not isinstance(scenario_data, dict):
+        raise ValueError(f"Scenario '{scenario_path}' must contain a mapping.")
+
+    # Reports contain the benchmark configuration under a top-level ``config``
+    # key. Keep accepting them as scenario inputs for backwards compatibility.
+    if "config" in scenario_data:
+        scenario_data = scenario_data["config"]
+        if not isinstance(scenario_data, dict):
+            raise ValueError(
+                f"Scenario report '{scenario_path}' has an invalid 'config'."
+            )
+
+    return scenario_data
+
+
+def merge_scenario_files(
+    scenario_files: Sequence[Path | str],
+) -> dict[str, Any]:
+    """Load and merge scenario files in the order supplied.
+
+    Each file is loaded as YAML or JSON and merged into the result from the
+    preceding files. Nested mappings are merged recursively. Mappings that
+    both contain a registry ``kind`` are treated as one polymorphic object: a
+    matching kind permits an attribute-level merge, while a different kind
+    replaces the complete object so fields belonging to the previous variant
+    cannot leak into the new configuration. Lists and scalar values from a
+    later file replace earlier values.
+
+    Scenario file metadata is handled specially, in order to collect an
+    aggregated set of metadata identifying the stacked configurations:
+    a "scenario" list is constructed identifying the name and metadata from
+    each scenario file, in order.
+
+    Both file paths and built-in scenario names are accepted, along with
+    GuideLLM JSON report files, which contain an embedded "config" object.
+
+    :param scenario_files: Ordered scenario names or YAML/JSON file paths
+    :return: The merged, unvalidated configuration mapping
+    :raises ValueError: If a scenario cannot be found, has an unsupported format,
+        or does not contain a mapping
+    """
+    merged_config: dict[str, Any] = {}
+    includes = []
+    for scenario in scenario_files:
+        scenario_path = _resolve_scenario_path(scenario)
+        scenario_data = _load_scenario_file(scenario_path)
+        scenario_metadata = scenario_data.get("metadata", {})
+        metadata = {
+            "scenario": scenario_path.name,
+            "metadata": scenario_metadata,
+        }
+        if isinstance(scenario_metadata, dict) and isinstance(
+            scenario_metadata.get("config_files"), list
+        ):
+            includes.extend(scenario_metadata["config_files"])
+        else:
+            includes.append(metadata)
+        merged_config = _merge_config_values(merged_config, scenario_data)
+
+    if isinstance(merged_config.get("metadata"), dict):
+        merged_config["metadata"] = {"includes": includes}
+    return merged_config
 
 
 class MetricsArgs(PydanticClassRegistryMixin["MetricsArgs"], ABC):
@@ -250,14 +367,27 @@ class BenchmarkArgs(ReloadableBaseModel):
         default_factory=lambda: default_kind_list("json", "csv"),  # type: ignore[arg-type]
         description="Benchmark output formats and paths.",
         examples=[
-            {"kind": "json", "filename": "benchmarks.json"},
+            {"kind": "json", "path": "benchmarks.json"},
         ],
         json_schema_extra={"argument_alias": "output"},
     )
     metrics: MetricsArgs = Field(  # type: ignore[assignment]
         default_factory=lambda: default_kind("generative"),
         description="Configuration for metrics collection and request sampling.",
+        examples=[{"kind": "generative", "confidence": 0.99}],
         json_schema_extra={"argument_alias": "metrics"},
+    )
+    collectors: list[CollectorArgs] = Field(  # type: ignore[assignment]
+        default_factory=list,
+        description=(
+            "Collectors that gather data from outside GuideLLM while each "
+            "benchmark runs, such as a server's Prometheus metrics. Each one "
+            "reports a result per benchmark."
+        ),
+        examples=[
+            {"kind": "prometheus", "url": "http://localhost:8000/metrics"},
+        ],
+        json_schema_extra={"argument_alias": "collector"},
     )
 
     @model_validator(mode="after")
@@ -282,8 +412,35 @@ class BenchmarkMetadata(StandardBaseModel):
     purposes but does not affect benchmark execution.
     """
 
-    # Allow arbitrary metadata fields
-    model_config = args_model_config() | ConfigDict(extra="allow")
+    model_config = args_model_config()
+
+    name: str | None = Field(
+        default=None,
+        description="The name of a benchmark scenario",
+        examples=[{"name": "benchmark"}],
+    )
+
+    description: str | None = Field(
+        default=None,
+        description="The description of a benchmark scenario",
+        examples=[{"description": "Benchmark description"}],
+    )
+
+    includes: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "When importing a series of config files, GuideLLM builds "
+            "a list of the BenchmarkMetadata defined in each"
+        ),
+        examples=[
+            {
+                "includes": [
+                    {"name": "a", "description": "a config file", "labels": {}},
+                    {"name": "b", "description": "another", "labels": {"key": "value"}},
+                ]
+            }
+        ],
+    )
 
     labels: dict[str, str] = Field(
         default_factory=dict,
@@ -291,7 +448,7 @@ class BenchmarkMetadata(StandardBaseModel):
             "Key-value pairs of metadata labels which will be written to the "
             "output reports."
         ),
-        examples=[{"name": "benchmark", "description": "Benchmark description"}],
+        examples=[{"labels": {"gpu": "gpu1", "owner": "me"}}],
     )
 
 
@@ -328,53 +485,33 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
     )
 
     @classmethod
-    def create(cls, scenario: Path | str | None, **kwargs: Any) -> BenchmarkScenario:
+    def create(
+        cls,
+        scenario: Path | str | Sequence[Path | str] | None,
+        **kwargs: Any,
+    ) -> BenchmarkScenario:
         """
-        Create benchmark args from scenario file and keyword arguments.
+        Create benchmark args from scenario files and keyword arguments.
 
-        Loads base configuration from scenario file (built-in or custom) and merges
-        with provided keyword arguments. Arguments explicitly set via kwargs override
-        scenario values, while defaulted kwargs are ignored to preserve scenario
-        settings.
+        Loads each scenario file in order, merging the files before applying
+        keyword arguments. Arguments explicitly set via kwargs override config
+        values, while defaulted kwargs are ignored to preserve config settings.
 
-        :param scenario: Path to scenario file, built-in scenario name, or None
+        :param scenario: Ordered scenario paths or built-in names, or None
         :param kwargs: Keyword arguments to override scenario values
         :return: Configured benchmark args instance
-        :raises ValueError: If scenario is not found or file format is unsupported
+        :raises ValueError: If file is not found or file format is unsupported
         """
         constructor_kwargs = {}
 
         if scenario is not None:
-            if isinstance(scenario, str) and scenario in (
-                builtin_scenarios := get_builtin_scenarios()
-            ):
-                scenario_path = builtin_scenarios[scenario]
-            elif Path(scenario).exists() and Path(scenario).is_file():
-                scenario_path = Path(scenario)
-            else:
-                raise ValueError(f"Scenario '{scenario}' not found.")
+            scenario_files = (
+                (scenario,) if isinstance(scenario, (str, Path)) else scenario
+            )
+            constructor_kwargs.update(merge_scenario_files(scenario_files))
 
-            with scenario_path.open() as file:
-                if scenario_path.suffix == ".json":
-                    scenario_data = json.load(file)
-                elif scenario_path.suffix in {".yaml", ".yml"}:
-                    scenario_data = yaml.safe_load(file)
-                else:
-                    raise ValueError(
-                        f"Unsupported scenario file format: {scenario_path.suffix}"
-                    )
-            # NOTE: If the scenario file is a report, it contains a "config" key with
-            # the benchmark configuration. This is a hack and should be replaced.
-            if "config" in scenario_data:
-                # loading from a report file
-                scenario_data = scenario_data["config"]
-            constructor_kwargs.update(scenario_data)
-
-        # NOTE In the future replace deep_update with a more intelligent merging
-        #      strategy that accounts for changes to `kind`.
         # Apply overrides from kwargs
-        deep_update(constructor_kwargs, kwargs)
-
+        constructor_kwargs = _merge_config_values(constructor_kwargs, kwargs)
         return cls.model_validate(constructor_kwargs)
 
     def get_benchmarks(self) -> list[BenchmarkArgs]:

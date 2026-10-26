@@ -18,7 +18,7 @@ There are many ways to contribute to GuideLLM:
 
 Before contributing, ensure you have the following installed:
 
-- Python 3.10 or higher
+- Python 3.11 or higher
 - pip (Python package manager)
 - Tox
 - Git
@@ -57,7 +57,7 @@ For detailed instructions on setting up your development environment, please ref
 
 We follow strict coding standards to ensure code quality and maintainability. Please adhere to the following guidelines:
 
-- **Code Style**: Use [Black](https://black.readthedocs.io/en/stable/) for code formatting and [Ruff](https://github.com/charliermarsh/ruff) for linting.
+- **Code Style**: Use [Ruff](https://docs.astral.sh/ruff/) for code formatting and linting.
 - **Type Checking**: Use [Mypy](http://mypy-lang.org/) for type checking.
 - **Testing**: Write unit tests for new features and bug fixes. Use [pytest](https://docs.pytest.org/) for testing.
 - **Documentation**: Update documentation for any changes to the codebase.

@@ -2,7 +2,9 @@
 Unit tests for guidellm.data.deserializers.synthetic module.
 """
 
+import itertools
 import json
+import statistics
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock
@@ -470,6 +472,52 @@ class TestSyntheticTextGenerator:
                 turns1["main_0"].columns["output_tokens_count_column"]
                 == turns2["main_0"].columns["output_tokens_count_column"]
             )
+
+    @staticmethod
+    def _token_counts(rows: list[dict], column: str) -> list[int]:
+        return [_main_turn_map(row)["main_0"].columns[column][0] for row in rows]
+
+    @pytest.mark.regression
+    def test_passes_and_seeds_do_not_reuse_streams(self, mock_tokenizer):
+        """Samplers do not replay another sampler's values in a later pass or seed."""
+        config = SyntheticTextDataArgs(
+            prompt_tokens=256,
+            prompt_tokens_stdev=64,
+            output_tokens=256,
+            output_tokens_stdev=64,
+        )
+        dataset_42 = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+        pass_1 = list(itertools.islice(iter(dataset_42), 8))
+        pass_2 = list(itertools.islice(iter(dataset_42), 8))
+        dataset_43 = SyntheticTextDataset(config, mock_tokenizer, random_seed=43)
+        seed_43 = list(itertools.islice(iter(dataset_43), 8))
+
+        outputs_pass_1 = self._token_counts(pass_1, "output_tokens_count_column")
+        assert (
+            self._token_counts(pass_2, "prompt_tokens_count_column") != outputs_pass_1
+        )
+        assert (
+            self._token_counts(seed_43, "prompt_tokens_count_column") != outputs_pass_1
+        )
+
+    @pytest.mark.regression
+    def test_each_pass_is_reproducible(self, mock_tokenizer):
+        """The same seed gives the same data for the same pass."""
+        config = SyntheticTextDataArgs(
+            prompt_tokens=256,
+            prompt_tokens_stdev=64,
+            output_tokens=256,
+            output_tokens_stdev=64,
+        )
+        first = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+        second = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+        for _ in range(2):
+            rows_first = list(itertools.islice(iter(first), 4))
+            rows_second = list(itertools.islice(iter(second), 4))
+            for column in ("prompt_tokens_count_column", "output_tokens_count_column"):
+                assert self._token_counts(rows_first, column) == self._token_counts(
+                    rows_second, column
+                )
 
 
 class TestSyntheticDatasetDeserializer:
@@ -1644,3 +1692,57 @@ class TestSyntheticDataToolResponseColumns:
         )
         iterable = _SyntheticTextExamplesIterable(config, processor, random_seed=42)
         assert set(iterable.features) == {"conversation_turns"}
+
+
+class TestSyntheticDataToolResponseSampling:
+    """Verify tool response sizes are drawn independently of think-time delays."""
+
+    @pytest.fixture
+    def processor(self):
+        """Mock processor that maps each word to one token."""
+        proc = Mock()
+        proc.encode.side_effect = lambda text: list(range(len(text.split())))
+        proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
+            "word" for _ in tokens
+        )
+        return proc
+
+    @staticmethod
+    def _delays_and_sizes(
+        processor, random_seed: int, count: int = 15
+    ) -> list[tuple[int, int]]:
+        config = SyntheticTextDataArgs(
+            prompt_tokens=10,
+            output_tokens=5,
+            turns=1,
+            tool_call_turns=[0],
+            delay=50,
+            delay_stdev=10,
+            tool_response_tokens=50,
+            tool_response_tokens_stdev=10,
+        )
+        rows = iter(
+            _SyntheticTextExamplesIterable(config, processor, random_seed=random_seed)
+        )
+        pairs = []
+        for _ in range(count):
+            _, row = next(rows)
+            turn = _main_turn_map(row)["main_0"]
+            body = json.loads(turn.columns["tool_response_column"][0])["result"]
+            pairs.append((round(turn.settings.requeue_delay), len(body.split())))
+        return pairs
+
+    @pytest.mark.regression
+    def test_tool_response_sizes_do_not_follow_delays(self, processor):
+        """Tool response sizes are not correlated with the delay of each turn."""
+        pairs = self._delays_and_sizes(processor, random_seed=3, count=50)
+        delays, sizes = zip(*pairs, strict=True)
+
+        assert abs(statistics.correlation(delays, sizes)) < 0.5
+
+    @pytest.mark.sanity
+    def test_tool_response_sizes_repeat_for_same_seed(self, processor):
+        """The same seed gives the same delays and tool response sizes."""
+        assert self._delays_and_sizes(processor, 3) == self._delays_and_sizes(
+            processor, 3
+        )

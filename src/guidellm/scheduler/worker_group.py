@@ -423,7 +423,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 ) = await self.messaging.get(timeout=settings.mp_poll_interval)  # type: ignore[union-attr]
 
                 yield response, request, request_info, scheduler_state
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if self.shutdown_event.is_set():  # type: ignore[union-attr]
                     # Everything yielded, exit
                     break
