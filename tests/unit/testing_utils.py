@@ -60,7 +60,7 @@ def async_timeout(delay: float = 10.0, hard_fail: bool = False) -> Callable[[F],
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             try:
                 return await asyncio.wait_for(func(*args, **kwargs), timeout=delay)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 msg = f"Test {func.__name__} timed out after {delay} seconds"
 
                 if not hard_fail:

@@ -8,7 +8,7 @@ Thank you for your interest in contributing to GuideLLM! This document provides 
 
 Before you begin, ensure you have the following installed:
 
-- Python 3.10 or higher
+- Python 3.11 or higher
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/) (recommended), pip, or another python package manager
 - Git
 

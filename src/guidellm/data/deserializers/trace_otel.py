@@ -10,7 +10,7 @@ runtime history of live completions.
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from datasets import Dataset, Features
@@ -314,7 +314,7 @@ def parse_span_timestamp(value: Any) -> float:
 
 def _datetime_to_epoch_seconds(value: datetime) -> float:
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
+        value = value.replace(tzinfo=UTC)
     return value.timestamp()
 
 

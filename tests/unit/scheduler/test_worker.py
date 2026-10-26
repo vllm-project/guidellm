@@ -765,7 +765,7 @@ class MockMessaging:
                 self._item_available.clear()
             return item
         await asyncio.sleep(timeout)
-        raise asyncio.TimeoutError("Mock queue empty")
+        raise TimeoutError("Mock queue empty")
 
     async def put(self, item, timeout=None):
         """Mock put to queue."""
@@ -1216,7 +1216,7 @@ class _ChildMockMessaging:
         self.poll_interval = 0.01
 
     async def get(self, timeout=None):
-        raise asyncio.TimeoutError
+        raise TimeoutError
 
     def put_sync(self, item, timeout=-1):
         pass

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-import httpx
+import httpx2
 import pytest
 
 from guidellm.benchmark.schemas import GenerativeBenchmark
@@ -274,18 +274,18 @@ class TestPrometheusCollector:
         ## WRITTEN BY AI ##
         """
         tokens = iter([10.0, 40.0])
-        requests: list[httpx.Request] = []
+        requests: list[httpx2.Request] = []
 
-        def respond(request: httpx.Request) -> httpx.Response:
+        def respond(request: httpx2.Request) -> httpx2.Response:
             requests.append(request)
-            return httpx.Response(200, text=_exposition(1, next(tokens), (0, 0, 0)))
+            return httpx2.Response(200, text=_exposition(1, next(tokens), (0, 0, 0)))
 
         collector = PrometheusCollector(
             url="http://server/metrics",
             interval=3600.0,
             timeout=1.0,
             metrics=FAMILIES,
-            transport=httpx.MockTransport(respond),
+            transport=httpx2.MockTransport(respond),
         )
 
         await collector.start()
@@ -306,17 +306,17 @@ class TestPrometheusCollector:
         """
         outcomes = iter(["error", "down"])
 
-        def respond(request: httpx.Request) -> httpx.Response:
+        def respond(request: httpx2.Request) -> httpx2.Response:
             if next(outcomes) == "error":
-                return httpx.Response(503)
-            raise httpx.ConnectError("refused", request=request)
+                return httpx2.Response(503)
+            raise httpx2.ConnectError("refused", request=request)
 
         collector = PrometheusCollector(
             url="http://server/metrics",
             interval=3600.0,
             timeout=1.0,
             metrics=FAMILIES,
-            transport=httpx.MockTransport(respond),
+            transport=httpx2.MockTransport(respond),
         )
 
         await collector.start()
@@ -336,15 +336,15 @@ class TestPrometheusCollector:
         """
         statuses = iter([503, 503, 200, 200])
 
-        def respond(request: httpx.Request) -> httpx.Response:
-            return httpx.Response(next(statuses), text=_exposition(1, 5, (0, 0, 0)))
+        def respond(request: httpx2.Request) -> httpx2.Response:
+            return httpx2.Response(next(statuses), text=_exposition(1, 5, (0, 0, 0)))
 
         collector = PrometheusCollector(
             url="http://server/metrics",
             interval=3600.0,
             timeout=1.0,
             metrics=FAMILIES,
-            transport=httpx.MockTransport(respond),
+            transport=httpx2.MockTransport(respond),
         )
 
         for _ in range(2):
