@@ -973,14 +973,14 @@ class TestSyntheticTextDatasetMultiturn:
             for _ in range(20)
         ]
 
-        prompt_counts = [
+        prompt_counts = {
             turn.columns["prompt_tokens_count_column"][0] for turn in branch_turns
-        ]
-        output_counts = [
+        }
+        output_counts = {
             turn.columns["output_tokens_count_column"][0] for turn in branch_turns
-        ]
-        assert len(set(prompt_counts)) > 1
-        assert len(set(output_counts)) > 1
+        }
+        assert len(prompt_counts) > 1
+        assert len(output_counts) > 1
 
     @pytest.mark.sanity
     def test_branch_first_tokens_same_for_same_seed(self, mock_tokenizer):
