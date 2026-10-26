@@ -2,7 +2,7 @@
 """Format a PR description by appending a summary of commits.
 
 The current PR body is read from stdin. The output (written to stdout)
-preserves everything above the marker comment and replaces everything
+cleans up the content above the marker comment and replaces everything
 below it with a generated commits section and de-duplicated trailers.
 
 When the PR has a single commit, the git log section is skipped since
@@ -22,6 +22,7 @@ Arguments:
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 
@@ -54,7 +55,7 @@ def run_git(*args: str, stdin: str | None = None) -> str:
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments.
 
-    :return: Parsed namespace with base_ref and head_sha attributes.
+    :return: Parsed namespace with base_ref, head_sha, and cleanup attributes.
     """
     parser = argparse.ArgumentParser(
         description="Format a PR description by appending a summary of commits.",
@@ -67,7 +68,32 @@ def parse_args() -> argparse.Namespace:
         "head_sha",
         help="Commit SHA of the PR head",
     )
+    parser.add_argument(
+        "--cleanup",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Clean up PR content (default: enabled)",
+    )
     return parser.parse_args()
+
+
+def cleanup_pr_description(body: str) -> str:
+    """Apply cleanup rules to the user-authored PR description.
+
+    Rules:
+      - Remove Codesmith footer
+
+    :param body: The user-authored portion of the PR body.
+    :return: The cleaned description.
+    """
+    # Remove the codesmith footer
+    body = re.sub(
+        r"<!-- codesmith:footer -->.*?<!-- /codesmith:footer -->",
+        "",
+        body,
+        flags=re.DOTALL,
+    )
+    return body.rstrip()
 
 
 def extract_user_content(body: str) -> str:
@@ -148,19 +174,25 @@ def unique_trailers(commit_shas: list[str]) -> list[str]:
     return other_trailers + signoff_trailers
 
 
-def format_pr_description(body: str, base_ref: str, head_sha: str) -> str:
+def format_pr_description(
+    body: str, base_ref: str, head_sha: str, cleanup: bool = True
+) -> str:
     """Build the updated PR description from the current body and git data.
 
     :param body: The current PR body.
     :param base_ref: Git ref for the PR base branch.
     :param head_sha: Commit SHA of the PR head.
+    :param cleanup: Apply cleanup rules
     :return: The formatted PR description.
     """
     merge_base = run_git("merge-base", base_ref, head_sha)
     commit_range = f"{merge_base}..{head_sha}"
     commit_shas = list_commit_shas(commit_range)
 
-    sections = [extract_user_content(body), MARKER]
+    user_content = extract_user_content(body)
+    if cleanup:
+        user_content = cleanup_pr_description(user_content)
+    sections = [user_content, MARKER]
 
     # A single commit is already described by the PR body itself, so the
     # git log is only included when there are multiple commits to squash.
@@ -178,7 +210,10 @@ def main() -> None:
     """Read the PR body from stdin and print the formatted description."""
     args = parse_args()
     body = sys.stdin.read().replace("\r", "")
-    print(format_pr_description(body, args.base_ref, args.head_sha), end="")
+    print(
+        format_pr_description(body, args.base_ref, args.head_sha, cleanup=args.cleanup),
+        end="",
+    )
 
 
 if __name__ == "__main__":
