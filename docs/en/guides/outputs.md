@@ -128,6 +128,8 @@ The same output options work with `guidellm run`. Each output has an independent
 
 Replacement metadata includes `omitted: true`, a serialized character count, filename/MIME type when available, and decoded byte count when the Base64 encoding is explicit. Multipart argument serialization does not distinguish original bytes from text, so its metadata reports the serialized character count without guessing a decoded size.
 
+Scalar dataset values retain their string type and contain JSON-encoded omission metadata. This keeps compact reports loadable for analysis and re-export. Ordinary prompt and output text remain unchanged, including literal data URLs.
+
 An omitted-media copy cannot reconstruct the removed payloads for replay. Keep a lossless copy when replay is required. This option is not general secret or personal-data redaction: opaque/free-form encodings, ordinary text, headers, filenames, and remote URLs can still contain sensitive information. It does not fetch or remove external files and does not reduce payload retention during benchmark execution.
 
 When saving through Python, use `report.save_file("share.json", include_media=False)` for the same output-time policy.

@@ -14,6 +14,7 @@ from guidellm.schemas import (
     RequestInfo,
 )
 from guidellm.schemas.backends import OpenAIHTTPBackendArgs
+from guidellm.schemas.data.deserializers.memory import InMemoryItemListDataArgs
 from tests.unit.benchmark.html_report_fixtures import (
     make_benchmark,
     make_scenario,
@@ -159,3 +160,62 @@ def test_media_omission_preserves_opaque_arguments(tmp_path: Path, audio_report)
         restored.benchmarks[0].requests.successful[0].request_args
         == "an opaque description"
     )
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("format_type", ["json", "yaml"])
+@pytest.mark.parametrize("text", ["data: cats,dogs", "data:image/png;base64,AAEC"])
+def test_media_omission_preserves_data_prefixed_text(
+    tmp_path: Path, audio_report, format_type: str, text: str
+):
+    """Keep literal data URLs and other data-prefixed text available after reload.
+
+    ## WRITTEN BY AI ##
+    """
+    source, _ = audio_report
+    stats = source.benchmarks[0].requests.successful[0]
+    stats.output = text
+    stats.reasoning_output = text
+    arguments = json.loads(stats.request_args)
+    arguments["body"]["prompt"] = text
+    arguments["body"]["messages"] = [
+        {"role": "user", "content": [{"type": "text", "text": text}]}
+    ]
+    stats.request_args = json.dumps(arguments)
+
+    saved = source.save_file(tmp_path / f"report.{format_type}", include_media=False)
+    restored = GenerativeBenchmarksReport.load_file(saved)
+    restored_stats = restored.benchmarks[0].requests.successful[0]
+    restored_arguments = json.loads(restored_stats.request_args)
+
+    assert restored_stats.output == text
+    assert restored_stats.reasoning_output == text
+    assert restored_arguments["body"]["prompt"] == text
+    assert restored_arguments["body"]["messages"][0]["content"][0]["text"] == text
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("format_type", ["json", "yaml"])
+def test_media_omission_preserves_loadable_primitive_configuration(
+    tmp_path: Path, format_type: str
+):
+    """Omit scalar media without making the saved dataset configuration invalid.
+
+    ## WRITTEN BY AI ##
+    """
+    payload = "data:image/png;base64,AAEC"
+    scenario = make_scenario()
+    scenario.spec.data = [InMemoryItemListDataArgs(column_name="image", data=[payload])]
+    source = report(scenario=scenario)
+
+    saved = source.save_file(tmp_path / f"report.{format_type}", include_media=False)
+    restored = GenerativeBenchmarksReport.load_file(saved)
+    scalar = restored.config.spec.data[0].model_dump()["data"][0]
+
+    assert json.loads(scalar) == {
+        "omitted": True,
+        "serialized_characters": len(payload),
+        "media_type": "image/png",
+        "size_bytes": 3,
+    }
+    assert source.config.spec.data[0].model_dump()["data"] == [payload]

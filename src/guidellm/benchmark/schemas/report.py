@@ -27,6 +27,20 @@ __all__ = ["GenerativeBenchmarkMetadata", "GenerativeBenchmarksReport"]
 
 _MULTIPART_REQUIRED_FIELDS = 2
 _MULTIPART_CONTENT_TYPE_FIELDS = 3
+_MEDIA_FIELDS = {
+    "image",
+    "audio",
+    "video",
+    "image_url",
+    "audio_url",
+    "video_url",
+    "image_column",
+    "audio_column",
+    "video_column",
+    "input_image",
+    "input_audio",
+    "input_file",
+}
 
 
 def _media_metadata(payload: str, *, base64_encoded: bool = False) -> dict[str, Any]:
@@ -81,19 +95,25 @@ def _omit_media_payloads(value: Any, *, media_context: bool = False) -> Any:
     if isinstance(value, str):
         return (
             _media_metadata(value)
-            if value.startswith("data:") and "," in value
+            if media_context and value.startswith("data:") and "," in value
             else value
         )
     if isinstance(value, list):
         for index, item in enumerate(value):
-            value[index] = _omit_media_payloads(item, media_context=media_context)
+            omitted = _omit_media_payloads(item, media_context=media_context)
+            # Scalar dataset columns must remain loadable after media omission.
+            value[index] = (
+                json.dumps(omitted)
+                if isinstance(item, str) and isinstance(omitted, dict)
+                else omitted
+            )
     elif isinstance(value, dict):
         media_type = value.get("type")
         is_media = media_context or (
-            isinstance(media_type, str)
-            and media_type
-            in {"image", "audio", "video", "input_image", "input_audio", "input_file"}
+            isinstance(media_type, str) and media_type in _MEDIA_FIELDS
         )
+        column_name = value.get("column_name")
+        media_column = isinstance(column_name, str) and column_name in _MEDIA_FIELDS
         for key, item in value.items():
             if key == "request_args" and isinstance(item, str):
                 value[key] = _omit_request_arguments(item)
@@ -111,7 +131,12 @@ def _omit_media_payloads(value: Any, *, media_context: bool = False) -> Any:
                 value[key] = _media_metadata(item)
             else:
                 value[key] = _omit_media_payloads(
-                    item, media_context=key in {"input_audio", "input_image"}
+                    item,
+                    media_context=(
+                        key in _MEDIA_FIELDS
+                        or (is_media and key in {"url", "data"})
+                        or (media_column and key == "data")
+                    ),
                 )
     return value
 
