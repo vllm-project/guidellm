@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Iterator
+from enum import IntEnum
 from random import Random
 from typing import Any
 
@@ -27,12 +28,33 @@ from guidellm.schemas.data.deserializers import (
 )
 from guidellm.settings import settings
 from guidellm.utils.imports import json
-from guidellm.utils.random import FloatRangeSampler, IntegerRangeSampler
+from guidellm.utils.random import FloatRangeSampler, IntegerRangeSampler, derive_seed
 
 __all__ = [
     "SyntheticTextDataset",
     "SyntheticTextDatasetDeserializer",
 ]
+
+
+class _SeedStream(IntEnum):
+    """
+    Fixed ids for the random streams of one synthetic text pass.
+
+    Each stream is seeded with ``derive_seed(random_seed, pass, stream)``, so
+    streams, passes and base seeds get independent seeds. Keep existing values
+    when adding a stream, so that the data of the other streams does not change.
+    """
+
+    FAKER = 0
+    PROMPT_TOKENS = 1
+    OUTPUT_TOKENS = 2
+    DELAY = 3
+    PREFIX = 4
+    FIRST_PROMPT_TOKENS = 5
+    FIRST_OUTPUT_TOKENS = 6
+    TOOL_RESPONSE_TOKENS = 7
+    BRANCH_FIRST_PROMPT_TOKENS = 8
+    BRANCH_FIRST_OUTPUT_TOKENS = 9
 
 
 def _integer_range_sampler(
@@ -72,18 +94,21 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         self.iteration_count = 0
 
     def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:  # noqa: C901, PLR0915
-        iter_random_seed = self.random_seed + self.iteration_count
+        iteration = self.iteration_count
         self.iteration_count += 1
 
+        def stream_seed(stream: _SeedStream) -> int:
+            return derive_seed(self.random_seed, iteration, stream)
+
         faker = Faker()
-        faker.seed_instance(iter_random_seed)
+        faker.seed_instance(stream_seed(_SeedStream.FAKER))
         prompt_tokens_sampler: Iterator[int] = iter(
             IntegerRangeSampler(
                 average=self.config.prompt_tokens,
                 variance=self.config.prompt_tokens_stdev,
                 min_value=self.config.prompt_tokens_min,
                 max_value=self.config.prompt_tokens_max,
-                random_seed=iter_random_seed,
+                random_seed=stream_seed(_SeedStream.PROMPT_TOKENS),
             )
         )
         output_tokens_sampler = _integer_range_sampler(
@@ -91,21 +116,21 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             variance=self.config.output_tokens_stdev,
             min_value=self.config.output_tokens_min,
             max_value=self.config.output_tokens_max,
-            random_seed=iter_random_seed + 1,  # ensure diff dist from prompts
+            random_seed=stream_seed(_SeedStream.OUTPUT_TOKENS),
         )
         first_prompt_tokens_sampler = _integer_range_sampler(
             average=self.config.first_prompt_tokens,
             variance=self.config.first_prompt_tokens_stdev,
             min_value=self.config.first_prompt_tokens_min,
             max_value=self.config.first_prompt_tokens_max,
-            random_seed=iter_random_seed + 4,
+            random_seed=stream_seed(_SeedStream.FIRST_PROMPT_TOKENS),
         )
         first_output_tokens_sampler = _integer_range_sampler(
             average=self.config.first_output_tokens,
             variance=self.config.first_output_tokens_stdev,
             min_value=self.config.first_output_tokens_min,
             max_value=self.config.first_output_tokens_max,
-            random_seed=iter_random_seed + 5,
+            random_seed=stream_seed(_SeedStream.FIRST_OUTPUT_TOKENS),
         )
         delay_sampler = (
             iter(
@@ -114,8 +139,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                     variance=self.config.delay_stdev,
                     min_value=self.config.delay_min,
                     max_value=self.config.delay_max,
-                    # ensure diff dist from prompts and outputs
-                    random_seed=iter_random_seed + 2,
+                    random_seed=stream_seed(_SeedStream.DELAY),
                 )
             )
             if self.config.delay is not None
@@ -123,7 +147,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         )
 
         # Create a shared prefix if specified
-        rand = Random(iter_random_seed + 3)
+        rand = Random(stream_seed(_SeedStream.PREFIX))
         prefix_iter = self._create_prefix_iter(faker, rand)
         samples_count = 0
 
@@ -142,8 +166,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                     variance=self.config.tool_response_tokens_stdev,
                     min_value=self.config.tool_response_tokens_min,
                     max_value=self.config.tool_response_tokens_max,
-                    # ensure diff dist from delays, which use iter_random_seed + 2
-                    random_seed=iter_random_seed + 6,
+                    random_seed=stream_seed(_SeedStream.TOOL_RESPONSE_TOKENS),
                 )
             )
 
@@ -160,7 +183,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 prefix=next(prefix_iter),
                 tools_defs=tools_defs,
                 tool_response_sampler=tool_response_sampler,
-                iter_random_seed=iter_random_seed,
+                iteration=iteration,
             )
             # Count logical main turns, client-tool injection nodes (added by
             # the shared finalizer expander), and branch turns.
@@ -219,7 +242,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         prefix: str,
         tools_defs: list[dict[str, Any]] | None,
         tool_response_sampler: Iterator[int] | None,
-        iter_random_seed: int,
+        iteration: int,
     ) -> dict[str, Any]:
         """
         Build a ``conversation_turns`` payload for linear or branched graphs.
@@ -244,7 +267,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         :param prefix: Optional system prefix applied to the first main turn.
         :param tools_defs: Tool definitions for client tool-call turns.
         :param tool_response_sampler: Optional sampler for tool response size.
-        :param iter_random_seed: Seed base for per-branch first-turn samplers.
+        :param iteration: Pass index, used to seed per-branch first-turn samplers.
         :return: A dataset row with a JSON ``conversation_turns`` column.
         """
         tool_call_turns = set(self.config.tool_call_turns)
@@ -334,14 +357,24 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
                 variance=branch.first_prompt_tokens_stdev,
                 min_value=branch.first_prompt_tokens_min,
                 max_value=branch.first_prompt_tokens_max,
-                random_seed=iter_random_seed + 10 + b_idx * 2,
+                random_seed=derive_seed(
+                    self.random_seed,
+                    iteration,
+                    _SeedStream.BRANCH_FIRST_PROMPT_TOKENS,
+                    b_idx,
+                ),
             )
             branch_first_output = _integer_range_sampler(
                 average=branch.first_output_tokens,
                 variance=branch.first_output_tokens_stdev,
                 min_value=branch.first_output_tokens_min,
                 max_value=branch.first_output_tokens_max,
-                random_seed=iter_random_seed + 11 + b_idx * 2,
+                random_seed=derive_seed(
+                    self.random_seed,
+                    iteration,
+                    _SeedStream.BRANCH_FIRST_OUTPUT_TOKENS,
+                    b_idx,
+                ),
             )
             resolved_first_prompt = (
                 branch_first_prompt
