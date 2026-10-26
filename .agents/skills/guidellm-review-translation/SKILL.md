@@ -9,9 +9,17 @@ Accept a PR number as input, for example `$guidellm-review-translation 1273`. De
 
 Write the report's explanations and recommendations in English for English-speaking reviewers. Target-language quotations and proposed corrections must include an English back-translation or explanation so readers can assess every finding without knowing that language. This task does not authorize editing the translation, posting GitHub comments or reviews, or contacting anyone.
 
+## Static analysis only
+
+This skill is a read-only review of translation content against the English source. Retrieve and inspect PR metadata, diffs, documents, manifests, and configuration as needed, but **do not run automated checks** as part of this review.
+
+- Do not run translation checks, linters, formatters, tests, builds, link checkers, pre-commit hooks, or `tox` environments. Repository development-check instructions do not make those checks part of this content-only review.
+- Inspect commands and examples as text; do not execute them. Assess links by reading their targets and routing configuration, without running a site or link checker.
+- Base findings on the inspected content. If static inspection cannot establish a fact, report the uncertainty or limitation rather than running checks to resolve it.
+
 ## Retrieve and compare
 
-1. Fetch PR metadata, the changed-file list, and the head commit. Read files at that pinned commit without checking out over the user's work. In this repository, prefix shell commands other than `tox` with `uv run`. Useful commands:
+1. Fetch PR metadata, the changed-file list, and the head commit. Read files at that pinned commit without checking out over the user's work. In this repository, prefix retrieval and inspection shell commands with `uv run`. Useful commands:
 
    ```bash
    uv run gh pr view <PR_NUMBER> --repo vllm-project/guidellm --json title,url,headRefOid,baseRefOid,files
@@ -30,7 +38,7 @@ Write the report's explanations and recommendations in English for English-speak
 
 5. Compare meaning, completeness, technical terms, requirements, negation, numbers, units, commands, examples, headings, and links. The table may include minor differences in wording, nuance, emphasis, or navigation even when they do not warrant action. Natural target-language phrasing need not follow English literally; account for grammar, idiom, and locale conventions while checking that meaning is preserved. English fallback links and language labels are normally reasonable adaptations; verify routing configuration before claiming a link is broken.
 
-6. Use immutable GitHub file links with line anchors for findings and identify the reviewed commit. Do not claim tests, builds, or link checks passed unless they were run. A text-only review does not require running the application test suite.
+6. Use immutable GitHub file links with line anchors for findings and identify the reviewed commit. Keep the assessment limited to static content analysis; do not claim that automated checks passed or run them to complete the report.
 
 ## Recommendation threshold
 
