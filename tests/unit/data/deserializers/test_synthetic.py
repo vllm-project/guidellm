@@ -2,6 +2,7 @@
 Unit tests for guidellm.data.deserializers.synthetic module.
 """
 
+import itertools
 import json
 import statistics
 import tempfile
@@ -471,6 +472,52 @@ class TestSyntheticTextGenerator:
                 turns1["main_0"].columns["output_tokens_count_column"]
                 == turns2["main_0"].columns["output_tokens_count_column"]
             )
+
+    @staticmethod
+    def _token_counts(rows: list[dict], column: str) -> list[int]:
+        return [_main_turn_map(row)["main_0"].columns[column][0] for row in rows]
+
+    @pytest.mark.regression
+    def test_passes_and_seeds_do_not_reuse_streams(self, mock_tokenizer):
+        """Samplers do not replay another sampler's values in a later pass or seed."""
+        config = SyntheticTextDataArgs(
+            prompt_tokens=256,
+            prompt_tokens_stdev=64,
+            output_tokens=256,
+            output_tokens_stdev=64,
+        )
+        dataset_42 = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+        pass_1 = list(itertools.islice(iter(dataset_42), 8))
+        pass_2 = list(itertools.islice(iter(dataset_42), 8))
+        dataset_43 = SyntheticTextDataset(config, mock_tokenizer, random_seed=43)
+        seed_43 = list(itertools.islice(iter(dataset_43), 8))
+
+        outputs_pass_1 = self._token_counts(pass_1, "output_tokens_count_column")
+        assert (
+            self._token_counts(pass_2, "prompt_tokens_count_column") != outputs_pass_1
+        )
+        assert (
+            self._token_counts(seed_43, "prompt_tokens_count_column") != outputs_pass_1
+        )
+
+    @pytest.mark.regression
+    def test_each_pass_is_reproducible(self, mock_tokenizer):
+        """The same seed gives the same data for the same pass."""
+        config = SyntheticTextDataArgs(
+            prompt_tokens=256,
+            prompt_tokens_stdev=64,
+            output_tokens=256,
+            output_tokens_stdev=64,
+        )
+        first = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+        second = SyntheticTextDataset(config, mock_tokenizer, random_seed=42)
+        for _ in range(2):
+            rows_first = list(itertools.islice(iter(first), 4))
+            rows_second = list(itertools.islice(iter(second), 4))
+            for column in ("prompt_tokens_count_column", "output_tokens_count_column"):
+                assert self._token_counts(rows_first, column) == self._token_counts(
+                    rows_second, column
+                )
 
 
 class TestSyntheticDatasetDeserializer:
