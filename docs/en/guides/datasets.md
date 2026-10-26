@@ -43,7 +43,7 @@ You can specify the tokenizer with `--tokenizer` and a configuration string. The
 
 - `--tokenizer '{"kind":"huggingface_auto","model":"path/to/processor","load_kwargs":{"use_fast":false}}'`
 
-If a HuggingFace model requires custom code to load, pass `trust_remote_code` in `load_kwargs`. See [Troubleshooting: trust_remote_code](troubleshooting.md#trust_remote_code-required-by-tokenizer).
+If a HuggingFace model requires custom code to load, pass `trust_remote_code` in `load_kwargs`. See [Troubleshooting: trust_remote_code](troubleshooting.md#tokenizer-trust_remote_code).
 
 If your dataset uses non-standard column names, you can use `--data-column-mapper` to map your columns to GuideLLM's expected column names. This is particularly useful when:
 
