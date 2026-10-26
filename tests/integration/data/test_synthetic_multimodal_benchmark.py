@@ -188,8 +188,10 @@ def test_synthetic_image_benchmark_against_mock(mock_backend, tmp_path):
         base_url=mock_backend,
         data=[
             "kind=synthetic_text,prompt_tokens=20",
-            "kind=synthetic_image,width=128,height=128,format=jpeg,"
-            "jpeg_quality=85,output_tokens=8,seed=11",
+            (
+                "kind=synthetic_image,width=128,height=128,format=jpeg,"
+                "jpeg_quality=85,output_tokens=8,seed=11"
+            ),
         ],
         output_dir=tmp_path,
         output_name="image.json",
@@ -213,8 +215,10 @@ def test_synthetic_video_benchmark_against_mock(mock_backend, tmp_path):
         base_url=mock_backend,
         data=[
             "kind=synthetic_text,prompt_tokens=10",
-            "kind=synthetic_video,width=160,height=120,frames=4,fps=1,"
-            "output_tokens=4,seed=23",
+            (
+                "kind=synthetic_video,width=160,height=120,frames=4,fps=1,"
+                "output_tokens=4,seed=23"
+            ),
         ],
         output_dir=tmp_path,
         output_name="video.json",

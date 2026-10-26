@@ -325,8 +325,10 @@ class TestWEKATraceFormat:
         ("content", "match"),
         [
             (
-                '{"id": "conv0", "requests": [[{"t": 0, "in": 10,'
-                '"out": 5, "hash_ids": []}]]}\n',
+                (
+                    '{"id": "conv0", "requests": [[{"t": 0, "in": 10,'
+                    '"out": 5, "hash_ids": []}]]}\n'
+                ),
                 "Failed to find requests",
             ),
             (
@@ -347,13 +349,17 @@ class TestWEKATraceFormat:
         ("content", "match"),
         [
             (
-                '{"id": "conv0", "requests": [{"t": 0, "in": 10,'
-                '"out": 5, "hash_ids": [-1]}]}\n',
+                (
+                    '{"id": "conv0", "requests": [{"t": 0, "in": 10,'
+                    '"out": 5, "hash_ids": [-1]}]}\n'
+                ),
                 "non-negative",
             ),
             (
-                '{"id": "conv0", "requests": [{"t": 0, "in": 1024,'
-                '"out": 5, "hash_ids": [1]}]}\n',
+                (
+                    '{"id": "conv0", "requests": [{"t": 0, "in": 1024,'
+                    '"out": 5, "hash_ids": [1]}]}\n'
+                ),
                 "given 1 blocks",
             ),
         ],

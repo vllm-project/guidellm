@@ -1064,14 +1064,18 @@ class TestCheckToolCallExpectations:
         # Create a realistic reasoning model response stream
         stream_chunks = [
             # First chunk: reasoning token (should trigger TTFT)
-            b'data: {"id": "chatcmpl-123", "choices": '
-            b'[{"index": 0, "delta": {"reasoning": "Let me think"}}]}\n\n',
+            (
+                b'data: {"id": "chatcmpl-123", "choices": '
+                b'[{"index": 0, "delta": {"reasoning": "Let me think"}}]}\n\n'
+            ),
             # More reasoning tokens
             b'data: {"choices": [{"delta": {"reasoning": " about this..."}}]}\n\n',
             # Finally, content tokens
             b'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n',
-            b'data: {"choices": [{"delta": {"content": " world"}}], '
-            b'"usage": {"prompt_tokens": 5, "completion_tokens": 10}}\n\n',
+            (
+                b'data: {"choices": [{"delta": {"content": " world"}}], '
+                b'"usage": {"prompt_tokens": 5, "completion_tokens": 10}}\n\n'
+            ),
             b"data: [DONE]\n\n",
         ]
 

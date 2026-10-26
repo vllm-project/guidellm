@@ -484,11 +484,10 @@ def _resolve_param_name(
 
         if annotation is None:
             raise KeyError("Key does not exist")
+        if not isinstance(annotation, type):
+            raise KeyError("Key is not a model")
 
-        try:
-            is_model = issubclass(annotation, BaseModel)
-        except TypeError as e:
-            raise KeyError("Key is not a model") from e
+        is_model = issubclass(annotation, BaseModel)
 
         if not is_model:
             raise KeyError("Key does not exist")
@@ -524,17 +523,14 @@ def _resolve_registry_type(
             args = get_args(annotation)
             annotation = args[0] if args else None
 
-        if annotation is None:
+        if annotation is None or not isinstance(annotation, type):
             return None
 
-        try:
-            if issubclass(annotation, PydanticClassRegistryMixin):
-                return annotation
-            if issubclass(annotation, BaseModel):
-                current_model = annotation
-                continue
-        except TypeError:
-            return None
+        if issubclass(annotation, PydanticClassRegistryMixin):
+            return annotation
+        if issubclass(annotation, BaseModel):
+            current_model = annotation
+            continue
 
         return None
 

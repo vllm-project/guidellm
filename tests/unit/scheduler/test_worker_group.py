@@ -310,7 +310,7 @@ class TestWorkerProcessGroup:
             get_calls += 1
             if get_calls == 2:
                 return payload
-            raise asyncio.TimeoutError
+            raise TimeoutError
 
         group.messaging = Mock()
         group.messaging.get = mock_get
@@ -342,7 +342,7 @@ class TestWorkerProcessGroup:
         group.state = Mock()
 
         async def mock_get(*, timeout: float | None = None):
-            raise asyncio.TimeoutError
+            raise TimeoutError
 
         group.messaging = Mock()
         group.messaging.get = mock_get
