@@ -37,3 +37,7 @@ GuideLLM is an open-source project that values community contributions. We maint
   [:octicons-arrow-right-24: Development Guide](developing.md)
 
 </div>
+
+## Design Proposals
+
+- [Native System One Decision Benchmarks](system-one-benchmark-proposal.md): proposed Basal-compatible request replay and completed-question accounting.
