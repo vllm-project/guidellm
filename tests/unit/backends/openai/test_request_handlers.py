@@ -6978,7 +6978,7 @@ class TestSpeechRequestHandler:
                 "guidellm.backends.openai.request_handlers.decode_audio_with_metadata",
                 side_effect=ValueError("invalid container"),
             ),
-            pytest.raises(ValueError, match="audio decoding has failed"),
+            pytest.raises(ValueError, match="audio decoding failed"),
         ):
             handler.compile_non_streaming(generation_request, arguments, b"X" * 44)
 
