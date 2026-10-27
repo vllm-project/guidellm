@@ -390,7 +390,7 @@ The `--strategy` option uses the same registry form as other GuideLLM options (`
 | ------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------- |
 | `ignore`      | Drop prompts that are shorter than the target length                           | —                                                         |
 | `concatenate` | Concatenate multiple short prompts together until the target length is reached | `delimiter` (string between joined prompts; default `""`) |
-| `pad`         | Pad short prompts with a character/string until the target length is reached   | `pad` (padding string; default `""`)                      |
+| `pad`         | Pad short prompts with a character/string until the target length is reached   | `pad` (required nonempty padding string)                  |
 | `error`       | Raise an error if a prompt is shorter than the target length                   | —                                                         |
 
 **Example strategies:**
