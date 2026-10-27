@@ -712,6 +712,9 @@ class TestRequestsGeneratorShutdown:
     """Shutdown once the dataset runs out and every request has completed."""
 
     def _build_state(self, constraints: dict | None = None) -> WorkerGroupState:
+        """Build a synchronous WorkerGroupState with real events and the given
+        constraints, so tests can drive the generator and request updates directly.
+        """
         messaging = Mock()
         messaging.buffer_receive_queue = Mock()
         return WorkerGroupState(
@@ -729,6 +732,7 @@ class TestRequestsGeneratorShutdown:
         )
 
     def _advance(self, state: WorkerGroupState, request_id: str, status: str):
+        """Deliver a status update for a request, as a worker would."""
         info = RequestInfo(request_id=request_id, status=status)
         state.received_callback((None, request_id, info))
 
