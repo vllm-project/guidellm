@@ -42,6 +42,7 @@ from guidellm.data.deserializers.trace_common import (
     fill_hash_id_table,
     generate_token_ids,
     get_missing_columns,
+    tokenizer_supports_block_concat,
 )
 from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
@@ -275,6 +276,12 @@ class WEKATraceFormat(TraceFormatBase):
 
         self._hash_id_table: dict[int, tuple[int, ...]] = {}
         self._sibling_table: dict[Any, set[tuple[int, ...]]] = {}
+        # Decoded-text cache keyed by hash ID (same lifetime as the token table).
+        # Each block is decoded to text at most once and reused across turns, but
+        # only for tokenizers where per-block decode composition is byte-identical
+        # to full-list decoding (probed lazily once into ``self._concat_safe``).
+        self._hash_id_text: dict[int, str] = {}
+        self._concat_safe: bool | None = None
         # Filled by each ``__iter__`` pass so mixed subagent/API schemas are
         # not forced through a single HuggingFace Arrow table.
         self._conversations: list[tuple[str, list[dict[str, Any]], str | None]] = []
@@ -299,6 +306,7 @@ class WEKATraceFormat(TraceFormatBase):
         """
         self._hash_id_table = {}
         self._sibling_table = {}
+        self._hash_id_text = {}
         self._tool_response_sampler = None
 
     def __iter__(self) -> Iterable[Dataset]:
@@ -399,6 +407,7 @@ class WEKATraceFormat(TraceFormatBase):
         faker: Faker,
         hash_id_table: dict[int, tuple[int, ...]] | None = None,
         sibling_token_blocks: dict[Any, set[tuple[int, ...]]] | None = None,
+        hash_id_text: dict[int, str] | None = None,
     ) -> str:
         """Before generating the prompt, this first generates a block of tokens for
         each hash ID that has not already been seen.
@@ -412,6 +421,9 @@ class WEKATraceFormat(TraceFormatBase):
             current copy's table.
         :param sibling_token_blocks: Distinctness set per previous hash ID, matching
             ``hash_id_table``'s lifetime. Defaults to the current copy's set.
+        :param hash_id_text: Decoded-text cache keyed by hash ID, matching
+            ``hash_id_table``'s lifetime. Each block is decoded at most once and
+            prompts are composed from the cached strings.
         """
         if hash_id_table is None:
             hash_id_table = self._hash_id_table
@@ -431,13 +443,44 @@ class WEKATraceFormat(TraceFormatBase):
             faker,
             lambda _idx, _hash_id: block_size,
         )
-        prompt = create_prompt_from_hash_ids(ids, hash_id_table, processor)
+        prompt = create_prompt_from_hash_ids(
+            ids, hash_id_table, processor, hash_id_text
+        )
         remainder = _generate_remaining_prompt(n_in % block_size, processor, faker)
         if not prompt:
             return remainder
         if not remainder:
             return prompt
         return f"{prompt} {remainder}"
+
+    def _hash_tables_for_scope(
+        self, hash_id_scope: str | None, processor: PreTrainedTokenizerBase
+    ) -> tuple[
+        dict[int, tuple[int, ...]],
+        dict[Any, set[tuple[int, ...]]],
+        dict[int, str] | None,
+    ]:
+        """Select the token, sibling, and decoded-text tables for a conversation.
+
+        Local scope uses throwaway tables so this conversation cannot reuse or
+        pollute the instance-level hash storage used by global/unset rows. Decoded
+        blocks are reused (``hash_id_text`` is non-``None``) only when the tokenizer
+        makes per-block decode composition byte-identical to full-list decoding;
+        otherwise the full token list is decoded per request so prompts stay exact.
+
+        :param hash_id_scope: ``"local"`` for per-conversation tables, else instance.
+        :param processor: Tokenizer, probed once to decide decoded-block reuse.
+        :return: ``(hash_id_table, sibling_token_blocks, hash_id_text)``.
+        """
+        if self._concat_safe is None:
+            self._concat_safe = tokenizer_supports_block_concat(processor)
+        if hash_id_scope == "local":
+            return {}, {}, ({} if self._concat_safe else None)
+        return (
+            self._hash_id_table,
+            self._sibling_table,
+            self._hash_id_text if self._concat_safe else None,
+        )
 
     def build_conversation_graph(
         self,
@@ -446,14 +489,9 @@ class WEKATraceFormat(TraceFormatBase):
         faker: Faker,
     ) -> ConversationGraphData:
         conv_id, requests, hash_id_scope = self._unpack_conversation(conversation)
-        # Local scope uses throwaway tables so this conversation cannot reuse
-        # or pollute the instance-level hash storage used by global/unset rows.
-        if hash_id_scope == "local":
-            hash_id_table: dict[int, tuple[int, ...]] = {}
-            sibling_token_blocks: dict[Any, set[tuple[int, ...]]] = {}
-        else:
-            hash_id_table = self._hash_id_table
-            sibling_token_blocks = self._sibling_table
+        hash_id_table, sibling_token_blocks, hash_id_text = self._hash_tables_for_scope(
+            hash_id_scope, processor
+        )
         specs, _last = self._emit_chain(
             requests,
             agent_id="default",
@@ -502,6 +540,7 @@ class WEKATraceFormat(TraceFormatBase):
                 faker,
                 hash_id_table,
                 sibling_token_blocks,
+                hash_id_text,
             )
             columns: dict[str, Any] = {
                 "text_column": [prompt],
