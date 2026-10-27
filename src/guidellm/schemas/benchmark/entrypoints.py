@@ -34,6 +34,7 @@ from guidellm.schemas import (
     standard_model_config,
 )
 from guidellm.schemas.backends import BackendArgs
+from guidellm.schemas.benchmark.collectors import CollectorArgs
 from guidellm.schemas.benchmark.goodput import GoodputSLO
 from guidellm.schemas.benchmark.outputs import BenchmarkOutputArgs
 from guidellm.schemas.benchmark.profiles import ProfileArgs
@@ -375,6 +376,18 @@ class BenchmarkArgs(ReloadableBaseModel):
         description="Configuration for metrics collection and request sampling.",
         examples=[{"kind": "generative", "confidence": 0.99}],
         json_schema_extra={"argument_alias": "metrics"},
+    )
+    collectors: list[CollectorArgs] = Field(  # type: ignore[assignment]
+        default_factory=list,
+        description=(
+            "Collectors that gather data from outside GuideLLM while each "
+            "benchmark runs, such as a server's Prometheus metrics. Each one "
+            "reports a result per benchmark."
+        ),
+        examples=[
+            {"kind": "prometheus", "url": "http://localhost:8000/metrics"},
+        ],
+        json_schema_extra={"argument_alias": "collector"},
     )
 
     @model_validator(mode="after")

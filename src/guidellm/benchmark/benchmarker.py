@@ -22,6 +22,7 @@ from guidellm.benchmark.schemas import (
     BenchmarkConfig,
     BenchmarkT,
 )
+from guidellm.collectors import CollectorProcess
 from guidellm.logger import logger
 from guidellm.scheduler import (
     BackendInterface,
@@ -58,7 +59,7 @@ class Benchmarker(
     scheduling strategies and execution environments.
     """
 
-    async def run(  # noqa: C901
+    async def run(  # noqa: C901, PLR0912
         self,
         accumulator_class: type[BenchmarkAccumulatorT],
         benchmark_class: type[BenchmarkT],
@@ -76,6 +77,7 @@ class Benchmarker(
         slo: GoodputSLO | None = None,
         confidence: float | None = 0.95,
         warnings: list[WarningRuleArgs] | None = None,
+        collectors: CollectorProcess | None = None,
     ) -> AsyncIterator[BenchmarkT]:
         """
         Execute benchmark runs across scheduling strategies in the profile.
@@ -99,6 +101,8 @@ class Benchmarker(
         :param confidence: Two-sided confidence level for the intervals reported
             alongside request-level metrics, or None to omit them
         :param warnings: Post-benchmark warning checks. None uses the defaults.
+        :param collectors: Started collector process, told when each benchmark
+            starts and stops, whose results are added to each benchmark
         :yield: Compiled benchmark result for each strategy execution
         :raises Exception: If benchmark execution or compilation fails
         """
@@ -149,33 +153,39 @@ class Benchmarker(
                 scheduler_state = None
                 scheduler: Scheduler[RequestT, ResponseT] = Scheduler()
 
-                async for (
-                    response,
-                    request,
-                    request_info,
-                    scheduler_state,
-                ) in scheduler.run(
-                    requests=requests,
-                    backend=backend,
-                    strategy=strategy,
-                    env=environment,
-                    **constraints or {},
-                ):
-                    try:
-                        accumulator.update_estimate(
-                            response,
-                            request,
-                            request_info,
-                            scheduler_state,
-                        )
-                        if progress:
-                            await progress.on_benchmark_update(
-                                accumulator, scheduler_state
+                if collectors:
+                    await collectors.benchmark_started()
+                try:
+                    async for (
+                        response,
+                        request,
+                        request_info,
+                        scheduler_state,
+                    ) in scheduler.run(
+                        requests=requests,
+                        backend=backend,
+                        strategy=strategy,
+                        env=environment,
+                        **constraints or {},
+                    ):
+                        try:
+                            accumulator.update_estimate(
+                                response,
+                                request,
+                                request_info,
+                                scheduler_state,
                             )
-                    except Exception as err:  # noqa: BLE001
-                        logger.error(
-                            "Error updating benchmark estimate/progress: {}", err
-                        )
+                            if progress:
+                                await progress.on_benchmark_update(
+                                    accumulator, scheduler_state
+                                )
+                        except Exception as err:  # noqa: BLE001
+                            logger.error(
+                                "Error updating benchmark estimate/progress: {}", err
+                            )
+                finally:
+                    if collectors:
+                        await collectors.benchmark_stopped()
 
                 if progress:
                     await progress.on_benchmark_compile()
@@ -184,6 +194,14 @@ class Benchmarker(
                     accumulator=accumulator,
                     scheduler_state=scheduler_state,  # type: ignore[arg-type]
                 )
+                if collectors:
+                    benchmark = benchmark.model_copy(
+                        update={
+                            "collectors": await collectors.results(
+                                benchmark.start_time, benchmark.end_time
+                            )
+                        }
+                    )
 
                 if progress:
                     await progress.on_benchmark_complete(benchmark)

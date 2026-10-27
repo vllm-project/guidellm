@@ -11,9 +11,7 @@ from node maps with parent dependency refs.
 from __future__ import annotations
 
 import uuid
-from typing import cast
-
-from typing_extensions import Self
+from typing import Self, cast
 
 from guidellm.scheduler.schemas import (
     ConversationEdge,

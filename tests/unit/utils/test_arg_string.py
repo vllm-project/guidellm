@@ -2,6 +2,8 @@
 Tests for arg string parsing utilities.
 """
 
+import re
+
 import pytest
 
 from guidellm.utils import arg_string
@@ -485,6 +487,35 @@ class TestArgStringLoads:
         """
         result = arg_string.loads("=value,key=value2", skip_invalid=True)
         assert result == {"key": "value2"}
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("value", "key", "read_as"),
+        [
+            ("turns=4,tool_call_turns=[0,2]", "tool_call_turns", "tool_call_turns=[0"),
+            ('a="x,y"', "a", 'a="x'),
+        ],
+    )
+    def test_invalid_yaml_value(self, value, key, read_as):
+        """
+        Test that a value split apart at its comma raises a parse error.
+        """
+        with pytest.raises(
+            arg_string.ArgStringValueError,
+            match=(
+                f"key '{key}' was assigned a value that cannot be parsed "
+                f"in '{re.escape(value)}' \\(read as '{re.escape(read_as)}'\\)"
+            ),
+        ):
+            arg_string.loads(value)
+
+    @pytest.mark.regression
+    def test_invalid_yaml_value_skip(self):
+        """
+        Test that values that fail to parse are skipped when skip_invalid is True.
+        """
+        result = arg_string.loads("turns=4,tool_call_turns=[0,2]", skip_invalid=True)
+        assert result == {"turns": 4}
 
     @pytest.mark.regression
     def test_empty_value(self):

@@ -51,6 +51,18 @@ These metrics provide a breakdown of the overall request statuses, helping users
 - **Definition**: The number of objective-conforming requests completed per second. Requests that complete but breach an objective count toward request rate and not toward goodput, so goodput is always at or below the request rate.
 - **Use Case**: Separates useful capacity from raw capacity. Past a server's saturation point the request rate can stay flat while goodput falls, because requests still complete but no longer complete quickly enough to be useful.
 
+### Per-Objective SLO Attainment
+
+- **Definition**: Independent attainment for each configured `ttft_ms`, `tpot_ms` or `e2el_ms` objective, reported in `slo_attainment_by_metric`. Each entry contains `conforming_requests`, `determined_requests` and `attainment` (a fraction between 0 and 1, or `null` when its denominator is zero). Thresholds remain in `config.slo`.
+- **Population**: Each objective includes successful requests with its own measurement and all errored requests. Incomplete requests are excluded. A request missing TTFT can still be evaluated against E2EL, so individual objectives can have different denominators. Combined `slo_attainment` continues to require every configured measurement; it is not an average of the individual fractions.
+- **Use Case**: Identifies which latency objective is breached when combined attainment is low. The console displays percentages and counts in a separate table; JSON and CSV retain fractions and counts.
+
+### Output-Token Goodput
+
+- **Definition**: `output_token_goodput` is the distribution of output tokens per second from successful requests meeting **every** configured latency objective. It uses the same token-event accounting and measurement window as `output_tokens_per_second`, excluding token events outside that window. Its `successful.mean` is the average conforming output-token rate.
+- **Availability**: The metric is `null` when no objectives are configured or no request can be evaluated against all objectives. A measured population with no conforming requests reports zero. When output usage counts are unavailable, it uses the same streaming-iteration fallback as `output_tokens_per_second`.
+- **Use Case**: Compares useful token throughput across workloads with different output lengths, including speculative decoding benchmarks where one streaming iteration may contain multiple tokens.
+
 ### Output Tokens Per Second
 
 - **Definition**: The average number of output tokens generated per second as a throughput metric across all requests.
@@ -117,6 +129,11 @@ Dispatch Delay, Turn Predecessor Delay, Turn Scheduling Delay, and Scheduled Lat
 
 - **Definition**: For the WebSocket backend, the mean of received-token timestamps minus the mean of sent-packet timestamps.
 - **Use Case**: Estimates the average send-to-receive lag across a request. It is approximate, since it assumes sent packets and received tokens line up evenly in time.
+
+### Collector Metrics
+
+- **Definition**: Data gathered from outside GuideLLM while each benchmark runs, such as queued requests, KV cache usage and server-measured latencies scraped from a server's Prometheus endpoint. They are only collected when `--collector` is set.
+- **Use Case**: Adds context from outside GuideLLM that helps explain the benchmark results but isn't produced by the benchmark itself. For example, the `prometheus` collector can show whether latency rose because requests were queuing or the KV cache was full. See the [Collectors Guide](collectors.md).
 
 ## Measurement Window, Warmup, and Cooldown
 
