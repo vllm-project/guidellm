@@ -711,14 +711,14 @@ class TestRequestsGeneratorGenerationDelay:
 class TestRequestsGeneratorShutdown:
     """Shutdown once the dataset runs out and every request has completed."""
 
-    def _build_state(self) -> WorkerGroupState:
+    def _build_state(self, constraints: dict | None = None) -> WorkerGroupState:
         messaging = Mock()
         messaging.buffer_receive_queue = Mock()
         return WorkerGroupState(
             start_time=time.time(),
             processes=[],
             strategy=SynchronousStrategy(),
-            constraints={},
+            constraints=constraints or {},
             stop_send_requests_event=threading.Event(),
             send_requests_stopped_event=threading.Event(),
             requests_generated_event=multiprocessing.Event(),
@@ -769,4 +769,34 @@ class TestRequestsGeneratorShutdown:
         assert not state.shutdown_event.is_set()
 
         self._advance(state, request_id, "completed")
+        assert state.shutdown_event.is_set()
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(("count", "rows"), [(1, 3), (2, 3), (2, 2)])
+    def test_shuts_down_when_last_request_completes_before_constraint_stop(
+        self, count: int, rows: int
+    ):
+        """If a request constraint stops queuing and the last queued request
+        completes before the generator resumes, the generator must trigger
+        shutdown itself.
+        """
+        state = self._build_state(
+            constraints={
+                "max_requests": MaxNumberConstraint(
+                    args=MaxRequestsConstraintArgs(count=count)
+                )
+            }
+        )
+        generator = state.requests_generator(
+            [_single_node_graph(f"g{index}", f"r{index}") for index in range(rows)]
+        )
+
+        for graph in generator:
+            (request_id,) = [info.request_id for info in graph.request_infos.values()]
+            for status in ("pending", "in_progress", "completed"):
+                self._advance(state, request_id, status)
+
+        assert state.stop_send_requests_event.is_set()
+        assert state.requests_generated_event.is_set()
+        assert state.constraint_reached_event.is_set()
         assert state.shutdown_event.is_set()

@@ -688,6 +688,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
                 if stop_queueing:
                     self.stop_send_requests_event.set()
+                    # The last queued request may already have completed
+                    self.update_stop_events(self.update_state())
                     return
 
                 # NOTE: This must be at the end of the loop
