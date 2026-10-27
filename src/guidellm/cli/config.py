@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
 import yaml
+from click.utils import LazyFile
 from pydantic import ValidationError
 
 import guidellm.utils.cli as cli_tools
@@ -29,12 +28,9 @@ __all__ = ["config"]
         "by the run command."
     ),
 )
-@click.argument(
-    "path",
-    type=click.Path(file_okay=True, dir_okay=False, path_type=Path),
-)
+@click.argument("output", type=click.File("w"), default="-")
 @common_run_options
-def config(path: Path, **kwargs) -> None:
+def config(output: LazyFile, **kwargs) -> None:
     """Write the configured benchmark scenario to ``PATH``."""
     ctx = click.get_current_context()
     kwargs = cli_tools.set_if_not_default(ctx, **kwargs)
@@ -55,16 +51,4 @@ def config(path: Path, **kwargs) -> None:
     # models while serializing. ``exclude_unset`` keeps those fields and omits
     # values supplied by model defaults instead.
     serialized = args.model_dump(mode="json", exclude_unset=True)
-    if serialized.get("benchmarks") == [None]:
-        serialized.pop("benchmarks")
-    metadata = serialized.get("metadata")
-    if isinstance(metadata, dict) and metadata.get("labels") == {}:
-        metadata.pop("labels")
-        if not metadata:
-            serialized.pop("metadata")
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.safe_dump(serialized, sort_keys=False),
-        encoding="utf-8",
-    )
+    output.write(yaml.safe_dump(serialized, sort_keys=False))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
@@ -21,15 +22,16 @@ def common_run_options(func: Callable[..., Any]) -> Callable[..., Any]:
     :param func: Command function to decorate
     :return: Command function with the common benchmark options applied
     """
+
     # Apply options in reverse help order to preserve the existing ``run`` CLI.
-    func = click.option(
+    @click.option(
         "--disable-console-interactive",
         "--disable-progress",  # legacy alias
         "disable_console_interactive",
         is_flag=True,
         help="Disable interactive console progress updates.",
-    )(func)
-    func = click.option(
+    )
+    @click.option(
         "--disable-console",
         "--disable-console-outputs",  # legacy alias
         "disable_console",
@@ -38,8 +40,8 @@ def common_run_options(func: Callable[..., Any]) -> Callable[..., Any]:
             "Disable all outputs to the console (updates, interactive progress, "
             "results)."
         ),
-    )(func)
-    func = click.option(
+    )
+    @click.option(
         "--override",
         "benchmarks",
         nargs=2,
@@ -51,9 +53,9 @@ def common_run_options(func: Callable[..., Any]) -> Callable[..., Any]:
             "Example: `--profile kind=concurrent --override 'profile.streams' "
             "1,2,4,8,16` [repeatable]"
         ),
-    )(func)
-    func = registry_options_from_model(model=BenchmarkArgs, group_key="spec")(func)
-    func = click.option(
+    )
+    @registry_options_from_model(model=BenchmarkArgs, group_key="spec")
+    @click.option(
         "--label",
         "-l",
         "labels",
@@ -64,8 +66,8 @@ def common_run_options(func: Callable[..., Any]) -> Callable[..., Any]:
             "Example: `--label timestamp=1999-09-12@12:00:00 --label env=staging` "
             " [repeatable]"
         ),
-    )(func)
-    return click.option(
+    )
+    @click.option(
         "--config",
         "--scenario",
         "-c",
@@ -84,4 +86,9 @@ def common_run_options(func: Callable[..., Any]) -> Callable[..., Any]:
             "Builtin scenario name or path to config file. "
             "CLI options override scenario settings."
         ),
-    )(func)
+    )
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        func(*args, **kwargs)
+
+    return wrapper
