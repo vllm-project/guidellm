@@ -12,7 +12,7 @@ source_sha256: !!str "3173be306b7a6b99f40a838280668c97666d50e655bef1c97ba2b994bd
 
 ## 安装 {#installation}
 
-安装方式与 [vLLM Python 后端（英文）](../../en/guides/vllm-python-backend.md#installation)相同。批处理后端使用相同的 vLLM 软件包。
+安装方式与 [vLLM Python 后端](vllm-python-backend.md#installation)相同。批处理后端使用相同的 vLLM 软件包。
 
 ## 基本示例 {#basic-example}
 
@@ -50,7 +50,7 @@ guidellm run \
   控制如何构建聊天提示词。选项与 `vllm_python_async` 相同：`plain`、`default-template`，或 Jinja2 模板路径/字符串。
 
 - **`vllm_config`**\
-  引擎选项以嵌套 dict 的形式传入。使用 vLLM 的 `EngineArgs` 参数名称（Python 形式，而非 CLI 形式）。有关 `vllm_config` 的详情，请参阅 [vLLM Python 后端文档（英文）](../../en/guides/vllm-python-backend.md#request-format-and-backend-options)。
+  引擎选项以嵌套 dict 的形式传入。使用 vLLM 的 `EngineArgs` 参数名称（Python 形式，而非 CLI 形式）。有关 `vllm_config` 的详情，请参阅 [vLLM Python 后端文档](vllm-python-backend.md#request-format-and-backend-options)。
 
   JSON 示例：
 
@@ -72,7 +72,7 @@ vLLM `LLM` 引擎不会在 `process_startup()` 期间加载。引擎的创建由
 
 ## 另请参阅 {#see-also}
 
-- [vLLM Python 异步后端（英文）](../../en/guides/vllm-python-backend.md) — 逐请求异步后端。
+- [vLLM Python 异步后端](vllm-python-backend.md) — 逐请求异步后端。
 - [后端](backends.md) — 支持的后端概览。
 - [运行基准测试](../getting-started/benchmark.md) — 基准测试通用选项。
 - [vLLM Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/) — 面向 CLI 的文档；在 `vllm_config` 中请使用 Python 名称。
