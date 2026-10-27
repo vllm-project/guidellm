@@ -14,13 +14,13 @@ source_sha256: !!str "42e4062e74a51707176ea6347a362c2e480d11c215aa3d13cc821c9d21
 
 - `generation_delay_ttft`：
   - 当 `generation_delay` 的平均值超过 `time_to_first_token_ms.total` 平均值的 1% 时发出警告。
-  - 这表示数据生成的延迟相对于服务器的 TTFT 已达到足以拖慢基准测试的程度。请参阅[请求未按时到达（英文）](../../en/guides/troubleshooting.md#requests-load-after-they-are-due)。
+  - 这表示数据生成的延迟相对于服务器的 TTFT 已达到足以拖慢基准测试的程度。请参阅[请求延迟到达](troubleshooting.md#requests-load-after-they-are-due)。
 - `root_late`：
   - 当 `root_dispatch_delay` 的第 95 百分位数大于 0.75 秒，或平均值大于 0.25 秒时发出警告。
-  - 这表示对话的第一轮到达时间晚于调度器安排的时间，通常是数据延迟造成的。请参阅[请求未按时到达（英文）](../../en/guides/troubleshooting.md#requests-load-after-they-are-due)。
+  - 这表示对话的第一轮到达时间晚于调度器安排的时间，通常是数据延迟造成的。请参阅[请求延迟到达](troubleshooting.md#requests-load-after-they-are-due)。
 - `dataset_incomplete`：
   - 在 trace 策略运行期间，如果 `dataset_incomplete` 为 true，则发出警告。
-  - 这表示 trace 数据集未完全加载，因此 trace 对话可能迟到或缺失，因为许多 trace 对话的轮次原本应在基准测试开始时启动。请参阅[请求未按时到达（英文）](../../en/guides/troubleshooting.md#requests-load-after-they-are-due)。
+  - 这表示 trace 数据集未完全加载，因此 trace 对话可能迟到或缺失，因为许多 trace 对话的轮次原本应在基准测试开始时启动。请参阅[请求延迟到达](troubleshooting.md#requests-load-after-they-are-due)。
 
 默认规则的定义位置见 `src/guidellm/schemas/benchmark/warnings.py` 中的 `default_warning_rules()`。
 
