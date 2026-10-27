@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import pickle
 from collections.abc import AsyncIterator, Iterable
 from contextlib import nullcontext
 from typing import Literal
@@ -215,6 +216,26 @@ class TestOpenAIHTTPBackend:
             await backend._prepare_resolve_request(GenerationRequest())
 
         assert mock_handler.format.call_args.kwargs["extras"] == extras
+
+    @pytest.mark.asyncio
+    @pytest.mark.regression
+    async def test_pickled_backend_sends_real_secret_headers(self):
+        """Test a backend copied to a worker by pickle sends real header values."""
+        backend = _make_backend(
+            target="http://localhost:8000",
+            model="test-model",
+            extras=GenerationRequestArguments(
+                headers={"X-Api-Key": "key-secret", "X-Trace-Id": "trace-1"}
+            ),
+        )
+        worker_backend = pickle.loads(pickle.dumps(backend))  # noqa: S301
+
+        _, _, request_kwargs = await worker_backend._prepare_resolve_request(
+            GenerationRequest(columns={"text_column": ["hello"]})
+        )
+
+        assert request_kwargs["headers"]["X-Api-Key"] == "key-secret"
+        assert request_kwargs["headers"]["X-Trace-Id"] == "trace-1"
 
     @pytest.mark.smoke
     def test_factory_registration(self):

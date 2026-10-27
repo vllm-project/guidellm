@@ -384,6 +384,68 @@ class TestGenerationRequestArguments:
             },
         }
 
+    @pytest.mark.regression
+    def test_json_dump_masks_secret_headers(self):
+        """Test credential header values are masked in JSON output only."""
+        headers = {
+            "Authorization": "Bearer sk-secret",
+            "X-Api-Key": "key-secret",
+            "Cookie": "session=abc",
+            "X-Trace-Id": "trace-1",
+        }
+        instance = GenerationRequestArguments(headers=headers)
+
+        dumped = instance.model_dump(mode="json")["headers"]
+        assert dumped == {
+            "Authorization": "**********",
+            "X-Api-Key": "**********",
+            "Cookie": "**********",
+            "X-Trace-Id": "trace-1",
+        }
+        json_text = instance.model_dump_json()
+        assert "sk-secret" not in json_text
+        assert "key-secret" not in json_text
+        assert "trace-1" in json_text
+
+        assert instance.model_dump()["headers"] == headers
+        assert instance.headers == headers
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("name", "masked"),
+        [
+            ("Authorization", True),
+            ("Proxy-Authorization", True),
+            ("api-key", True),
+            ("X-Auth-Token", True),
+            ("Set-Cookie", True),
+            ("X-Client-Secret", True),
+            ("X-Password", True),
+            ("X-Credential", True),
+            ("Content-Type", False),
+            ("User-Agent", False),
+            ("X-Request-Id", False),
+            ("Accept", False),
+        ],
+    )
+    def test_json_dump_secret_header_names(self, name: str, masked: bool):
+        """Test which header names are treated as credentials."""
+        instance = GenerationRequestArguments(headers={name: "value-1"})
+
+        dumped = instance.model_dump(mode="json")["headers"][name]
+
+        assert dumped == ("**********" if masked else "value-1")
+
+    @pytest.mark.regression
+    def test_model_combine_keeps_secret_header_values(self):
+        """Test model_combine merges the real header values, not the mask."""
+        base = GenerationRequestArguments(body={"prompt": "hi"})
+        extras = GenerationRequestArguments(headers={"X-Api-Key": "key-secret"})
+
+        result = base.model_combine(extras)
+
+        assert result.headers == {"X-Api-Key": "key-secret"}
+
 
 class TestUsageMetrics:
     """Test cases for UsageMetrics model."""
