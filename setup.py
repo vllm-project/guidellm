@@ -128,12 +128,7 @@ setup(
     rust_extensions=[
         RustExtension(
             target="guidellm._rust",
-            path="rust/core/Cargo.toml",
-            binding=Binding.PyO3,
-        ),
-        RustExtension(
-            target="guidellm.utils._rust",
-            path="rust/utils/Cargo.toml",
+            path="rust/connector/Cargo.toml",
             binding=Binding.PyO3,
         ),
     ],

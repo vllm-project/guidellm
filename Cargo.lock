@@ -1220,19 +1220,17 @@ dependencies = [
 ]
 
 [[package]]
-name = "guidellm-core"
+name = "guidellm-connector"
 version = "0.8.0"
 dependencies = [
+ "guidellm-core",
  "pyo3",
  "vergen-gix",
 ]
 
 [[package]]
-name = "guidellm-utils"
+name = "guidellm-core"
 version = "0.8.0"
-dependencies = [
- "pyo3",
-]
 
 [[package]]
 name = "hash32"

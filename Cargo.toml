@@ -1,7 +1,7 @@
 [workspace]
 members = [
+    "rust/connector",
     "rust/core",
-    "rust/utils",
 ]
 resolver = "2"
 
