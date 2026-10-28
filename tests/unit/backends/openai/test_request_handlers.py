@@ -7357,7 +7357,246 @@ class TestChatAudioOutput:
 
         assert result.output_media[0]["id"] == "delta-audio"
         assert result.output_media[0]["data"] == audio
+        assert result.output_media[0]["transcript"] == "Speak."
         assert result.output_metrics.audio_seconds == pytest.approx(0.1)
+
+    @pytest.mark.regression
+    def test_metadata_only_delta_audio_is_ignored_without_modality(self):
+        """Ignore an ID/expiry-only audio update without raising.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        event = {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "audio": {
+                            "id": "delta-audio",
+                            "expires_at": 1_700_000_000,
+                        }
+                    },
+                }
+            ]
+        }
+
+        assert handler.add_streaming_line("data: " + json.dumps(event)) == 0
+        assert handler.streaming_media_packets == []
+
+    @pytest.mark.regression
+    def test_transcript_only_delta_audio_is_preserved(self):
+        """Preserve transcript-only audio deltas and attach them to audio output.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        request = GenerationRequest(columns={"text_column": ["Prompt."]})
+        arguments = GenerationRequestArguments()
+        packet_one = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+        packet_two = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+        encoded_one = base64.b64encode(packet_one).decode("ascii")
+        encoded_two = base64.b64encode(packet_two).decode("ascii")
+        audio_metadata = {
+            "format": "wav",
+            "sample_rate_hz": 16000,
+            "frame_count": 1600,
+            "channels": 1,
+        }
+        events = [
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "audio": {
+                                "id": "delta-audio",
+                                "transcript": "Speak ",
+                            }
+                        },
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"transcript": "now."}},
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"data": encoded_one}},
+                        "audio_metadata": audio_metadata,
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"data": encoded_two}},
+                        "audio_metadata": audio_metadata,
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "audio": {
+                                "id": "delta-audio",
+                                "expires_at": 1_700_000_000,
+                            }
+                        },
+                    }
+                ]
+            },
+        ]
+
+        for event in events:
+            assert handler.add_streaming_line("data: " + json.dumps(event)) == 0
+
+        handler.mark_stream_complete()
+        response = handler.compile_streaming(request, arguments)
+
+        assert response.text is None
+        assert len(response.output_media) == 2
+        assert response.output_media[0]["data"] == packet_one
+        assert response.output_media[1]["data"] == packet_two
+        assert response.output_media[0]["id"] == "delta-audio"
+        assert response.output_media[0]["expires_at"] == 1_700_000_000
+        assert response.output_media[0]["transcript"] == "Speak now."
+        assert response.output_media[1].get("transcript") is None
+
+        messages = handler._build_turn_messages(request, response, None)
+        assert messages[-1]["content"] == "Speak now."
+
+    @pytest.mark.regression
+    def test_transcript_only_stream_without_audio_uses_response_text(self):
+        """Use transcript deltas as response text when no audio packet arrives.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        request = GenerationRequest(columns={"text_column": ["Prompt."]})
+        arguments = GenerationRequestArguments()
+        events = [
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"transcript": "Speak "}},
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"transcript": "now."}},
+                    }
+                ]
+            },
+        ]
+
+        for event in events:
+            assert handler.add_streaming_line("data: " + json.dumps(event)) == 0
+
+        handler.mark_stream_complete()
+        response = handler.compile_streaming(request, arguments)
+
+        assert response.text == "Speak now."
+        assert response.output_media is None
+
+    @pytest.mark.regression
+    def test_transcript_only_delta_does_not_duplicate_existing_text(self):
+        """Keep ordinary streamed text when the audio transcript repeats it.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        request = GenerationRequest(columns={"text_column": ["Prompt."]})
+        arguments = GenerationRequestArguments()
+        events = [
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": "Speak now."},
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"transcript": "Speak now."}},
+                    }
+                ]
+            },
+        ]
+
+        assert handler.add_streaming_line("data: " + json.dumps(events[0])) == 1
+        assert handler.add_streaming_line("data: " + json.dumps(events[1])) == 0
+
+        handler.mark_stream_complete()
+        response = handler.compile_streaming(request, arguments)
+
+        assert response.text == "Speak now."
+        assert response.output_media is None
+
+    @pytest.mark.regression
+    def test_transcript_only_choice_preserves_other_choice_audio_metrics(self):
+        """Keep audio metrics when another choice provides only a transcript.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        request = GenerationRequest(columns={"text_column": ["Prompt."]})
+        arguments = GenerationRequestArguments()
+        audio = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+        event = {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "audio": {
+                            "data": base64.b64encode(audio).decode("ascii"),
+                        }
+                    },
+                    "audio_metadata": {
+                        "format": "wav",
+                        "sample_rate_hz": 16000,
+                        "frame_count": 1600,
+                        "channels": 1,
+                    },
+                },
+                {
+                    "index": 1,
+                    "delta": {"audio": {"transcript": "Other choice."}},
+                },
+            ]
+        }
+
+        assert handler.add_streaming_line("data: " + json.dumps(event)) == 0
+        handler.mark_stream_complete()
+        response = handler.compile_streaming(request, arguments)
+
+        assert response.text == "Other choice."
+        assert len(response.output_media) == 1
+        assert response.output_metrics.audio_samples == 1600
+        assert response.output_metrics.audio_seconds == pytest.approx(0.1)
+        assert response.output_metrics.audio_bytes == len(audio)
 
     @pytest.mark.regression
     def test_streamed_audio_continuity_uses_packet_arrivals(self):

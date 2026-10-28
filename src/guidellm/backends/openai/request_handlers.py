@@ -381,74 +381,6 @@ def _pcm16_layout(
     return sample_rate, channels, header_bytes, payload_bytes // bytes_per_frame
 
 
-@ModalityParserRegistry.register("audio")
-class _AudioOutputParser:
-    """
-    Audio-output parser: OpenAI-shaped message.audio / delta.audio (chat
-    completions) and vLLM-Omni's speech.audio.delta SSE event (speech
-    endpoint).
-    """
-
-    def parse_content_part(self, part: dict[str, Any]) -> dict[str, Any] | None:  # noqa: ARG002
-        # Audio is never embedded as a message.content list part in the
-        # OpenAI/vLLM-Omni spec (unlike image_url) -- it's always a
-        # dedicated message.audio field. Nothing to do here (kept for
-        # consistency with other protocol parsers).
-        return None
-
-    def parse_dedicated_field(self, value: Any) -> dict[str, Any] | None:
-        """
-        Parser of message.audio / delta.audio object
-        ``{id, data, expires_at, transcript}`` (see OpenAI's
-        ChatCompletionAudio and vLLM-Omni's serving_chat.py for more details).
-
-        :param value: Standalone audio field to parse, or None if absent.
-        :return: A normalized output_media item, or None if value is None.
-        :raises ValueError: If value is present (not None) but is not a
-        well-formed audio object, or its 'data' field is not valid,
-        non-empty base64-encoded audio.
-        """
-
-        if value is None:
-            return None
-
-        if not isinstance(value, dict):
-            raise ValueError(
-                "[UNUSABLE_BACKEND_RESPONSE] message.audio present but not "
-                f"a dictionary object (got {type(value).__name__})"
-            )
-
-        raw_data = value.get("data")
-        if not raw_data or not isinstance(raw_data, str):
-            raise ValueError(
-                "[UNUSABLE_BACKEND_RESPONSE] message.audio present but "
-                "missing a non-empty string 'data' field"
-            )
-
-        try:
-            audio_bytes = base64.b64decode(raw_data, validate=True)
-        except (binascii.Error, ValueError, TypeError) as e:
-            raise ValueError(
-                "[UNUSABLE_BACKEND_RESPONSE] message.audio.data is not "
-                f"valid base64: {e}"
-            ) from e
-
-        if not audio_bytes:
-            raise ValueError(
-                "[UNUSABLE_BACKEND_RESPONSE] message.audio.data decoded to "
-                "empty audio bytes"
-            )
-
-        return {
-            "modality": "audio",
-            "data": audio_bytes,
-            "format": value.get("format"),
-            "transcript": value.get("transcript"),
-            "id": value.get("id"),
-            "expires_at": value.get("expires_at"),
-        }
-
-
 class WSEventResult(Enum):
     """Classification of a processed WebSocket streaming event."""
 
@@ -1227,6 +1159,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         ] = []
         self._streaming_arrival_time: float | None = None
         self._last_audio_event_time: float | None = None
+        self.streaming_audio_ids: dict[int, str] = {}
+        self.streaming_audio_expirations: dict[int, int | float] = {}
+        self.streaming_audio_transcripts: dict[int, list[str]] = {}
         self._output_sample_rate_hint: int | None = None
         self._output_channels_hint: int | None = None
         self._requested_audio_format = "wav"
@@ -1387,9 +1322,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         media: list[dict[str, Any]] = []
 
         try:
-            parser_classes = ModalityParserRegistry.registered_objects()
+            parser_names = ModalityParserRegistry.registered_names()
         except ValueError:
-            parser_classes = ()
+            parser_names = ()
 
         for part in content:
             if not isinstance(part, dict):
@@ -1403,8 +1338,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             types (e.g. a future modality with no parser landed yet) are
             silently skipped (maybe should raise?)
             """
-            for parser_cls in parser_classes:
-                if (item := parser_cls().parse_content_part(part)) is not None:
+            for parser_name in parser_names:
+                parser_cls = ModalityParserRegistry.create(parser_name)
+                if parser_cls is not None and (
+                        item := parser_cls.parse_content_part(part)
+                ) is not None:
                     media.append(item)
                     break
 
@@ -1786,12 +1724,15 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             assistant = {"role": "assistant", "content": None}
             messages.append(assistant)
 
-        transcripts = [item.get("transcript") for item in audio_items]
-        if all(
-            isinstance(transcript, str) and transcript for transcript in transcripts
-        ):
+        transcripts: list[str] = []
+        for item in audio_items:
+            transcript = item.get("transcript")
+            if isinstance(transcript, str) and transcript:
+                transcripts.append(transcript)
+
+        if transcripts:
             assistant["content"] = (assistant.get("content") or "") + "".join(
-                transcript for transcript in transcripts if isinstance(transcript, str)
+                transcripts
             )
             return
 
@@ -1927,7 +1868,6 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         reasoning_text: str | None = None
         raw_tool_calls: list[dict] | None = None
         output_media: list[dict[str, Any]] = []
-        audio_parser_cls = ModalityParserRegistry.get_registered_object("audio")
 
         for choice in choices:
             message = choice.get("message", {})
@@ -1943,10 +1883,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 )
             if raw_tool_calls is None:
                 raw_tool_calls = message.get("tool_calls")
+
+            audio_parser = ModalityParserRegistry.create("audio")
             if (
-                audio_parser_cls is not None
+                audio_parser is not None
                 and (
-                    item := audio_parser_cls().parse_dedicated_field(
+                    item := audio_parser.parse_dedicated_field(
                         message.get("audio")
                     )
                 )
@@ -2017,13 +1959,13 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         updated = False
         had_content = False
         choices, usage = self.extract_choices_and_usage(data)
-        audio_parser_cls = ModalityParserRegistry.get_registered_object("audio")
         if choices and data.get("modality") == "audio":
             self._last_audio_event_time = self._streaming_arrival_time
 
         for choice in choices:
+            audio_parser = ModalityParserRegistry.create("audio")
             choice_updated, choice_had_content = self._process_streaming_choice(
-                data, choice, audio_parser_cls
+                data, choice, audio_parser
             )
             updated |= choice_updated
             had_content |= choice_had_content
@@ -2041,7 +1983,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         self,
         data: dict[str, Any],
         choice: dict[str, Any],
-        audio_parser_cls: type[ModalityOutputParser] | None,
+        audio_parser: ModalityOutputParser | None,
     ) -> tuple[bool, bool]:
         """
         Process one choice delta and return its update and content flags.
@@ -2058,7 +2000,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             updated = True
 
         content_updated, content_had_content = self._process_streaming_choice_content(
-            data, choice, index, delta, audio_parser_cls
+            data, choice, index, delta, audio_parser
         )
         updated |= content_updated
         had_content |= content_had_content
@@ -2080,7 +2022,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         choice: dict[str, Any],
         index: int,
         delta: dict[str, Any],
-        audio_parser_cls: type[ModalityOutputParser] | None,
+        audio_parser: ModalityOutputParser | None,
     ) -> tuple[bool, bool]:
         """
         Process text and audio content for one choice.
@@ -2092,9 +2034,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             data.get("modality") == "audio"
             and content
             and isinstance(content, str)
-            and audio_parser_cls is not None
+            and audio_parser is not None
         ):
-            audio_item = audio_parser_cls().parse_dedicated_field({"data": content})
+            audio_item = audio_parser.parse_dedicated_field({"data": content})
             if audio_item is not None:
                 _apply_audio_metadata(audio_item, choice.get("audio_metadata"))
                 self._append_streaming_media_item(index, audio_item)
@@ -2114,16 +2056,31 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     _apply_audio_metadata(media_item, choice.get("audio_metadata"))
                 self._append_streaming_media_item(index, media_item)
 
-            if audio_parser_cls is not None:
-                audio_value = delta.get("audio")
-                if (
-                    data.get("modality") == "audio"
-                    and isinstance(audio_value, dict)
-                    and not audio_value.get("data")
-                ):
-                    audio_value = None
+            if audio_parser is not None:
+                audio_data = delta.get("audio")
+                if isinstance(audio_data, dict):
+                    audio_id = audio_data.get("id")
+                    if isinstance(audio_id, str) and audio_id:
+                        self.streaming_audio_ids[index] = audio_id
 
-                audio_item = audio_parser_cls().parse_dedicated_field(audio_value)
+                    transcript = audio_data.get("transcript")
+                    if isinstance(transcript, str) and transcript:
+                        self.streaming_audio_transcripts.setdefault(
+                            index, []
+                        ).append(transcript)
+
+                    expiration_time = audio_data.get("expires_at")
+                    if isinstance(expiration_time, (int, float)) and not isinstance(
+                            expiration_time, bool
+                    ):
+                        self.streaming_audio_expirations[index] = expiration_time
+
+                    # Transcript-only and metadata-only updates are valid stream
+                    # events, but they are not valid payloads for the audio parser.
+                    if not audio_data.get("data"):
+                        audio_data = None
+
+                audio_item = audio_parser.parse_dedicated_field(audio_data)
                 if audio_item is not None:
                     _apply_audio_metadata(audio_item, choice.get("audio_metadata"))
                     self._append_streaming_media_item(index, audio_item)
@@ -2158,6 +2115,51 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if fn_args := fn_delta.get("arguments"):
             tc.function.arguments += fn_args
 
+    def _add_streaming_audio_metadata(
+            self, output_media: list[dict[str, Any]]
+    ) -> list[str]:
+        """
+        Attach streamed audio metadata (IDs, expiration times, transcripts)
+        to the packets.
+
+        :param output_media: Compiled output media items.
+        :return: Transcripts for choices that had no audio packet.
+        """
+        audio_items_by_choice: dict[int, list[dict[str, Any]]] = {}
+        for item in output_media:
+            if item.get("modality") == "audio":
+                choice_index = item.get("choice_index", 0)
+                audio_items_by_choice.setdefault(choice_index, []).append(item)
+
+        for choice_index, audio_items in audio_items_by_choice.items():
+            audio_id = self.streaming_audio_ids.get(choice_index)
+            expiration_time = self.streaming_audio_expirations.get(choice_index)
+
+            for item in audio_items:
+                if audio_id is not None and not item.get("id"):
+                    item["id"] = audio_id
+                if expiration_time is not None and (
+                        audio_id is None or item.get("id") == audio_id
+                ):
+                    item["expires_at"] = expiration_time
+
+            transcript = "".join(
+                self.streaming_audio_transcripts.get(choice_index, [])
+            )
+            if transcript:
+                # The response-level transcript spans the audio packets; store
+                # it once so replay does not duplicate it.
+                for item in audio_items:
+                    item.pop("transcript", None)
+                audio_items[0]["transcript"] = transcript
+
+        return [
+            transcript
+            for choice_index, parts in self.streaming_audio_transcripts.items()
+            if choice_index not in audio_items_by_choice
+               and (transcript := "".join(parts))
+        ]
+
     def compile_streaming(
         self, request: GenerationRequest, arguments: GenerationRequestArguments
     ) -> GenerationResponse:
@@ -2185,6 +2187,14 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         output_media: list[dict[str, Any]] = [
             item for _, item, _ in self.streaming_media_packets
         ]
+        unattached_transcripts = self._add_streaming_audio_metadata(output_media)
+        if unattached_transcripts and not response.text:
+            transcript_text = "".join(unattached_transcripts)
+            response.text = transcript_text
+            _, response.output_metrics = self.extract_metrics(
+                self.streaming_usage, transcript_text
+            )
+
         if output_media:
             response.output_media = output_media
             self._augment_media_output_metrics(response.output_metrics, output_media)

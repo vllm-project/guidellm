@@ -50,9 +50,19 @@ class ModalityOutputParser(Protocol):
         ...
 
 
-class ModalityParserRegistry(RegistryMixin["type[ModalityOutputParser]"]):
+class ModalityParserRegistry(RegistryMixin[type[ModalityOutputParser]]):
     """
     Registry mapping a short modality name ("audio", "image", "video", ...)
     to its parser implementation. Uses RegistryMixin pattern
     (see also OpenAIRequestHandlerFactory, DatasetDeserializerFactory).
     """
+
+    @classmethod
+    def create(cls, modality: str) -> ModalityOutputParser | None:
+        """Construct the parser registered for a modality.
+
+        :param modality: Registered modality name, such as "audio".
+        :return: The parser instance, or None when no parser is registered.
+        """
+        parser_class = cls.get_registered_object(modality)
+        return parser_class() if parser_class is not None else None

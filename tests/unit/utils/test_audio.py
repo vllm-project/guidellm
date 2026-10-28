@@ -723,6 +723,33 @@ def test_compute_audio_continuity_handles_insufficient_or_invalid_layout():
 
 
 @pytest.mark.regression
+@pytest.mark.parametrize(
+    ("arrivals", "expected_underrun", "expected_events"),
+    [
+        ([0.0, 0.3, 0.6], 0.25, 2),
+        ([0.0, 0.3, 0.35], 0.25, 1),
+        ([0.0, 0.03, 0.04], 0.0, 0),
+    ],
+)
+def test_compute_audio_continuity_tracks_buffer_exhaustion(
+        arrivals, expected_underrun, expected_events
+):
+    """Count stalls only when buffered audio has run out.
+
+    :return: None.
+    """
+    result = _audio_mod.compute_audio_continuity(
+        chunk_arrival_times_s=arrivals,
+        chunk_bytes=[1600] * len(arrivals),
+        sample_rate=16000,
+    )
+
+    assert result.max_underrun_seconds == pytest.approx(expected_underrun)
+    assert result.underrun_event_count == expected_events
+    assert result.is_continuous is (expected_underrun <= 0.05)
+
+
+@pytest.mark.regression
 def test_synthesize_audio_is_repeatable_and_reports_sample_metadata():
     """Generate deterministic per-row waveforms and canonical audio metadata.
 
