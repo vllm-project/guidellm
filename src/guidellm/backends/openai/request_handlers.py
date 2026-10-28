@@ -1340,9 +1340,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             """
             for parser_name in parser_names:
                 parser_cls = ModalityParserRegistry.create(parser_name)
-                if parser_cls is not None and (
-                        item := parser_cls.parse_content_part(part)
-                ) is not None:
+                if (
+                    parser_cls is not None
+                    and (item := parser_cls.parse_content_part(part)) is not None
+                ):
                     media.append(item)
                     break
 
@@ -1887,11 +1888,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             audio_parser = ModalityParserRegistry.create("audio")
             if (
                 audio_parser is not None
-                and (
-                    item := audio_parser.parse_dedicated_field(
-                        message.get("audio")
-                    )
-                )
+                and (item := audio_parser.parse_dedicated_field(message.get("audio")))
                 is not None
             ):
                 _apply_audio_metadata(item, choice.get("audio_metadata"))
@@ -2057,35 +2054,52 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 self._append_streaming_media_item(index, media_item)
 
             if audio_parser is not None:
-                audio_data = delta.get("audio")
-                if isinstance(audio_data, dict):
-                    audio_id = audio_data.get("id")
-                    if isinstance(audio_id, str) and audio_id:
-                        self.streaming_audio_ids[index] = audio_id
-
-                    transcript = audio_data.get("transcript")
-                    if isinstance(transcript, str) and transcript:
-                        self.streaming_audio_transcripts.setdefault(
-                            index, []
-                        ).append(transcript)
-
-                    expiration_time = audio_data.get("expires_at")
-                    if isinstance(expiration_time, (int, float)) and not isinstance(
-                            expiration_time, bool
-                    ):
-                        self.streaming_audio_expirations[index] = expiration_time
-
-                    # Transcript-only and metadata-only updates are valid stream
-                    # events, but they are not valid payloads for the audio parser.
-                    if not audio_data.get("data"):
-                        audio_data = None
-
-                audio_item = audio_parser.parse_dedicated_field(audio_data)
-                if audio_item is not None:
-                    _apply_audio_metadata(audio_item, choice.get("audio_metadata"))
-                    self._append_streaming_media_item(index, audio_item)
+                self._process_streaming_audio_delta(
+                    delta,
+                    choice,
+                    index,
+                    audio_parser,
+                )
 
         return content_updated, choice_had_content
+
+    def _process_streaming_audio_delta(
+        self,
+        delta: dict[str, Any],
+        choice: dict[str, Any],
+        index: int,
+        audio_parser: ModalityOutputParser,
+    ) -> None:
+        """
+        Capture audio metadata and append a payload if delta has one.
+        """
+        audio_data = delta.get("audio")
+        if isinstance(audio_data, dict):
+            audio_id = audio_data.get("id")
+            if isinstance(audio_id, str) and audio_id:
+                self.streaming_audio_ids[index] = audio_id
+
+            transcript = audio_data.get("transcript")
+            if isinstance(transcript, str) and transcript:
+                self.streaming_audio_transcripts.setdefault(index, []).append(
+                    transcript
+                )
+
+            expiration_time = audio_data.get("expires_at")
+            if isinstance(expiration_time, (int, float)) and not isinstance(
+                expiration_time, bool
+            ):
+                self.streaming_audio_expirations[index] = expiration_time
+
+            # Metadata-only and transcript-only updates are valid events,
+            # but they do not contain an audio payload to parse.
+            if not audio_data.get("data"):
+                audio_data = None
+
+        audio_item = audio_parser.parse_dedicated_field(audio_data)
+        if audio_item is not None:
+            _apply_audio_metadata(audio_item, choice.get("audio_metadata"))
+            self._append_streaming_media_item(index, audio_item)
 
     def _accumulate_tool_call_delta(self, tc_delta: dict[str, Any]) -> None:
         """Merge a single streaming tool_call delta into accumulated state.
@@ -2116,7 +2130,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             tc.function.arguments += fn_args
 
     def _add_streaming_audio_metadata(
-            self, output_media: list[dict[str, Any]]
+        self, output_media: list[dict[str, Any]]
     ) -> list[str]:
         """
         Attach streamed audio metadata (IDs, expiration times, transcripts)
@@ -2139,13 +2153,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 if audio_id is not None and not item.get("id"):
                     item["id"] = audio_id
                 if expiration_time is not None and (
-                        audio_id is None or item.get("id") == audio_id
+                    audio_id is None or item.get("id") == audio_id
                 ):
                     item["expires_at"] = expiration_time
 
-            transcript = "".join(
-                self.streaming_audio_transcripts.get(choice_index, [])
-            )
+            transcript = "".join(self.streaming_audio_transcripts.get(choice_index, []))
             if transcript:
                 # The response-level transcript spans the audio packets; store
                 # it once so replay does not duplicate it.
@@ -2157,7 +2169,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             transcript
             for choice_index, parts in self.streaming_audio_transcripts.items()
             if choice_index not in audio_items_by_choice
-               and (transcript := "".join(parts))
+            and (transcript := "".join(parts))
         ]
 
     def compile_streaming(

@@ -323,7 +323,9 @@ class OpenAIHTTPBackend(Backend):
         response.raise_for_status()
 
         request_handler.set_response_headers(response.headers)
-        data: Any = response.content if request_handler.raw_response else response.json()
+        data: Any = (
+            response.content if request_handler.raw_response else response.json()
+        )
 
         gen_response = request_handler.compile_non_streaming(request, arguments, data)
         request_handler.post_validation(gen_response)

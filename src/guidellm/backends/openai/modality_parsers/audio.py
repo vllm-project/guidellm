@@ -17,9 +17,7 @@ class AudioOutputParser(ModalityOutputParser):
     endpoint).
     """
 
-    def parse_content_part(
-        self, part: dict[str, Any]
-    ) -> dict[str, Any] | None:  # noqa: ARG002
+    def parse_content_part(self, part: dict[str, Any]) -> dict[str, Any] | None:  # noqa: ARG002
         """Ignore content-list parts because audio uses a dedicated field.
 
         :param part: One item from a message content list.
