@@ -398,6 +398,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         Returns an async iterator of request updates including response, request,
         request scheduling info, and scheduler state. Updates occur on request queued,
         processing start, and completion. Response is None until processing completes.
+        Iteration ends only after receive threads stop and buffered updates are yielded.
 
         :return: Async iterator yielding (response, request, request_info, state)
             tuples where response is None until processing is complete
@@ -425,8 +426,19 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 yield response, request, request_info, scheduler_state
             except TimeoutError:
                 if self.shutdown_event.is_set():  # type: ignore[union-attr]
-                    # Everything yielded, exit
-                    break
+                    # The final callback can signal shutdown before buffering its
+                    # update. Wait for all receive threads and drain their buffer,
+                    # including updates delivered while this get was timing out.
+                    receive_stopped = self.messaging.receive_stopped_event  # type: ignore[union-attr]
+                    receive_buffer = self.messaging.buffer_receive_queue  # type: ignore[union-attr]
+                    if (
+                        receive_stopped is not None
+                        and receive_stopped.is_set()
+                        and receive_buffer is not None
+                        and receive_buffer.empty()
+                    ):
+                        break
+                    continue
                 # Time-based constraints (max_duration) must be evaluated even when
                 # workers are sleeping until a future target start, because no
                 # request updates arrive during that wait.
@@ -688,6 +700,8 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
 
                 if stop_queueing:
                     self.stop_send_requests_event.set()
+                    # The last queued request may already have completed
+                    self.update_stop_events(self.update_state())
                     return
 
                 # NOTE: This must be at the end of the loop
@@ -701,6 +715,9 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
                 },
             )
             self.stop_send_requests_event.set()
+            # The last request may already have completed, in which case no
+            # further update arrives to run these checks.
+            self.update_stop_events(self.update_state())
         except Exception as err:
             logger.error("Error generating requests: {}", err)
             self.error_event.set()
@@ -732,33 +749,7 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
         try:
             response, request, request_info = update
             state_update = self.update_state(info=request_info)
-
-            # Check if we need to tell workers to stop pulling new requests
-            # based on no more requests sent and all requests removed from queue
-            if (
-                state_update.state.queued_requests == 0
-                and self.stop_send_requests_event.is_set()
-                and not self.requests_generated_event.is_set()
-            ):
-                self.requests_generated_event.set()
-
-            # Check if we need to tell workers to stop processing requests (constraints)
-            if (
-                state_update.stop_processing
-                and not self.constraint_reached_event.is_set()
-            ):
-                self.constraint_reached_event.set()
-
-            # Check if all requests have been processed and can shutdown
-            if (
-                state_update.state.processed_requests
-                == state_update.state.created_requests
-                and self.stop_send_requests_event.is_set()
-                and self.requests_generated_event.is_set()
-                and self.constraint_reached_event.is_set()
-                and not self.shutdown_event.is_set()
-            ):
-                self.shutdown_event.set()
+            self.update_stop_events(state_update)
         except Exception as err:
             logger.error("Error processing received update: {}", err)
             self.error_event.set()
@@ -770,6 +761,35 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             request_info,
             state_update.state,  # inject state for updates to be yielded back
         )
+
+    def update_stop_events(self, state_update: _StateUpdate) -> None:
+        """
+        Set requests_generated, constraint_reached and shutdown events as needed.
+
+        :param state_update: Result of ``update_state`` to evaluate
+        """
+        # Check if we need to tell workers to stop pulling new requests
+        # based on no more requests sent and all requests removed from queue
+        if (
+            state_update.state.queued_requests == 0
+            and self.stop_send_requests_event.is_set()
+            and not self.requests_generated_event.is_set()
+        ):
+            self.requests_generated_event.set()
+
+        # Check if we need to tell workers to stop processing requests (constraints)
+        if state_update.stop_processing and not self.constraint_reached_event.is_set():
+            self.constraint_reached_event.set()
+
+        # Check if all requests have been processed and can shutdown
+        if (
+            state_update.state.processed_requests == state_update.state.created_requests
+            and self.stop_send_requests_event.is_set()
+            and self.requests_generated_event.is_set()
+            and self.constraint_reached_event.is_set()
+            and not self.shutdown_event.is_set()
+        ):
+            self.shutdown_event.set()
 
     def update_state(
         self,
