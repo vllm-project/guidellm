@@ -136,8 +136,8 @@ def default_warning_rules() -> list[WarningRuleArgs]:
             ),
         ),
         WarningRuleArgs(
-            code="loop_lag_ttft",
-            metric=MetricRef(name="first_token_loop_lag.total", statistic="mean"),
+            code="worker_loop_lag_ttft",
+            metric=MetricRef(name="worker_loop_lag", statistic="p95"),
             relative_to=MetricRef(
                 name="time_to_first_token_ms.total",
                 statistic="mean",
@@ -145,7 +145,7 @@ def default_warning_rules() -> list[WarningRuleArgs]:
             ),
             threshold=0.1,
             note=(
-                "This means that GuideLLM's workers were short of CPU, so time "
+                "This means that GuideLLM's worker event loops ran late, so time "
                 "to first token is likely overstated."
             ),
         ),

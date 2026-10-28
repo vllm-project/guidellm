@@ -101,6 +101,13 @@ class SchedulerMetrics(StandardBaseDict):
             "from the request generator and actually yielding it (seconds)"
         ),
     )
+    worker_loop_lag: DistributionSummary = Field(
+        default_factory=lambda: DistributionSummary.from_values([]),
+        description=(
+            "Distribution of how late a timer fired on the worker event loops "
+            "while they processed requests (seconds)"
+        ),
+    )
     queued_time_avg: float = Field(
         description="Avg time requests spent in the queue (seconds)"
     )
@@ -167,6 +174,9 @@ class SchedulerMetrics(StandardBaseDict):
             # Scheduler internal performance timings
             generation_delay=DistributionSummary.from_values(
                 scheduler_state.generation_delay_samples
+            ),
+            worker_loop_lag=DistributionSummary.from_values(
+                scheduler_state.worker_loop_lag_samples
             ),
             queued_time_avg=accumulator.scheduler_metrics.queued_time.mean or -1.0,
             resolve_start_delay_avg=(
@@ -1093,13 +1103,6 @@ class GenerativeMetrics(StandardBaseDict):
             "Later turns are omitted. None when no first turn has a dispatch delay"
         ),
     )
-    first_token_loop_lag: StatusDistributionSummary | None = Field(
-        default=None,
-        description=(
-            "Distribution of the longest worker event-loop delay before each "
-            "request's first token, in seconds"
-        ),
-    )
     request_streaming_iterations_count: StatusDistributionSummary = Field(
         description="Distribution of stream iterations for completed requests"
     )
@@ -1509,12 +1512,6 @@ class GenerativeMetrics(StandardBaseDict):
             turn_scheduling_delay=scheduling_delay,
             root_dispatch_delay=root_dispatch_delay_distribution(
                 [*successful, *incomplete, *errored],
-            ),
-            first_token_loop_lag=StatusDistributionSummary.from_values_function(
-                function=lambda req: req.info.timings.first_token_loop_lag,
-                successful=first_token_requests[0],
-                incomplete=first_token_requests[1],
-                errored=first_token_requests[2],
             ),
             request_streaming_iterations_count=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.info.timings.request_iterations or 0.0,

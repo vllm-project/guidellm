@@ -36,6 +36,7 @@ except ImportError:
 
 from guidellm.logger import logger, reinstall_inherited_logger
 from guidellm.scheduler.dag import DAGExecutionState
+from guidellm.scheduler.loop_lag import LoopLagHistograms
 from guidellm.scheduler.schemas import (
     BackendInterface,
     ConversationGraph,
@@ -55,8 +56,6 @@ if TYPE_CHECKING:
     from loguru import Logger
 
 __all__ = ["WorkerProcess"]
-
-_LOOP_LAG_INTERVAL = 0.01  # seconds
 
 
 class WorkerProcess(Generic[RequestT, ResponseT]):
@@ -105,6 +104,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         stdout_conn: Connection | None,
         stderr_conn: Connection | None,
         parent_logger: Logger | None,
+        loop_lag: LoopLagHistograms | None = None,
     ):
         """
         Initialize worker process instance.
@@ -124,6 +124,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :param stdout_conn: Write-end pipe connection for stdout redirect
         :param stderr_conn: Write-end pipe connection for stderr redirect
         :param parent_logger: Logger instance inherited from the parent process
+        :param loop_lag: Shared histograms to record this worker's event-loop lag
+            in while it processes requests, or None to skip recording
         """
         self.worker_index = worker_index
         self.messaging = messaging
@@ -141,14 +143,13 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.stdout_conn = stdout_conn
         self.stderr_conn = stderr_conn
         self.parent_logger = parent_logger
+        self.loop_lag = loop_lag
 
         # Internal states
         self.startup_completed = False
         self.backend_started = False
         self.messaging_started = False
         self.turns_queue: list[DAGExecutionState[RequestT, ResponseT]] = []
-        self.awaiting_first_token: dict[str, RequestInfo] = {}
-        self.loop_lag_check_start: float | None = None
 
     def run(self):
         """
@@ -268,7 +269,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             await self._processing_startup()
 
             # 3. Run process requests loop until constraint_reached event
-            loop_lag_task = asyncio.create_task(self._monitor_loop_lag())
+            if self.loop_lag is not None:
+                loop_lag_task = asyncio.create_task(
+                    self.loop_lag.monitor(self.worker_index)
+                )
             processing_task = asyncio.create_task(self._process_requests_loop())
             await wait_for_sync_event(
                 self.constraint_reached_event,
@@ -279,6 +283,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # before the sweep below, so a node is never reported twice.
             with contextlib.suppress(asyncio.CancelledError):
                 await processing_task
+            if loop_lag_task is not None:
+                loop_lag_task.cancel()
 
             # 4. Cancel pending requests until proc canceled (manual, shutdown, error)
             await self._cancel_requests_loop()
@@ -320,34 +326,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             self.messaging_started = False
 
         self.startup_completed = False
-
-    async def _monitor_loop_lag(self):
-        """Record event-loop lag on each request until its first token."""
-        while True:
-            start = self.loop_lag_check_start = time.time()
-            await asyncio.sleep(_LOOP_LAG_INTERVAL)
-            end = time.time()
-            for request_id, request_info in list(self.awaiting_first_token.items()):
-                if not self._add_loop_lag(request_info, start, end):
-                    del self.awaiting_first_token[request_id]
-
-    @staticmethod
-    def _add_loop_lag(request_info: RequestInfo, start: float, end: float) -> bool:
-        """Add a check's lag; return False once checks start after the first token."""
-        timings = request_info.timings
-        first_token = timings.first_token_iteration
-        if first_token is not None and start > first_token:
-            return False
-        lag = end - start - _LOOP_LAG_INTERVAL
-        if lag > (timings.first_token_loop_lag or 0.0):
-            timings.first_token_loop_lag = lag
-        return True
-
-    def _stop_loop_lag(self, request_info: RequestInfo):
-        """Add lag from the check in progress and stop tracking the request."""
-        tracked = self.awaiting_first_token.pop(request_info.request_id, None)
-        if tracked is not None and self.loop_lag_check_start is not None:
-            self._add_loop_lag(request_info, self.loop_lag_check_start, time.time())
 
     async def _process_requests_loop(self):
         """
@@ -543,9 +521,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         # Prior messages sent with this request (``new`` edges restart at 0).
         request_info.history_len = len(history) if history else 0
         request_info.turn_index = state.compute_turn_index(node_id)
-        if self.backend.stamps_tokens_on_event_loop:
-            request_info.timings.first_token_loop_lag = 0.0
-            self.awaiting_first_token[request_info.request_id] = request_info
         async for resp, info in self.backend.resolve(  # type: ignore[attr-defined]
             request, request_info, history
         ):
@@ -669,8 +644,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
         try:
             request_info.status = new_status
-            if new_status in {"completed", "errored", "cancelled"}:
-                self._stop_loop_lag(request_info)
             request_info = (
                 request_info.model_copy()
                 if new_status not in {"completed", "errored", "cancelled"}

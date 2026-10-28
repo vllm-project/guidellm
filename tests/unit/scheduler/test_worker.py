@@ -21,6 +21,7 @@ from guidellm.scheduler import (
     WorkerProcess,
 )
 from guidellm.scheduler.dag import DAGExecutionState
+from guidellm.scheduler.loop_lag import LoopLagHistograms
 from guidellm.scheduler.schemas import (
     ConversationEdge,
     ConversationGraph,
@@ -1059,7 +1060,7 @@ def _block_event_loop(seconds: float) -> None:
 
 
 class _LoopBlockingBackend(MockBackend):
-    """Block the event loop between sending a request and its first token."""
+    """Block the event loop while a request waits for its first token."""
 
     def __init__(self, block: float):
         super().__init__(lifecycle_delay=0.0, resolve_delay=0.0)
@@ -1067,15 +1068,18 @@ class _LoopBlockingBackend(MockBackend):
 
     async def resolve(self, request, request_info, request_history):
         request_info.timings.request_start = time.time()
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(0.05)
         _block_event_loop(self.block)
         request_info.timings.first_token_iteration = time.time()
         yield None, request_info
+        await asyncio.sleep(0.05)
         request_info.timings.request_end = time.time()
         yield f"response_for_{request}", request_info
 
 
-def _loop_lag_worker(backend: MockBackend | None = None) -> WorkerProcess:
+def _loop_lag_worker(
+    backend: MockBackend, loop_lag: LoopLagHistograms
+) -> WorkerProcess:
     strategy = SynchronousStrategy()
     strategy.init_processes_timings(
         worker_count=1, max_concurrency=5, mp_context=mp.get_context()
@@ -1084,7 +1088,7 @@ def _loop_lag_worker(backend: MockBackend | None = None) -> WorkerProcess:
     return WorkerProcess(
         worker_index=0,
         messaging=MockMessaging(worker_index=0),
-        backend=backend or MockBackend(),
+        backend=backend,
         strategy=strategy,
         async_limit=5,
         fut_scheduling_time_limit=10.0,
@@ -1096,17 +1100,18 @@ def _loop_lag_worker(backend: MockBackend | None = None) -> WorkerProcess:
         stdout_conn=None,
         stderr_conn=None,
         parent_logger=None,
+        loop_lag=loop_lag,
     )
 
 
-async def _run_one_request(worker: WorkerProcess, final_status: str) -> RequestInfo:
-    """Process one request through ``_process_requests`` and return its last update."""
+async def _run_one_request(worker: WorkerProcess, cancel_requests_loop=None) -> None:
+    """Process one request through ``_process_requests``."""
 
     async def noop():
         pass
 
     worker._processing_startup = noop
-    worker._cancel_requests_loop = noop
+    worker._cancel_requests_loop = cancel_requests_loop or noop
     worker._processing_shutdown = noop
     await worker.messaging.put(
         ConversationGraph(
@@ -1116,125 +1121,57 @@ async def _run_one_request(worker: WorkerProcess, final_status: str) -> RequestI
             request_infos={"n0": RequestInfo(request_id="id0", node_id="n0")},
         )
     )
-
     task = asyncio.create_task(worker._process_requests())
     await wait_until(
         lambda: any(
-            info.status == final_status for _, _, info in worker.messaging._sent_items
+            info.status == "completed" for _, _, info in worker.messaging._sent_items
         )
     )
     worker.constraint_reached_event.set()
     await task
-    return next(
-        info
-        for _, _, info in worker.messaging._sent_items
-        if info.status == final_status
-    )
 
 
 class TestWorkerLoopLag:
-    """Event-loop lag recorded on requests before their first token."""
-
-    @pytest.mark.sanity
-    @pytest.mark.asyncio
-    @async_timeout(5)
-    async def test_loop_lag_recorded_until_first_token(self):
-        """Record lag on a request without a first token and drop one that has it.
-
-        ## WRITTEN BY AI ##
-        """
-        worker = _loop_lag_worker()
-        waiting = RequestInfo(request_id="waiting")
-        answered = RequestInfo(request_id="answered")
-        answered.timings.first_token_iteration = time.time() - 1.0
-        worker.awaiting_first_token = {"waiting": waiting, "answered": answered}
-
-        monitor = asyncio.create_task(worker._monitor_loop_lag())
-        await asyncio.sleep(0.03)
-        _block_event_loop(0.1)
-        await asyncio.sleep(0.03)
-        monitor.cancel()
-
-        assert waiting.timings.first_token_loop_lag is not None
-        assert waiting.timings.first_token_loop_lag >= 0.09
-        assert answered.timings.first_token_loop_lag is None
-        assert list(worker.awaiting_first_token) == ["waiting"]
-
-    @pytest.mark.sanity
-    @pytest.mark.asyncio
-    @async_timeout(5)
-    async def test_loop_lag_includes_delay_in_progress_at_first_token(self):
-        """Count a lag that was in progress when the first token arrived.
-
-        ## WRITTEN BY AI ##
-        """
-        worker = _loop_lag_worker()
-        request_info = RequestInfo(request_id="burst")
-        worker.awaiting_first_token = {"burst": request_info}
-
-        monitor = asyncio.create_task(worker._monitor_loop_lag())
-        await asyncio.sleep(0.015)
-        _block_event_loop(0.05)
-        request_info.timings.first_token_iteration = time.time()
-        _block_event_loop(0.05)
-        await asyncio.sleep(0.03)
-        monitor.cancel()
-
-        assert request_info.timings.first_token_loop_lag is not None
-        assert request_info.timings.first_token_loop_lag >= 0.09
-        assert worker.awaiting_first_token == {}
+    """Event-loop lag recorded by a worker while it processes requests."""
 
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(5)
     @pytest.mark.parametrize(
-        ("block", "low", "high"), [(0.0, 0.0, 0.05), (0.1, 0.09, 1.0)]
+        ("block", "low", "high"), [(0.0, 0.0, 0.05), (0.2, 0.1, 1.0)]
     )
-    async def test_completed_request_reports_loop_lag(
+    async def test_worker_records_loop_lag_while_processing(
         self, block: float, low: float, high: float
     ):
-        """Report the loop lag a backend causes before its first token.
+        """Record how long a backend held the event loop during a request.
 
         ## WRITTEN BY AI ##
         """
-        worker = _loop_lag_worker(_LoopBlockingBackend(block))
+        histograms = LoopLagHistograms(mp.get_context("spawn"), 1, 0.01)
 
-        request_info = await _run_one_request(worker, "completed")
+        await _run_one_request(
+            _loop_lag_worker(_LoopBlockingBackend(block), histograms)
+        )
 
-        lag = request_info.timings.first_token_loop_lag
-        assert lag is not None
-        assert low <= lag < high
-        assert worker.awaiting_first_token == {}
+        assert low <= max(value for value, _ in histograms.samples()) < high
 
     @pytest.mark.sanity
     @pytest.mark.asyncio
     @async_timeout(5)
-    async def test_failed_request_stops_recording_loop_lag(self):
-        """Stop recording lag on a request that fails before its first token.
+    async def test_worker_stops_recording_before_cancelling_requests(self):
+        """Leave lag after request processing ends out of the histogram.
 
         ## WRITTEN BY AI ##
         """
-        worker = _loop_lag_worker(MockBackend(resolve_delay=0.03, should_fail=True))
+        histograms = LoopLagHistograms(mp.get_context("spawn"), 1, 0.01)
 
-        await _run_one_request(worker, "errored")
+        async def blocking_cancel_loop():
+            _block_event_loop(0.2)
+            await asyncio.sleep(0.05)
 
-        assert worker.awaiting_first_token == {}
+        await _run_one_request(
+            _loop_lag_worker(_LoopBlockingBackend(0.0), histograms),
+            cancel_requests_loop=blocking_cancel_loop,
+        )
 
-    @pytest.mark.sanity
-    @pytest.mark.asyncio
-    @async_timeout(5)
-    async def test_backend_with_engine_timestamps_is_not_tracked(self):
-        """Skip loop lag for a backend whose token times do not come from the loop.
-
-        ## WRITTEN BY AI ##
-        """
-
-        class EngineTimedBackend(_LoopBlockingBackend):
-            stamps_tokens_on_event_loop = False
-
-        worker = _loop_lag_worker(EngineTimedBackend(0.1))
-
-        request_info = await _run_one_request(worker, "completed")
-
-        assert request_info.timings.first_token_loop_lag is None
-        assert worker.awaiting_first_token == {}
+        assert max(value for value, _ in histograms.samples()) < 0.1
