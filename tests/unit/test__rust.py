@@ -1,10 +1,8 @@
-"""Tests for the native Rust extension modules."""
+"""Tests for the connector's native Rust extension module."""
 
 import pytest
 
-from guidellm._rust import version_info
-from guidellm.utils._rust import hello_world as rust_hello_world
-from guidellm.utils.native import hello_world
+from guidellm._rust import hello_world, version_info
 
 
 class TestNativeRustExtension:
@@ -15,21 +13,13 @@ class TestNativeRustExtension:
 
     @pytest.mark.smoke
     def test_hello_world_returns_string(self):
-        """Verify hello_world returns expected greeting.
+        """Verify the connector exposes the Rust core's greeting as a Python string.
 
         ## WRITTEN BY AI ##
         """
         result = hello_world()
         assert isinstance(result, str)
         assert result == "Hello from GuideLLM Rust!"
-
-    @pytest.mark.smoke
-    def test_rust_utils_importable(self):
-        """Verify utils._rust module is directly importable.
-
-        ## WRITTEN BY AI ##
-        """
-        assert rust_hello_world() == "Hello from GuideLLM Rust!"
 
     @pytest.mark.smoke
     def test_version_info_returns_dict(self):
