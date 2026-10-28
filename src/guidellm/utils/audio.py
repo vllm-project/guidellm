@@ -473,19 +473,20 @@ def compute_audio_continuity(
     if bytes_per_second <= 0:
         return AudioContinuityStats(0.0, 0, True)
 
+    # Wall-clock time when the currently buffered audio will run out.
     t0 = chunk_arrival_times_s[0]
-    received_before = 0
+    buffer_empty_at_sec = t0 + chunk_bytes[0] / bytes_per_second
     max_underrun_s = 0.0
     event_count = 0
-    for i in range(n):
-        if i > 0:
-            played_bytes = (chunk_arrival_times_s[i] - t0) * bytes_per_second
-            deficit_bytes = played_bytes - received_before
-            if deficit_bytes > 0:
-                deficit_s = deficit_bytes / bytes_per_second
-                max_underrun_s = max(max_underrun_s, deficit_s)
-                event_count += 1
-        received_before += chunk_bytes[i]
+
+    for i in range(1, n):
+        arrival = chunk_arrival_times_s[i]
+        if arrival > buffer_empty_at_sec:
+            max_underrun_s = max(max_underrun_s, arrival - buffer_empty_at_sec)
+            event_count += 1
+            buffer_empty_at_sec = arrival
+
+        buffer_empty_at_sec += chunk_bytes[i] / bytes_per_second
 
     return AudioContinuityStats(
         max_underrun_seconds=max_underrun_s,

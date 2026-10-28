@@ -6,9 +6,10 @@ import base64
 
 import pytest
 
-from guidellm.backends.openai import request_handlers as _request_handlers
-from guidellm.backends.openai.modality_parsers import ModalityParserRegistry
-
+from guidellm.backends.openai.modality_parsers import (
+    AudioOutputParser,
+    ModalityParserRegistry,
+)
 
 @pytest.mark.regression
 def test_audio_parser_is_registered_and_ignores_content_parts():
@@ -17,13 +18,20 @@ def test_audio_parser_is_registered_and_ignores_content_parts():
     :return: None.
     ## WRITTEN BY AI ##
     """
-    parser_type = ModalityParserRegistry.get_registered_object("audio")
+    parser = ModalityParserRegistry.create("audio")
 
-    assert parser_type is not None
-    assert parser_type is _request_handlers._AudioOutputParser
-    assert parser_type().parse_content_part({"type": "audio"}) is None
-    assert parser_type().parse_dedicated_field(None) is None
+    assert isinstance(parser, AudioOutputParser)
+    assert parser.parse_content_part({"type": "audio"}) is None
+    assert parser.parse_dedicated_field(None) is None
 
+
+@pytest.mark.regression
+def test_create_returns_none_for_unregistered_modality():
+    """Return None when no parser is registered for the requested modality.
+
+    :return: None.
+    """
+    assert ModalityParserRegistry.create("unknown-modality") is None
 
 @pytest.mark.regression
 def test_audio_parser_normalizes_dedicated_audio_field():
@@ -32,11 +40,11 @@ def test_audio_parser_normalizes_dedicated_audio_field():
     :return: None.
     ## WRITTEN BY AI ##
     """
-    parser_type = ModalityParserRegistry.get_registered_object("audio")
+    parser = ModalityParserRegistry.create("audio")
     payload = b"audio-packet"
-    assert parser_type is not None
+    assert isinstance(parser, AudioOutputParser)
 
-    parsed = parser_type().parse_dedicated_field(
+    parsed = parser.parse_dedicated_field(
         {
             "id": "audio-1",
             "data": base64.b64encode(payload).decode("ascii"),
@@ -77,8 +85,8 @@ def test_audio_parser_rejects_malformed_dedicated_fields(value, message):
     :return: None.
     ## WRITTEN BY AI ##
     """
-    parser_type = ModalityParserRegistry.get_registered_object("audio")
-    assert parser_type is not None
+    parser = ModalityParserRegistry.create("audio")
+    assert isinstance(parser, AudioOutputParser)
 
     with pytest.raises(ValueError, match=message):
-        parser_type().parse_dedicated_field(value)
+        parser.parse_dedicated_field(value)
