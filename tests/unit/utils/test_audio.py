@@ -732,7 +732,7 @@ def test_compute_audio_continuity_handles_insufficient_or_invalid_layout():
     ],
 )
 def test_compute_audio_continuity_tracks_buffer_exhaustion(
-        arrivals, expected_underrun, expected_events
+    arrivals, expected_underrun, expected_events
 ):
     """Count stalls only when buffered audio has run out.
 

@@ -1,10 +1,10 @@
 """Output modality parser interfaces, registry, and implementations."""
 
-from .base import ModalityOutputParser, ModalityParserRegistry
 from .audio import AudioOutputParser
+from .base import ModalityOutputParser, ModalityParserRegistry
 
 __all__ = [
+    "AudioOutputParser",
     "ModalityOutputParser",
     "ModalityParserRegistry",
-    "AudioOutputParser",
 ]

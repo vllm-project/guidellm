@@ -11,6 +11,7 @@ from guidellm.backends.openai.modality_parsers import (
     ModalityParserRegistry,
 )
 
+
 @pytest.mark.regression
 def test_audio_parser_is_registered_and_ignores_content_parts():
     """Register audio parsing while leaving content-list items unclaimed.
@@ -32,6 +33,7 @@ def test_create_returns_none_for_unregistered_modality():
     :return: None.
     """
     assert ModalityParserRegistry.create("unknown-modality") is None
+
 
 @pytest.mark.regression
 def test_audio_parser_normalizes_dedicated_audio_field():
