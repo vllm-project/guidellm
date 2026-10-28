@@ -391,6 +391,150 @@ class TestOpenAIHTTPBackend:
 
     @pytest.mark.sanity
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("request_model", "expected_model"),
+        [
+            ("lora-adapter-01", "lora-adapter-01"),
+            (None, "default-model"),
+        ],
+        ids=["override", "default_fallback"],
+    )
+    @async_timeout(10.0)
+    async def test_resolve_model_override(
+        self,
+        httpx_mock: HTTPXMock,
+        mock_request_handler,
+        request_model,
+        expected_model,
+    ):
+        """Backend uses request.model when set, falls back to default otherwise."""
+        httpx_mock.add_response(
+            url="http://test/v1/completions",
+            json={"choices": [{"text": "Hello world"}]},
+        )
+
+        backend = _make_backend(
+            target="http://test",
+            model="default-model",
+            request_format="/v1/completions",
+        )
+        await backend.process_startup()
+
+        request = (
+            GenerationRequest(model=request_model)
+            if request_model
+            else GenerationRequest()
+        )
+        request_info = RequestInfo(
+            request_id="test-id",
+            status="pending",
+            scheduler_node_id=1,
+            scheduler_process_id=1,
+            scheduler_start_time=123.0,
+            timings=RequestTimings(),
+        )
+
+        mock_handler, handler_patch = mock_request_handler
+        formatted_model = None
+
+        def _capture_format(data, history, model, **kwargs):
+            nonlocal formatted_model
+            formatted_model = model
+            return GenerationRequestArguments(
+                body={"prompt": "test prompt", "model": model}
+            )
+
+        mock_handler.format.side_effect = _capture_format
+        mock_handler.compile_non_streaming.return_value = GenerationResponse(
+            request_id="test-id", request_args="test args"
+        )
+
+        with handler_patch:
+            async for _response, _info in backend.resolve(request, request_info):
+                pass
+
+        assert formatted_model == expected_model
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("request_model", "expected_header"),
+        [
+            ("lora-adapter-01", "lora-adapter-01"),
+            (None, None),
+        ],
+        ids=["override_sets_header", "default_no_header"],
+    )
+    @async_timeout(10.0)
+    async def test_resolve_model_affinity_header(
+        self,
+        httpx_mock: HTTPXMock,
+        mock_request_handler,
+        request_model,
+        expected_header,
+    ):
+        """model_affinity_header is set to the model override, absent otherwise."""
+        httpx_mock.add_response(
+            url="http://test/v1/completions",
+            json={"choices": [{"text": "Hello world"}]},
+        )
+
+        backend = _make_backend(
+            target="http://test",
+            model="default-model",
+            request_format="/v1/completions",
+            model_affinity_header="x-session-id",
+        )
+        await backend.process_startup()
+
+        request = (
+            GenerationRequest(model=request_model)
+            if request_model
+            else GenerationRequest()
+        )
+        request_info = RequestInfo(
+            request_id="test-id",
+            status="pending",
+            scheduler_node_id=1,
+            scheduler_process_id=1,
+            scheduler_start_time=123.0,
+            timings=RequestTimings(),
+        )
+
+        mock_handler, handler_patch = mock_request_handler
+        formatted_headers = None
+
+        def _capture_format(data, history, model, **kwargs):
+            return GenerationRequestArguments(
+                body={"prompt": "test prompt", "model": model}
+            )
+
+        mock_handler.format.side_effect = _capture_format
+        mock_handler.compile_non_streaming.return_value = GenerationResponse(
+            request_id="test-id", request_args="test args"
+        )
+
+        original_build = backend._build_headers
+
+        def _capture_headers(existing=None):
+            nonlocal formatted_headers
+            formatted_headers = dict(existing) if existing else {}
+            return original_build(existing)
+
+        with patch.object(
+            backend, "_build_headers", side_effect=_capture_headers
+        ), handler_patch:
+            async for _response, _info in backend.resolve(
+                request, request_info
+            ):
+                pass
+
+        if expected_header:
+            assert formatted_headers.get("x-session-id") == expected_header
+        else:
+            assert "x-session-id" not in (formatted_headers or {})
+
+    @pytest.mark.asyncio
     @async_timeout(10.0)
     async def test_default_model(self):
         """Test default_model method."""

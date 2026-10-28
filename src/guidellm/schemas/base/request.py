@@ -258,6 +258,17 @@ class GenerationRequest(StandardBaseModel):
         default_factory=lambda: str(uuid.uuid4()),
         description="Unique identifier for the request.",
     )
+    model: str | None = Field(
+        default=None,
+        description=(
+            "Per-request model override. When set, the backend routes this "
+            "request to the named model instead of the backend's default. "
+            "Used for round-robin distribution across multiple models "
+            "(e.g. LoRA adapters) — the assignment happens at request "
+            "generation time in the main scheduler process, before worker "
+            "dispatch, so it is immune to multiprocessing isolation."
+        ),
+    )
     columns: dict[str, list[Any]] = Field(
         default_factory=dict,
         description=(

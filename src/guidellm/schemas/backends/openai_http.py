@@ -40,8 +40,47 @@ class OpenAIHTTPBackendArgs(BackendArgs):
     )
     model: str = Field(
         default_factory=str,
-        description="Huggingface model identifier or local path to a model",
-        examples=["gpt-4o", "Qwen/Qwen3-0.6B"],
+        description=(
+            "Huggingface model identifier, local path to a model, or a "
+            "comma-separated list of models for targets serving multiple "
+            "models on one endpoint (e.g. a base model with LoRA adapters). "
+            "When a list is given, the scheduler round-robins requests "
+            "across the entries at generation time (main process, immune "
+            "to worker isolation); the first entry is used for tokenizer "
+            "resolution and benchmark identity."
+        ),
+        examples=["gpt-4o", "Qwen/Qwen3-0.6B", "zai-org/GLM-5.3,agent-01,agent-02"],
+    )
+    model_affinity_header: str | None = Field(
+        default=None,
+        description=(
+            "Optional header name for per-model session affinity during "
+            "multi-model round-robin. When set, each request carrying a "
+            "round-robin model override also carries this header set to "
+            "that model's name. Routers that pin sessions to a backend "
+            "(e.g. the llm-d inference scheduler's session-affinity "
+            "scorer) can use it to keep each model's traffic — and its "
+            "weights, for LoRA-serving targets — cached on one backend. "
+            "Requests without a model override (the default model) get "
+            "no header and spread across backends freely. Disabled when "
+            "unset."
+        ),
+        examples=["x-session-id"],
+    )
+    model_assignment: Literal["request", "conversation"] = Field(
+        default="request",
+        description=(
+            "Assignment strategy for the multi-model round-robin. "
+            "'request' (default) assigns the next list entry to each "
+            "request — maximum spread across models. 'conversation' "
+            "assigns one model per conversation and keeps it for all of "
+            "the conversation's turns, matching multi-tenant traffic "
+            "where a user keeps their model (e.g. their LoRA adapter) "
+            "for the whole session: the conversation's history stays "
+            "cacheable under a single model key and session-affinity "
+            "routers can pin the whole conversation to one backend."
+        ),
+        examples=["request", "conversation"],
     )
     request_format: Literal[
         "/v1/completions",
