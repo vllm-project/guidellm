@@ -1,6 +1,6 @@
 ---
 weight: -2
-source_sha256: !!str "3cd3cb5a9389c8d7cb6683d2a53fbf4a1f2a5c3fdf137c53fa4f2c204d61a1c9"
+source_sha256: !!str "a9ee73fa2742ed6e4a262e1ea21d4cf885d8efac8455890b54170627ebe91025"
 ---
 
 # 数据集
@@ -81,7 +81,7 @@ guidellm run --data kind=<TYPE>,key=value,... [other options...]
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}' \
   --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}' \
@@ -104,7 +104,7 @@ GuideLLM 同时支持下文介绍的合成*文本*数据，以及用于视觉语
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
 ```
@@ -114,7 +114,7 @@ guidellm run \
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128}'
 ```
@@ -137,7 +137,7 @@ guidellm run \
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --data-loader kind=pytorch,samples=100
@@ -158,7 +158,7 @@ GuideLLM 支持从 Hugging Face Hub 或符合 `datasets` 库格式的本地目�
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data kind=huggingface,source=garage-bAInd/Open-Platypus
 ```
@@ -168,7 +168,7 @@ guidellm run \
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data kind=huggingface,source=path/to/dataset
 ```
@@ -277,7 +277,7 @@ GuideLLM 支持多种数据集文件格式，包括文本、CSV、JSON 等。这
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data kind=json_file,path=path/to/dataset.json \
   --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}'
@@ -395,7 +395,7 @@ guidellm preprocess dataset \
 | ------------- | ------------------------------------------- | -------------------------------------------------- |
 | `ignore`      | 丢弃短于目标长度的提示词                    | —                                                  |
 | `concatenate` | 将多个短提示词拼接，直到达到目标长度        | `delimiter`（拼接提示词之间的字符串；默认值 `""`） |
-| `pad`         | 用字符/字符串填充短提示词，直到达到目标长度 | `pad`（填充字符串；默认值 `""`）                   |
+| `pad`         | 用字符/字符串填充短提示词，直到达到目标长度 | `pad`（必填的非空填充字符串）                      |
 | `error`       | 如果提示词短于目标长度，则报错              | —                                                  |
 
 **策略示例：**

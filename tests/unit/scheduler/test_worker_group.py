@@ -9,6 +9,7 @@ from multiprocessing.process import BaseProcess
 from typing import Any, Generic, Literal, cast
 from unittest.mock import Mock
 
+import culsans
 import pytest
 from pydantic import Field
 
@@ -292,6 +293,8 @@ class TestWorkerProcessGroup:
 
         group.messaging = Mock()
         group.messaging.get = mock_get
+        group.messaging.receive_stopped_event.is_set.return_value = True
+        group.messaging.buffer_receive_queue.empty.return_value = True
 
         results = [update async for update in group.request_updates()]
 
@@ -324,11 +327,74 @@ class TestWorkerProcessGroup:
 
         group.messaging = Mock()
         group.messaging.get = mock_get
+        group.messaging.receive_stopped_event.is_set.return_value = True
+        group.messaging.buffer_receive_queue.empty.return_value = True
 
         results = [update async for update in group.request_updates()]
 
         assert results == []
         group.state.update_state.assert_not_called()
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_request_updates_drains_buffer_filled_during_timeout(self):
+        """Delivery can finish between a timed-out get and its exception handler.
+
+        ## WRITTEN BY AI ##
+        """
+        group = WorkerProcessGroup(
+            requests=[], backend=MockBackend(), strategy=SynchronousStrategy()
+        )
+        group.error_event = threading.Event()
+        group.shutdown_event = threading.Event()
+        group.shutdown_event.set()
+        group.state = Mock()
+        buffer = culsans.Queue()
+        receive_stopped = threading.Event()
+        payload = ("response", "request", RequestInfo(status="completed"), Mock())
+        calls = 0
+
+        async def racing_get(*, timeout=None):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                buffer.put_nowait(payload)
+                receive_stopped.set()
+                raise TimeoutError
+            return await asyncio.wait_for(buffer.async_get(), timeout=0.01)
+
+        group.messaging = Mock(
+            get=racing_get,
+            receive_stopped_event=receive_stopped,
+            buffer_receive_queue=buffer,
+        )
+        try:
+            assert [update async for update in group.request_updates()] == [payload]
+            group.state.update_state.assert_not_called()
+        finally:
+            await buffer.aclose()
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_request_updates_raises_worker_error_while_draining(self):
+        """Worker errors must still propagate after shutdown has been signalled.
+
+        ## WRITTEN BY AI ##
+        """
+        group = WorkerProcessGroup(
+            requests=[], backend=MockBackend(), strategy=SynchronousStrategy()
+        )
+        group.error_event = threading.Event()
+        group.shutdown_event = threading.Event()
+        group.shutdown_event.set()
+
+        async def failing_get(*, timeout=None):
+            group.error_event.set()
+            raise TimeoutError
+
+        group.messaging = Mock(get=failing_get, receive_stopped_event=threading.Event())
+        with pytest.raises(RuntimeError, match="error_event is set"):
+            _ = [update async for update in group.request_updates()]
 
 
 class TestWorkerGroupStateDuplicateTerminalUpdate:
@@ -706,3 +772,101 @@ class TestRequestsGeneratorGenerationDelay:
 
         assert len(yielded[0].request_infos) == 2
         assert len(state._state.generation_delay_samples) == 1
+
+
+class TestRequestsGeneratorShutdown:
+    """Shutdown once the dataset runs out and every request has completed."""
+
+    def _build_state(self, constraints: dict | None = None) -> WorkerGroupState:
+        """Build a synchronous WorkerGroupState with real events and the given
+        constraints, so tests can drive the generator and request updates directly.
+        """
+        messaging = Mock()
+        messaging.buffer_receive_queue = Mock()
+        return WorkerGroupState(
+            start_time=time.time(),
+            processes=[],
+            strategy=SynchronousStrategy(),
+            constraints=constraints or {},
+            stop_send_requests_event=threading.Event(),
+            send_requests_stopped_event=threading.Event(),
+            requests_generated_event=multiprocessing.Event(),
+            constraint_reached_event=multiprocessing.Event(),
+            shutdown_event=multiprocessing.Event(),
+            error_event=multiprocessing.Event(),
+            messaging=messaging,
+        )
+
+    def _advance(self, state: WorkerGroupState, request_id: str, status: str):
+        """Deliver a status update for a request, as a worker would."""
+        info = RequestInfo(request_id=request_id, status=status)
+        state.received_callback((None, request_id, info))
+
+    @pytest.mark.regression
+    def test_shuts_down_when_last_request_completes_before_exhaustion(self):
+        """If the last request completes before the dataset iterator ends, no
+        further update arrives, so the generator must trigger shutdown itself.
+        """
+        state = self._build_state()
+        generator = state.requests_generator([_single_node_graph("g1", "r1")])
+
+        (request_id,) = [
+            info.request_id for info in next(generator).request_infos.values()
+        ]
+        for status in ("pending", "in_progress", "completed"):
+            self._advance(state, request_id, status)
+        assert not state.shutdown_event.is_set()
+
+        assert list(generator) == []
+        assert state.requests_generated_event.is_set()
+        assert state.constraint_reached_event.is_set()
+        assert state.shutdown_event.is_set()
+
+    @pytest.mark.sanity
+    def test_waits_for_in_flight_request_after_exhaustion(self):
+        """If a request is still in flight when the dataset ends, shutdown waits
+        for its completion.
+        """
+        state = self._build_state()
+        generator = state.requests_generator([_single_node_graph("g1", "r1")])
+
+        (request_id,) = [
+            info.request_id for info in next(generator).request_infos.values()
+        ]
+        self._advance(state, request_id, "pending")
+        self._advance(state, request_id, "in_progress")
+        assert list(generator) == []
+        assert not state.shutdown_event.is_set()
+
+        self._advance(state, request_id, "completed")
+        assert state.shutdown_event.is_set()
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(("count", "rows"), [(1, 3), (2, 3), (2, 2)])
+    def test_shuts_down_when_last_request_completes_before_constraint_stop(
+        self, count: int, rows: int
+    ):
+        """If a request constraint stops queuing and the last queued request
+        completes before the generator resumes, the generator must trigger
+        shutdown itself.
+        """
+        state = self._build_state(
+            constraints={
+                "max_requests": MaxNumberConstraint(
+                    args=MaxRequestsConstraintArgs(count=count)
+                )
+            }
+        )
+        generator = state.requests_generator(
+            [_single_node_graph(f"g{index}", f"r{index}") for index in range(rows)]
+        )
+
+        for graph in generator:
+            (request_id,) = [info.request_id for info in graph.request_infos.values()]
+            for status in ("pending", "in_progress", "completed"):
+                self._advance(state, request_id, status)
+
+        assert state.stop_send_requests_event.is_set()
+        assert state.requests_generated_event.is_set()
+        assert state.constraint_reached_event.is_set()
+        assert state.shutdown_event.is_set()
