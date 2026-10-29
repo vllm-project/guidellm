@@ -11,6 +11,7 @@ Before you begin, ensure you have the following installed:
 - Python 3.11 or higher
 - [`uv`](https://docs.astral.sh/uv/getting-started/installation/) (recommended), pip, or another python package manager
 - Git
+- A stable [Rust toolchain](https://rustup.rs/) supporting edition 2024, including Cargo
 
 ### Cloning the Repository
 
@@ -61,6 +62,17 @@ pip install --group dev -e .
 The `-e` flag installs the package in editable mode, allowing you to make changes to the code without reinstalling it. The `--group dev` part installs additional dependencies needed for development, such as testing and linting tools.
 
 ## Implementing Changes
+
+### Rust and Python Boundary
+
+The Cargo workspace separates Rust functionality from Python bindings:
+
+- `rust/core` (`guidellm-core`) is a regular Rust library. It exposes Rust APIs and has no Python or PyO3 dependencies.
+- `rust/connector` (`guidellm-connector`) builds the single Python extension, `guidellm._rust`. It depends on the Rust libraries and owns PyO3 bindings and Rust/Python type conversions.
+
+Keep new Rust functionality independent of Python and expose it through thin wrappers in `connector`. For example, `from guidellm._rust import hello_world` calls `guidellm_core::hello_world()` through the connector. The connector also exposes `version_info()` for build metadata. Python type stubs live in `src/guidellm/_rust.pyi`.
+
+After changing Rust code, rebuild the extension with `uv pip install -e .`. Run Rust checks with `uv run cargo test --workspace`, `uv run cargo clippy --workspace -- -D warnings`, and `uv run cargo fmt --all --check`. Run the Python binding tests with `tox -e tests -- tests/unit/test__rust.py`.
 
 ### Writing Code
 
