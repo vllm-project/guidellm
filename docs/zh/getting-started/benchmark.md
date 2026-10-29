@@ -16,9 +16,9 @@ source_sha256: !!str "dcfa8707805f8b2a1243b9198a86ef98e3d2ed078495082f0eb23839f2
 > [!NOTE]\
 > 本指南中的内容适用于这两种后端，后端专属输入除外。
 >
-> 本指南以 OpenAI HTTP 后端和 OpenAI 兼容 LLM 服务器为前提。有关 vLLM Python 后端的信息，请参阅英文版 [vLLM Python 后端](../../guides/vllm-python-backend.md)文档。
+> 本指南以 OpenAI HTTP 后端和 OpenAI 兼容 LLM 服务器为前提。有关 vLLM Python 后端的信息，请参阅 [vLLM Python 后端](../guides/vllm-python-backend.md)文档。
 
-在[启动服务器（英文）](../../getting-started/server.md)后，你就可以运行基准测试来评估 LLM 部署的性能。
+在[启动服务器](server.md)后，你就可以运行基准测试来评估 LLM 部署的性能。
 
 ## CLI 选项格式
 
@@ -98,13 +98,13 @@ GuideLLM 提供多种选项来定制基准测试。以下是最重要的一些�
 
 例如，在 `--profile kind=sweep` 下使用 `--constraint kind=max_requests,count=1000`，会让扫描中的每种策略（同步、吞吐量，以及每个插值速率）最多运行 1000 个请求。`--constraint kind=min_requests,count=1000` 与 `max_requests` 类似，但会继续排队，直到处理完 1000 个请求；这样可以避免基于速率的基准测试在结束时吞吐量下降。使用 `--profile '{"kind":"concurrent","streams":[10,20]}'` 配合 `--constraint kind=max_duration,seconds=30`，则会先以 10 个并发流运行 30 秒，再以 20 个并发流运行 30 秒。
 
-有关过饱和约束的详细信息，请参阅英文版[过饱和停止策略](../../guides/over_saturation_stopping.md)。
+有关过饱和约束的详细信息，请参阅[过饱和停止策略](../guides/over_saturation_stopping.md)。
 
 ### 子基准测试（每种策略）约束
 
 使用 `sweep` 配置、在 `async`/`constant`/`poisson` 配置中指定多个 `rate` 值，或在 `concurrent` 配置中指定多个 `streams` 值时，配置中会运行多个“基准测试策略”。GuideLLM 允许使用 `--override` 选项为约束指定不同的控制参数。例如，`--profile kind=sweep,sweep_size=5 --constraint kind=max_duration,seconds=30` 会运行 5 种策略（同步、吞吐量，以及 3 个插值后的 constant 速率），每种运行 30 秒。你可以使用 `--override constraint[0].seconds 10,20,10,15,20`，让同步策略运行 10 秒、吞吐量策略运行 20 秒，并让 3 个插值后的 constant 策略分别运行 10 秒、15 秒和 20 秒。若指定的值较少（例如 `--override constraint[0].seconds 10,20,10`），最后一个值 10 秒会应用于其余所有 constant 策略。
 
-### 基准测试配置（`--profile`）
+### 基准测试配置（`--profile`） {#benchmark-profiles-profile}
 
 GuideLLM 支持多种基准测试配置，下面将逐一介绍。配置专属参数与 `kind=<type>` 放在同一个配置字符串中。
 
@@ -158,7 +158,7 @@ guidellm run \
   --profile '{"kind":"knee","initial_streams":[1,5,10,20,40,80,160],"adaptive":true,"points_each_side":5,"max_step":3}'
 ```
 
-该配置的两个阶段都使用并发策略，并将初始分析、自适应计划和最终分析写入报告的 `conclusions` 列表。有关配置和计算细节，请参阅英文版 [Knee Profile 指南](../../guides/knee_detection.md)。
+该配置的两个阶段都使用并发策略，并将初始分析、自适应计划和最终分析写入报告的 `conclusions` 列表。有关配置和计算细节，请参阅[膝点配置指南](../guides/knee_detection.md)。
 
 如需使用均匀间隔的起始点，请运行 `--profile '{"kind":"knee","min_streams":1,"max_streams":9,"count":5}'`。需要自行选择每个并发点时，请使用 `initial_streams`。
 
@@ -259,7 +259,7 @@ guidellm run \
 
 ### Trace 回放基准测试 {#trace-replay-benchmarking}
 
-如需进行更贴近实际的负载测试，可以按 trace 每行的时间戳和 token 长度重放事件。trace 数据通过 `--data` 中嵌套的 `source` 配置，从本地文件或 HuggingFace 数据集加载，支持的格式见英文版[Trace 文件格式文档](../../guides/trace_replay.md#supported-formats)。时间戳可以是绝对值或单调值；GuideLLM 会先排序，再转换为相对于首个事件的偏移量：
+如需进行更贴近实际的负载测试，可以按 trace 每行的时间戳和 token 长度重放事件。trace 数据通过 `--data` 中嵌套的 `source` 配置，从本地文件或 HuggingFace 数据集加载，支持的格式见 [Trace 文件格式文档](../guides/trace_replay.md#supported-formats)。时间戳可以是绝对值或单调值；GuideLLM 会先排序，再转换为相对于首个事件的偏移量：
 
 ```json
 {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
@@ -296,7 +296,7 @@ guidellm run \
   --profile kind=replay
 ```
 
-此功能也适用于特定格式所需的其他列。有关这些额外列及格式专属参数的说明，请参阅英文版 [Trace 文件格式文档](../../guides/trace_replay.md)。
+此功能也适用于特定格式所需的其他列。有关这些额外列及格式专属参数的说明，请参阅 [Trace 文件格式文档](../guides/trace_replay.md)。
 
 ### 使用真实数据
 
@@ -320,7 +320,7 @@ guidellm run \
 
 ## 输出选项
 
-默认情况下，基准测试结果会保存到 `benchmarks.json` 和 `benchmarks.csv`。指定 `--output` 会替换这两个默认输出。有关如何选择输出格式，请参阅英文版[输出配置](../../guides/outputs.md#cli-output-configuration)；有关默认目录和自定义路径，请参阅英文版[文件输出配置](../../guides/outputs.md#configuring-file-outputs)。
+默认情况下，基准测试结果会保存到 `benchmarks.json` 和 `benchmarks.csv`。指定 `--output` 会替换这两个默认输出。有关如何选择输出格式，请参阅[输出配置](../guides/outputs.md#cli-output-configuration)；有关默认目录和自定义路径，请参阅[文件输出配置](../guides/outputs.md#configuring-file-outputs)。
 
 ### 进度日志
 
@@ -334,4 +334,4 @@ Rich 进度显示可以与日志同时使用。`--disable-console` 和 `--disabl
 
 ## 故障排除
 
-常见问题请参阅英文版[故障排除指南](../../guides/troubleshooting.md)。
+常见问题请参阅[故障排除指南](../guides/troubleshooting.md)。

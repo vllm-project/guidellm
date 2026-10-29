@@ -26,7 +26,7 @@ guidellm run --data kind=<TYPE>,key=value,... [other options...]
   - `huggingface`（别名 `hf`）— 从 Hugging Face Hub 或本地目录/文件加载数据。必需字段：`source`（数据集 ID 或路径）。通过 `load_kwargs` 传入数据集加载参数（例如 `split`、`name`）。
   - `json_file`、`csv_file`、`text_file`、`parquet_file`、`arrow_file`、`hdf5_file`、`tar_file` — 从本地文件加载数据。必需字段：`path`。
   - `db_file` — 使用 `load_kwargs.sql` 从数据库加载行。必需字段：`uri`，其格式为 SQLAlchemy 风格的 URI。目前 GuideLLM 仅支持 SQLite URI，例如 `sqlite:///prompts.db`。
-  - `trace_synthetic`、`mooncake`、`weka`、`otel` — 使用 `--profile kind=replay` 重放 trace。必需字段：嵌套的 `source`，指向另一种数据集类型，例如 `source.kind=json_file,source.path=trace.jsonl` 或 `source.kind=huggingface,source.source=org/dataset`。可选字段：`timestamp_column`、`prompt_tokens_column`、`output_tokens_column`、`time_scale`、`copies` 和其他格式专属选项。请参阅[Trace 文件格式（英文）](../../guides/trace_replay.md)。
+  - `trace_synthetic`、`mooncake`、`weka`、`otel` — 使用 `--profile kind=replay` 重放 trace。必需字段：嵌套的 `source`，指向另一种数据集类型，例如 `source.kind=json_file,source.path=trace.jsonl` 或 `source.kind=huggingface,source.source=org/dataset`。可选字段：`timestamp_column`、`prompt_tokens_column`、`output_tokens_column`、`time_scale`、`copies` 和其他格式专属选项。请参阅[Trace 文件格式](trace_replay.md)。
 
 对于接受本地 `path` 的 `*_file` 数据集类型，路径必须指向一个确切的文件。文件名或目录名中的 glob 字符会按字面值处理。
 
@@ -48,7 +48,7 @@ guidellm run --data kind=<TYPE>,key=value,... [other options...]
 
 - `--tokenizer '{"kind":"huggingface_auto","model":"path/to/processor","load_kwargs":{"use_fast":false}}'`
 
-如果 Hugging Face 模型需要自定义代码才能加载，请在 `load_kwargs` 中传入 `trust_remote_code`。请参阅[故障排查：trust_remote_code（英文）](../../guides/troubleshooting.md#tokenizer-trust_remote_code)。
+如果 Hugging Face 模型需要自定义代码才能加载，请在 `load_kwargs` 中传入 `trust_remote_code`。请参阅[故障排查：trust_remote_code](troubleshooting.md#tokenizer-trust_remote_code)。
 
 如果数据集使用了非标准列名，可以使用 `--data-column-mapper` 将这些列映射到 GuideLLM 预期的列名。在以下情况下尤其有用：
 
@@ -97,7 +97,7 @@ GuideLLM 支持多种数据集类型，每种类型都有各自的优势和适�
 
 合成数据集允许你使用可自定义的参数按需生成数据，适用于受控实验、压力测试和模拟特定场景。例如，你可能希望评估模型如何处理较长的提示词，或生成具有特定特征的输出。
 
-GuideLLM 同时支持下文介绍的合成*文本*数据，以及用于视觉语言模型基准测试的合成*视觉*数据（图像和短视频）。请参阅[合成视觉数据（英文）](../../guides/multimodal/synthetic_vision.md)，了解 `synthetic_image` 和 `synthetic_video` 这两种 `--data` 类型；它们可以与 `synthetic_text` 组合，用于多模态提示词。
+GuideLLM 同时支持下文介绍的合成*文本*数据，以及用于视觉语言模型基准测试的合成*视觉*数据（图像和短视频）。请参阅[合成视觉数据](multimodal/synthetic_vision.md)，了解 `synthetic_image` 和 `synthetic_video` 这两种 `--data` 类型；它们可以与 `synthetic_text` 组合，用于多模态提示词。
 
 #### 示例命令
 
@@ -213,7 +213,7 @@ GuideLLM 支持多种数据集文件格式，包括文本、CSV、JSON 等。这
   {"prompt": "What is your name?", "output_tokens_count": 3, "additional_column": "baz", "additional_column2": "qux"}
   ```
 
-- **Trace 文件（`.jsonl`、`.json`、`.csv` 或 `.parquet`，且采用支持的 trace 文件格式）**：用于回放的专用文件。与 `--profile kind=replay` 配合使用，根据每行中的时间戳和 token 长度重放 trace 事件。时间戳必须是以秒为单位的数字，并使用统一时间轴上的任意一致零点；`otel` 除外，它会将 ISO-8601 `start_time` 值（以及经 HuggingFace 解码的 `datetime` 对象）解析为纪元秒数。GuideLLM 会按时间戳排序，并在调度前将它们转换为相对于第一个事件的偏移量。请参阅[Trace 回放基准测试（英文）](../../getting-started/benchmark.md#trace-replay-benchmarking)。
+- **Trace 文件（`.jsonl`、`.json`、`.csv` 或 `.parquet`，且采用支持的 trace 文件格式）**：用于回放的专用文件。与 `--profile kind=replay` 配合使用，根据每行中的时间戳和 token 长度重放 trace 事件。时间戳必须是以秒为单位的数字，并使用统一时间轴上的任意一致零点；`otel` 除外，它会将 ISO-8601 `start_time` 值（以及经 HuggingFace 解码的 `datetime` 对象）解析为纪元秒数。GuideLLM 会按时间戳排序，并在调度前将它们转换为相对于第一个事件的偏移量。请参阅[Trace 回放基准测试](../getting-started/benchmark.md#trace-replay-benchmarking)。
 
   ```json
   {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
@@ -222,7 +222,7 @@ GuideLLM 支持多种数据集文件格式，包括文本、CSV、JSON 等。这
 
   在此示例中，第二个请求会在第一个请求之后 0.5 秒调度。GuideLLM 会先按时间戳对 trace 行排序，再调度请求并生成合成负载。这样每个已调度事件都会与同一行中的提示词和输出 token 长度保持对应。
 
-  使用支持的 [trace 文件格式（英文）](../../guides/trace_replay.md#supported-formats)以启用 trace 加载：
+  使用支持的 [trace 文件格式](trace_replay.md#supported-formats)以启用 trace 加载：
 
   ```bash
   guidellm run \
@@ -250,7 +250,7 @@ GuideLLM 支持多种数据集文件格式，包括文本、CSV、JSON 等。这
     --constraint kind=max_requests,count=30
   ```
 
-  默认记录的内容是 `gen_ai.input.messages`，且 `history=trace`（每个 span 的完整输入，`history_context=new`）。传入 `history=runtime` 后，只发送新消息，并通过 DAG 附加实时补全结果。对于不包含 `gen_ai.input.messages` 的 span，应使用 `trace_synthetic`。本地 JSONL 使用 `source.kind=json_file,source.path=...`，并可设置相同的 `history` 选项。请参阅[Trace 文件格式（英文）](../../guides/trace_replay.md#otel)。
+  默认记录的内容是 `gen_ai.input.messages`，且 `history=trace`（每个 span 的完整输入，`history_context=new`）。传入 `history=runtime` 后，只发送新消息，并通过 DAG 附加实时补全结果。对于不包含 `gen_ai.input.messages` 的 span，应使用 `trace_synthetic`。本地 JSONL 使用 `source.kind=json_file,source.path=...`，并可设置相同的 `history` 选项。请参阅[Trace 文件格式](trace_replay.md#otel)。
 
   对于回放，`--data` 中的 `time_scale` 用于缩放应用等待和打包上限后的 trace 事件间隔。等待上限（`max_wait`、`max_session_wait`、`min_concurrent_sessions`）会在应用 `time_scale` 之前按原始 trace 秒数执行。建议使用这些打包选项提高并行度；如果数据集太短，无法满足基准测试时长，可使用 `copies` 顺序重放打包后的数据集。回放配置也接受 `--profile kind=replay` 中的调度器侧 `time_scale`。使用 `--data-loader kind=pytorch,samples=1000` 可限制加载和重放的 trace 行数。`--constraint kind=max_requests,count=<n>` 仅作为运行时完成条件；它不会限制从文件加载的 trace 行数。`--constraint kind=max_duration,seconds=<n>` 还会取消正在进行的等待，包括回放休眠。
 

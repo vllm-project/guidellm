@@ -35,11 +35,11 @@ GuideLLM 支持提供标准化 LLM 交互 API 的兼容 OpenAI 的 HTTP 服务�
 
 ### vLLM Python 后端
 
-GuideLLM 支持通过 **vLLM Python 后端**（`vllm_python_async`）在同一进程中运行推理。该后端使用 vLLM 的 Python API（`AsyncLLMEngine`），与 GuideLLM 在同一进程中执行推理，无需 HTTP 服务器。有关设置方法、安装选项（容器、现有 vLLM 环境或 pip）和示例，请参阅英文版 [vLLM Python 后端指南](../../guides/vllm-python-backend.md)。
+GuideLLM 支持通过 **vLLM Python 后端**（`vllm_python_async`）在同一进程中运行推理。该后端使用 vLLM 的 Python API（`AsyncLLMEngine`），与 GuideLLM 在同一进程中执行推理，无需 HTTP 服务器。有关设置方法、安装选项（容器、现有 vLLM 环境或 pip）和示例，请参阅[vLLM Python 后端指南](vllm-python-backend.md)。
 
 ### vLLM Python 批处理后端
 
-**vLLM Python 批处理后端**（`vllm_python_batch`）使用 vLLM 的同步 `LLM` 引擎执行面向批处理的推理。请求会进入队列，并按可配置的批次分发，从而减少逐个请求调度的开销。这适合吞吐量基准测试。有关设置方法和示例，请参阅英文版 [vLLM Python 批处理后端指南](../../guides/vllm-python-batch-backend.md)。
+**vLLM Python 批处理后端**（`vllm_python_batch`）使用 vLLM 的同步 `LLM` 引擎执行面向批处理的推理。请求会进入队列，并按可配置的批次分发，从而减少逐个请求调度的开销。这适合吞吐量基准测试。有关设置方法和示例，请参阅[vLLM Python 批处理后端指南](vllm-python-batch-backend.md)。
 
 ## 启动兼容服务器的示例
 

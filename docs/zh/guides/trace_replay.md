@@ -9,7 +9,7 @@ source_sha256: !!str "0dce93800de781aa287cbe1a28696ec8011cbf171a7fb709942f122956
 
 有关重放 profile 和基于文件的数据集的完整用法，请参阅[跟踪重放基准测试](../getting-started/benchmark.md#trace-replay-benchmarking)。
 
-## 支持的格式
+## 支持的格式 {#supported-formats}
 
 通过 `--data` 参数以 `kind=format` 的形式指定以下格式：
 
