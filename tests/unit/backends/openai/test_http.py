@@ -1277,3 +1277,123 @@ async def test_stream_read_to_end_only_over_http11(
         await backend.process_shutdown()
 
     assert chunks.read == expected_read
+
+
+class TestOpenAIHTTPBackendArgsApiKeyFile:
+    """Validate loading the API key from a file via ``api_key_file``.
+
+    ## WRITTEN BY AI ##
+    """
+
+    SECRET = "sk-file-secret-123"
+
+    @pytest.mark.smoke
+    def test_api_key_read_from_file_and_stripped(self, tmp_path):
+        """The file content, minus surrounding whitespace, becomes ``api_key``.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "api_key"
+        key_file.write_text(f"  {self.SECRET}\n", encoding="utf-8")
+
+        args = OpenAIHTTPBackendArgs(target="http://test", api_key_file=key_file)
+
+        assert args.api_key is not None
+        assert args.api_key.get_secret_value() == self.SECRET
+
+    @pytest.mark.sanity
+    def test_api_key_and_api_key_file_are_mutually_exclusive(self, tmp_path):
+        """Setting both ``api_key`` and ``api_key_file`` is rejected.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "api_key"
+        key_file.write_text(self.SECRET, encoding="utf-8")
+
+        with pytest.raises(ValidationError, match="api_key_file") as exc_info:
+            OpenAIHTTPBackendArgs(
+                target="http://test", api_key="sk-inline", api_key_file=key_file
+            )
+
+        assert self.SECRET not in str(exc_info.value)
+        assert "sk-inline" not in str(exc_info.value)
+
+    @pytest.mark.sanity
+    def test_missing_api_key_file_rejected(self, tmp_path):
+        """A non-existent ``api_key_file`` raises an error naming the path.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "missing"
+
+        with pytest.raises(ValidationError, match=str(key_file)):
+            OpenAIHTTPBackendArgs(target="http://test", api_key_file=key_file)
+
+    @pytest.mark.sanity
+    def test_empty_api_key_file_rejected(self, tmp_path):
+        """A whitespace-only ``api_key_file`` raises an error naming the path.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "api_key"
+        key_file.write_text(" \n\n", encoding="utf-8")
+
+        with pytest.raises(ValidationError, match=str(key_file)):
+            OpenAIHTTPBackendArgs(target="http://test", api_key_file=key_file)
+
+    @pytest.mark.sanity
+    def test_api_key_from_file_not_exposed_in_dump(self, tmp_path):
+        """The file-provided key stays masked in serialized backend args.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "api_key"
+        key_file.write_text(f"{self.SECRET}\n", encoding="utf-8")
+
+        args = OpenAIHTTPBackendArgs(target="http://test", api_key_file=key_file)
+
+        assert self.SECRET not in json.dumps(args.model_dump(mode="json"))
+        assert self.SECRET not in repr(args)
+        assert self.SECRET not in json.dumps(OpenAIHTTPBackend(args).info)
+
+    @pytest.mark.sanity
+    def test_api_key_from_file_survives_revalidation(self, tmp_path):
+        """Dumped args re-validate without the both-set error, even if the file
+        is gone (as when per-benchmark overrides rebuild args or reports reload).
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "api_key"
+        key_file.write_text(f"{self.SECRET}\n", encoding="utf-8")
+        args = OpenAIHTTPBackendArgs(target="http://test", api_key_file=key_file)
+        key_file.unlink()
+
+        revalidated = OpenAIHTTPBackendArgs.model_validate(args.model_dump())
+        OpenAIHTTPBackendArgs.model_validate(args.model_dump(mode="json"))
+
+        assert revalidated.api_key is not None
+        assert revalidated.api_key.get_secret_value() == self.SECRET
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_authorization_header_uses_file_key(
+        self, tmp_path, httpx2_mock: respx.Router
+    ):
+        """Requests carry ``Authorization: Bearer`` with the file-provided key.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "api_key"
+        key_file.write_text(f"{self.SECRET}\n", encoding="utf-8")
+        route = httpx2_mock.route(url="http://test/health", method="GET").respond(
+            headers={}
+        )
+
+        backend = _make_backend(target="http://test", api_key_file=key_file)
+        await backend.process_startup()
+        await backend.validate()
+
+        assert route.calls.last.request.headers["Authorization"] == (
+            f"Bearer {self.SECRET}"
+        )

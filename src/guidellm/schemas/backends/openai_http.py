@@ -4,12 +4,13 @@ OpenAI HTTP backend Args schema.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 
 from guidellm.schemas import GenerationRequestArguments
-from guidellm.schemas.backends.backend import BackendArgs
+from guidellm.schemas.backends.backend import BackendArgs, resolve_api_key_file
 
 __all__ = ["OpenAIHTTPBackendArgs"]
 
@@ -61,6 +62,14 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         default=None,
         description="HTTP Bearer token API key for authentication to server",
         examples=["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"],
+    )
+    api_key_file: Path | None = Field(
+        default=None,
+        description=(
+            "Path to a file containing the API key; surrounding whitespace is "
+            "stripped. Mutually exclusive with api_key."
+        ),
+        examples=["/var/run/secrets/guidellm/api-key"],
     )
     api_routes: dict[str, str] = Field(
         default_factory=dict,
@@ -170,6 +179,18 @@ class OpenAIHTTPBackendArgs(BackendArgs):
     def merge_api_routes(cls, value: dict[str, str]) -> dict[str, str]:
         """Merge user-provided API routes with default routes."""
         return DEFAULT_API_PATHS | value
+
+    @model_validator(mode="after")
+    def load_api_key_file(self):
+        """
+        Load api_key from api_key_file when the latter is set.
+
+        api_key_file is cleared once consumed so dumped args re-validate cleanly
+        (e.g. per-benchmark overrides) without needing the file again.
+        """
+        self.api_key = resolve_api_key_file(self.api_key, self.api_key_file)
+        self.api_key_file = None
+        return self
 
     @model_validator(mode="after")
     def validate_server_history(self):
