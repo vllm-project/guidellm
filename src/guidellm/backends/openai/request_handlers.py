@@ -11,14 +11,22 @@ extract usage metrics, and convert results into standardized GenerationResponse.
 from __future__ import annotations
 
 import base64
-from collections.abc import Callable
+import binascii
+import io
+import wave
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Protocol, cast
+from typing import Any, ClassVar, Protocol, cast
 
 from more_itertools import roundrobin
 
 from guidellm.backends.openai.common import format_ws_error
+from guidellm.backends.openai.modality_parsers import (
+    ModalityOutputParser,
+    ModalityParserRegistry,
+)
+from guidellm.logger import logger
 from guidellm.scheduler import HistoryT
 from guidellm.schemas import (
     GenerationRequest,
@@ -29,11 +37,20 @@ from guidellm.schemas import (
     UsageMetrics,
 )
 from guidellm.settings import settings
-from guidellm.utils.audio import pcm16_append_b64_chunks
+from guidellm.utils.audio import (
+    AudioContinuityStats,
+    compute_audio_continuity,
+    decode_audio_with_metadata,
+    pcm16_append_b64_chunks,
+)
 from guidellm.utils.imports import json
 from guidellm.utils.registry import RegistryMixin
 
 WS_AUDIO_CHUNKS_BODY_KEY = "audio_chunks"
+PCM_WAV_HEADER_SIZE = 44
+WAV_FMT_CHUNK_SIZE = 16
+PCM_BITS_PER_SAMPLE = 16
+PCM16_BYTES_PER_SAMPLE = PCM_BITS_PER_SAMPLE // 8
 
 __all__ = [
     "WS_AUDIO_CHUNKS_BODY_KEY",
@@ -47,6 +64,7 @@ __all__ = [
     "PoolingRequestHandler",
     "RealtimeTranscriptionWSRequestHandler",
     "ResponsesRequestHandler",
+    "SpeechRequestHandler",
     "TextCompletionsRequestHandler",
     "ToolCall",
     "ToolCallFunction",
@@ -64,6 +82,41 @@ class OpenAIRequestHandler(Protocol):
     converting them into standardized GenerationResponse objects
     with consistent metrics extraction.
     """
+
+    audio_rtf_uses_last_audio_payload: ClassVar[bool] = False
+    raw_response: ClassVar[bool] = False
+    raw_streaming: bool = False
+
+    def set_response_headers(self, headers: Mapping[str, str]) -> None:  # noqa: ARG002
+        """
+        Accept response headers for endpoint-specific processing.
+        :param headers: HTTP response headers.
+        :return: None.
+        """
+        return
+
+    @property
+    def last_iteration_had_audio(self) -> bool:
+        """
+        Return whether last iteration contained audio.
+        :return: False, for non-audio output handlers.
+        """
+        return False
+
+    def set_streaming_arrival_time(self, timestamp_s: float) -> None:  # noqa: ARG002
+        """
+        Accept the arrival timestamp of specific streaming.
+        :param timestamp_s: Unix timestamp of the current stream item.
+        :return: None.
+        """
+        return
+
+    def mark_stream_complete(self) -> None:
+        """
+        Accept notification on successfully ended HTTP stream.
+        :return: None.
+        """
+        return
 
     def format(
         self,
@@ -117,6 +170,15 @@ class OpenAIRequestHandler(Protocol):
 
         :param line: Raw line from the streaming response
         :return: 1 if content was updated, 0 if line was ignored, None if done
+        """
+        ...
+
+    def add_streaming_chunk(self, chunk: bytes) -> int | None:
+        """
+        Process single raw response chunk.
+
+        :param chunk: Raw line from the streaming response
+        :return: 1 if chunk was added, 0 otherwise
         """
         ...
 
@@ -208,6 +270,85 @@ def _check_streaming_error(data: Any) -> None:
     else:
         message = str(error)
     raise ValueError(f"Streaming response returned an error: {message}")
+
+
+def _apply_audio_metadata(item: dict[str, Any], metadata: Any) -> None:
+    if not isinstance(metadata, dict):
+        return
+
+    audio_format = metadata.get("format")
+    sample_rate = metadata.get("sample_rate_hz")
+    frame_count = metadata.get("frame_count")
+    channels = metadata.get("channels")
+    if (
+        not isinstance(audio_format, str)
+        or not audio_format
+        or type(sample_rate) is not int
+        or sample_rate <= 0
+        or type(frame_count) is not int
+        or frame_count < 0
+        or type(channels) is not int
+        or channels <= 0
+    ):
+        return
+
+    item.update(
+        format=audio_format,
+        sample_rate=sample_rate,
+        channels=channels,
+        audio_samples=frame_count,
+        audio_seconds=frame_count / sample_rate,
+    )
+
+
+def _pcm16_layout(
+    data: bytes,
+    audio_format: str,
+    sample_rate_hint: int | None,
+    channels_hint: int | None,
+) -> tuple[int, int, int, int] | None:
+    """
+    Returning tuple contains: (sample_rate, channels, header_bytes, frame_count).
+    """
+    sample_rate: int | None
+    channels: int | None
+
+    if audio_format == "wav":
+        if (
+            len(data) < PCM_WAV_HEADER_SIZE
+            or data[:4] != b"RIFF"
+            or data[8:12] != b"WAVE"
+            or data[12:16] != b"fmt "
+            or int.from_bytes(data[16:20], "little") != WAV_FMT_CHUNK_SIZE
+            or int.from_bytes(data[20:22], "little") != 1
+            or int.from_bytes(data[34:36], "little") != PCM_BITS_PER_SAMPLE
+            or data[36:40] != b"data"
+        ):
+            return None
+        sample_rate = int.from_bytes(data[24:28], "little")
+        channels = int.from_bytes(data[22:24], "little")
+        header_bytes = PCM_WAV_HEADER_SIZE
+    elif audio_format in ("pcm", "pcm16"):
+        sample_rate = sample_rate_hint
+        channels = channels_hint
+        header_bytes = 0
+    else:
+        return None
+
+    if (
+        type(sample_rate) is not int
+        or sample_rate <= 0
+        or type(channels) is not int
+        or channels <= 0
+    ):
+        return None
+
+    payload_bytes = len(data) - header_bytes
+    bytes_per_frame = 2 * channels
+    if payload_bytes < 0 or payload_bytes % bytes_per_frame:
+        return None
+
+    return sample_rate, channels, header_bytes, payload_bytes // bytes_per_frame
 
 
 class WSEventResult(Enum):
@@ -358,7 +499,12 @@ def _validate_text_response(response: GenerationResponse) -> None:
     has_text = bool(response.text and response.text.strip())
     has_tool_calls = bool(response.tool_calls)
     output_tokens = response.output_metrics.total_tokens or 0
-    if not has_text and not has_tool_calls and output_tokens <= 0:
+    if (
+        not has_text
+        and not has_tool_calls
+        and not response.output_media
+        and output_tokens <= 0
+    ):
         raise ValueError(
             "[UNUSABLE_BACKEND_RESPONSE] backend resolved with empty response payload"
         )
@@ -685,6 +831,21 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             response_metrics=self.response_metrics,
         )
 
+    def add_streaming_chunk(self, chunk: bytes) -> int | None:
+        """
+        Reject to process raw-byte requests for line-based completion handlers.
+
+        :param chunk: Raw response bytes.
+        :return: Zero for an empty chunk.
+        :raises ValueError: If a non-empty raw chunk is received.
+        """
+        if not chunk:
+            return 0
+        raise ValueError(
+            "[UNUSABLE_BACKEND_RESPONSE] raw-byte streaming is not supported "
+            "by this request handler"
+        )
+
     def add_streaming_line(self, line: str) -> int | None:
         """
         Process a single line from a text completion streaming response.
@@ -775,11 +936,162 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             self.response_metrics = metrics
         return response.get("choices", []), response.get("usage", {})
 
+    @staticmethod
+    def _get_usage_details(
+        usage: dict[str, int | dict[str, int]],
+        key: str,
+    ) -> dict[str, Any]:
+        """Return a validated detail object from usage data.
+
+        :param usage: API usage data.
+        :param key: Name of the detail field to retrieve.
+        :return: The detail object, or an empty dictionary if it is absent.
+        :raises ValueError: If the field is present but is not an object.
+        """
+        details = usage.get(key)
+        if not details:
+            return {}
+        if isinstance(details, dict):
+            return details
+        raise ValueError(f"[UNUSABLE_BACKEND_RESPONSE] {key} must be an object")
+
+    @staticmethod
+    def _extract_input_metrics(
+        usage: dict[str, int | dict[str, int]],
+        usage_metrics: dict[str, int | None],
+    ) -> UsageMetrics:
+        """
+        Extract input text and modality metrics (all that exist)
+
+        :param usage: Usage data to get detailed input token usage from the backend.
+        :param usage_metrics: Aggregate token usage counts.
+        :return: Input usage metrics.
+        """
+        input_details = TextCompletionsRequestHandler._get_usage_details(
+            usage, "prompt_tokens_details"
+        )
+        input_multimodal_with_value = input_details.get("multimodal_tokens")
+        if not input_multimodal_with_value:
+            input_multimodal: dict[str, Any] = {}
+        elif isinstance(input_multimodal_with_value, dict):
+            input_multimodal = input_multimodal_with_value
+        else:
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] "
+                "prompt_tokens_details.multimodal_tokens must be an object"
+            )
+
+        input_image_tokens: int | None = input_multimodal.get(
+            "image", input_details.get("image_tokens")
+        )
+        input_video_tokens: int | None = input_multimodal.get(
+            "video", input_details.get("video_tokens")
+        )
+        input_audio_tokens: int | None = input_multimodal.get(
+            "audio", input_details.get("audio_tokens")
+        )
+
+        input_multimodal_tokens = 0
+        for count in (input_image_tokens, input_video_tokens, input_audio_tokens):
+            input_multimodal_tokens += count if count is not None else 0
+
+        input_text_tokens = input_details.get("prompt_tokens")
+        if input_text_tokens is None:
+            input_text_tokens = usage_metrics.get("prompt_tokens")
+            if input_text_tokens is None:
+                input_text_tokens = 0
+            else:
+                input_text_tokens -= input_multimodal_tokens
+                if input_text_tokens < 0:
+                    raise ValueError(
+                        "[UNUSABLE_BACKEND_RESPONSE] input modality token counts "
+                        "exceed the reported total prompt_tokens"
+                    )
+
+        return UsageMetrics(
+            text_tokens=input_text_tokens,
+            cached_tokens=input_details.get("cached_tokens"),
+            image_tokens=input_image_tokens,
+            video_tokens=input_video_tokens,
+            audio_tokens=input_audio_tokens,
+            audio_seconds=input_details.get("seconds"),
+        )
+
+    @staticmethod
+    def _extract_output_metrics(
+        usage: dict[str, int | dict[str, int]],
+        usage_metrics: dict[str, int | None],
+        text_words: int | None,
+        text_chars: int | None,
+    ) -> UsageMetrics:
+        """
+        Extract output text and modality metrics (all that available)
+
+        :param usage: Usage data to get detailed output token usage from the backend.
+        :param usage_metrics: Aggregate usage token counts.
+        :param text_words: Word count, or None when text is not applicable.
+        :param text_chars: Character count, or None when text is not applicable.
+        :return: Output usage metrics.
+        """
+        output_details = TextCompletionsRequestHandler._get_usage_details(
+            usage, "completion_tokens_details"
+        )
+        output_multimodal_with_value = output_details.get("multimodal_tokens")
+        if not output_multimodal_with_value:
+            output_multimodal: dict[str, Any] = {}
+        elif isinstance(output_multimodal_with_value, dict):
+            output_multimodal = output_multimodal_with_value
+        else:
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] "
+                "completion_tokens_details.multimodal_tokens must be an object"
+            )
+
+        output_image_tokens: int | None = output_multimodal.get(
+            "image", output_details.get("image_tokens")
+        )
+        output_video_tokens: int | None = output_multimodal.get(
+            "video", output_details.get("video_tokens")
+        )
+        output_audio_tokens: int | None = output_multimodal.get(
+            "audio", output_details.get("audio_tokens")
+        )
+
+        output_multimodal_tokens = 0
+        for count in (output_image_tokens, output_video_tokens, output_audio_tokens):
+            output_multimodal_tokens += count if count is not None else 0
+
+        output_text_tokens = output_details.get("completion_tokens")
+        if output_text_tokens is None:
+            output_text_tokens = usage_metrics.get("completion_tokens")
+            if output_text_tokens is None:
+                output_text_tokens = 0
+            else:
+                output_text_tokens -= output_multimodal_tokens
+                if output_text_tokens < 0:
+                    raise ValueError(
+                        "[UNUSABLE_BACKEND_RESPONSE] output modality token counts "
+                        "exceed the reported total completion_tokens"
+                    )
+
+        return UsageMetrics(
+            text_tokens=output_text_tokens,
+            text_words=text_words,
+            text_characters=text_chars,
+            image_tokens=output_image_tokens,
+            video_tokens=output_video_tokens,
+            audio_tokens=output_audio_tokens,
+            audio_seconds=output_details.get("seconds"),
+        )
+
     def extract_metrics(
-        self, usage: dict[str, int | dict[str, int]] | None, text: str | None
+        self,
+        usage: dict[str, int | dict[str, int]] | None,
+        text: str | None,
     ) -> tuple[UsageMetrics, UsageMetrics]:
         """
-        Extract input and output usage metrics from API response usage data.
+        Extract text and modality input and output usage metrics
+        from API response usage data.
 
         :param usage: Usage data dictionary from API response
         :param text: Generated text for calculating word and character counts.
@@ -801,37 +1113,23 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
                 text_characters=text_chars,
             )
 
-        input_details: dict[str, int] = cast(
-            "dict[str, int]", usage.get("prompt_tokens_details", {}) or {}
-        )
-        output_details: dict[str, int] = cast(
-            "dict[str, int]", usage.get("completion_tokens_details", {}) or {}
-        )
-        usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
+        metrics: dict[str, int | None] = {}
+        for key in ("prompt_tokens", "completion_tokens"):
+            if key not in usage:
+                continue
+            token_value = usage[key]
+            if token_value is None:
+                metrics[key] = None
+            elif isinstance(token_value, int):
+                metrics[key] = token_value
+            else:
+                raise ValueError(
+                    f"[UNUSABLE_BACKEND_RESPONSE] {key} must be an integer or null"
+                )
 
-        return UsageMetrics(
-            text_tokens=(
-                input_details.get("prompt_tokens")
-                or usage_metrics.get("prompt_tokens")
-                or 0
-            ),
-            cached_tokens=input_details.get("cached_tokens"),
-            image_tokens=input_details.get("image_tokens"),
-            video_tokens=input_details.get("video_tokens"),
-            audio_tokens=input_details.get("audio_tokens"),
-            audio_seconds=input_details.get("seconds"),
-        ), UsageMetrics(
-            text_tokens=(
-                output_details.get("completion_tokens")
-                or usage_metrics.get("completion_tokens")
-                or 0
-            ),
-            text_words=text_words,
-            text_characters=text_chars,
-            image_tokens=output_details.get("image_tokens"),
-            video_tokens=output_details.get("video_tokens"),
-            audio_tokens=output_details.get("audio_tokens"),
-            audio_seconds=output_details.get("seconds"),
+        return (
+            self._extract_input_metrics(usage, metrics),
+            self._extract_output_metrics(usage, metrics, text_words, text_chars),
         )
 
 
@@ -846,6 +1144,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
     responses where the model outputs ``tool_calls`` instead of text content.
     """
 
+    audio_rtf_uses_last_audio_payload: ClassVar[bool] = True
+
     def __init__(self):
         super().__init__()
         # Full tool call payloads accumulated across streaming deltas,
@@ -854,6 +1154,40 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         self.streaming_tool_calls: dict[int, ToolCall] = {}
         self.streaming_reasoning_texts: list[str] = []
         self._last_iteration_had_content: bool = False
+        self._last_iteration_had_audio = False
+        self.streaming_media_packets: list[
+            tuple[int, dict[str, Any], float | None]
+        ] = []
+        self._streaming_arrival_time: float | None = None
+        self.streaming_audio_ids: dict[int, str] = {}
+        self.streaming_audio_expirations: dict[int, int | float] = {}
+        self.streaming_audio_transcripts: dict[int, list[str]] = {}
+        self._output_sample_rate_hint: int | None = None
+        self._output_channels_hint: int | None = None
+        self._requested_audio_format = "wav"
+        self._stream_complete = False
+
+    def set_streaming_arrival_time(self, timestamp_s: float) -> None:
+        """
+        Update the arrival timestamp.
+        :param timestamp_s: Unix timestamp of the current stream item.
+        :return: None.
+        """
+        self._streaming_arrival_time = timestamp_s
+
+    def mark_stream_complete(self) -> None:
+        self._stream_complete = True
+
+    def _append_streaming_media_item(
+        self, choice_index: int, item: dict[str, Any]
+    ) -> None:
+
+        item["choice_index"] = choice_index
+        if item.get("modality") == "audio":
+            self._last_iteration_had_audio = True
+        self.streaming_media_packets.append(
+            (choice_index, item, self._streaming_arrival_time)
+        )
 
     @property
     def last_iteration_had_content(self) -> bool:
@@ -862,6 +1196,13 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             not solely reasoning tokens.
         """
         return self._last_iteration_had_content
+
+    @property
+    def last_iteration_had_audio(self) -> bool:
+        """
+        :return: Return True if current chat delta contained audio.
+        """
+        return self._last_iteration_had_audio
 
     @staticmethod
     def _ensure_tool_format(tool: dict[str, Any]) -> dict[str, Any]:
@@ -928,6 +1269,148 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 raise ValueError(f"Unsupported column type: {column_type}")
 
         return formatted_data
+
+    def _parse_output_media_from_content(  # noqa: C901
+        self, content: Any
+    ) -> tuple[str | None, list[dict[str, Any]]]:
+        """
+        Split a message's ``content`` into (text, output_media items), trying
+        every registered modality parser on each list item.
+        If content is a plain string, it returned unchanged.
+
+        :param content: Raw message["content"] or delta["content"] value.
+        :return: Tuple of (joined text or None, output_media items found).
+        """
+        if content is None:
+            return None, []
+        if isinstance(content, str):
+            return content, []  # input is string
+        if not isinstance(content, list):
+            return None, []
+
+        text_parts: list[str] = []
+        media: list[dict[str, Any]] = []
+
+        try:
+            parser_names = ModalityParserRegistry.registered_names()
+        except ValueError:
+            parser_names = ()
+
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "text":
+                if text := part.get("text"):
+                    text_parts.append(text)
+                continue
+            """
+            Try each registered modality parser; unregistered/unrecognized part
+            types (e.g. a future modality with no parser landed yet) are
+            silently skipped (maybe should raise?)
+            """
+            for parser_name in parser_names:
+                parser_cls = ModalityParserRegistry.create(parser_name)
+                if (
+                    parser_cls is not None
+                    and (item := parser_cls.parse_content_part(part)) is not None
+                ):
+                    media.append(item)
+                    break
+
+        return ("".join(text_parts) if text_parts else None), media
+
+    def _augment_media_output_metrics(
+        self, output_metrics: UsageMetrics, items: list[dict[str, Any]]
+    ) -> None:
+        """
+        Add audio output_metrics measurements.
+
+        :param output_metrics: Response metrics updated in place.
+        :param items: Encoded output media packets.
+        :return: None.
+        :raises ValueError: If audio packet is malformed or undecodable.
+        """
+        audio_items = [item for item in items if item.get("modality") == "audio"]
+        if not audio_items:
+            return
+
+        output_metrics.audio_bytes = sum(len(item["data"]) for item in audio_items)
+        total_samples = 0
+        total_seconds = 0.0
+        complete_samples = True
+        complete_seconds = True
+
+        for audio_item in audio_items:
+            audio_format, samples, seconds, rate, channels = (
+                self._retrieve_audio_item_metrics(audio_item)
+            )
+
+            audio_item["format"] = audio_format
+            audio_item["audio_samples"] = samples
+            audio_item["audio_seconds"] = seconds
+            audio_item["sample_rate"] = rate
+            audio_item["channels"] = channels
+
+            if samples is None:
+                complete_samples = False
+            else:
+                total_samples += samples
+            if seconds is None:
+                complete_seconds = False
+            else:
+                total_seconds += seconds
+
+        if output_metrics.audio_samples is None and complete_samples:
+            output_metrics.audio_samples = total_samples
+        if output_metrics.audio_seconds is None and complete_seconds:
+            output_metrics.audio_seconds = total_seconds
+
+    def _retrieve_audio_item_metrics(
+        self,
+        audio_item: dict[str, Any],
+    ) -> tuple[str | None, int | None, float | None, int | None, int | None]:
+        """
+        Get metrics for one audio packet without modifying it.
+
+        :param audio_item: audio packet with the supplied metadata.
+        :return: Metadata format,sample count, duration, sample rate and channel count.
+        :raises ValueError: If the packet is malformed or cannot be decoded.
+        """
+        audio_format = audio_item.get("format") or self._requested_audio_format
+        samples = audio_item.get("audio_samples")
+        seconds = audio_item.get("audio_seconds")
+        rate = audio_item.get("sample_rate") or self._output_sample_rate_hint
+        channels = audio_item.get("channels") or self._output_channels_hint
+
+        if samples is None or seconds is None:
+            layout = _pcm16_layout(audio_item["data"], audio_format, rate, channels)
+            if layout is not None:
+                rate, channels, _, frames = layout
+                samples = frames
+                seconds = frames / rate
+            elif audio_format in ("pcm", "pcm16"):
+                audio_len = len(audio_item["data"])
+                pcm_len = 2 * (channels or 1)
+                if (audio_len - int(audio_len / pcm_len) * pcm_len) > 0:
+                    raise ValueError(
+                        "[UNUSABLE_BACKEND_RESPONSE] incomplete PCM16 frame"
+                    )
+            else:
+                try:
+                    decoded, rate, seconds = decode_audio_with_metadata(
+                        audio_item["data"]
+                    )
+                except Exception as exc:
+                    raise ValueError(
+                        "[UNUSABLE_BACKEND_RESPONSE] chat audio decoding failed"
+                    ) from exc
+                samples = int(decoded.shape[-1])
+                channels = int(decoded.shape[0]) if decoded.ndim > 1 else 1
+
+        if samples == 0 or seconds == 0:
+            raise ValueError("[UNUSABLE_BACKEND_RESPONSE] empty chat audio packet")
+
+        return audio_format, samples, seconds, rate, channels
 
     @staticmethod
     def _build_tool_response_messages(
@@ -1071,6 +1554,44 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             )
         return messages
 
+    def _audio_history_content(
+        self, items: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """
+        Convert generated audio packets into replayable content parts.
+
+        :param items: Audio packets belonging to one assistant choice.
+        :return: Input-audio content parts preserving packet order.
+        :raises ValueError: If raw PCM lacks the layout needed for replay.
+        """
+        columns: list[dict[str, Any]] = []
+        for item in items:
+            data = item["data"]
+            audio_format = item.get("format") or "wav"
+            if audio_format in ("pcm", "pcm16"):
+                rate = item.get("sample_rate")
+                channels = item.get("channels")
+                if (
+                    type(rate) is not int
+                    or rate <= 0
+                    or type(channels) is not int
+                    or channels <= 0
+                ):
+                    raise ValueError(
+                        "Cannot replay PCM audio without sample rate and channels"
+                    )
+                buffer = io.BytesIO()
+                with wave.open(buffer, "wb") as writer:
+                    writer.setnchannels(channels)
+                    writer.setsampwidth(2)
+                    writer.setframerate(rate)
+                    writer.writeframes(data)
+                data = buffer.getvalue()
+                audio_format = "wav"
+            columns.append({"audio": data, "format": audio_format})
+
+        return self._format_prompts(columns, "audio_column")
+
     def _build_turn_messages(  # noqa: C901
         self,
         req: GenerationRequest,
@@ -1142,7 +1663,55 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                         content = wrapped + content
                     messages.append({"role": "assistant", "content": content})
 
+        if res is not None and not res.text:
+            self._append_audio_content(messages, res)
+
         return messages
+
+    def _append_audio_content(
+        self,
+        messages: list[dict[str, Any]],
+        response: GenerationResponse,
+    ) -> None:
+        """
+        Append generated audio to the assistant message.
+        """
+        audio_items = [
+            item
+            for item in response.output_media or []
+            if item.get("modality") == "audio"
+        ]
+        if not audio_items:
+            return
+
+        choice_index = audio_items[0].get("choice_index", 0)
+        audio_items = [
+            item for item in audio_items if item.get("choice_index", 0) == choice_index
+        ]
+
+        if messages and messages[-1]["role"] == "assistant":
+            assistant = messages[-1]
+        else:
+            assistant = {"role": "assistant", "content": None}
+            messages.append(assistant)
+
+        transcripts: list[str] = []
+        for item in audio_items:
+            transcript = item.get("transcript")
+            if isinstance(transcript, str) and transcript:
+                transcripts.append(transcript)
+
+        if transcripts:
+            assistant["content"] = (assistant.get("content") or "") + "".join(
+                transcripts
+            )
+            return
+
+        content = self._audio_history_content(audio_items)
+        existing_content = assistant.get("content")
+        if existing_content:
+            content.insert(0, {"type": "text", "text": existing_content})
+        assistant["content"] = content
 
     def format(  # noqa: C901, PLR0912, PLR0915
         self,
@@ -1218,6 +1787,16 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # Inject tool definitions and apply tool-call-specific overrides.
         self._apply_tool_call_overrides(arguments.body, data)
 
+        self._output_sample_rate_hint = kwargs.get("audio_output_sample_rate")
+        self._output_channels_hint = kwargs.get("audio_output_channels")
+        self._requested_audio_format = "wav"
+        if isinstance(arguments.body, dict):
+            audio_settings = arguments.body.get("audio")
+            if isinstance(audio_settings, dict):
+                audio_format = audio_settings.get("format")
+                if isinstance(audio_format, str):
+                    self._requested_audio_format = audio_format
+
         _require_request_payload(
             arguments,
             endpoint="/v1/chat/completions",
@@ -1247,16 +1826,43 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         :return: Standardized GenerationResponse with extracted content and metrics
         """
         choices, usage = self.extract_choices_and_usage(response)
-        choice: dict[str, dict] = choices[0] if choices else {}
-        message = choice.get("message", {})
-        text = message.get("content")
-        reasoning_text = (
-            message.get("reasoning") or message.get("reasoning_content") or None
-        )
-        raw_tool_calls = message.get("tool_calls")
-        if text is None and not raw_tool_calls:
-            text = ""  # Edge case: null content and no tools
+
+        text: str | None = None
+        reasoning_text: str | None = None
+        raw_tool_calls: list[dict] | None = None
+        output_media: list[dict[str, Any]] = []
+
+        for choice in choices:
+            message = choice.get("message", {})
+            content_text, content_media = self._parse_output_media_from_content(
+                message.get("content")
+            )
+            if text is None:
+                text = content_text
+            output_media.extend(content_media)
+            if reasoning_text is None:
+                reasoning_text = (
+                    message.get("reasoning") or message.get("reasoning_content") or None
+                )
+            if raw_tool_calls is None:
+                raw_tool_calls = message.get("tool_calls")
+
+            audio_parser = ModalityParserRegistry.create("audio")
+            if (
+                audio_parser is not None
+                and (item := audio_parser.parse_dedicated_field(message.get("audio")))
+                is not None
+            ):
+                _apply_audio_metadata(item, choice.get("audio_metadata"))
+                item["choice_index"] = choice.get("index", 0)
+                output_media.append(item)
+
+        if text is None and not raw_tool_calls and not output_media:
+            text = ""  # Edge case: null content, no tools, no media
         input_metrics, output_metrics = self.extract_metrics(usage, text)
+
+        if output_media:
+            self._augment_media_output_metrics(output_metrics, output_media)
 
         tool_calls: list[ToolCall] | None = None
         if raw_tool_calls:
@@ -1265,16 +1871,26 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             output_metrics, len(tool_calls) if tool_calls else 0, text
         )
 
+        # if audio_only case - verify that text metrics reflect this
+        audio_only = bool(output_media) and not (text or reasoning_text or tool_calls)
+        if audio_only:
+            text = None
+            output_metrics.text_tokens = None
+            output_metrics.text_words = None
+            output_metrics.text_characters = None
+
         return GenerationResponse(
             request_id=request.request_id,
             request_args=arguments.model_dump_json(),
             response_id=response.get("id"),  # use vLLM ID if available
             text=text,
+            use_request_output_metrics=not audio_only,
             reasoning_text=reasoning_text,
             tool_calls=tool_calls,
             input_metrics=input_metrics,
             output_metrics=output_metrics,
             response_metrics=self.response_metrics,
+            output_media=output_media or None,
         )
 
     def add_streaming_line(self, line: str) -> int | None:
@@ -1288,29 +1904,62 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         :param line: Raw SSE line from the streaming response
         :return: 1 if content was extracted, 0 if line ignored, None if done
         """
+
+        self._last_iteration_had_audio = False
         if not (data := self.extract_line_data(line)):
             return None if data is None else 0
 
         if "id" in data and self.streaming_response_id is None:
             self.streaming_response_id = data["id"]
 
-        updated = False
         # Tracks whether this iteration produced user-visible content (not
         # reasoning-only). Used by the HTTP layer to set TTFOT timing.
+        updated = False
         had_content = False
         choices, usage = self.extract_choices_and_usage(data)
-        choice: dict[str, dict] = choices[0] if choices else {}
-        delta = choice.get("delta", {}) if choices else {}
+
+        for choice in choices:
+            audio_parser = ModalityParserRegistry.create("audio")
+            choice_updated, choice_had_content = self._process_streaming_choice(
+                data, choice, audio_parser
+            )
+            updated |= choice_updated
+            had_content |= choice_had_content
+
+        if usage:
+            self.streaming_usage = usage
+
+        # Only update the flag when we processed a token-bearing iteration;
+        # non-updating lines should not reset the flag.
+        if updated:
+            self._last_iteration_had_content = had_content
+        return 1 if updated else 0
+
+    def _process_streaming_choice(
+        self,
+        data: dict[str, Any],
+        choice: dict[str, Any],
+        audio_parser: ModalityOutputParser | None,
+    ) -> tuple[bool, bool]:
+        """
+        Process one choice delta and return its update and content flags.
+        """
+        updated = False
+        had_content = False
+        index = choice.get("index", 0)
+        delta = choice.get("delta") or {}
 
         # Reasoning tokens trigger TTFT (updated=True) but are not
         # considered "content" for the TTFOT metric.
         if reasoning := (delta.get("reasoning") or delta.get("reasoning_content")):
             self.streaming_reasoning_texts.append(reasoning)
             updated = True
-        if content := delta.get("content"):
-            self.streaming_texts.append(content)
-            updated = True
-            had_content = True
+
+        content_updated, content_had_content = self._process_streaming_choice_content(
+            data, choice, index, delta, audio_parser
+        )
+        updated |= content_updated
+        had_content |= content_had_content
 
         # Accumulate streamed tool_calls deltas.  Each tool call may be split
         # across multiple chunks; we reassemble by ``index``.
@@ -1321,14 +1970,95 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             updated = True
             had_content = True
 
-        if usage:
-            self.streaming_usage = usage
+        return updated, had_content
 
-        # Only update the flag when we processed a token-bearing iteration;
-        # non-updating lines should not reset the flag.
-        if updated:
-            self._last_iteration_had_content = had_content
-        return 1 if updated else 0
+    def _process_streaming_choice_content(
+        self,
+        data: dict[str, Any],
+        choice: dict[str, Any],
+        index: int,
+        delta: dict[str, Any],
+        audio_parser: ModalityOutputParser | None,
+    ) -> tuple[bool, bool]:
+        """
+        Process text and audio content for one choice.
+        """
+
+        content = delta.get("content")
+        content_was_audio = False
+        if (
+            data.get("modality") == "audio"
+            and content
+            and isinstance(content, str)
+            and audio_parser is not None
+        ):
+            audio_item = audio_parser.parse_dedicated_field({"data": content})
+            if audio_item is not None:
+                _apply_audio_metadata(audio_item, choice.get("audio_metadata"))
+                self._append_streaming_media_item(index, audio_item)
+                content_was_audio = True
+
+        content_updated = False
+        choice_had_content = False
+        if not content_was_audio:
+            content_text, content_media = self._parse_output_media_from_content(content)
+            if content_text:
+                self.streaming_texts.append(content_text)
+                content_updated = True
+                choice_had_content = True
+
+            for media_item in content_media:
+                if media_item.get("modality") == "audio":
+                    _apply_audio_metadata(media_item, choice.get("audio_metadata"))
+                self._append_streaming_media_item(index, media_item)
+
+            if audio_parser is not None:
+                self._process_streaming_audio_delta(
+                    delta,
+                    choice,
+                    index,
+                    audio_parser,
+                )
+
+        return content_updated, choice_had_content
+
+    def _process_streaming_audio_delta(
+        self,
+        delta: dict[str, Any],
+        choice: dict[str, Any],
+        index: int,
+        audio_parser: ModalityOutputParser,
+    ) -> None:
+        """
+        Capture audio metadata and append a payload if delta has one.
+        """
+        audio_data = delta.get("audio")
+        if isinstance(audio_data, dict):
+            audio_id = audio_data.get("id")
+            if isinstance(audio_id, str) and audio_id:
+                self.streaming_audio_ids[index] = audio_id
+
+            transcript = audio_data.get("transcript")
+            if isinstance(transcript, str) and transcript:
+                self.streaming_audio_transcripts.setdefault(index, []).append(
+                    transcript
+                )
+
+            expiration_time = audio_data.get("expires_at")
+            if isinstance(expiration_time, (int, float)) and not isinstance(
+                expiration_time, bool
+            ):
+                self.streaming_audio_expirations[index] = expiration_time
+
+            # Metadata-only and transcript-only updates are valid events,
+            # but they do not contain an audio payload to parse.
+            if not audio_data.get("data"):
+                audio_data = None
+
+        audio_item = audio_parser.parse_dedicated_field(audio_data)
+        if audio_item is not None:
+            _apply_audio_metadata(audio_item, choice.get("audio_metadata"))
+            self._append_streaming_media_item(index, audio_item)
 
     def _accumulate_tool_call_delta(self, tc_delta: dict[str, Any]) -> None:
         """Merge a single streaming tool_call delta into accumulated state.
@@ -1358,6 +2088,49 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if fn_args := fn_delta.get("arguments"):
             tc.function.arguments += fn_args
 
+    def _add_streaming_audio_metadata(
+        self, output_media: list[dict[str, Any]]
+    ) -> list[str]:
+        """
+        Attach streamed audio metadata (IDs, expiration times, transcripts)
+        to the packets.
+
+        :param output_media: Compiled output media items.
+        :return: Transcripts for choices that had no audio packet.
+        """
+        audio_items_by_choice: dict[int, list[dict[str, Any]]] = {}
+        for item in output_media:
+            if item.get("modality") == "audio":
+                choice_index = item.get("choice_index", 0)
+                audio_items_by_choice.setdefault(choice_index, []).append(item)
+
+        for choice_index, audio_items in audio_items_by_choice.items():
+            audio_id = self.streaming_audio_ids.get(choice_index)
+            expiration_time = self.streaming_audio_expirations.get(choice_index)
+
+            for item in audio_items:
+                if audio_id is not None and not item.get("id"):
+                    item["id"] = audio_id
+                if expiration_time is not None and (
+                    audio_id is None or item.get("id") == audio_id
+                ):
+                    item["expires_at"] = expiration_time
+
+            transcript = "".join(self.streaming_audio_transcripts.get(choice_index, []))
+            if transcript:
+                # The response-level transcript spans the audio packets; store
+                # it once so replay does not duplicate it.
+                for item in audio_items:
+                    item.pop("transcript", None)
+                audio_items[0]["transcript"] = transcript
+
+        return [
+            transcript
+            for choice_index, parts in self.streaming_audio_transcripts.items()
+            if choice_index not in audio_items_by_choice
+            and (transcript := "".join(parts))
+        ]
+
     def compile_streaming(
         self, request: GenerationRequest, arguments: GenerationRequestArguments
     ) -> GenerationResponse:
@@ -1365,9 +2138,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         Compile accumulated streaming chat completion content into a final response.
 
         :param request: Original generation request
+        :param arguments: Additional arguments for complete request definition
         :return: Standardized GenerationResponse with concatenated content and metrics
         """
-        return _compile_streaming_response(
+        response = _compile_streaming_response(
             request,
             arguments,
             self.streaming_texts,
@@ -1378,6 +2152,81 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             streaming_reasoning_texts=self.streaming_reasoning_texts,
             response_metrics=self.response_metrics,
         )
+
+        # Each upstream audio packet is independently encoded. Preserve
+        # packet order and its own valid container instead of joining WAVs.
+        output_media: list[dict[str, Any]] = [
+            item for _, item, _ in self.streaming_media_packets
+        ]
+        unattached_transcripts = self._add_streaming_audio_metadata(output_media)
+        if unattached_transcripts and not response.text:
+            transcript_text = "".join(unattached_transcripts)
+            response.text = transcript_text
+            _, response.output_metrics = self.extract_metrics(
+                self.streaming_usage, transcript_text
+            )
+
+        if output_media:
+            response.output_media = output_media
+            self._augment_media_output_metrics(response.output_metrics, output_media)
+            if not (response.text or response.reasoning_text or response.tool_calls):
+                response.text = None
+                response.use_request_output_metrics = False
+                response.output_metrics.text_tokens = None
+                response.output_metrics.text_words = None
+                response.output_metrics.text_characters = None
+
+        if self._stream_complete:
+            by_choice: dict[int, list[tuple[dict[str, Any], float | None]]] = {}
+            for index, item, arrival in self.streaming_media_packets:
+                if item.get("modality") == "audio":
+                    by_choice.setdefault(index, []).append((item, arrival))
+
+            continuity: list[AudioContinuityStats] = []
+            for packets in by_choice.values():
+                first_packet = packets[0][0]
+                sample_rate = first_packet.get("sample_rate")
+                channels = first_packet.get("channels")
+                if (
+                    type(sample_rate) is not int
+                    or sample_rate <= 0
+                    or type(channels) is not int
+                    or channels <= 0
+                    or any(
+                        arrival is None
+                        or item.get("sample_rate") != sample_rate
+                        or item.get("channels") != channels
+                        or type(item.get("audio_samples")) is not int
+                        or item["audio_samples"] <= 0
+                        for item, arrival in packets
+                    )
+                ):
+                    continuity = []
+                    break
+
+                arrival_times: list[float] = [
+                    cast("float", time_s) for _, time_s in packets
+                ]
+                chunks_bytes: list[int] = [
+                    item["audio_samples"] * channels * 2 for item, _ in packets
+                ]
+                continuity.append(
+                    compute_audio_continuity(
+                        chunk_arrival_times_s=arrival_times,
+                        chunk_bytes=chunks_bytes,
+                        sample_rate=sample_rate,
+                        channels=channels,
+                    )
+                )
+
+            if continuity:
+                response.output_metrics.audio_underrun_seconds = max(
+                    result.max_underrun_seconds for result in continuity
+                )
+                response.output_metrics.audio_continuity_ok = int(
+                    all(result.is_continuous for result in continuity)
+                )
+        return response
 
 
 @OpenAIRequestHandlerFactory.register(
@@ -1504,44 +2353,722 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
                 "payload"
             )
 
+    @staticmethod
+    def _align_audio_usage_for_chat_completions(  # noqa: C901
+        audio_usage: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Align Audio/Realtime usage fields with the Chat Completions usage metrics.
+
+        :param audio_usage: Usage data using Audio / Realtime keys.
+        :return: A copy with Chat Completions keys added where needed.
+        :raises ValueError: If keys aliases are conflicting or usage details are
+                invalid.
+        """
+        chat_usage = dict(audio_usage)
+
+        for audio_key, chat_key in (
+            ("input_tokens", "prompt_tokens"),
+            ("output_tokens", "completion_tokens"),
+        ):
+            audio_value = audio_usage.get(audio_key)
+            chat_value = audio_usage.get(chat_key)
+            # check that values are not both exist and contradict
+            if (
+                audio_value is not None
+                and chat_value is not None
+                and audio_value != chat_value
+            ):
+                raise ValueError(
+                    "[UNUSABLE_BACKEND_RESPONSE] conflicting usage fields "
+                    f"'{audio_key}' and '{chat_key}'"
+                )
+
+            if chat_value is None and audio_value is not None:
+                chat_usage[chat_key] = audio_value
+
+        for audio_key, chat_key, chat_text_key in (
+            ("input_token_details", "prompt_tokens_details", "prompt_tokens"),
+            ("output_token_details", "completion_tokens_details", "completion_tokens"),
+        ):
+            audio_details = audio_usage.get(audio_key)
+            chat_details = audio_usage.get(chat_key)
+
+            if audio_details is not None and not isinstance(audio_details, dict):
+                raise ValueError(
+                    f"[UNUSABLE_BACKEND_RESPONSE] invalid usage details '{audio_key}'"
+                )
+            if chat_details is not None and not isinstance(chat_details, dict):
+                raise ValueError(
+                    f"[UNUSABLE_BACKEND_RESPONSE] invalid usage details '{chat_key}'"
+                )
+            if audio_details is None:
+                continue
+
+            aligned_details = dict(chat_details or {})
+            for key, value in audio_details.items():
+                chat_detail_key = chat_text_key if key == "text_tokens" else key
+                chat_value = aligned_details.get(chat_detail_key)
+
+                if value is not None and chat_value is not None and value != chat_value:
+                    raise ValueError(
+                        "[UNUSABLE_BACKEND_RESPONSE] conflicting usage fields "
+                        f"'{audio_key}.{key}' and '{chat_key}.{chat_detail_key}'"
+                    )
+
+                if chat_value is None and value is not None:
+                    aligned_details[chat_detail_key] = value
+
+            chat_usage[chat_key] = aligned_details
+
+        return chat_usage
+
     def extract_metrics(
-        self, usage: dict[str, int | dict[str, int]] | None, text: str | None
+        self, usage: dict[str, Any] | None, text: str | None
     ) -> tuple[UsageMetrics, UsageMetrics]:
         """
-        Extract input and output usage metrics from audio API response usage data.
+        Extract input and output usage metrics using the parent's metrics extractor.
+        Handle input audio duration and text/audio token counts without double-counting.
+        Input text/audio counts remain unknown if they cannot be determined from the
+        reported usage.
 
-        Handles audio-specific metrics including processing duration and audio tokens
-        in addition to standard text token counts.
-
-        :param usage: Usage data dictionary from audio API response
-        :param text: Generated text for calculating word and character counts.
-            None means text is not applicable (metrics will be None);
-            empty string means text was applicable but empty (metrics will be 0).
-        :return: Tuple of input_metrics and output_metrics as UsageMetrics objects
+        :param usage: Prompt/completion token usage or duration-only audio usage
+        :param text: Generated text, or None when text is not applicable
+        :return: Separate input text/audio metrics and output text metrics
+        :raises ValueError: If input token counts are negative or exceed the total.
         """
-        if text is None:
-            # text not applicable (e.g. tool-call-only) — exclude from aggregation
-            text_words = None
-            text_chars = None
-        else:
-            text_words = len(text.split())
-            text_chars = len(text)
+        chat_usage = (
+            self._align_audio_usage_for_chat_completions(usage) if usage else usage
+        )
+        input_metrics, output_metrics = super().extract_metrics(chat_usage, text)
+        if not usage or chat_usage is None:
+            return input_metrics, output_metrics
 
-        if not usage:
-            return UsageMetrics(), UsageMetrics(
-                text_words=text_words,
-                text_characters=text_chars,
+        input_details = chat_usage.get("prompt_tokens_details") or {}
+        output_details = chat_usage.get("completion_tokens_details") or {}
+        input_total_tokens = chat_usage.get("prompt_tokens")
+
+        # The parent's text fallback cannot classify an unsplit ASR input total.
+        if input_details.get("prompt_tokens") is None and (
+            input_total_tokens is None or input_metrics.audio_tokens is None
+        ):
+            input_metrics.text_tokens = None
+
+        if input_metrics.audio_tokens is None and input_total_tokens is not None:
+            if input_metrics.text_tokens is not None:
+                input_metrics.audio_tokens = (
+                    input_total_tokens - input_metrics.text_tokens
+                )
+            elif input_total_tokens == 0:
+                input_metrics.text_tokens = 0
+                input_metrics.audio_tokens = 0
+
+        input_counts = (
+            input_metrics.text_tokens,
+            input_metrics.audio_tokens,
+        )
+        if any(count is not None and count < 0 for count in input_counts) or (
+            input_total_tokens is not None
+            and sum(count for count in input_counts if count is not None)
+            > input_total_tokens
+        ):
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] input token counts are negative "
+                "or exceed the reported prompt_tokens total"
             )
 
-        usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
+        if chat_usage.get("seconds") is not None:
+            input_metrics.audio_seconds = chat_usage["seconds"]
 
-        return UsageMetrics(
-            audio_tokens=(usage_metrics.get("prompt_tokens") or 0),
-        ), UsageMetrics(
-            text_tokens=(usage_metrics.get("completion_tokens") or 0),
-            text_words=text_words,
-            text_characters=text_chars,
+        # Duration-only usage must not inherit the parent's missing-count zero.
+        if (
+            output_details.get("completion_tokens") is None
+            and chat_usage.get("completion_tokens") is None
+        ):
+            output_metrics.text_tokens = None
+
+        return input_metrics, output_metrics
+
+
+@OpenAIRequestHandlerFactory.register("/v1/audio/speech")
+class SpeechRequestHandler(OpenAIRequestHandler):
+    """
+    Request handler for OpenAI / vLLM-Omni text-to-speech (TTS), for
+    /v1/audio/speech OpenAI endpoint.
+    Response shape depends on streaming mode:
+      - Non-streaming (default, stream=false and no stream_format): raw binary audio;
+        usage from response headers (x-vllm-omni-*),  via set_response_headers().
+      - SSE streaming (with stream=true, the vLLM-Omni streaming default):
+        speech.audio.delta/.done/.error text events -- reuses the existing
+        line-oriented streaming loop with the underneath audio payload.
+      - Raw byte streaming (stream_format="audio"): raw PCM/WAV bytes
+
+      Response modes:
+      - Non-streaming (stream=false and no stream_format): complete binary audio.
+      - SSE (stream=true or stream_format="sse"): speech.audio.* events.
+      - Raw audio (stream_format="audio"): streamed PCM or WAV bytes.
+    """
+
+    raw_response: ClassVar[bool] = True
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.raw_streaming = False
+        self._response_headers: dict[str, str] = {}
+        self._last_iteration_had_audio = False
+        self._output_sample_rate_hint: int | None = None
+        self._output_channels_hint: int | None = None
+        self._response_sample_rate: int | None = None
+        self._response_channels: int | None = None
+        self._requested_audio_format = "wav"
+        self._streaming_arrival_time: float | None = None
+        self._stream_complete = False
+        self._streaming_response = False
+        self._streamed_audio_header = b""
+        self._streamed_audio_bytes_seen = 0
+        self.streaming_audio_chunks: list[bytes] = []
+        self.streaming_audio_arrivals: list[float | None] = []
+        self.streaming_audio_format: str | None = None
+        self.streaming_usage: dict[str, Any] | None = None
+
+    @property
+    def last_iteration_had_content(self) -> bool:
+        """
+        :return: False because audio has a separate flag.
+        """
+        return False
+
+    @property
+    def last_iteration_had_audio(self) -> bool:
+        """
+        Return whether the last chunk contained audio.
+        :return: True if at least one additional PCM chunk arrived.
+        """
+        return self._last_iteration_had_audio
+
+    def set_response_headers(self, headers: Mapping[str, str]) -> None:
+        """
+        Store usage headers and server's PCM layout.
+        :param headers: HTTP response headers.
+        :return: None.
+        """
+        self._response_headers = {key.lower(): value for key, value in headers.items()}
+        self._update_audio_layout(
+            self._response_headers.get("x-audio-sample-rate"),
+            self._response_headers.get("x-audio-channels"),
         )
+
+    def _update_audio_layout(self, sample_rate: Any, channels: Any) -> None:
+        """
+        Merge server layout into the active layout.
+
+        :param sample_rate: Sample rate from raw header or SSE event (or None).
+        :param channels: Number of channels from raw header or SSE event (or None).
+        :return: None.
+        :raises ValueError: If invalid value or changes inside the response.
+        """
+        values: list[int | None] = []
+        for name, raw, current in (
+            ("sample_rate", sample_rate, self._response_sample_rate),
+            ("channels", channels, self._response_channels),
+        ):
+            if raw is None:
+                values.append(current)
+                continue
+            value = int(raw) if isinstance(raw, str) and raw.isdigit() else raw
+            if type(value) is not int or value <= 0:
+                raise ValueError(f"[UNUSABLE_BACKEND_RESPONSE] invalid audio {name}")
+            if current is not None and value != current:
+                raise ValueError(f"[UNUSABLE_BACKEND_RESPONSE] audio {name} changed")
+            values.append(value)
+
+        self._response_sample_rate, self._response_channels = values
+
+    def set_streaming_arrival_time(self, timestamp_s: float) -> None:
+        """
+        Update the arrival timestamp.
+        :param timestamp_s: Unix timestamp of the current stream item.
+        :return: None.
+        """
+        self._streaming_arrival_time = timestamp_s
+
+    def mark_stream_complete(self) -> None:
+        """
+        Record successful EOF for a raw audio stream.
+        SSE completion is recorded only by speech.audio.done.
+        :return: None.
+        """
+        if self.raw_streaming:
+            self._stream_complete = True
+
+    def format(
+        self,
+        data: GenerationRequest,
+        history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
+        **kwargs,
+    ) -> GenerationRequestArguments:
+        """
+        Format text synthesis and optional voice-cloning inputs.
+
+        :param data: Request columns and requested generation limits.
+        :param history: Unsupported prior conversation turns.
+        :param kwargs: Model, streaming options, layout hints, and extras.
+        :return: Speech request arguments.
+        :raises ValueError: If history or reference columns are invalid.
+        """
+        if history:
+            raise ValueError("SpeechRequestHandler does not support multiturn.")
+
+        arguments = GenerationRequestArguments()
+        arguments.body = {}
+
+        self._output_sample_rate_hint = kwargs.get("audio_output_sample_rate")
+        self._output_channels_hint = kwargs.get("audio_output_channels")
+        if kwargs.get("model") is not None:
+            arguments.body["model"] = kwargs["model"]
+
+        text_parts = [
+            *data.columns.get("prefix_column", []),
+            *data.columns.get("text_column", []),
+        ]
+        if text_parts:
+            arguments.body["input"] = " ".join(text_parts)
+
+        # Voice cloning
+        self._format_reference_audio(arguments, data)
+
+        max_tokens = data.output_metrics.text_tokens
+        if max_tokens is None:
+            max_tokens = kwargs.get("max_tokens")
+        if max_tokens is not None:
+            arguments.body["max_new_tokens"] = max_tokens
+
+        ref_text_columns = data.columns.get("ref_text_column", [])
+        if ref_text_columns:
+            if len(ref_text_columns) != 1 or not isinstance(ref_text_columns[0], str):
+                raise ValueError(
+                    "ref_text_column must contain one reference transcript"
+                )
+            arguments.body["ref_text"] = ref_text_columns[0]
+
+        if kwargs.get("extras"):
+            arguments.model_combine(
+                kwargs["extras"]
+            )  # task_type, voice, language, etc.
+
+        self._configure_speech_streaming(arguments, kwargs)
+        return arguments
+
+    @staticmethod
+    def _format_reference_audio(
+        arguments: GenerationRequestArguments,
+        data: GenerationRequest,
+    ) -> None:
+        """
+        Add voice-cloning reference audio from the audio_column.
+        :param arguments: Request arguments to be filled.
+        :param data: Request columns containing reference audio.
+        :return: None.
+        :raises ValueError: If a reference item has no audio bytes.
+        """
+        # Voice cloning: reuse audio_column as the reference-audio input.
+        ref_audio_columns = data.columns.get("audio_column", [])
+        references: list[str] = []
+        for ref_item in ref_audio_columns:
+            audio = ref_item.get("audio")
+            if not isinstance(audio, bytes) or not audio:
+                raise ValueError("Reference audio must contain non-empty bytes")
+            encoded = base64.b64encode(audio).decode("utf-8")
+            fmt = ref_item.get("format") or "wav"
+            references.append(f"data:audio/{fmt};base64,{encoded}")
+
+        if references:
+            body = arguments.body
+            if body is None:
+                body = {}
+                arguments.body = body
+            body["ref_audio"] = references[0] if len(references) == 1 else references
+
+    def _configure_speech_streaming(
+        self,
+        arguments: GenerationRequestArguments,
+        kwargs: dict[str, Any],
+    ) -> None:
+        """
+        Set streaming options and the audio format.
+        Streaming mode selection:
+            stream_format="audio" -> raw bytes streaming;
+            stream=True (and no stream_format or "sse" stream_format) -> SSE
+
+        :param arguments: Request arguments being built.
+        :param kwargs: Additional speech request options.
+        :return: None.
+        """
+        body = arguments.body or {}
+        self._requested_audio_format = body.get("response_format") or "wav"
+        stream_format = body.get("stream_format")
+        self.raw_streaming = stream_format == "audio"
+
+        if stream_format in ("audio", "sse"):
+            arguments.stream = True
+            if stream_format == "sse":
+                body["stream"] = True
+        elif "stream" in body:
+            arguments.stream = bool(body["stream"])
+        elif arguments.stream is True or (
+            arguments.stream is None and kwargs.get("stream")
+        ):
+            arguments.stream = True
+            body["stream"] = True
+
+    @staticmethod
+    def extract_line_data(line: str) -> dict[str, Any] | None:
+        if not line or not (line := line.strip()) or not line.startswith("data:"):
+            return {}
+        payload = line[len("data:") :].strip()
+        if payload == "[DONE]":
+            return None
+        data = json.loads(payload)
+        if data.get("type") != "speech.audio.error":
+            _check_streaming_error(data)
+        return data
+
+    def _add_chunk(self, chunk: bytes, audio_format: str) -> None:
+        """
+        Append an audio bytes' chunk and update the payload.
+        :param chunk: Non-empty encoded audio chunk.
+        :param audio_format: Format of the accumulated response.
+        :return: None.
+        """
+        previous_bytes = self._streamed_audio_bytes_seen
+        self.streaming_audio_chunks.append(chunk)
+        self.streaming_audio_arrivals.append(self._streaming_arrival_time)
+        self._streamed_audio_bytes_seen += len(chunk)
+
+        # Keep encoded chunks, but don't interpret them as pcm for TTFP.
+        if audio_format not in ("pcm", "pcm16", "wav"):
+            self._last_iteration_had_audio = False
+            return
+
+        header_bytes = PCM_WAV_HEADER_SIZE if audio_format == "wav" else 0
+        channels = self._response_channels or self._output_channels_hint
+        if audio_format == "wav":
+            self._streamed_audio_header = (self._streamed_audio_header + chunk)[
+                :PCM_WAV_HEADER_SIZE
+            ]
+            if len(self._streamed_audio_header) < PCM_WAV_HEADER_SIZE:
+                self._last_iteration_had_audio = False
+                return
+
+            wav_layout = _pcm16_layout(
+                self._streamed_audio_header,
+                audio_format,
+                None,
+                None,
+            )
+            if wav_layout is None:
+                # Do not count container/header bytes as playable audio.
+                self._last_iteration_had_audio = False
+                return
+
+            channels = wav_layout[1]
+
+        if type(channels) is not int or channels <= 0:
+            self._last_iteration_had_audio = False
+            return
+
+        bytes_per_frame = PCM16_BYTES_PER_SAMPLE * channels
+        previous_frames = max(0, previous_bytes - header_bytes) // bytes_per_frame
+        current_frames = (
+            max(0, self._streamed_audio_bytes_seen - header_bytes) // bytes_per_frame
+        )
+        self._last_iteration_had_audio = current_frames > previous_frames
+
+    def _populate_audio_duration(
+        self,
+        output_metrics: UsageMetrics,
+        data: bytes,
+        audio_format: str,
+        arguments: GenerationRequestArguments,
+        complete: bool = True,
+    ) -> tuple[int, int, int, int] | None:
+        """
+        Populate audio sample and duration metrics when the layout is known.
+
+        Headerless PCM remains with unknown layout-dependent metrics when
+        no server metadata or configured layout hints are available. Encoded
+        containers are decoded after having the complete response.
+
+        :param output_metrics: Metrics updated in place.
+        :param data: Accumulated encoded audio or PCM16 bytes.
+        :param audio_format: Response audio format.
+        :param arguments: Request arguments containing optional layout hints.
+        :param complete: Whether all response bytes have been received.
+        :return: PCM16 layout, or None for other or unknown layouts.
+        :raises ValueError: If completed audio is malformed or cannot be decoded.
+        """
+        if not data:
+            return None
+
+        body = arguments.body or {}
+        sample_rate = (
+            self._response_sample_rate
+            or self._output_sample_rate_hint
+            or body.get("sample_rate")
+        )
+        channels = self._response_channels or self._output_channels_hint
+        layout = _pcm16_layout(data, audio_format, sample_rate, channels)
+        if layout is not None:
+            rate, _, _, frames = layout
+            output_metrics.audio_samples = frames
+            output_metrics.audio_seconds = frames / rate
+            return layout
+
+        if not complete:
+            return None
+
+        if audio_format in ("pcm", "pcm16"):
+            if len(data) % PCM16_BYTES_PER_SAMPLE:
+                raise ValueError("[UNUSABLE_BACKEND_RESPONSE] incomplete PCM16 sample")
+
+            if type(channels) is int and channels > 0:
+                bytes_per_frame = PCM16_BYTES_PER_SAMPLE * channels
+                if len(data) % bytes_per_frame:
+                    raise ValueError(
+                        "[UNUSABLE_BACKEND_RESPONSE] incomplete PCM16 frame"
+                    )
+
+            logger.warning(
+                "PCM speech output has no usable sample-rate/channel layout; "
+                "preserving audio bytes and leaving sample count and duration "
+                "unknown. Configure audio_output_sample_rate and "
+                "audio_output_channels to calculate them."
+            )
+            return None
+
+        try:
+            samples, _, duration = decode_audio_with_metadata(data)
+        except Exception as exc:
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] audio decoding failed"
+            ) from exc
+
+        output_metrics.audio_samples = int(samples.shape[-1])
+        output_metrics.audio_seconds = duration
+        return None
+
+    def compile_non_streaming(
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: bytes,
+    ) -> GenerationResponse:
+        """
+        Process a raw-bytes TTS response. Usage comes from
+        x-vllm-omni-{input,output,total,input-text,input-audio}-tokens
+        response headers (set via set_response_headers() before this call)
+        when present; falls back to None (not zero) when talking to a
+        server that doesn't set them, per design principle #1.
+        """
+        audio_format = (arguments.body or {}).get("response_format") or "wav"
+
+        def _hdr_int(name: str) -> int | None:
+            raw = self._response_headers.get(name)
+            return int(raw) if raw is not None and raw.isdigit() else None
+
+        input_metrics = UsageMetrics(
+            text_tokens=_hdr_int("x-vllm-omni-input-text-tokens"),
+            audio_tokens=_hdr_int("x-vllm-omni-input-audio-tokens"),
+        )
+        output_metrics = UsageMetrics(
+            audio_tokens=_hdr_int("x-vllm-omni-output-tokens"),
+            audio_bytes=len(response),
+        )
+
+        self._populate_audio_duration(output_metrics, response, audio_format, arguments)
+        if audio_format not in ("pcm", "pcm16") and (
+            output_metrics.audio_seconds is None
+        ):
+            raise ValueError("[UNUSABLE_BACKEND_RESPONSE] audio decoding has failed.")
+
+        return GenerationResponse(
+            request_id=request.request_id,
+            request_args=arguments.model_dump_json(),
+            text=None,
+            use_request_output_metrics=False,
+            output_media=[
+                {"modality": "audio", "data": response, "format": audio_format}
+            ],
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
+        )
+
+    def add_streaming_line(self, line: str) -> int | None:
+        """
+        Parse a single speech.audio.* SSE line. Reused unmodified line-oriented
+        loop -- the payload is text (base64 JSON), so this is not
+        the raw-byte streaming path (that's add_streaming_chunk(), below).
+        """
+
+        self._last_iteration_had_audio = False
+        if not (data := self.extract_line_data(line)):
+            return None if data is None else 0
+
+        event_type = data.get("type")
+        if event_type == "speech.audio.delta":
+            self._update_audio_layout(data.get("sample_rate"), data.get("channels"))
+            encoded = data.get("audio")
+            if not encoded:
+                return 0
+            try:
+                chunk = base64.b64decode(encoded, validate=True)
+            except (binascii.Error, ValueError, TypeError) as exc:
+                raise ValueError(
+                    f"[UNUSABLE_BACKEND_RESPONSE] invalid speech audio delta: {exc}"
+                ) from exc
+            if not chunk:
+                return 0
+            self.streaming_audio_format = (
+                data.get("response_format") or self.streaming_audio_format
+            )
+            self._add_chunk(
+                chunk,
+                self.streaming_audio_format or self._requested_audio_format,
+            )
+            return 0
+
+        if event_type == "speech.audio.done":
+            self.streaming_usage = data.get("usage")
+            self._stream_complete = True
+            return None
+        if event_type == "speech.audio.error":
+            raise ValueError(
+                f"Streaming speech response returned an error: "
+                f"{data.get('error') or {}}"
+            )
+        return 0
+
+    def add_streaming_chunk(self, chunk: bytes) -> int | None:
+        """
+        Accumulate a raw speech chunk.
+        :param chunk: Audio bytes received from the HTTP stream.
+        :return: Zero because audio chunks are not counted as text-token.
+        """
+        if not chunk:
+            return 0
+        self._add_chunk(chunk, self._requested_audio_format)
+        return 0
+
+    def compile_streaming(
+        self, request: GenerationRequest, arguments: GenerationRequestArguments
+    ) -> GenerationResponse:
+        """
+        Compile the accumulated speech response.
+
+        :param request: Original generation request.
+        :param arguments: Original generation request.
+        :return: Audio response and available usage measurements.
+        """
+
+        self._streaming_response = True
+        audio_bytes = b"".join(self.streaming_audio_chunks)
+        # speech.audio.done's usage uses input_tokens/output_tokens naming,
+        # NOT prompt_tokens/completion_tokens -- deliberately not reusing
+        # TextCompletionsRequestHandler.extract_metrics() here, since that
+        # would silently record zero usage against the wrong keys.
+
+        audio_format = (
+            self.streaming_audio_format
+            or (arguments.body or {}).get("response_format")
+            or "wav"
+        )
+        usage = self.streaming_usage or {}
+        details = usage.get("input_token_details") or {}
+        input_metrics = UsageMetrics(
+            text_tokens=details.get("text_tokens"),
+            audio_tokens=details.get("audio_tokens"),
+        )
+        output_metrics = UsageMetrics(
+            audio_tokens=usage.get("output_tokens"),
+            audio_bytes=len(audio_bytes),
+        )
+        layout = self._populate_audio_duration(
+            output_metrics,
+            audio_bytes,
+            audio_format,
+            arguments,
+            complete=self._stream_complete,
+        )
+
+        if self._stream_complete and layout is not None:
+            sample_rate, channels, header_bytes, _ = layout
+            header_remaining = header_bytes
+            times: list[float] = []
+            sizes: list[int] = []
+            complete_timing = True
+            for chunk, arrival in zip(
+                self.streaming_audio_chunks,
+                self.streaming_audio_arrivals,
+                strict=True,
+            ):
+                skipped = min(len(chunk), header_remaining)
+                header_remaining -= skipped
+                pcm_bytes = len(chunk) - skipped
+                if pcm_bytes:
+                    if arrival is None:
+                        complete_timing = False
+                        break
+                    times.append(arrival)
+                    sizes.append(pcm_bytes)
+
+            if complete_timing and sizes:
+                continuity = compute_audio_continuity(
+                    times,
+                    sizes,
+                    sample_rate=sample_rate,
+                    channels=channels,
+                )
+                output_metrics.audio_underrun_seconds = continuity.max_underrun_seconds
+                output_metrics.audio_continuity_ok = int(continuity.is_continuous)
+
+        return GenerationResponse(
+            request_id=request.request_id,
+            request_args=arguments.model_dump_json(),
+            text=None,
+            use_request_output_metrics=False,
+            output_media=[
+                {
+                    "modality": "audio",
+                    "data": audio_bytes,
+                    "format": audio_format,
+                }
+            ],
+            input_metrics=input_metrics,
+            output_metrics=output_metrics,
+        )
+
+    def post_validation(self, response: GenerationResponse) -> None:
+        """
+        Reject responses with no generated audio bytes.
+
+        :param response: Compiled speech response.
+        :return: None.
+        :raises ValueError: If completion or usable audio is missing.
+        """
+        if self._streaming_response and not self._stream_complete:
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] speech stream ended "
+                "before speech.audio.done"
+            )
+
+        if (
+            not response.output_media
+            or not response.output_media[0].get("data")
+            or response.output_metrics.audio_samples == 0
+        ):
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] backend resolved with empty audio payload"
+            )
 
 
 @OpenAIWSRequestHandlerFactory.register("/v1/realtime")

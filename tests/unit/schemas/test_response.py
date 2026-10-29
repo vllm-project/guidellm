@@ -22,6 +22,37 @@ from guidellm.schemas import (
 )
 
 
+@pytest.mark.regression
+def test_audio_response_does_not_inherit_requested_text_metrics():
+    """Keep requested token caps out of measured generated audio statistics.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    request = GenerationRequest(output_metrics=UsageMetrics(text_tokens=100))
+    response = GenerationResponse(
+        request_id=request.request_id,
+        request_args=None,
+        use_request_output_metrics=False,
+        output_media=[{"modality": "audio", "data": b"\x00\x00"}],
+        output_metrics=UsageMetrics(audio_seconds=2, audio_rtf=1),
+    )
+    info = RequestInfo(
+        request_id=request.request_id,
+        status="completed",
+        timings=RequestTimings(request_start=10, request_end=14, resolve_end=14),
+    )
+
+    stats = response.compile_stats(request, info)
+
+    assert stats.output_media == response.output_media
+    assert stats.output_metrics.text_tokens is None
+    assert stats.time_per_output_token_ms is None
+    assert stats.inter_token_latency_ms is None
+    assert stats.audio_rtf == 1
+    assert stats.output_metrics.audio_rtf == 1
+
+
 class TestGenerationResponse:
     """Test cases for GenerationResponse model."""
 

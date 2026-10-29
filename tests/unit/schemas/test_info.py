@@ -17,6 +17,20 @@ from guidellm.schemas import (
 )
 
 
+@pytest.mark.regression
+def test_request_timings_track_first_and_last_audio_events():
+    """Store the first playable audio packet and last audio event times.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    timings = RequestTimings(first_audio_iteration=4.25, last_audio_iteration=5.5)
+
+    assert timings.first_audio_iteration == 4.25
+    assert timings.last_audio_iteration == 5.5
+    assert timings.model_dump()["first_audio_iteration"] == 4.25
+
+
 class TestRequestTimings:
     """Test cases for RequestTimings model."""
 

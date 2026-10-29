@@ -10,10 +10,32 @@ from pydantic import ValidationError
 from guidellm.schemas import (
     GenerativeRequestStats,
     RequestInfo,
+    RequestTimings,
     StandardBaseDict,
     UsageMetrics,
 )
 from tests.unit.testing_utils import async_timeout
+
+
+@pytest.mark.regression
+def test_audio_rtf_uses_measured_value_or_request_latency_fallback():
+    """Prefer an explicit audio RTF and derive it from request latency otherwise.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    timings = RequestTimings(request_start=1, request_end=5, resolve_end=5)
+    stats = GenerativeRequestStats(
+        request_id="audio-rtf",
+        info=RequestInfo(request_id="audio-rtf", status="completed", timings=timings),
+        input_metrics=UsageMetrics(),
+        output_metrics=UsageMetrics(audio_seconds=2),
+    )
+
+    assert stats.audio_rtf == 2
+
+    stats.output_metrics.audio_rtf = 0.5
+    assert stats.audio_rtf == 0.5
 
 
 class TestGenerativeRequestStats:

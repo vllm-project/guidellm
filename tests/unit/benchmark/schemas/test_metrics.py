@@ -10,6 +10,7 @@ import pytest
 from guidellm.benchmark.schemas.accumulator import GenerativeBenchmarkAccumulator
 from guidellm.benchmark.schemas.base import BenchmarkConfig
 from guidellm.benchmark.schemas.metrics import (
+    GenerativeAudioMetricsSummary,
     GenerativeMetrics,
     GenerativeMetricsSummary,
     GenerativeToolCallMetricsSummary,
@@ -29,6 +30,50 @@ from guidellm.schemas import (
     UsageMetrics,
 )
 from guidellm.schemas.benchmark import GoodputSLO
+
+
+@pytest.mark.regression
+def test_audio_metrics_summary_preserves_measurements_and_zero_quality_values():
+    """Aggregate audio metrics, including a measured zero underrun and failure.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    stats = GenerativeRequestStats(
+        request_id="audio-summary",
+        info=RequestInfo(
+            request_id="audio-summary",
+            status="completed",
+            timings=RequestTimings(
+                request_start=1,
+                request_end=2,
+                resolve_end=2,
+                first_audio_iteration=1.1,
+            ),
+        ),
+        input_metrics=UsageMetrics(audio_tokens=5),
+        output_metrics=UsageMetrics(
+            audio_tokens=7,
+            audio_samples=2400,
+            audio_seconds=0.1,
+            audio_bytes=4800,
+            audio_ttfp_ms=100,
+            audio_rtf=0.5,
+            audio_underrun_seconds=0,
+            audio_continuity_ok=0,
+        ),
+    )
+
+    summary = GenerativeAudioMetricsSummary.compile([stats], [], [])
+
+    assert summary.tokens.output.successful.mean == 7
+    assert summary.samples.output.successful.mean == 2400
+    assert summary.seconds.output.successful.mean == pytest.approx(0.1)
+    assert summary.bytes.output.successful.mean == 4800
+    assert summary.ttfp_ms.output.successful.mean == 100
+    assert summary.rtf.output.successful.mean == pytest.approx(0.5)
+    assert summary.underrun_seconds.output.successful.mean == 0
+    assert summary.continuity_ok_rate.output.successful.mean == 0
 
 
 def _make_errored_tool_call_stats(request_id: str) -> GenerativeRequestStats:
@@ -1598,7 +1643,7 @@ class TestSchedulerMetricsGenerationDelayCompile:
             assert summary.cached_token_count.count == 0
 
 
-def _make_streamed_request(  # noqa: PLR0913
+def _make_streamed_request(  # noqa: PLR0913, PLR0917
     request_id: str,
     start: float,
     ttft: float,
@@ -1768,7 +1813,7 @@ class TestReportedUncertainty:
         assert long_run.successful.percentile_cis.p99 is not None
 
 
-def _make_turn_stats(
+def _make_turn_stats(  # noqa: PLR0917
     request_id: str,
     conversation_id: str,
     turn_index: int,

@@ -82,7 +82,13 @@ def test_lazy_import_basics():
         anything_not_real.pi
 
 
-def test_lazy_import_subpackages():
+def test_lazy_import_subpackages(monkeypatch: pytest.MonkeyPatch):
+    """
+    Load **uncached** subpackage and check its warning.
+    Cached instance is deleted before the test, if present.
+    """
+    monkeypatch.delitem(sys.modules, "html.parser", raising=False)
+
     with pytest.warns(RuntimeWarning):
         hp = lazy.load("html.parser")
     assert "html" in sys.modules

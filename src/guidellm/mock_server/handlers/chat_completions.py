@@ -11,6 +11,7 @@ handling for comprehensive benchmarking scenarios.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import math
 import time
@@ -33,9 +34,12 @@ from guidellm.mock_server.models import (
     Usage,
 )
 from guidellm.mock_server.multimodal import (
+    WAV_BYTES_PER_SECOND,
     InvalidContentPartError,
     MultimodalPromptStats,
     accumulate_multimodal_content,
+    mock_pcm16,
+    mock_wav,
 )
 from guidellm.mock_server.utils import (
     MockTokenizer,
@@ -245,7 +249,30 @@ class ChatCompletionsHandler:
             system_fingerprint=f"fp_{uuid.uuid4().hex[:10]}",
         )
 
-        return response.json(chat_response.model_dump())
+        payload = chat_response.model_dump()
+        if (
+            req.modalities
+            and "audio" in req.modalities
+            and not self._should_return_tool_calls(req)
+        ):
+            pcm = mock_pcm16()
+            payload["choices"][0]["message"]["audio"] = {
+                "id": f"audio-{uuid.uuid4().hex[:16]}",
+                "data": base64.b64encode(mock_wav(pcm)).decode("ascii"),
+                "transcript": "",
+            }
+            payload["choices"][0]["audio_metadata"] = {
+                "format": "wav",
+                "sample_rate_hz": WAV_BYTES_PER_SECOND,
+                "frame_count": len(pcm) // 2,
+                "channels": 1,
+            }
+            if "text" not in req.modalities:
+                payload["choices"][0]["message"]["content"] = None
+                payload["usage"]["completion_tokens"] = 0
+                payload["usage"]["total_tokens"] = prompt_tokens_count
+
+        return response.json(payload)
 
     async def _handle_stream(
         self, req: ChatCompletionsRequest, multimodal_stats: MultimodalPromptStats
@@ -291,6 +318,14 @@ class ChatCompletionsHandler:
                     max_tokens,
                 )
             )
+
+            if (
+                req.modalities
+                and "audio" in req.modalities
+                and "text" not in req.modalities
+                and not is_tool_call
+            ):
+                completion_tokens_count = 0
 
             if is_tool_call:
                 await self._stream_tool_call(
@@ -356,6 +391,36 @@ class ChatCompletionsHandler:
                 ],
             }
             await stream_response.write(f"data: {json.dumps(chunk_data)}\n\n")
+
+        if req.modalities and "audio" in req.modalities:
+            pcm = mock_pcm16()
+            half = len(pcm) // 2
+            for packet in (pcm[:half], pcm[half:]):
+                audio_chunk = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": req.model,
+                    "modality": "audio",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {
+                                "content": base64.b64encode(mock_wav(packet)).decode(
+                                    "ascii"
+                                ),
+                            },
+                            "audio_metadata": {
+                                "format": "wav",
+                                "sample_rate_hz": WAV_BYTES_PER_SECOND,
+                                "frame_count": len(packet) // 2,
+                                "channels": 1,
+                            },
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                await stream_response.write(f"data: {json.dumps(audio_chunk)}\n\n")
 
         # Send final chunk with finish reason
         final_chunk = {

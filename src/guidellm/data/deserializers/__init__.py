@@ -25,6 +25,10 @@ from .synthetic import (
     SyntheticTextDataset,
     SyntheticTextDatasetDeserializer,
 )
+from .synthetic_audio import (
+    SyntheticAudioDataset,
+    SyntheticAudioDatasetDeserializer,
+)
 from .synthetic_image import (
     SyntheticImageDataset,
     SyntheticImageDatasetDeserializer,
@@ -67,6 +71,8 @@ __all__ = [
     "MooncakeTraceFormat",
     "OTELTraceFormat",
     "ParquetFileDatasetDeserializer",
+    "SyntheticAudioDataset",
+    "SyntheticAudioDatasetDeserializer",
     "SyntheticImageDataset",
     "SyntheticImageDatasetDeserializer",
     "SyntheticTextDataset",

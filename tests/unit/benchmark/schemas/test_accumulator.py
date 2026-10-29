@@ -4,8 +4,11 @@ import pytest
 
 from guidellm.benchmark.schemas.accumulator import GenerativeRequestsAccumulator
 from guidellm.schemas import (
+    GenerationRequest,
+    GenerationResponse,
     GenerativeRequestStats,
     RequestInfo,
+    RequestTimings,
     UsageMetrics,
 )
 
@@ -30,6 +33,106 @@ def _make_stats(
         input_metrics=UsageMetrics(text_tokens=5),
         output_metrics=UsageMetrics(text_tokens=10),
     )
+
+
+def _make_audio_update(
+    request_id: str,
+) -> tuple[GenerationResponse, GenerationRequest, RequestInfo]:
+    """Build a complete audio response tuple for accumulator sampling tests.
+
+    :param request_id: Stable identifier shared by response, request and info.
+    :return: Response, source request and completed request info.
+    """
+    request = GenerationRequest(
+        request_id=request_id,
+        columns={"text_column": ["Speak."]},
+    )
+    response = GenerationResponse(
+        request_id=request_id,
+        request_args=None,
+        use_request_output_metrics=False,
+        output_media=[{"modality": "audio", "data": b"audio-payload"}],
+        output_metrics=UsageMetrics(audio_seconds=0.1),
+    )
+    info = RequestInfo(
+        request_id=request_id,
+        status="completed",
+        timings=RequestTimings(
+            request_start=1,
+            request_end=2,
+            resolve_end=2,
+        ),
+    )
+    return response, request, info
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("clear_outputs", [False, True])
+def test_audio_payload_follows_output_retention_policy(clear_outputs):
+    """Clear retained audio bytes with text while keeping measured metrics.
+
+    :param clear_outputs: Whether unsampled output payloads should be removed.
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    accumulator = GenerativeRequestsAccumulator(clear_nonsampled_outputs=clear_outputs)
+    stats = _make_stats()
+    stats.output_media = [{"modality": "audio", "data": b"\x00\x00"}]
+    stats.output_metrics.audio_seconds = 0.1
+
+    accumulator.clear_stats_data(stats)
+
+    assert (stats.output_media is None) is clear_outputs
+    assert stats.output_metrics.audio_seconds == 0.1
+
+
+@pytest.mark.regression
+def test_sample_size_zero_clears_audio_payload_but_keeps_measurement():
+    """Apply zero-sized request sampling to audio payload retention.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    accumulator = GenerativeRequestsAccumulator(sample_size=0)
+    response, request, info = _make_audio_update("audio-no-sample")
+
+    stats = accumulator.update_estimate(
+        response, request, info, prefer_response_metrics=True
+    )
+
+    assert stats.output_media is None
+    assert stats.output_metrics.audio_seconds == 0.1
+
+
+@pytest.mark.regression
+def test_reservoir_eviction_clears_audio_payload(monkeypatch):
+    """Release evicted audio bytes while preserving request audio metrics.
+
+    :param monkeypatch: Pytest monkeypatch fixture for deterministic sampling.
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    monkeypatch.setattr(
+        "guidellm.benchmark.schemas.accumulator.random.random", lambda: 0.0
+    )
+    monkeypatch.setattr(
+        "guidellm.benchmark.schemas.accumulator.random.randrange", lambda size: 0
+    )
+    accumulator = GenerativeRequestsAccumulator(sample_size=1)
+    first_response, first_request, first_info = _make_audio_update("audio-first")
+    second_response, second_request, second_info = _make_audio_update("audio-second")
+    first_stats = accumulator.update_estimate(
+        first_response, first_request, first_info, prefer_response_metrics=True
+    )
+
+    accumulator.update_estimate(
+        second_response, second_request, second_info, prefer_response_metrics=True
+    )
+
+    assert accumulator.samples == [1]
+    assert first_stats.output_media is None
+    assert first_stats.output_metrics.audio_seconds == 0.1
+    assert accumulator.get_sampled()[0].output_media is not None
 
 
 class TestClearStatsData:

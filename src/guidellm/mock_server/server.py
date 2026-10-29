@@ -11,10 +11,13 @@ requiring actual model deployments.
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 import logging
 import math
 import time
 from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import Any, cast
 
 from sanic import Sanic, response
@@ -30,7 +33,12 @@ from guidellm.mock_server.handlers import (
     ResponsesHandler,
     TokenizerHandler,
 )
-from guidellm.mock_server.multimodal import estimate_audio_seconds
+from guidellm.mock_server.multimodal import (
+    WAV_BYTES_PER_SECOND,
+    estimate_audio_seconds,
+    mock_pcm16,
+    mock_wav,
+)
 from guidellm.schemas.mock_server import MockServerConfig
 
 __all__ = ["MockServer"]
@@ -192,6 +200,164 @@ class MockServer:
             "seconds": round(audio_seconds, 3),
         }
 
+    def _validate_audio_speech_options(
+        self,
+        body: dict[str, Any],
+    ) -> tuple[str, int] | HTTPResponse:
+        """
+        Validate and return audio format and sample rate (or error response).
+
+        :param body: Parsed speech request JSON object.
+        :return: The selected format and sample rate, or a validation response.
+        """
+        audio_format = body.get("response_format") or "wav"
+        if audio_format not in ("wav", "pcm"):
+            return response.json(
+                {"error": "Mock speech supports wav and pcm"},
+                status=400,
+            )
+
+        # WAV_BYTES_PER_SECOND assumes mono PCM16: two bytes per sample.
+        sample_rate = body.get("sample_rate", WAV_BYTES_PER_SECOND // 2)
+        if type(sample_rate) is not int or sample_rate <= 0:
+            return response.json(
+                {"error": "sample_rate must be a positive integer"},
+                status=400,
+            )
+
+        return audio_format, sample_rate
+
+    async def _handle_audio_speech(self, request: Request) -> HTTPResponse:
+        """
+        Build a mock WAV or PCM speech response.
+
+        :param request: Speech request containing format and streaming options.
+        :return: Audio response, stream response, or a validation error response.
+        """
+        body = request.json or {}
+        if not isinstance(body, dict):
+            return response.json({"error": "Expected a JSON object"}, status=400)
+
+        audio_options = self._validate_audio_speech_options(
+            cast("dict[str, Any]", body)
+        )
+        if isinstance(audio_options, HTTPResponse):
+            return audio_options
+        audio_format, sample_rate = audio_options
+
+        pcm = mock_pcm16(sample_rate=sample_rate, seconds=0.4)
+        wav = mock_wav(pcm, sample_rate=sample_rate)
+        mime = "audio/wav" if audio_format == "wav" else "audio/pcm"
+        audio_headers = {
+            "X-Audio-Sample-Rate": str(sample_rate),
+            "X-Audio-Channels": "1",
+        }
+        stream_format = body.get("stream_format")
+        streaming = stream_format in ("audio", "sse") or bool(body.get("stream"))
+        if not streaming:
+            return response.raw(
+                wav if audio_format == "wav" else pcm,
+                content_type=mime,
+                headers={
+                    **audio_headers,
+                    "x-vllm-omni-input-text-tokens": "0",
+                    "x-vllm-omni-input-audio-tokens": "0",
+                    "x-vllm-omni-output-tokens": "0",
+                },
+            )
+
+        half = len(pcm) // 2
+        packets = [pcm[:half], pcm[half:]]
+        if audio_format == "wav":
+            packets.insert(0, wav[: len(wav) - len(pcm)])
+
+        if stream_format == "audio":
+            return ResponseStream(  # type: ignore[return-value]
+                partial(self._send_raw, packets=packets),
+                content_type=mime,
+                headers=audio_headers,
+            )
+
+        return ResponseStream(  # type: ignore[return-value]
+            partial(
+                self._send_sse,
+                packets=packets,
+                audio_format=audio_format,
+                sample_rate=sample_rate,
+            ),
+            content_type="text/event-stream",
+        )
+
+    async def _send_raw(
+        self,
+        stream_response: BaseHTTPResponse | ResponseStream,
+        *,
+        packets: list[bytes],
+    ) -> None:
+        """Write raw audio packets to the response stream.
+        :param stream_response: Sanic response stream receiving the packets.
+        :param packets: Raw audio packets to write.
+        :return: None, after all packets were written.
+        """
+        raw_response: BaseHTTPResponse
+        if isinstance(stream_response, ResponseStream):
+            raw_response = cast("BaseHTTPResponse", stream_response.response)
+        else:
+            raw_response = stream_response
+
+        for packet in packets:
+            await raw_response.send(packet)
+
+    async def _send_sse(
+        self,
+        stream_response: BaseHTTPResponse | ResponseStream,
+        *,
+        packets: list[bytes],
+        audio_format: str,
+        sample_rate: int,
+    ) -> None:
+        """
+        Write speech audio events to the SSE response stream.
+        :param stream_response: Sanic response stream receiving the events.
+        :param packets: Audio packets to encode and send.
+        :param audio_format: Format of the audio packets.
+        :param sample_rate: Audio sample rate in Hz.
+        :return: None, after the audio-done event was written.
+        """
+        sse_response: BaseHTTPResponse
+        if isinstance(stream_response, ResponseStream):
+            sse_response = cast("BaseHTTPResponse", stream_response.response)
+        else:
+            sse_response = stream_response
+
+        for packet in packets:
+            event = {
+                "type": "speech.audio.delta",
+                "audio": base64.b64encode(packet).decode("ascii"),
+                "response_format": audio_format,
+                "sample_rate": sample_rate,
+                "channels": 1,
+            }
+            await sse_response.send(
+                f"event: speech.audio.delta\ndata: {json.dumps(event)}\n\n"
+            )
+
+        done = {
+            "type": "speech.audio.done",
+            "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "input_token_details": {
+                    "text_tokens": 0,
+                    "audio_tokens": 0,
+                },
+            },
+        }
+        await sse_response.send(
+            f"event: speech.audio.done\ndata: {json.dumps(done)}\n\n"
+        )
+
     def _setup_middleware(self):
         """Setup middleware for CORS, logging, etc."""
 
@@ -248,6 +414,12 @@ class MockServer:
             if request.method == "OPTIONS":
                 return response.text("", status=204)
             return await self._run_generation(self.chat_handler.handle, request)
+
+        @self.app.route("/v1/audio/speech", methods=["POST", "OPTIONS"])
+        async def audio_speech(request: Request):
+            if request.method == "OPTIONS":
+                return response.text("", status=204)
+            return await self._run_generation(self._handle_audio_speech, request)
 
         @self.app.route("/v1/completions", methods=["POST", "OPTIONS"])
         async def completions(request: Request):
