@@ -218,30 +218,106 @@ class TestFinalizeFormats:
         )
 
     @pytest.mark.asyncio
-    async def test_finalize_explicit_path_respects_extension(
+    async def test_finalize_explicit_path_keeps_requested_format(
         self, tmp_path: Path, minimal_report: GenerativeBenchmarksReport
     ):
         """
-        When output_path is an explicit file (not a directory), finalize
-        should use that path directly regardless of format_type.
+        An explicit file path is written as-is, in the format the user asked for.
+
+        The suffix does not pick the format: `--output kind=json,path=foo.yaml`
+        writes JSON, because that is what the user asked for.
 
         ## WRITTEN BY AI ##
         """
         explicit_path = tmp_path / "my_report.yaml"
-        handler = GenerativeBenchmarkerSerialized(output_path=explicit_path)
+        handler = GenerativeBenchmarkerSerialized(
+            output_path=explicit_path, format_type="json"
+        )
         result_path = await handler.finalize(minimal_report)
 
         assert result_path == explicit_path
         assert result_path.exists()
+
+        parsed = json.loads(result_path.read_text())
+        assert isinstance(parsed, dict)
+        assert "config" in parsed
+
+    @pytest.mark.asyncio
+    async def test_finalize_yaml_to_yaml_path(
+        self, tmp_path: Path, minimal_report: GenerativeBenchmarksReport
+    ):
+        """
+        A yaml handler writing a .yaml path still produces YAML, not JSON.
+
+        ## WRITTEN BY AI ##
+        """
+        explicit_path = tmp_path / "my_report.yaml"
+        handler = GenerativeBenchmarkerSerialized(
+            output_path=explicit_path, format_type="yaml"
+        )
+        result_path = await handler.finalize(minimal_report)
 
         content = result_path.read_text()
         # JSON is valid YAML, so verify the output is not JSON
         # to confirm YAML was actually written
         with pytest.raises(json.JSONDecodeError):
             json.loads(content)
-        parsed = yaml.safe_load(content)
-        assert isinstance(parsed, dict)
+        assert "config" in yaml.safe_load(content)
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("format_type", "file_name"),
+        [("json", "results/run1"), ("yaml", "report.txt")],
+    )
+    async def test_finalize_path_without_known_suffix(
+        self,
+        tmp_path: Path,
+        minimal_report: GenerativeBenchmarksReport,
+        format_type: str,
+        file_name: str,
+    ):
+        """
+        A path with no .json/.yaml suffix is written, not rejected.
+
+        Before, the suffix chose the format and an unrecognized one raised after
+        the benchmarks had already run, discarding the results.
+
+        ## WRITTEN BY AI ##
+        """
+        explicit_path = tmp_path / file_name
+        handler = GenerativeBenchmarkerSerialized(
+            output_path=explicit_path, format_type=format_type
+        )
+        result_path = await handler.finalize(minimal_report)
+
+        assert result_path == explicit_path
+        content = result_path.read_text()
+        if format_type == "json":
+            parsed = json.loads(content)
+        else:
+            with pytest.raises(json.JSONDecodeError):
+                json.loads(content)
+            parsed = yaml.safe_load(content)
         assert "config" in parsed
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_finalize_warns_when_suffix_names_another_format(
+        self, tmp_path: Path, minimal_report: GenerativeBenchmarksReport
+    ):
+        """
+        Writing one format to a path whose suffix names the other warns, but writes.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = GenerativeBenchmarkerSerialized(
+            output_path=tmp_path / "report.yaml", format_type="json"
+        )
+        with pytest.warns(UserWarning, match="different format"):
+            result_path = await handler.finalize(minimal_report)
+
+        assert json.loads(result_path.read_text())
 
 
 @pytest.mark.regression

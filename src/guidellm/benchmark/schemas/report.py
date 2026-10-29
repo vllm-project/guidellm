@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import platform
+import warnings
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any, ClassVar, Literal
@@ -88,31 +89,40 @@ class GenerativeBenchmarksReport(StandardBaseModel):
 
     def save_file(
         self,
-        path: str | Path | None = None,
-        type_: Literal["json", "yaml"] | None = None,
+        path: str | Path | None,
+        type_: Literal["json", "yaml"],
     ) -> Path:
         """
-        Save report to file in JSON or YAML format.
+        Save the report using the specified path and file type.
 
         :param path: File path or directory for saving, defaults to current directory
             with DEFAULT_FILE name
-        :param type_: File format override ('json' or 'yaml'), auto-detected from
-            extension if None
+        :param type_: File format to write ('json' or 'yaml')
         :return: Resolved path to the saved file
-        :raises ValueError: If file type is unsupported or cannot be determined
+        :raises ValueError: If file type is unsupported
         """
         file_path = GenerativeBenchmarksReport._resolve_path(
             path if path is not None else Path.cwd()
         )
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_type = type_ or file_path.suffix.lower()[1:]
         model_dict = self.model_dump(mode="json")
-        if file_type == "json":
+        if type_ == "json":
             save_str = json.dumps(model_dict)
-        elif file_type in ["yaml", "yml"]:
+        elif type_ in ["yaml", "yml"]:
             save_str = yaml.dump(model_dict)
         else:
-            raise ValueError(f"Unsupported file type: {file_type} for {file_path}.")
+            raise ValueError(f"Unsupported file type: {type_} for {file_path}.")
+
+        suffix = file_path.suffix.lower().removeprefix(".")
+        if suffix in ("json", "yaml", "yml") and (suffix == "json") != (
+            type_ == "json"
+        ):
+            warnings.warn(
+                f"Writing {type_} to {file_path}, whose .{suffix} suffix names a "
+                f"different format.",
+                category=UserWarning,
+                stacklevel=2,
+            )
 
         with file_path.open("w") as file:
             file.write(save_str)

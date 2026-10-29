@@ -49,7 +49,7 @@ def saved_json_report(
 
     ## WRITTEN BY AI ##
     """
-    return sample_report.save_file(tmp_path / "benchmarks.json")
+    return sample_report.save_file(tmp_path / "benchmarks.json", type_="json")
 
 
 @pytest.fixture
@@ -61,7 +61,7 @@ def saved_yaml_report(
 
     ## WRITTEN BY AI ##
     """
-    return sample_report.save_file(tmp_path / "benchmarks.yaml")
+    return sample_report.save_file(tmp_path / "benchmarks.yaml", type_="yaml")
 
 
 @pytest.fixture
@@ -71,7 +71,7 @@ def report_directory(tmp_path: Path, sample_report: GenerativeBenchmarksReport) 
 
     ## WRITTEN BY AI ##
     """
-    sample_report.save_file(tmp_path / "benchmarks.json")
+    sample_report.save_file(tmp_path / "benchmarks.json", type_="json")
     return tmp_path
 
 
@@ -280,3 +280,37 @@ async def test_duplicate_output_kind_generates_and_reports_all(
     assert first.exists()
     assert second.exists()
     assert output_results == [("json", first), ("json", second)]
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_one_failing_output_does_not_discard_the_others(
+    saved_json_report: Path, tmp_path: Path
+):
+    """
+    A failing output must not cost the user the outputs that would have succeeded.
+
+    The benchmarks have already run by the time outputs are written, so aborting on
+    the first failure threw away results that were ready to be saved. Every output
+    is attempted; the run still fails afterwards.
+
+    ## WRITTEN BY AI ##
+    """
+    unwritable = tmp_path / "blocked"
+    unwritable.mkdir()
+    unwritable.chmod(0o500)
+    good = tmp_path / "good.json"
+
+    try:
+        with pytest.raises(RuntimeError, match="Failed to write output"):
+            await reimport_benchmarks_report(
+                saved_json_report,
+                [
+                    {"kind": "json", "path": unwritable / "denied.json"},
+                    {"kind": "json", "path": good},
+                ],
+            )
+    finally:
+        unwritable.chmod(0o700)
+
+    assert good.exists(), "the second output ran even though the first one failed"
