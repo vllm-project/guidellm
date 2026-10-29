@@ -181,7 +181,8 @@ class UsageMetrics(StandardBaseDict):
         default=None,
         description=(
             "Audio generation time divided by produced audio duration. "
-            "Speech uses request latency; streamed chat ends at the last audio event."
+            "Speech uses request latency; streamed chat ends at the last "
+            "playable audio event."
         ),
     )
     audio_ttfp_ms: float | None = Field(
