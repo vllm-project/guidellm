@@ -6,6 +6,7 @@ import asyncio
 import json
 import socket
 import time
+from typing import Any
 from unittest.mock import patch
 
 import httpx2
@@ -19,9 +20,15 @@ from guidellm.schemas.backends import OpenAIHTTPBackendArgs
 class _LocalChatServer:
     """Keep-alive chat completions server that records connections and arrivals."""
 
-    def __init__(self, delay: float = 0.0, hold_open: bool = False):
+    def __init__(
+        self,
+        delay: float = 0.0,
+        hold_open: bool = False,
+        usage: dict[str, Any] | None = None,
+    ):
         self.delay = delay
         self.hold_open = hold_open
+        self.usage = usage
         self.connections = 0
         self.received: list[float] = []
         self.paths: list[str] = []
@@ -69,10 +76,15 @@ class _LocalChatServer:
                         b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
                         b"Transfer-Encoding: chunked\r\n\r\n"
                     )
-                    for event in (
+                    events = [
                         b'data: {"choices": [{"delta": {"content": "Hi"}}]}\n\n',
-                        b"data: [DONE]\n\n",
-                    ):
+                    ]
+                    if self.usage is not None:
+                        events.append(
+                            f"data: {json.dumps({'usage': self.usage})}\n\n".encode()
+                        )
+                    events.append(b"data: [DONE]\n\n")
+                    for event in events:
                         writer.write(b"%x\r\n%s\r\n" % (len(event), event))
                     if self.hold_open:
                         await writer.drain()
@@ -81,7 +93,12 @@ class _LocalChatServer:
                     writer.write(b"0\r\n\r\n")
                 else:
                     await asyncio.sleep(self.delay)
-                    payload = b'{"choices": [{"message": {"content": "Hi"}}]}'
+                    payload = json.dumps(
+                        {
+                            "choices": [{"message": {"content": "Hi"}}],
+                            "usage": self.usage,
+                        }
+                    ).encode()
                     writer.write(
                         b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
                         + f"Content-Length: {len(payload)}\r\n\r\n".encode()
@@ -272,3 +289,63 @@ async def test_requests_use_environment_proxy(monkeypatch: pytest.MonkeyPatch):
 
     assert len(proxy.paths) == 1
     assert proxy.paths[0].startswith("http://guidellm.invalid/")
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+@pytest.mark.parametrize("stream", [True, False])
+@pytest.mark.parametrize(
+    "prompt_details",
+    [
+        pytest.param({"image_tokens": 10, "audio_tokens": 80}, id="flat"),
+        pytest.param(
+            {
+                "cached_tokens": 0,
+                "created_cache_tokens": None,
+                "multimodal_tokens": {"image": 10, "audio": 80},
+            },
+            id="vllm",
+        ),
+    ],
+)
+async def test_multimodal_usage_reaches_request_stats(stream: bool, prompt_details):
+    """Preserve server totals through HTTP parsing and request-stat serialization.
+
+    ## WRITTEN BY AI ##
+    """
+    usage = {
+        "prompt_tokens": 100,
+        "completion_tokens": 30,
+        "total_tokens": 130,
+        "prompt_tokens_details": prompt_details,
+        "completion_tokens_details": {"audio_tokens": 25},
+    }
+    async with _LocalChatServer(usage=usage) as server:
+        backend = _make_backend(server.url, stream)
+        request = GenerationRequest(columns={"text_column": ["Describe this audio."]})
+        request_info = RequestInfo(request_id=request.request_id)
+        await backend.process_startup()
+        try:
+            responses = [
+                response
+                async for response, _ in backend.resolve(request, request_info)
+                if response is not None
+            ]
+        finally:
+            await backend.process_shutdown()
+
+    [response] = responses
+    request_info.timings.resolve_end = request_info.timings.request_end
+    request_info.status = "completed"
+    stats = response.compile_stats(request, request_info)
+    serialized = json.loads(stats.model_dump_json())
+    assert serialized["prompt_tokens"] == 100
+    assert serialized["output_tokens"] == 30
+    assert serialized["total_tokens"] == 130
+    assert serialized["input_metrics"]["text_tokens"] == 10
+    assert serialized["input_metrics"]["image_tokens"] == 10
+    assert serialized["input_metrics"]["audio_tokens"] == 80
+    assert serialized["output_metrics"]["text_tokens"] == 5
+    assert stats.request_latency is not None
+    assert stats.output_tokens_per_second == pytest.approx(30 / stats.request_latency)
