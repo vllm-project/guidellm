@@ -329,7 +329,11 @@ class OpenAIHTTPBackend(Backend):
 
         gen_response = request_handler.compile_non_streaming(request, arguments, data)
         request_handler.post_validation(gen_response)
-        request_handler.update_response_timings(gen_response, request_info.timings)
+        self._update_audio_response_timings(
+            gen_response,
+            request_info.timings,
+            request_handler,
+        )
         try:
             self._check_tool_call_expectations(request, gen_response)
         except asyncio.CancelledError:
@@ -383,14 +387,12 @@ class OpenAIHTTPBackend(Backend):
                 async for chunk in chunks:
                     stream.raise_for_status()
                     iter_time = time.time()
-                    iterations, first_audio = self._process_streaming_chunk(
+                    iterations = self._process_streaming_chunk(
                         request_handler,
                         request_info.timings,
                         chunk,
                         iter_time,
                     )
-                    if first_audio:
-                        yield None, request_info
 
                     if iterations is None or iterations <= 0 or end_reached:
                         end_reached = end_reached or iterations is None
@@ -406,6 +408,8 @@ class OpenAIHTTPBackend(Backend):
                         yield None, request_info
 
                     # TTFOT: record the first content (non-reasoning) token.
+                    # For non-reasoning models this fires on the same iteration
+                    # as first_token_iteration, making TTFOT == TTFT.
                     if (
                         request_info.timings.first_output_token_iteration is None
                         and request_handler.last_iteration_had_content
@@ -422,15 +426,62 @@ class OpenAIHTTPBackend(Backend):
             request_handler.mark_stream_complete()
             gen_response = request_handler.compile_streaming(request, arguments)
             request_handler.post_validation(gen_response)
-            request_handler.update_response_timings(gen_response, request_info.timings)
+            self._update_audio_response_timings(
+                gen_response,
+                request_info.timings,
+                request_handler,
+            )
             self._check_tool_call_expectations(request, gen_response)
             yield gen_response, request_info
         except asyncio.CancelledError as err:
             # Yield the current result before propagating cancellation.
             gen_response = request_handler.compile_streaming(request, arguments)
-            request_handler.update_response_timings(gen_response, request_info.timings)
+            self._update_audio_response_timings(
+                gen_response,
+                request_info.timings,
+                request_handler,
+            )
             yield gen_response, request_info
             raise err
+
+    @staticmethod
+    def _update_audio_response_timings(
+        response: GenerationResponse,
+        timings: RequestTimings,
+        request_handler: OpenAIRequestHandler,
+    ) -> None:
+        """Calculate audio timing metrics from HTTP request timings.
+
+        :param response: Compiled generation response.
+        :param timings: Timings recorded by the HTTP backend.
+        :param request_handler: Handler specifying the chat audio RTF boundary.
+        :return: None.
+        """
+        request_start = timings.request_start
+
+        if request_start is not None and timings.first_audio_iteration is not None:
+            response.output_metrics.audio_ttfp_ms = 1000 * (
+                timings.first_audio_iteration - request_start
+            )
+
+        duration = response.output_metrics.audio_seconds
+        if duration is None:
+            return
+        if duration <= 0:
+            response.output_metrics.audio_rtf = 0.0
+            return
+        if request_start is None:
+            return
+
+        audio_end = timings.request_end
+        if (
+            request_handler.audio_rtf_uses_last_audio_payload
+            and timings.last_audio_iteration is not None
+        ):
+            audio_end = timings.last_audio_iteration
+
+        if audio_end is not None:
+            response.output_metrics.audio_rtf = (audio_end - request_start) / duration
 
     @staticmethod
     def _process_streaming_chunk(
@@ -438,7 +489,7 @@ class OpenAIHTTPBackend(Backend):
         request_timings: RequestTimings,
         chunk: str | bytes,
         iter_time: float,
-    ) -> tuple[int | None, bool]:
+    ) -> int | None:
         """
         Update the streaming chunk timings.
 
@@ -446,8 +497,7 @@ class OpenAIHTTPBackend(Backend):
         :param request_timings: Request timings state that should be updated.
         :param chunk: The data can be either raw audio bytes or decoded response line.
         :param iter_time: Recorded arrival timestamp for this chunk.
-        :return: Handler iteration counter and boolean whether this is the first
-                 audio event.
+        :return: Handler iteration counter or None if stream is complete.
         """
         request_handler.set_streaming_arrival_time(iter_time)
 
@@ -461,13 +511,11 @@ class OpenAIHTTPBackend(Backend):
         else:
             iterations = request_handler.add_streaming_line(chunk)
 
-        first_audio = False
         if request_handler.last_iteration_had_audio:
-            first_audio = request_timings.first_audio_iteration is None
-            if first_audio:
+            if request_timings.first_audio_iteration is None:
                 request_timings.first_audio_iteration = iter_time
             request_timings.last_audio_iteration = iter_time
-        return iterations, first_audio
+        return iterations
 
     async def _aiter_lines(self, stream: httpx2.Response) -> AsyncIterator[str]:
         """

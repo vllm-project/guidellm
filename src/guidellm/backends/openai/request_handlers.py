@@ -32,7 +32,6 @@ from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
     GenerationResponse,
-    RequestTimings,
     ToolCall,
     ToolCallFunction,
     UsageMetrics,
@@ -84,6 +83,7 @@ class OpenAIRequestHandler(Protocol):
     with consistent metrics extraction.
     """
 
+    audio_rtf_uses_last_audio_payload: ClassVar[bool] = False
     raw_response: ClassVar[bool] = False
     raw_streaming: bool = False
 
@@ -117,36 +117,6 @@ class OpenAIRequestHandler(Protocol):
         :return: None.
         """
         return
-
-    def update_response_timings(
-        self, response: GenerationResponse, timings: RequestTimings
-    ) -> None:
-        """
-        Get audio TTFP and RTF when response metrics are ready.
-        Non-positive audio duration yields zero RTF.
-        :param response: Compiled response.
-        :param timings: HTTP request time measurements.
-        :return: None.
-        """
-        if (
-            timings.request_start is not None
-            and timings.first_audio_iteration is not None
-        ):
-            response.output_metrics.audio_ttfp_ms = 1000 * (
-                timings.first_audio_iteration - timings.request_start
-            )
-        duration = response.output_metrics.audio_seconds
-        if (
-            duration is not None
-            and duration > 0
-            and timings.request_start is not None
-            and timings.request_end is not None
-        ):
-            response.output_metrics.audio_rtf = (
-                timings.request_end - timings.request_start
-            ) / duration
-        if duration is not None and duration <= 0:
-            response.output_metrics.audio_rtf = 0.0
 
     def format(
         self,
@@ -967,18 +937,39 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         return response.get("choices", []), response.get("usage", {})
 
     @staticmethod
+    def _get_usage_details(
+        usage: dict[str, int | dict[str, int]],
+        key: str,
+    ) -> dict[str, Any]:
+        """Return a validated detail object from usage data.
+
+        :param usage: API usage data.
+        :param key: Name of the detail field to retrieve.
+        :return: The detail object, or an empty dictionary if it is absent.
+        :raises ValueError: If the field is present but is not an object.
+        """
+        details = usage.get(key)
+        if not details:
+            return {}
+        if isinstance(details, dict):
+            return details
+        raise ValueError(f"[UNUSABLE_BACKEND_RESPONSE] {key} must be an object")
+
+    @staticmethod
     def _extract_input_metrics(
-        input_details: dict[str, Any],
-        usage_metrics: dict[str, int],
+        usage: dict[str, int | dict[str, int]],
+        usage_metrics: dict[str, int | None],
     ) -> UsageMetrics:
         """
         Extract input text and modality metrics (all that exist)
 
-        :param input_details: Detailed input token usage from the backend.
+        :param usage: Usage data to get detailed input token usage from the backend.
         :param usage_metrics: Aggregate token usage counts.
         :return: Input usage metrics.
         """
-
+        input_details = TextCompletionsRequestHandler._get_usage_details(
+            usage, "prompt_tokens_details"
+        )
         input_multimodal_with_value = input_details.get("multimodal_tokens")
         if not input_multimodal_with_value:
             input_multimodal: dict[str, Any] = {}
@@ -1028,21 +1019,23 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
 
     @staticmethod
     def _extract_output_metrics(
-        output_details: dict[str, Any],
-        usage_metrics: dict[str, int],
+        usage: dict[str, int | dict[str, int]],
+        usage_metrics: dict[str, int | None],
         text_words: int | None,
         text_chars: int | None,
     ) -> UsageMetrics:
         """
         Extract output text and modality metrics (all that available)
 
-        :param output_details: Detailed output token usage from the backend.
+        :param usage: Usage data to get detailed output token usage from the backend.
         :param usage_metrics: Aggregate usage token counts.
         :param text_words: Word count, or None when text is not applicable.
         :param text_chars: Character count, or None when text is not applicable.
         :return: Output usage metrics.
         """
-
+        output_details = TextCompletionsRequestHandler._get_usage_details(
+            usage, "completion_tokens_details"
+        )
         output_multimodal_with_value = output_details.get("multimodal_tokens")
         if not output_multimodal_with_value:
             output_multimodal: dict[str, Any] = {}
@@ -1092,7 +1085,9 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         )
 
     def extract_metrics(
-        self, usage: dict[str, int | dict[str, int]] | None, text: str | None
+        self,
+        usage: dict[str, int | dict[str, int]] | None,
+        text: str | None,
     ) -> tuple[UsageMetrics, UsageMetrics]:
         """
         Extract text and modality input and output usage metrics
@@ -1118,19 +1113,23 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
                 text_characters=text_chars,
             )
 
-        input_details: dict[str, Any] = cast(
-            "dict[str, Any]", usage.get("prompt_tokens_details", {}) or {}
-        )
-        output_details: dict[str, Any] = cast(
-            "dict[str, Any]", usage.get("completion_tokens_details", {}) or {}
-        )
-        usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
+        metrics: dict[str, int | None] = {}
+        for key in ("prompt_tokens", "completion_tokens"):
+            if key not in usage:
+                continue
+            token_value = usage[key]
+            if token_value is None:
+                metrics[key] = None
+            elif isinstance(token_value, int):
+                metrics[key] = token_value
+            else:
+                raise ValueError(
+                    f"[UNUSABLE_BACKEND_RESPONSE] {key} must be an integer or null"
+                )
 
         return (
-            self._extract_input_metrics(input_details, usage_metrics),
-            self._extract_output_metrics(
-                output_details, usage_metrics, text_words, text_chars
-            ),
+            self._extract_input_metrics(usage, metrics),
+            self._extract_output_metrics(usage, metrics, text_words, text_chars),
         )
 
 
@@ -1145,6 +1144,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
     responses where the model outputs ``tool_calls`` instead of text content.
     """
 
+    audio_rtf_uses_last_audio_payload: ClassVar[bool] = True
+
     def __init__(self):
         super().__init__()
         # Full tool call payloads accumulated across streaming deltas,
@@ -1158,7 +1159,6 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             tuple[int, dict[str, Any], float | None]
         ] = []
         self._streaming_arrival_time: float | None = None
-        self._last_audio_event_time: float | None = None
         self.streaming_audio_ids: dict[int, str] = {}
         self.streaming_audio_expirations: dict[int, int | float] = {}
         self.streaming_audio_transcripts: dict[int, list[str]] = {}
@@ -1177,36 +1177,6 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
     def mark_stream_complete(self) -> None:
         self._stream_complete = True
-
-    def update_response_timings(
-        self, response: GenerationResponse, timings: RequestTimings
-    ) -> None:
-        """
-        Update the last audio event timings with the RTF stats
-        (even if last audio event is empty)
-
-        :param response: Compiled response to update.
-        :param timings: HTTP request timing measurements.
-        :return: None.
-        """
-        super().update_response_timings(response, timings)
-        duration = response.output_metrics.audio_seconds
-        last_audio_iteration = timings.last_audio_iteration
-        if self._last_audio_event_time is not None and (
-            last_audio_iteration is None
-            or self._last_audio_event_time > last_audio_iteration
-        ):
-            last_audio_iteration = self._last_audio_event_time
-
-        if (
-            duration is not None
-            and duration > 0
-            and timings.request_start is not None
-            and last_audio_iteration is not None
-        ):
-            response.output_metrics.audio_rtf = (
-                last_audio_iteration - timings.request_start
-            ) / duration
 
     def _append_streaming_media_item(
         self, choice_index: int, item: dict[str, Any]
@@ -1857,14 +1827,6 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         """
         choices, usage = self.extract_choices_and_usage(response)
 
-        """
-        Fix: do NOT assume choices[0] carries both text and audio. Single
-        ["text","audio"] modalities request returns text and audio as
-        SEPARATE choices. Scan every choice; take the first non-null text/
-        reasoning/tool_calls and merge in every choice's parsed audio via
-        the registry. Zero-behavior-change for today's single-choice,
-        text-only case -- the loop body just executes once.
-        """
         text: str | None = None
         reasoning_text: str | None = None
         raw_tool_calls: list[dict] | None = None
@@ -1937,8 +1899,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         Handles the chat completion specific delta structure where content is nested
         within delta objects in the streaming response chunks. Also accumulates
-        ``tool_calls`` deltas when the model streams function call output and marks
-         audio event timestamp for rtf even if no audio payload was present.
+        ``tool_calls`` deltas when the model streams function call output.
 
         :param line: Raw SSE line from the streaming response
         :return: 1 if content was extracted, 0 if line ignored, None if done
@@ -1956,8 +1917,6 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         updated = False
         had_content = False
         choices, usage = self.extract_choices_and_usage(data)
-        if choices and data.get("modality") == "audio":
-            self._last_audio_event_time = self._streaming_arrival_time
 
         for choice in choices:
             audio_parser = ModalityParserRegistry.create("audio")

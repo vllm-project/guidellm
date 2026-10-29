@@ -34,7 +34,6 @@ from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
     GenerationResponse,
-    RequestTimings,
     ToolCall,
     ToolCallFunction,
     UsageMetrics,
@@ -7041,30 +7040,6 @@ class TestSpeechRequestHandler:
         assert result.output_metrics.audio_samples is None
         assert result.output_metrics.audio_seconds is None
 
-    @pytest.mark.regression
-    def test_audio_timings_use_first_payload_and_request_end(self):
-        """Compute TTFP and speech RTF from playback duration and request time.
-
-        :return: None.
-        ## WRITTEN BY AI ##
-        """
-        timings = RequestTimings(
-            request_start=10,
-            first_audio_iteration=11,
-            last_audio_iteration=12,
-            request_end=14,
-        )
-        response = GenerationResponse(
-            request_id="audio",
-            request_args=None,
-            output_metrics=UsageMetrics(audio_seconds=2),
-        )
-
-        SpeechRequestHandler().update_response_timings(response, timings)
-
-        assert response.output_metrics.audio_ttfp_ms == 1000
-        assert response.output_metrics.audio_rtf == 2.0
-
 
 class TestChatAudioOutput:
     """Regression coverage for audio emitted by chat completions."""
@@ -7687,70 +7662,3 @@ class TestChatAudioOutput:
             ChatCompletionsRequestHandler()._build_turn_messages(
                 request, response, None
             )
-
-    @pytest.mark.regression
-    def test_chat_rtf_ends_at_last_audio_event(self):
-        """Use the last audio event rather than request completion for chat RTF.
-
-        :return: None.
-        ## WRITTEN BY AI ##
-        """
-        timings = RequestTimings(
-            request_start=10,
-            first_audio_iteration=11,
-            last_audio_iteration=12,
-            request_end=14,
-        )
-        response = GenerationResponse(
-            request_id="chat-audio",
-            request_args=None,
-            output_metrics=UsageMetrics(audio_seconds=2),
-        )
-
-        ChatCompletionsRequestHandler().update_response_timings(response, timings)
-
-        assert response.output_metrics.audio_ttfp_ms == 1000
-        assert response.output_metrics.audio_rtf == 1.0
-
-    @pytest.mark.regression
-    def test_empty_final_audio_event_updates_chat_rtf_boundary(self):
-        """Use the last audio event timestamp even when it has no payload.
-
-        :return: None.
-        ## WRITTEN BY AI ##
-        """
-        handler = ChatCompletionsRequestHandler()
-        audio = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
-        packet_event = {
-            "modality": "audio",
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {"content": base64.b64encode(audio).decode("ascii")},
-                    "audio_metadata": {
-                        "format": "wav",
-                        "sample_rate_hz": 16000,
-                        "frame_count": 1600,
-                        "channels": 1,
-                    },
-                }
-            ],
-        }
-        handler.set_streaming_arrival_time(11)
-        handler.add_streaming_line("data: " + json.dumps(packet_event))
-        handler.set_streaming_arrival_time(12)
-        handler.add_streaming_line(
-            'data: {"modality":"audio","choices":[{"index":0,"delta":{}}]}'
-        )
-        handler.mark_stream_complete()
-        response = handler.compile_streaming(
-            GenerationRequest(columns={"text_column": ["Speak."]}),
-            GenerationRequestArguments(),
-        )
-
-        handler.update_response_timings(
-            response,
-            RequestTimings(request_start=10, request_end=15),
-        )
-
-        assert response.output_metrics.audio_rtf == pytest.approx(20)

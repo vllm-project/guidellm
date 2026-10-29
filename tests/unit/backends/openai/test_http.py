@@ -33,6 +33,7 @@ from guidellm.schemas import (
     RequestTimings,
     ToolCall,
     ToolCallFunction,
+    UsageMetrics,
 )
 from guidellm.schemas.backends import OpenAIHTTPBackendArgs
 from tests.unit.testing_utils import async_timeout
@@ -1331,6 +1332,43 @@ async def test_raw_speech_http_records_audio_timing(httpx2_mock: respx.Router):
 
 
 @pytest.mark.regression
+@pytest.mark.parametrize(
+    ("use_last_audio_payload", "expected_rtf"),
+    [
+        (False, 2.0),
+        (True, 1.0),
+    ],
+)
+def test_audio_response_timings_use_endpoint_boundary(
+    use_last_audio_payload: bool,
+    expected_rtf: float,
+):
+    """Use the configured endpoint boundary when calculating audio RTF."""
+    response = GenerationResponse(
+        request_id="audio",
+        request_args=None,
+        output_metrics=UsageMetrics(audio_seconds=2),
+    )
+    timings = RequestTimings(
+        request_start=10,
+        first_audio_iteration=11,
+        last_audio_iteration=12,
+        request_end=14,
+    )
+    handler = Mock(spec=OpenAIRequestHandler)
+    handler.audio_rtf_uses_last_audio_payload = use_last_audio_payload
+
+    OpenAIHTTPBackend._update_audio_response_timings(
+        response,
+        timings,
+        handler,
+    )
+
+    assert response.output_metrics.audio_ttfp_ms == 1000
+    assert response.output_metrics.audio_rtf == expected_rtf
+
+
+@pytest.mark.regression
 @pytest.mark.asyncio
 async def test_chat_audio_sse_records_audio_without_text_iterations(
     httpx2_mock: respx.Router,
@@ -1362,6 +1400,7 @@ async def test_chat_audio_sse_records_audio_without_text_iterations(
         content=_async_stream_chunks(
             [
                 ("data: " + json.dumps(event) + "\n\n").encode(),
+                (b'data: {"modality":"audio","choices":[{"index":0,"delta":{}}]}\n\n'),
                 (
                     b'data: {"choices":[{"index":0,"delta":{},'
                     b'"finish_reason":"stop"}]}\n\n'
@@ -1391,12 +1430,19 @@ async def test_chat_audio_sse_records_audio_without_text_iterations(
         await backend.process_shutdown()
 
     result = responses[-1]
-    assert result.output_media[0]["data"] == audio
-    assert result.output_metrics.audio_seconds == pytest.approx(0.1)
     assert info.timings.first_audio_iteration is not None
     assert info.timings.last_audio_iteration is not None
+    assert info.timings.last_audio_iteration == info.timings.first_audio_iteration
     assert info.timings.first_token_iteration is None
     assert info.timings.token_iterations == 0
+    assert info.timings.request_start is not None
+    assert result.output_media[0]["data"] == audio
+    assert result.output_metrics.audio_seconds == pytest.approx(0.1)
+    assert result.output_metrics.audio_seconds is not None
+    assert result.output_metrics.audio_rtf == pytest.approx(
+        (info.timings.last_audio_iteration - info.timings.request_start)
+        / result.output_metrics.audio_seconds
+    )
 
 
 @pytest.mark.regression
