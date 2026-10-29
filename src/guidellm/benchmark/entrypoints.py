@@ -672,7 +672,13 @@ async def benchmark_generative_text(  # noqa: C901
     )
 
     if console:
-        await GenerativeBenchmarkerConsole(console=console).finalize(report)
+        # The console tables are printed by default; an explicit console output
+        # has already printed them above, so they are not printed a second time.
+        if not any(
+            isinstance(output, GenerativeBenchmarkerConsole)
+            for output in output_formats
+        ):
+            await GenerativeBenchmarkerConsole(console=console).finalize(report)
         console.print("\n\n")
         console.print_update(
             title=(
