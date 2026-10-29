@@ -716,3 +716,89 @@ class TestUnsupportedPercentileMarker:
         for index, header in enumerate(headers):
             if header[0] in ("ITL", "TPOT") and header[-1] == "p95":
                 assert not values[index][0].endswith(UNSUPPORTED_PERCENTILE_MARKER)
+
+
+class TestEmptyDistribution:
+    """
+    Verify a metric with no observations renders as missing, not as zero.
+    """
+
+    @staticmethod
+    def _latency_cells(metrics: SimpleNamespace) -> dict[tuple[str, str], str]:
+        """Render the latency table and key each cell by its group and statistic."""
+        benchmark = SimpleNamespace(
+            config=SimpleNamespace(strategy=SimpleNamespace(type_="constant")),
+            metrics=metrics,
+        )
+        captured: dict[str, object] = {}
+        output = GenerativeBenchmarkerConsole()
+        output.console.print = lambda *args, **kwargs: None
+        output.console.print_table = lambda headers, values, title=None: (
+            captured.update(headers=headers, values=values)
+        )
+        output.print_request_latency_table(SimpleNamespace(benchmarks=[benchmark]))
+
+        headers: list[list[str]] = captured["headers"]  # type: ignore[assignment]
+        values: list[list[str]] = captured["values"]  # type: ignore[assignment]
+        return {
+            (header[0], header[-1]): values[index][0]
+            for index, header in enumerate(headers)
+        }
+
+    @pytest.mark.regression
+    def test_latency_table_shows_empty_metric_as_missing(self):
+        """
+        TTFT without samples, as in a non-streaming run, renders as ``--``.
+
+        An empty distribution reports 0.0 for its mean and percentiles, which
+        the table would otherwise show as a measured zero.
+        """
+        populated = StatusDistributionSummary.from_values([1.0, 2.0, 3.0], [], [])
+        metrics = SimpleNamespace(**dict.fromkeys(LATENCY_TABLE_METRICS, populated))
+        metrics.time_to_first_token_ms = StatusDistributionSummary.from_values(
+            [], [], []
+        )
+
+        cells = self._latency_cells(metrics)
+
+        assert cells[("TTFT", "Mean")] == "--"
+        assert cells[("TTFT", "Mdn")] == "--"
+        assert cells[("TTFT", "p95")] == "--"
+        assert cells[("Request Latency", "Mdn")] == "2.0"
+
+    @pytest.mark.regression
+    def test_latency_table_is_missing_when_every_request_failed(self):
+        """
+        A run whose requests all failed has no successful latencies to show.
+
+        The errored requests are recorded under their own status, so the
+        successful distribution is empty for every column.
+        """
+        failed_only = StatusDistributionSummary.from_values([], [], [1.0, 2.0])
+        metrics = SimpleNamespace(**dict.fromkeys(LATENCY_TABLE_METRICS, failed_only))
+
+        cells = self._latency_cells(metrics)
+        latency_cells = [
+            value for (group, _), value in cells.items() if group != "Benchmark"
+        ]
+
+        assert latency_cells
+        assert set(latency_cells) == {"--"}
+
+    @pytest.mark.regression
+    def test_rate_without_events_stays_zero(self):
+        """
+        A rate with no events is a measured zero, not a missing value.
+
+        When no request meets the objectives, goodput has no events in the
+        window and must still read 0.0, as opposed to the ``--`` shown when
+        the objectives could not be evaluated.
+        """
+        benchmark = _make_throughput_benchmark(attainment=0.0, goodput=None)
+        benchmark.metrics.output_token_goodput = StatusDistributionSummary.from_values(
+            [], [], []
+        )
+        headers, values = _render_throughput_table([benchmark])
+
+        assert "Output Tok/Sec" in headers
+        assert values[-1] == ["0.0"]

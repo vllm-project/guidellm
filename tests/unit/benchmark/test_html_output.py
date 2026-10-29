@@ -37,6 +37,9 @@ from tests.unit.benchmark.html_report_fixtures import (
 from tests.unit.benchmark.html_report_fixtures import (
     report as _report,
 )
+from tests.unit.benchmark.html_report_fixtures import (
+    status_dist as _status_dist,
+)
 
 
 @pytest.mark.smoke
@@ -606,3 +609,55 @@ def test_warning_card_escapes_message_html():
 
     assert "<script>alert" not in html
     assert "&lt;script&gt;" in html
+
+
+@pytest.mark.regression
+def test_empty_metric_is_reported_as_missing():
+    """
+    A metric with no observations is missing from the view, not zero.
+
+    A non-streaming run records no TTFT, and its empty distribution reports
+    0.0 for every statistic; the KPI must not show that as a measured value.
+    """
+    benchmark = _make_benchmark(
+        strategy=AsyncConstantStrategy(rate=1.0),
+        rps=1.0,
+        tps=20.0,
+    )
+    benchmark.metrics.time_to_first_token_ms = _status_dist(
+        0.0, median=0.0, p95=0.0, p99=0.0, count=0
+    )
+    view = build_report_view(_report(benchmark))
+    run = view["runs"][0]
+
+    assert run["ttft_p95_ms"] is None
+    assert run["ttft_p99_ms"] is None
+    assert run["itl_p95_ms"] == 18.0
+    html = render_html_report(view)
+    assert re.search(r'id="kpi-ttft-p95">\s*—\s*<', html)
+
+
+@pytest.mark.regression
+def test_metrics_are_missing_when_every_request_failed():
+    """
+    A run whose requests all failed reports no latency KPIs, not zeros.
+    """
+    benchmark = _make_benchmark(
+        strategy=AsyncConstantStrategy(rate=1.0),
+        rps=1.0,
+        tps=20.0,
+    )
+    empty = _status_dist(0.0, median=0.0, p95=0.0, p99=0.0, count=0)
+    benchmark.metrics.request_latency = empty
+    benchmark.metrics.time_to_first_token_ms = empty
+    benchmark.metrics.output_tokens_per_second = empty
+    view = build_report_view(_report(benchmark))
+    run = view["runs"][0]
+
+    assert run["request_latency_p95_ms"] is None
+    assert run["ttft_p95_ms"] is None
+    # A rate without events is a measured zero.
+    assert run["output_tps"] == 0.0
+    html = render_html_report(view)
+    assert re.search(r'id="kpi-lat-p95">\s*—\s*<', html)
+    assert re.search(r'id="kpi-ttft-p95">\s*—\s*<', html)
