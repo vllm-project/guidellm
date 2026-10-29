@@ -438,7 +438,8 @@ class OpenAIHTTPBackend(Backend):
                             break
             except (httpx2.HTTPError, httpx2.StreamError):
                 raise err from None
-            # Without final=True, a character cut off at the limit is left out
+            # The decoder is not flushed, so a multi-byte character split at the
+            # limit is left out instead of escaped
             decoder = codecs.getincrementaldecoder("utf-8")(errors="backslashreplace")
             body = decoder.decode(raw[:_ERROR_BODY_LIMIT]).strip()
             if not body:
