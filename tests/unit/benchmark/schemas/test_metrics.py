@@ -1632,6 +1632,130 @@ def _make_streamed_request(  # noqa: PLR0913
     )
 
 
+def _make_non_streamed_request(
+    request_id: str, start: float, duration: float, output_tokens: int
+) -> GenerativeRequestStats:
+    """Build a completed non-streaming request: usage counts, no token timings.
+
+    ## WRITTEN BY AI ##
+    """
+    timings = RequestTimings(
+        resolve_start=start,
+        resolve_end=start + duration,
+        request_start=start,
+        request_end=start + duration,
+    )
+    return GenerativeRequestStats(
+        request_id=request_id,
+        info=RequestInfo(request_id=request_id, status="completed", timings=timings),
+        input_metrics=UsageMetrics(text_tokens=32),
+        output_metrics=UsageMetrics(text_tokens=output_tokens),
+    )
+
+
+class TestInterTokenLatencyWithoutTokenTimings:
+    """
+    Requests without streamed token timings are left out of the ITL distribution.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.regression
+    def test_non_streaming_requests_report_no_inter_token_latency(self):
+        """
+        A non-streaming run reports no ITL samples, as it reports no TTFT.
+
+        Each request still has output tokens from usage, so it used to add
+        ``output_tokens - 1`` zero-valued ITL samples.
+
+        ## WRITTEN BY AI ##
+        """
+        requests = [
+            _make_non_streamed_request(
+                f"request-{index}", SCHEDULE_BASE_TIME + index, 0.5, 16
+            )
+            for index in range(4)
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(requests, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10.0)
+        )
+
+        assert metrics.time_to_first_token_ms.successful.count == 0
+        assert metrics.inter_token_latency_ms.successful.count == 0
+        assert metrics.inter_token_latency_ms.successful.mean == 0.0
+        # Time per output token needs no token timings and is still reported.
+        assert metrics.time_per_output_token_ms.successful.count == 4 * 16
+        assert metrics.time_per_output_token_ms.successful.mean == pytest.approx(
+            500.0 / 16
+        )
+
+    @pytest.mark.regression
+    def test_mixed_run_inter_token_latency_uses_streamed_requests_only(self):
+        """
+        Non-streaming requests do not pull a mixed run's ITL toward zero.
+
+        ## WRITTEN BY AI ##
+        """
+        # Each streamed request has 10 ms between its first and its 11th token.
+        streamed = [
+            _make_streamed_request(
+                f"streamed-{index}", SCHEDULE_BASE_TIME + index, 0.05, 0.15, 8, 11
+            )
+            for index in range(3)
+        ]
+        non_streamed = [
+            _make_non_streamed_request(
+                f"non-streamed-{index}", SCHEDULE_BASE_TIME + index + 0.5, 0.2, 16
+            )
+            for index in range(3)
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                [*streamed, *non_streamed],
+                SCHEDULE_BASE_TIME,
+                SCHEDULE_BASE_TIME + 10.0,
+            )
+        )
+
+        itl = metrics.inter_token_latency_ms.successful
+        assert itl.count == 3 * 10
+        assert itl.mean == pytest.approx(10.0)
+        assert itl.min == pytest.approx(10.0)
+
+    @pytest.mark.regression
+    def test_turn_inter_token_latency_skips_non_streaming_requests(self):
+        """
+        Per-turn ITL skips non-streaming requests and still partitions the run.
+
+        ## WRITTEN BY AI ##
+        """
+        non_streamed = _make_non_streamed_request(
+            "non-streamed", SCHEDULE_BASE_TIME + 50.0, 1.0, 9
+        )
+        non_streamed.info.conversation_id = "c0"
+        non_streamed.info.turn_index = 2
+        successful = [
+            *_make_conversations(n_conversations=3, n_turns=2),
+            non_streamed,
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                successful, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 100.0
+            )
+        )
+
+        assert metrics.turns is not None
+        assert [turn.turn_index for turn in metrics.turns] == [0, 1, 2]
+        assert metrics.turns[2].request_totals.successful == 1
+        assert metrics.turns[2].inter_token_latency_ms.successful.count == 0
+        # Six streamed requests, each with 9 output tokens and so 8 gaps.
+        aggregate_count = metrics.inter_token_latency_ms.successful.count
+        assert aggregate_count == 6 * 8
+        assert aggregate_count == sum(
+            turn.inter_token_latency_ms.successful.count for turn in metrics.turns
+        )
+
+
 def _compile_with_confidence(
     confidence: float | None, count: int = 400
 ) -> GenerativeMetrics:
