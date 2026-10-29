@@ -1380,3 +1380,31 @@ async def test_raise_for_status_reads_capped_error_body():
 
     assert "y" * 1000 in str(exc_info.value)
     assert chunks_read < 10
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@async_timeout(10.0)
+@pytest.mark.parametrize(
+    ("content", "expected", "unexpected"),
+    [
+        # 400 three-byte characters; the limit cuts the 334th one
+        ("€" * 400, "€" * 333, ("€" * 334, "\\x")),
+        (b"bad \xff byte", "bad \\xff byte", ("\ufffd",)),
+    ],
+)
+async def test_raise_for_status_decodes_error_body(
+    content: str | bytes, expected: str, unexpected: tuple[str, ...]
+):
+    """Escape invalid bytes and drop a character cut off at the limit."""
+    response = httpx2.Response(
+        502,
+        content=content.encode() if isinstance(content, str) else content,
+        request=httpx2.Request("POST", "http://test/v1/chat/completions"),
+    )
+    with pytest.raises(httpx2.HTTPStatusError) as exc_info:
+        await OpenAIHTTPBackend._raise_for_status(response)
+
+    assert expected in str(exc_info.value)
+    for text in unexpected:
+        assert text not in str(exc_info.value)

@@ -11,6 +11,7 @@ tracking with flexible parameter customization.
 from __future__ import annotations
 
 import asyncio
+import codecs
 import contextlib
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -38,7 +39,7 @@ __all__ = [
 ]
 
 _READ_TO_END_TIMEOUT = 1.0  # seconds
-_ERROR_BODY_LIMIT = 1000  # characters of an error response body kept in the error
+_ERROR_BODY_LIMIT = 1000  # bytes of an error response body kept in the error
 
 
 @Backend.register("openai_http")
@@ -422,7 +423,7 @@ class OpenAIHTTPBackend(Backend):
         Raise for an error status, keeping the server's response body in the error.
 
         :param response: HTTP response to check; at most the first
-            4 * _ERROR_BODY_LIMIT bytes of a streamed body are read
+            _ERROR_BODY_LIMIT bytes of a streamed body are read
         :raises httpx2.HTTPStatusError: If the response status is not a success
         """
         try:
@@ -433,15 +434,17 @@ class OpenAIHTTPBackend(Backend):
                 async with contextlib.aclosing(response.aiter_bytes()) as chunks:
                     async for chunk in chunks:
                         raw += chunk
-                        if len(raw) >= 4 * _ERROR_BODY_LIMIT:
+                        if len(raw) >= _ERROR_BODY_LIMIT:
                             break
             except (httpx2.HTTPError, httpx2.StreamError):
                 raise err from None
-            body = raw.decode(errors="replace").strip()
+            # Without final=True, a character cut off at the limit is left out
+            decoder = codecs.getincrementaldecoder("utf-8")(errors="backslashreplace")
+            body = decoder.decode(raw[:_ERROR_BODY_LIMIT]).strip()
             if not body:
                 raise
             raise httpx2.HTTPStatusError(
-                f"{err}\nResponse body: {body[:_ERROR_BODY_LIMIT]}",
+                f"{err}\nResponse body: {body}",
                 request=err.request,
                 response=err.response,
             ) from err
