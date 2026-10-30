@@ -291,15 +291,17 @@ _SYNTHETIC_IMAGE_FORMATS = ("jpeg", "png")
 _SYNTHETIC_VIDEO_FORMATS = ("mp4",)
 
 
-def _row_rng(seed: int, row_index: int) -> np.random.Generator:
+def _row_rng(seed: int, row_index: int, epoch: int = 0) -> np.random.Generator:
     """
     Deterministic per-row numpy Generator.
 
-    Uses PCG64 seeded by SeedSequence([seed, row_index]) so two runs with the
-    same (seed, row_index) produce byte-identical RNG streams across processes,
-    machines, and OS-level RNG state.
+    Uses PCG64 seeded by SeedSequence([seed, row_index, epoch]) so two runs with
+    the same (seed, row_index, epoch) produce byte-identical RNG streams across
+    processes, machines, and OS-level RNG state.
     """
-    seed_seq = np.random.SeedSequence([int(seed) & 0xFFFFFFFF, int(row_index)])
+    seed_seq = np.random.SeedSequence(
+        [int(seed) & 0xFFFFFFFF, int(row_index), int(epoch)]
+    )
     return np.random.Generator(np.random.PCG64(seed_seq))
 
 
@@ -409,6 +411,7 @@ def synthesize_image(
     jpeg_quality: int = 85,
     seed: int = 0,
     row_index: int = 0,
+    epoch: int = 0,
 ) -> dict[str, Any]:
     """
     Synthesize a single image and return the canonical encoded dict.
@@ -425,6 +428,7 @@ def synthesize_image(
     :param seed: base seed for reproducibility.
     :param row_index: row index used to vary the RNG stream per row so
         successive rows are byte-different even with the same seed.
+    :param epoch: dataset pass index, so each benchmark gets new images.
     """
     if width <= 0 or height <= 0:
         raise ValueError(f"width and height must be positive, got {width}x{height}")
@@ -440,7 +444,7 @@ def synthesize_image(
             f"expected one of {_SYNTHETIC_IMAGE_CONTENT}"
         )
 
-    rng = _row_rng(seed, row_index)
+    rng = _row_rng(seed, row_index, epoch)
     arr = _generate_image_array(height, width, content, rng)
     img = libs.PILImage.fromarray(arr, mode="RGB")
 
@@ -474,6 +478,7 @@ def synthesize_video(
     video_bitrate: str | None = None,
     seed: int = 0,
     row_index: int = 0,
+    epoch: int = 0,
 ) -> dict[str, Any]:
     """
     Synthesize a short video clip and return the canonical encoded dict.
@@ -493,6 +498,7 @@ def synthesize_video(
         leaves the codec at its default CRF-based rate control.
     :param seed: base seed for reproducibility.
     :param row_index: row index used to vary the RNG stream per row.
+    :param epoch: dataset pass index, so each benchmark gets new clips.
     """
     if width <= 0 or height <= 0:
         raise ValueError(f"width and height must be positive, got {width}x{height}")
@@ -512,7 +518,7 @@ def synthesize_video(
             f"expected one of {_SYNTHETIC_VIDEO_CONTENT}"
         )
 
-    rng = _row_rng(seed, row_index)
+    rng = _row_rng(seed, row_index, epoch)
     clip = np.empty((frames, height, width, 3), dtype=np.uint8)
     for i in range(frames):
         frame_seed = int(rng.integers(0, 2**31 - 1))
