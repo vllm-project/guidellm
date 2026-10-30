@@ -17,8 +17,10 @@ from guidellm.benchmark.schemas.metrics import (
 )
 from guidellm.scheduler import (
     AsyncConstantStrategy,
+    ConcurrentStrategy,
     SchedulerState,
     SchedulingStrategy,
+    SynchronousStrategy,
     ThroughputStrategy,
 )
 from guidellm.schemas import (
@@ -594,6 +596,51 @@ class TestScheduleRelativeMetrics:
         assert metrics.turn_scheduling_delay is None
         # Existing metrics are unaffected by the gating.
         assert metrics.request_latency.successful.mean == pytest.approx(0.5)
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("strategy", "expect_delay"),
+        [
+            (ThroughputStrategy(), False),
+            (ConcurrentStrategy(streams=2), True),
+            (SynchronousStrategy(), True),
+            (AsyncConstantStrategy(rate=10.0), True),
+        ],
+        ids=["throughput", "concurrent", "synchronous", "constant"],
+    )
+    def test_root_dispatch_delay_omitted_for_throughput(
+        self, strategy: SchedulingStrategy, expect_delay: bool
+    ):
+        """
+        Throughput targets every request at the run start, so its first-turn
+        dispatch delay is elapsed run time and would trip the default
+        root_late warnings on every run. Other strategies keep the metric.
+
+        ## WRITTEN BY AI ##
+        """
+        successful = [
+            _make_scheduled_stats(
+                f"req-{index}",
+                SCHEDULE_BASE_TIME,
+                SCHEDULE_BASE_TIME + index,
+                SCHEDULE_BASE_TIME + index + 0.5,
+            )
+            for index in range(3)
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                successful,
+                SCHEDULE_BASE_TIME,
+                SCHEDULE_BASE_TIME + 10.0,
+                strategy=strategy,
+            )
+        )
+
+        if expect_delay:
+            assert metrics.root_dispatch_delay is not None
+            assert metrics.root_dispatch_delay.mean == pytest.approx(1.0)
+        else:
+            assert metrics.root_dispatch_delay is None
 
     @pytest.mark.sanity
     def test_compile_splits_dispatch_delay_into_predecessor_and_scheduler(self):
