@@ -71,6 +71,7 @@ All trace formats can accept the following optional data arguments:
 | `max_wait`                | unset           | Maximum gap in original trace seconds between consecutive requests in one session               |
 | `max_session_wait`        | unset           | Maximum idle in original trace seconds from the previous session's last request to this session |
 | `min_concurrent_sessions` | unset           | Pack sessions so at least this many overlap during steady state                                 |
+| `max_concurrent_sessions` | unset           | Delay sessions so at most this many overlap; lanes run through recorded request durations       |
 | `copies`                  | 1               | Sequential full-dataset replays; pass k+1 starts at pass k's last scheduled request             |
 | `copy_offset`             | 1.0             | Where the next copy starts relative to the prior span: 0 at the start, 1 at the end, >1 a gap   |
 
@@ -89,7 +90,7 @@ The replay profile's `schedule_turn` argument selects how those timestamps are a
 
 `trace_synthetic` and `mooncake` replay each row as an independent, single-request conversation. Rows are sorted by timestamp and keep their offsets from the first request in the trace. Prompts are generated as rows are consumed, and Mooncake hash IDs remain shared across rows within one `copies` pass. Use `max_session_wait` to cap gaps between these independent requests; `max_wait` only caps gaps within multi-request conversations, such as WEKA sessions.
 
-Raise parallelism with `min_concurrent_sessions`, wait caps, and `time_scale` first. Use `copies` only when that packed pass is too short for the benchmark (`max_duration` / `max_requests`). By default (`copy_offset=1`) `copies` replays the entire packed dataset back-to-back: the next pass starts at the previous pass's last request timestamp. `copy_offset=0` starts at the prior pass's first timestamp; values between 0 and 1 interpolate; values above 1 add a gap. Hash-id formats (`mooncake`, `weka`) use a separately salted global token-block table per pass so later passes do not reuse earlier tokens and inflate prefix-cache hits.
+Raise parallelism with `min_concurrent_sessions`, wait caps, and `time_scale` first. When many sessions start together (typical WEKA traces), cap overlap with `max_concurrent_sessions`. A lane stays busy until the session would finish on the idle-gap critical path using recorded durations. You may set both when `min_concurrent_sessions` is less than or equal to `max_concurrent_sessions`. Use `copies` only when that packed pass is too short for the benchmark (`max_duration` / `max_requests`). By default (`copy_offset=1`) `copies` replays the entire packed dataset back-to-back: the next pass starts at the previous pass's last request timestamp. `copy_offset=0` starts at the prior pass's first timestamp; values between 0 and 1 interpolate; values above 1 add a gap. Hash-id formats (`mooncake`, `weka`) use a separately salted global token-block table per pass so later passes do not reuse earlier tokens and inflate prefix-cache hits.
 
 ## Format-Specific Data Arguments
 

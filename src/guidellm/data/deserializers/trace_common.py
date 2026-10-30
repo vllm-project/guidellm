@@ -406,6 +406,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
         # Shared across copies so packing sees the combined timeline.
         packer = TraceSessionTiming(
             min_concurrent_sessions=self.config.min_concurrent_sessions,
+            max_concurrent_sessions=self.config.max_concurrent_sessions,
         )
         scaler = TraceSessionTiming(time_scale=self.config.time_scale)
         for copy_index in range(self.config.copies):
