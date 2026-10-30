@@ -332,6 +332,85 @@ Rich 进度显示可以与日志同时使用。`--disable-console` 和 `--disabl
 
 对需要身份验证的服务器（例如 OpenAI API）运行基准测试时，请在后端配置中提供 API key。详细信息请参阅[后端指南中的“配置 API Key”章节](../guides/backends.md#api-key-configuration)。
 
+## 使用配置（场景）文件
+
+你可以使用 `--config`（别名为 `--scenario`、`-c`）加载已保存的场景文件（YAML 或 JSON），以便重复使用 GuideLLM 测试配置。
+
+配置文件遵循 GuideLLM `BenchmarkScenario` 对象的内部格式，例如：
+
+```yaml
+---
+metadata:
+  labels:
+    key1: value1
+    key2: value2
+spec:
+  backend:
+    kind: openai_http
+    target: http://localhost:8000
+  profile:
+    kind: concurrent
+  constraints:
+    kind: max_duration
+  tokenizer:
+    kind: huggingface_auto
+  data:
+    kind: synthetic_text
+  data_column_mapper:
+    kind: generative_column_mapper
+  data_preprocessors:
+  - kind: encode_media
+  data_finalizer:
+    kind: generative
+  data_loader:
+    kind: pytorch
+  seed:
+    kind: static
+    value: 42
+  output:
+  - kind: json
+    path: output.json
+  - kind: csv
+    path: output.csv
+  metrics:
+    kind: generative
+benchmarks:
+- profile.streams: 1
+```
+
+命令行中指定的选项会覆盖场景中的值。
+
+### 合并配置文件
+
+每个后续配置都会替换前一个配置中的选项。列表（例如多个 `--output` 选项）通常会被替换，而不是合并。不过，当带类型选项的 `kind=` 值相同时，可以覆盖其中的参数。例如，基础配置可能指定了 `openai_http` 后端、`request_format=/v1/chat/completions` 和其他选项；你可以再叠加一个配置文件，添加或覆盖目标 URL 和 API key 等单个参数：
+
+```yaml
+---
+spec:
+  backend:
+    kind: openai_http
+    target: http://localhost:8000
+    api_key: "your-api-key"
+```
+
+你可以组合多个配置文件和 CLI 选项。例如，使用一个基础工作负载配置、第二个配置文件指定目标，以及第三个配置文件指定约束。
+
+### 内置配置文件
+
+#### Red Hat AI Inference Server 配置
+
+这组配置指定了企业推理中常见的测试场景。你可以将它们作为起点，并通过其他配置文件或 CLI 选项覆盖参数。
+
+这些名称已内置于 GuideLLM 中。请使用下列完整名称，例如 `rhaiis/concurrent-1k-1k-equal`。
+
+- `rhaiis/concurrent-1k-1k-equal`：预填充和解码均衡的场景。并发工作负载，提示词和输出各为 1,000 个 token。
+- `rhaiis/concurrent-1k-1k-multiturn`：启用前缀缓存的多轮对话场景。输入和输出各为 1,000 个 token，另有 512 个前缀 token，共 5 轮对话。
+- `rhaiis/concurrent-2ki-128-equal`：预填充密集型场景。输入为 2k 个 token，输出为 128 个 token。
+- `rhaiis/concurrent-8k-1k-equal`：长上下文场景。输入为 8,000 个 token，输出为 1,000 个 token。
+- `rhaiis/concurrent-8k-800-norm`：序列长度有变化的长上下文场景。输入平均为 8,000 个 token，输出平均为 800 个 token，但统计方差较大。
+- `rhaiis/concurrent-100k-1k-equal`：超长上下文场景。提示词为 100,000 个 token，输出为 1,000 个 token。
+- `rhaiis/concurrent-512-2ki-norm`：序列长度有变化的生成密集型场景。提示词平均为 512 个 token，输出为 1k 个 token，但统计方差非常大。
+
 ## 故障排除
 
 常见问题请参阅[故障排除指南](../guides/troubleshooting.md)。
