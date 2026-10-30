@@ -1,7 +1,7 @@
 ---
 title: 文档翻译
 weight: -4
-source_sha256: !!str "4f86bbfd6347992230b4fad4b54b4edc929248c060907830b3c2e8ef84af83d4"
+source_sha256: !!str "5e8ca2dceb3dd4aa2432aa9337a3d18f8583e65861f5038da510e55fbe2569cb"
 ---
 
 # 文档翻译
@@ -10,7 +10,7 @@ GuideLLM 在权威的英文文档之外，还发布少量由社区维护的简�
 
 ## 政策
 
-- `docs/en/` 下的英文文档是权威来源。
+- `docs/en/` 下的英文文档是权威来源，但从仓库根目录的 `CODE_OF_CONDUCT.md`、`CONTRIBUTING.md` 和 `DEVELOPING.md` 生成的开发者页面除外。
 - 简体中文页面位于 `docs/zh/` 下，其路径与英文页面对应。
 - 英文文档的更改不要求同步更新翻译，也不会因翻译滞后而受到阻碍。
 - 如果翻译页面落后于英文源文件，页面会显示警告并链接至最新的英文页面。
@@ -19,7 +19,7 @@ GuideLLM 在权威的英文文档之外，还发布少量由社区维护的简�
 
 ## 源文件跟踪
 
-每个翻译页面都在页面的 YAML front matter 中以 `source_sha256` 记录其英文源文件的 SHA-256 摘要。请写成 `source_sha256: !!str "<digest>"`，以便外观类似数字的哈希值仍被视为字符串，并让 Markdown 格式化工具保留引号。中文和韩文页面的路径与其英文源文件对应：`docs/zh/<path>.md` 和 `docs/ko/<path>.md` 对应 `docs/en/<path>.md`。无需维护集中清单。
+每个翻译页面都在页面的 YAML front matter 中以 `source_sha256` 记录其英文源文件的 SHA-256 摘要。请写成 `source_sha256: !!str "<digest>"`，以便外观类似数字的哈希值仍被视为字符串，并让 Markdown 格式化工具保留引号。中文和韩文页面的路径与其英文源文件对应：`docs/zh/<path>.md` 和 `docs/ko/<path>.md` 对应 `docs/en/<path>.md`。三个生成的开发者页面则跟踪仓库根目录中的源文件。
 
 运行 CI 使用的非阻塞式验证：
 
