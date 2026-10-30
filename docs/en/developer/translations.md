@@ -9,7 +9,7 @@ GuideLLM publishes a small, community-maintained set of Simplified Chinese pages
 
 ## Policy
 
-- English documentation under `docs/en/` is the source of truth.
+- English documentation under `docs/en/` is the source of truth, except for the developer pages generated from `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, and `DEVELOPING.md` in the repository root.
 - Simplified Chinese pages live under `docs/zh/` and mirror the English paths.
 - English documentation changes do not require a matching translation update and are not blocked by translation drift.
 - A translated page that is behind its English source displays a warning and links readers to the current English page.
@@ -18,7 +18,7 @@ GuideLLM publishes a small, community-maintained set of Simplified Chinese pages
 
 ## Source tracking
 
-Each translated page records the SHA-256 digest of its English source in the page's YAML front matter as `source_sha256`. Write it as `source_sha256: !!str "<digest>"` so numeric-looking hashes remain strings and the Markdown formatter preserves the quotes. Chinese and Korean page paths mirror their English source: `docs/zh/<path>.md` and `docs/ko/<path>.md` correspond to `docs/en/<path>.md`. No central manifest is needed.
+Each translated page records the SHA-256 digest of its English source in the page's YAML front matter as `source_sha256`. Write it as `source_sha256: !!str "<digest>"` so numeric-looking hashes remain strings and the Markdown formatter preserves the quotes. Chinese and Korean page paths mirror their English source: `docs/zh/<path>.md` and `docs/ko/<path>.md` correspond to `docs/en/<path>.md`. The three generated developer pages instead track their repository-root source files.
 
 Run the non-blocking validation used by CI:
 
