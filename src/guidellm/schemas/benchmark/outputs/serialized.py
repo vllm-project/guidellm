@@ -28,6 +28,13 @@ class JSONBenchmarkOutputArgs(BenchmarkOutputArgs):
         description="The file to save the output to.",
         examples=["./benchmarks.json"],
     )
+    include_media: bool = Field(
+        default=True,
+        description=(
+            "Keep embedded media payloads for lossless replay. Set false to "
+            "replace recognized payloads with metadata in this output only."
+        ),
+    )
 
 
 @BenchmarkOutputArgs.register("yaml")
@@ -43,4 +50,11 @@ class YAMLBenchmarkOutputArgs(BenchmarkOutputArgs):
         default_factory=lambda: settings.default_results_dir / "benchmarks.yaml",
         description="The file to save the output to.",
         examples=["./benchmarks.yaml"],
+    )
+    include_media: bool = Field(
+        default=True,
+        description=(
+            "Keep embedded media payloads for lossless replay. Set false to "
+            "replace recognized payloads with metadata in this output only."
+        ),
     )
