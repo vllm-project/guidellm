@@ -40,7 +40,7 @@ from tests.unit.data.deserializers.trace_test_utils import trace_file_source
 def mock_processor() -> Mock:
     """Tokenizer where each whitespace-delimited word is one token."""
     proc = Mock()
-    proc.encode.side_effect = lambda text: list(range(len(text.split())))
+    proc.encode.side_effect = lambda text, **_kwargs: list(range(len(text.split())))
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
         f"tok{t}" for t in tokens
     )
@@ -76,6 +76,23 @@ def test_generate_token_ids(token_count, expected):
     res = generate_token_ids(token_count, proc, faker)
     assert len(res) == len(expected)
     assert res == expected
+
+
+@pytest.mark.sanity
+def test_generate_token_ids_excludes_special_tokens():
+    """A tokenizer that adds a BOS token must not leave it in the block, since
+    decode_prompt drops special tokens and the block would come up short."""
+    bos_token_id = 0
+    proc = Mock()
+    proc.encode.side_effect = lambda text, add_special_tokens=True: (
+        ([bos_token_id] if add_special_tokens else [])
+        + list(range(1, len(text.split()) + 1))
+    )
+
+    res = generate_token_ids(5, proc, Faker())
+
+    assert bos_token_id not in res
+    assert res == (1, 2, 3, 4, 5)
 
 
 class TestTraceFormatRegistry:

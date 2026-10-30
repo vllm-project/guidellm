@@ -27,7 +27,7 @@ def ascending_processor() -> Mock:
     traces as there is no way to generate distinct token blocks for sibling
     nodes."""
     proc = Mock()
-    proc.encode.side_effect = lambda text: list(range(len(text.split())))
+    proc.encode.side_effect = lambda text, **_kwargs: list(range(len(text.split())))
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
         f"tok{i}" for i, _ in enumerate(tokens)
     )
@@ -41,11 +41,27 @@ def compatible_processor() -> Mock:
     sibling nodes."""
     random.seed(0)
     proc = Mock()
-    proc.encode.side_effect = lambda text: [
+    proc.encode.side_effect = lambda text, **_kwargs: [
         random.randint(0, 1000) for _ in range(len(text.split()))
     ]
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
         f"tok{t}" for t in tokens
+    )
+    return proc
+
+
+def bos_processor() -> Mock:
+    """Tokenizer like compatible_processor that also adds a BOS token (id 0),
+    as Llama tokenizers do, and drops it when decoding with
+    skip_special_tokens."""
+    random.seed(0)
+    proc = Mock()
+    proc.encode.side_effect = lambda text, add_special_tokens=True: (
+        ([0] if add_special_tokens else [])
+        + [random.randint(1, 1000) for _ in range(len(text.split()))]
+    )
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
+        f"tok{t}" for t in tokens if not (skip_special_tokens and t == 0)
     )
     return proc
 
@@ -296,6 +312,32 @@ class TestMooncakeTraceFormat:
         ds = self.deserialize(deserializer, trace)
         with pytest.raises(InvalidRowError, match=match):
             next(iter(ds))
+
+    @pytest.mark.sanity
+    def test_prompt_length_with_bos_adding_tokenizer(
+        self, tmp_path: Path, deserializer
+    ):
+        """Every hash block contributes hash_id_block_size tokens to the prompt
+        when the tokenizer adds a BOS token."""
+        block_size = 8
+        n_in = block_size * 3
+        trace = write_trace(
+            tmp_path,
+            f'{{"timestamp": 0.0, "input_length": {n_in}, "output_length": 5, '
+            '"hash_ids": [0, 1, 2]}\n',
+        )
+        processor = bos_processor()
+        ds = deserializer(
+            config=MooncakeTraceFormatArgs(
+                source=trace_file_source(trace), hash_id_block_size=block_size
+            ),
+            processor_factory=lambda: processor,
+            random_seed=42,
+        )
+        turns = [turn for row in ds for turn in load_graph_turns(row)]
+        prompt = turns[0].columns["text_column"][0]
+
+        assert len(processor.encode(prompt, add_special_tokens=False)) == n_in
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(

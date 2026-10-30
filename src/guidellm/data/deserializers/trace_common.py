@@ -86,7 +86,9 @@ def generate_token_ids(
         # The Faker.text() can only generate text of at least 5 characters.
         num_chars = max(token_count * margin_of_safety * attempt, 5)
         text = faker.text(num_chars)
-        token_ids = processor.encode(text)
+        # Without special tokens: a BOS id kept here would be dropped when
+        # the prompt is decoded, leaving each block one token short.
+        token_ids = processor.encode(text, add_special_tokens=False)
         if len(token_ids) >= token_count:
             return tuple(token_ids[:token_count])
 
