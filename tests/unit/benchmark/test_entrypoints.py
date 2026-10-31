@@ -8,7 +8,10 @@ import pytest
 from guidellm.benchmark import entrypoints as entrypoints_module
 from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.entrypoints import resolve_backend, resolve_output_formats
-from guidellm.benchmark.outputs import GenerativeBenchmarkerOutput
+from guidellm.benchmark.outputs import (
+    GenerativeBenchmarkerConsole,
+    GenerativeBenchmarkerOutput,
+)
 from guidellm.benchmark.profiles import ProfileFactory
 from guidellm.schemas.backends import (
     OpenAIHTTPBackendArgs,
@@ -22,6 +25,7 @@ from guidellm.schemas.benchmark import (
     SynchronousProfileArgs,
     TransientPhaseConfig,
 )
+from guidellm.utils.console import Console
 
 
 @pytest.mark.asyncio
@@ -312,3 +316,68 @@ async def test_entrypoint_passes_configured_objectives_to_benchmarker():
         await entrypoints_module.benchmark_generative_text(args=args)
 
     assert captured.get("slo") == slo
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize("explicit_console", [False, True])
+async def test_entrypoint_prints_console_tables_once(explicit_console):
+    """
+    Print the console tables once, whether or not ``kind=console`` is given.
+
+    The console output is the default, so an explicit console output must not
+    print the same tables a second time.
+    """
+
+    async def _fake_run(self, **kwargs):
+        return
+        yield  # pragma: no cover - makes this an async generator
+
+    args = BenchmarkScenario(
+        spec=BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "data": [
+                    {"kind": "synthetic_text", "prompt_tokens": 8, "output_tokens": 8}
+                ],
+                "profile": {"kind": "synchronous"},
+                "outputs": [{"kind": "console"}] if explicit_console else [],
+            }
+        )
+    )
+    outputs = [GenerativeBenchmarkerConsole()] if explicit_console else []
+    finalize = AsyncMock(return_value="printed to console")
+
+    with (
+        patch.object(entrypoints_module.Benchmarker, "run", _fake_run),
+        patch.object(
+            entrypoints_module,
+            "resolve_backend",
+            AsyncMock(return_value=(MagicMock(), "model")),
+        ),
+        patch.object(
+            entrypoints_module, "resolve_tokenizer", AsyncMock(return_value=None)
+        ),
+        patch.object(
+            entrypoints_module,
+            "create_data_loader",
+            AsyncMock(return_value=MagicMock()),
+        ),
+        patch.object(
+            entrypoints_module, "resolve_profile", AsyncMock(return_value=MagicMock())
+        ),
+        patch.object(
+            entrypoints_module,
+            "resolve_output_formats",
+            AsyncMock(return_value=outputs),
+        ),
+        patch.object(GenerativeBenchmarkerConsole, "finalize", finalize),
+    ):
+        await entrypoints_module.benchmark_generative_text(
+            args=args, console=Console(quiet=True)
+        )
+
+    assert finalize.await_count == 1
