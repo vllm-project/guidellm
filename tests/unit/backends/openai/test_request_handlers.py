@@ -3912,6 +3912,80 @@ class TestResponsesRequestHandler:
         assert response.text == "Final answer"
         assert response.reasoning_text == "Step 1. Step 2."
 
+    @pytest.mark.regression
+    def test_streaming_reasoning_text_events_trigger_ttft_not_content(
+        self, valid_instances, generation_request
+    ):
+        """
+        Verify full reasoning deltas (response.reasoning_text.delta, as sent
+        by vLLM) count as iterations for TTFT, are not content for TTFOT, and
+        are accumulated as reasoning_text.
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        result = instance.add_streaming_line(
+            'data: {"type": "response.reasoning_text.delta", "delta": "Let me think. "}'
+        )
+        assert result == 1
+        assert instance.last_iteration_had_content is False
+
+        result = instance.add_streaming_line(
+            'data: {"type": "response.reasoning_text.delta", "delta": "Done."}'
+        )
+        assert result == 1
+        assert instance.last_iteration_had_content is False
+
+        result = instance.add_streaming_line(
+            'data: {"type": "response.output_text.delta", "delta": "Answer"}'
+        )
+        assert result == 1
+        assert instance.last_iteration_had_content is True
+
+        instance.add_streaming_line(
+            'data: {"type": "response.completed", "response": '
+            '{"id": "resp_1", "usage": {"input_tokens": 5, "output_tokens": 4}}}'
+        )
+        response = instance.compile_streaming(generation_request, arguments)
+        assert response.text == "Answer"
+        assert response.reasoning_text == "Let me think. Done."
+
+    @pytest.mark.regression
+    def test_non_streaming_captures_reasoning_text_content(
+        self, valid_instances, generation_request
+    ):
+        """
+        Verify compile_non_streaming reads full reasoning from reasoning
+        items' content parts (type 'reasoning_text') when the summary is
+        empty, as vLLM returns it.
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        api_response = {
+            "id": "resp_1",
+            "output": [
+                {
+                    "type": "reasoning",
+                    "summary": [],
+                    "content": [
+                        {"type": "reasoning_text", "text": "Let me think step by step."}
+                    ],
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Final answer"}],
+                },
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+        }
+        response = instance.compile_non_streaming(
+            generation_request, arguments, api_response
+        )
+        assert response.text == "Final answer"
+        assert response.reasoning_text == "Let me think step by step."
+
     @pytest.mark.sanity
     def test_format_excludes_reasoning_from_history_by_default(self, valid_instances):
         """

@@ -2026,22 +2026,31 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
     @staticmethod
     def _extract_reasoning_text(response: dict) -> str | None:
-        """Extract reasoning summary text from Responses API output items.
+        """Extract reasoning text from Responses API output items.
 
-        Reasoning items have ``type: "reasoning"`` with a list of ``summary``
-        objects, each containing a ``text`` field.
+        Reasoning items have ``type: "reasoning"``. Servers that return the
+        full reasoning (such as vLLM) put it in ``content`` items of type
+        ``reasoning_text`` and leave ``summary`` empty; others return only
+        ``summary`` objects. The full reasoning is used when present, otherwise
+        the summary text.
 
         :param response: Full Responses API response dict.
         :return: Concatenated reasoning text, or None if absent.
         """
-        parts: list[str] = []
+        content_parts: list[str] = []
+        summary_parts: list[str] = []
         for item in response.get("output", []):
             if item.get("type") != "reasoning":
                 continue
-            for summary in item.get("summary", []):
+            for content in item.get("content") or []:
+                if content.get("type") == "reasoning_text" and (
+                    txt := content.get("text")
+                ):
+                    content_parts.append(txt)
+            for summary in item.get("summary") or []:
                 if txt := summary.get("text"):
-                    parts.append(txt)
-        return "".join(parts) or None
+                    summary_parts.append(txt)
+        return "".join(content_parts or summary_parts) or None
 
     def compile_non_streaming(
         self,
@@ -2257,7 +2266,10 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
         :return: 0 or 1 if handled, None if not a text delta event.
         """
-        if event_type == "response.reasoning_summary_text.delta":
+        if event_type in (
+            "response.reasoning_summary_text.delta",
+            "response.reasoning_text.delta",
+        ):
             delta = data.get("delta", "")
             if delta:
                 self.streaming_reasoning_texts.append(delta)
