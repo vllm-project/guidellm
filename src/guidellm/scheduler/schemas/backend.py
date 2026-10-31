@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, ClassVar, Generic, Protocol, TypeVar
 
 from guidellm.schemas import RequestInfo
 from guidellm.utils.registry import RegistryMixin, RegistryObjT
@@ -43,6 +43,10 @@ class BackendInterface(Protocol, Generic[RequestT, ResponseT]):
             async def resolve(self, request, request_info, history=None):
                 yield response, updated_request_info
     """
+
+    #: Whether token timestamps are taken on the worker's event loop as tokens
+    #: arrive, so that a lagging loop delays them.
+    stamps_tokens_on_event_loop: ClassVar[bool] = True
 
     @property
     def processes_limit(self) -> int | None:

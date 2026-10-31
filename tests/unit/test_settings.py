@@ -146,3 +146,15 @@ def test_settings_with_env_variables(mocker):
     loaded = Settings()
     assert loaded.dataset.preferred_data_columns == ["custom_column"]
     assert loaded.table_border_char == "*"
+
+
+@pytest.mark.sanity
+@pytest.mark.parametrize("interval", [0.0, -1.0, float("inf")])
+def test_loop_lag_interval_must_be_positive(interval: float):
+    """
+    Reject a loop-lag interval that is not a positive, finite number of seconds.
+
+    ## WRITTEN BY AI ##
+    """
+    with pytest.raises(ValueError, match="loop_lag_interval"):
+        Settings(_env_file=None, loop_lag_interval=interval)

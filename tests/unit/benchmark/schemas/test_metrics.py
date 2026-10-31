@@ -1904,3 +1904,41 @@ class TestTurnMetrics:
 
         assert metrics.generation_delay.count == 0
         assert metrics.generation_delay.mean == 0.0
+
+
+class TestSchedulerMetricsWorkerLoopLag:
+    """Compile worker event-loop lag histograms into a distribution summary."""
+
+    @pytest.mark.sanity
+    def test_compile_weights_lag_by_count(self):
+        """Weight each lag by how many samples fell in its bucket.
+
+        ## WRITTEN BY AI ##
+        """
+        accumulator = _make_accumulator([], SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10)
+
+        metrics = SchedulerMetrics.compile(
+            accumulator,
+            SchedulerState(
+                start_time=SCHEDULE_BASE_TIME,
+                worker_loop_lag_samples=[(0.001, 3.0), (0.01, 1.0)],
+            ),
+        )
+
+        assert metrics.worker_loop_lag.count == 4
+        assert metrics.worker_loop_lag.mean == pytest.approx(0.00325)
+        assert metrics.worker_loop_lag.max == pytest.approx(0.01)
+
+    @pytest.mark.smoke
+    def test_worker_loop_lag_is_optional_for_existing_reports(self):
+        """Validate scheduler metrics written before loop lag was recorded.
+
+        ## WRITTEN BY AI ##
+        """
+        accumulator = _make_accumulator([], SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10)
+        payload = SchedulerMetrics.compile(
+            accumulator, SchedulerState(start_time=SCHEDULE_BASE_TIME)
+        ).model_dump()
+        del payload["worker_loop_lag"]
+
+        assert SchedulerMetrics.model_validate(payload).worker_loop_lag.count == 0

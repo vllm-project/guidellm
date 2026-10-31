@@ -83,6 +83,11 @@ These metrics provide a breakdown of the overall request statuses, helping users
 - **Definition**: `generation_delay` is the time between the scheduler beginning to produce the next conversation from `requests_generator` and creating that conversation's request infos. It is recorded once per conversation on scheduler state, not on individual requests.
 - **Use Case**: Shows how long the load generator spends materializing and enqueueing each conversation (dataset iteration plus coordinator prep). A delay near zero means request production is keeping up; a large delay means the dataset or enqueue path is the bottleneck, independent of backend latency and dispatch scheduling.
 
+### Worker Loop Lag
+
+- **Definition**: `worker_loop_lag` is how late a timer fires on each worker's event loop while the worker runs requests, in seconds. Each worker checks at random times, 0.1 seconds apart on average by default, set with `GUIDELLM__LOOP_LAG_INTERVAL`. Each sample has 1 ms of timer resolution subtracted, so lag up to 1 ms is reported as zero. It is recorded on scheduler state, not on individual requests.
+- **Use Case**: Shows whether GuideLLM itself kept up. A worker whose event loop runs late reads responses late, which overstates time to first token.
+
 ### Dispatch Delay
 
 - **Definition**: `request_dispatch_delay` is `request_start - targeted_start`: the time between when a request was scheduled to arrive and when it was actually sent.

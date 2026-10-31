@@ -28,6 +28,7 @@ from typing_extensions import TypeAliasType
 from guidellm.logger import logger
 from guidellm.scheduler.constraints import Constraint, RequestsExhaustedConstraint
 from guidellm.scheduler.dag import DAGExecutionState
+from guidellm.scheduler.loop_lag import LoopLagHistograms
 from guidellm.scheduler.schemas import (
     BackendInterface,
     ConversationT,
@@ -131,6 +132,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         self.constraint_reached_event: Event | None = None
         self.shutdown_event: Event | None = None
         self.error_event: Event | None = None
+        self.loop_lag: LoopLagHistograms | None = None
 
         # Background health monitor, created in create_processes
         self._health_monitor_task: asyncio.Task | None = None
@@ -233,6 +235,10 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
         # Initialize worker processes
         self.processes = []
+        if self.backend.stamps_tokens_on_event_loop:
+            self.loop_lag = LoopLagHistograms(
+                self.mp_context, num_processes, settings.loop_lag_interval
+            )
         self.strategy.init_processes_timings(
             worker_count=num_processes,
             max_concurrency=max_conc,
@@ -263,6 +269,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 stdout_conn=stdout_writer,
                 stderr_conn=stderr_writer,
                 parent_logger=logger,
+                loop_lag=self.loop_lag,
             )
             proc = self.mp_context.Process(target=worker.run, daemon=False)
             proc.start()
@@ -482,6 +489,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             except Exception as err:  # noqa: BLE001
                 exceptions.append(err)
         self.messaging = None
+        group_state = self.state
         self.state = None
 
         # Clear out create processes values
@@ -491,6 +499,9 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             )
             exceptions.extend(err for err in join_errors if err is not None)
         self.processes = None
+        if self.loop_lag is not None and group_state is not None:
+            group_state.add_loop_lag(self.loop_lag.samples())
+        self.loop_lag = None
 
         if self._pipe_reader_thread is not None:
             self._pipe_reader_thread.stop()
@@ -761,6 +772,16 @@ class WorkerGroupState(Generic[RequestT, ResponseT]):
             request_info,
             state_update.state,  # inject state for updates to be yielded back
         )
+
+    def add_loop_lag(self, samples: list[tuple[float, float]]) -> None:
+        """
+        Add the workers' event-loop lag to the scheduler state.
+
+        :param samples: ``(lag, count)`` pairs merged from the worker histograms
+        """
+        with self._update_lock:
+            # States already returned share this list, so they include the samples
+            self._state.worker_loop_lag_samples.extend(samples)
 
     def update_stop_events(self, state_update: _StateUpdate) -> None:
         """

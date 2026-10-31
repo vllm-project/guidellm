@@ -55,6 +55,8 @@ class _MockToolBackend:
       without ever yielding the final response.
     """
 
+    stamps_tokens_on_event_loop = True
+
     def __init__(
         self,
         has_tool_calls: bool = True,
