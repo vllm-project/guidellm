@@ -1205,6 +1205,68 @@ async def test_resolve_responses_terminal_error(
         await backend.process_shutdown()
 
 
+@pytest.mark.regression
+@pytest.mark.asyncio
+@async_timeout(10.0)
+async def test_resolve_responses_tool_call_token_iterations(
+    httpx2_mock: respx.Router,
+):
+    """Count the tool call's added event and argument deltas, not the done event."""
+    deltas = ['{"loc', 'ation": "', 'SF"}']
+    events = [
+        {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {
+                "type": "function_call",
+                "name": "get_weather",
+                "call_id": "call_1",
+                "arguments": "",
+            },
+        },
+        *(
+            {
+                "type": "response.function_call_arguments.delta",
+                "output_index": 0,
+                "delta": delta,
+            }
+            for delta in deltas
+        ),
+        {
+            "type": "response.function_call_arguments.done",
+            "output_index": 0,
+            "arguments": "".join(deltas),
+        },
+        {"type": "response.completed", "response": {"id": "resp-1"}},
+    ]
+    httpx2_mock.route(url="http://test/v1/responses").respond(
+        headers={"Content-Type": "text/event-stream"},
+        content=_async_chunks(
+            [("data: " + json.dumps(event) + "\n\n").encode() for event in events]
+        ),
+    )
+    backend = _make_backend(
+        target="http://test",
+        model="test-model",
+        stream=True,
+        validate_backend=False,
+        request_format="/v1/responses",
+    )
+    request = GenerationRequest(columns={"text_column": ["Hello"]})
+    request_info = RequestInfo(request_id=request.request_id)
+    await backend.process_startup()
+    try:
+        results = [result async for result in backend.resolve(request, request_info)]
+    finally:
+        await backend.process_shutdown()
+
+    final_response, final_info = results[-1]
+    assert final_response is not None
+    assert final_response.tool_calls is not None
+    assert final_response.tool_calls[0].function.arguments == "".join(deltas)
+    assert final_info.timings.token_iterations == 4
+
+
 @pytest.mark.sanity
 @pytest.mark.asyncio
 @pytest.mark.parametrize("protocol", ["http11", "http2"])

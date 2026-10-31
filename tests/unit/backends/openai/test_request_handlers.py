@@ -4616,6 +4616,118 @@ class TestResponsesRequestHandler:
         assert tc.function.name == "get_weather"
         assert tc.function.arguments == '{"loc":"SF"}'
 
+    @pytest.mark.regression
+    def test_streaming_tool_call_arguments_done_is_not_an_iteration(
+        self, valid_instances
+    ):
+        """
+        Test that function_call_arguments.done adds no token iteration after the
+        arguments were streamed as deltas, since it repeats them.
+        """
+        instance = valid_instances
+
+        lines = [
+            (
+                'data: {"type":"response.output_item.added",'
+                '"output_index":0,'
+                '"item":{"type":"function_call","name":"get_weather",'
+                '"call_id":"call_abc","arguments":""}}'
+            ),
+            (
+                'data: {"type":"response.function_call_arguments.delta",'
+                '"output_index":0,"delta":"{\\"loc\\""}'
+            ),
+            (
+                'data: {"type":"response.function_call_arguments.delta",'
+                '"output_index":0,"delta":":\\"SF\\"}"}'
+            ),
+            (
+                'data: {"type":"response.function_call_arguments.done",'
+                '"output_index":0,"arguments":"{\\"loc\\":\\"SF\\"}"}'
+            ),
+        ]
+
+        iterations = [instance.add_streaming_line(line) for line in lines]
+
+        assert iterations == [1, 1, 1, 0]
+        assert instance.streaming_tool_calls[0].function.arguments == '{"loc":"SF"}'
+
+    @pytest.mark.sanity
+    def test_streaming_tool_call_arguments_done_with_new_text(self, valid_instances):
+        """
+        Test that function_call_arguments.done counts as a token iteration when
+        its arguments differ from what the deltas streamed.
+        """
+        instance = valid_instances
+
+        lines = [
+            (
+                'data: {"type":"response.output_item.added",'
+                '"output_index":0,'
+                '"item":{"type":"function_call","name":"get_weather",'
+                '"call_id":"call_abc","arguments":""}}'
+            ),
+            (
+                'data: {"type":"response.function_call_arguments.delta",'
+                '"output_index":0,"delta":"{\\"loc\\""}'
+            ),
+            (
+                'data: {"type":"response.function_call_arguments.done",'
+                '"output_index":0,"arguments":"{\\"loc\\":\\"SF\\"}"}'
+            ),
+        ]
+
+        iterations = [instance.add_streaming_line(line) for line in lines]
+
+        assert iterations == [1, 1, 1]
+        assert instance.streaming_tool_calls[0].function.arguments == '{"loc":"SF"}'
+
+    @pytest.mark.sanity
+    def test_streaming_tool_call_arguments_done_without_deltas(self, valid_instances):
+        """
+        Test that function_call_arguments.done counts as a token iteration when
+        no argument deltas were streamed before it.
+        """
+        instance = valid_instances
+
+        lines = [
+            (
+                'data: {"type":"response.output_item.added",'
+                '"output_index":0,'
+                '"item":{"type":"function_call","name":"get_weather",'
+                '"call_id":"call_abc","arguments":""}}'
+            ),
+            (
+                'data: {"type":"response.function_call_arguments.done",'
+                '"output_index":0,"arguments":"{\\"loc\\":\\"SF\\"}"}'
+            ),
+        ]
+
+        iterations = [instance.add_streaming_line(line) for line in lines]
+
+        assert iterations == [1, 1]
+        assert instance.streaming_tool_calls[0].function.arguments == '{"loc":"SF"}'
+
+    @pytest.mark.sanity
+    def test_streaming_tool_call_arguments_done_unknown_index(self, valid_instances):
+        """
+        Test that function_call_arguments.done for an unknown output_index counts
+        as a token iteration and creates no tool call.
+        """
+        instance = valid_instances
+
+        lines = [
+            (
+                'data: {"type":"response.function_call_arguments.done",'
+                '"output_index":3,"arguments":"{\\"loc\\":\\"SF\\"}"}'
+            ),
+        ]
+
+        iterations = [instance.add_streaming_line(line) for line in lines]
+
+        assert iterations == [1]
+        assert instance.streaming_tool_calls == {}
+
     @pytest.mark.sanity
     def test_streaming_multiple_tool_calls(self, valid_instances, generation_request):
         """
