@@ -1556,14 +1556,14 @@ class GenerativeMetrics(StandardBaseDict):
                 uncertainty=uncertainty,
             ),
             time_to_last_round_trip_ms=StatusDistributionSummary.from_values_function(
-                function=lambda req: req.time_to_last_round_trip_ms or 0.0,
+                function=lambda req: req.time_to_last_round_trip_ms,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
                 uncertainty=uncertainty,
             ),
             avg_round_trip_time_ms=StatusDistributionSummary.from_values_function(
-                function=lambda req: req.avg_round_trip_time_ms or 0.0,
+                function=lambda req: req.avg_round_trip_time_ms,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,

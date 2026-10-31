@@ -6,12 +6,17 @@ from types import SimpleNamespace
 import pytest
 
 from guidellm.benchmark.outputs.csv import GenerativeBenchmarkerCSV
-from guidellm.benchmark.schemas.metrics import SLOAttainmentSummary
+from guidellm.benchmark.schemas.accumulator import GenerativeBenchmarkAccumulator
+from guidellm.benchmark.schemas.metrics import GenerativeMetrics, SLOAttainmentSummary
 from guidellm.benchmark.schemas.warnings import BenchmarkWarning
 from guidellm.scheduler import ConcurrentStrategy, ThroughputStrategy
 from guidellm.schemas import (
+    GenerativeRequestStats,
+    RequestInfo,
+    RequestTimings,
     SampleUncertainty,
     StatusDistributionSummary,
+    UsageMetrics,
 )
 from guidellm.schemas.base.statistics import PERCENTILE_PROBABILITIES
 from guidellm.schemas.benchmark import GoodputSLO
@@ -224,6 +229,102 @@ class TestHasDistributionData:
         )
         csv_out = GenerativeBenchmarkerCSV.__new__(GenerativeBenchmarkerCSV)
         assert csv_out._has_distribution_data(dist) is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+@pytest.mark.parametrize("status", ["successful", "incomplete", "errored"])
+async def test_finalize_exports_zero_observations_and_intervals(tmp_path: Path, status):
+    """Measured zeros retain statistics and intervals; empty statuses stay absent.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = make_benchmark(strategy=ThroughputStrategy(), rps=1.0, tps=10.0)
+    observations = {name: [] for name in ("successful", "incomplete", "errored")}
+    observations[status] = [0.0] * 200
+    benchmark.metrics.time_to_first_token_ms = StatusDistributionSummary.from_values(
+        **observations,
+        uncertainty=SampleUncertainty(confidence=0.95),
+    )
+
+    output = GenerativeBenchmarkerCSV(output_path=tmp_path / "zero_metrics.csv")
+    path = await output.finalize(report(benchmark))
+    rows = list(csv.reader(path.open()))
+    columns = {
+        (group, name, stat): value
+        for group, name, stat, value in zip(*rows, strict=True)
+    }
+    label = f"{status.capitalize()} ms"
+
+    for statistic in ("Mean", "Median", "Std Dev"):
+        assert columns[("Time to First Token", label, statistic)] == "0.0"
+    assert columns[("Time to First Token", label, "Mean CI")] == "[0.0, 0.0]"
+    percentile_cis = json.loads(
+        columns[("Time to First Token", label, "Percentile CIs")]
+    )
+    assert percentile_cis["p50"] == [0.0, 0.0]
+    assert {name for group, name, _ in columns if group == "Time to First Token"} == {
+        label
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.regression
+@pytest.mark.parametrize("record_sends", [False, True])
+async def test_finalize_distinguishes_missing_and_zero_round_trips(
+    tmp_path: Path, record_sends: bool
+):
+    """Compile request timings before exporting missing or measured zero round trips.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = make_benchmark(strategy=ThroughputStrategy(), rps=1.0, tps=10.0)
+    accumulator = GenerativeBenchmarkAccumulator(config=benchmark.config)
+    accumulator.timings.measure_start = 1.0
+    accumulator.timings.measure_end = 3.0
+    accumulator.completed.requests_stats = [
+        GenerativeRequestStats(
+            request_id=str(index),
+            info=RequestInfo(
+                request_id=str(index),
+                status="completed",
+                timings=RequestTimings(
+                    resolve_start=1.0,
+                    resolve_end=2.0,
+                    request_start=1.0,
+                    request_end=2.0,
+                    first_token_iteration=1.5,
+                    last_token_iteration=1.5,
+                    last_request_sent=1.5 if record_sends else None,
+                    request_sent_sum=1.5 if record_sends else 0.0,
+                    request_sent_count=1 if record_sends else 0,
+                    token_received_sum=1.5,
+                    token_received_count=1,
+                ),
+            ),
+            input_metrics=UsageMetrics(text_tokens=8),
+            output_metrics=UsageMetrics(text_tokens=8),
+        )
+        for index in range(200)
+    ]
+    benchmark.metrics = GenerativeMetrics.compile(accumulator)
+    serialized = benchmark.metrics.model_dump(mode="json")
+    for metric in ("time_to_last_round_trip_ms", "avg_round_trip_time_ms"):
+        assert serialized[metric]["successful"]["count"] == (200 if record_sends else 0)
+
+    output = GenerativeBenchmarkerCSV(output_path=tmp_path / "round_trip_metrics.csv")
+    path = await output.finalize(report(benchmark))
+    rows = list(csv.reader(path.open()))
+    columns = {
+        (group, name, stat): value
+        for group, name, stat, value in zip(*rows, strict=True)
+    }
+    for group in ("Time To Last Round Trip", "Avg Round Trip Time"):
+        if record_sends:
+            assert columns[(group, "Successful ms", "Mean")] == "0.0"
+            assert columns[(group, "Successful ms", "Mean CI")] == "[0.0, 0.0]"
+        else:
+            assert not any(column_group == group for column_group, _, _ in columns)
 
 
 @pytest.mark.asyncio
@@ -551,10 +652,6 @@ class TestServerThroughputGoodputColumns:
         """
         The goodput columns are written even when no request met the
         objectives.
-
-        _add_stats_for_metric drops any status whose total is 0.0, which would
-        omit the columns from the CSV while the console and JSON still report
-        0.0 for the same run.
 
         ## WRITTEN BY AI ##
         """
