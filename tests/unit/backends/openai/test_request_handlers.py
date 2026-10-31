@@ -4975,6 +4975,80 @@ class TestResponsesRequestHandler:
         assert fco_items[0]["call_id"] == "call_abc"
         assert fco_items[0]["output"] == '{"status": "ok"}'
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("text", "reasoning", "mode", "expected_content"),
+        [
+            ("Checking the weather.", None, False, "Checking the weather."),
+            (
+                "Checking the weather.",
+                "Use the weather tool.",
+                True,
+                "<think>Use the weather tool.</think>Checking the weather.",
+            ),
+            (
+                None,
+                "Use the weather tool.",
+                "Reasoning: {reasoning}\n",
+                "Reasoning: Use the weather tool.\n",
+            ),
+            (None, "Use the weather tool.", False, None),
+            ("", None, False, None),
+        ],
+    )
+    def test_history_preserves_text_with_tool_calls(
+        self, valid_instances, text, reasoning, mode, expected_content
+    ):
+        """Replay mixed tool responses without losing text or enabled reasoning.
+
+        ## WRITTEN BY AI ##
+        """
+        previous_request = GenerationRequest(
+            columns={"text_column": ["What is the weather?"]},
+            turn_type="client_tool_call",
+        )
+        previous_response = GenerationResponse(
+            request_id=previous_request.request_id,
+            request_args="{}",
+            text=text,
+            reasoning_text=reasoning,
+            tool_calls=[
+                ToolCall(
+                    id="call_weather",
+                    function=ToolCallFunction(name="get_weather", arguments="{}"),
+                )
+            ],
+        )
+        injection = GenerationRequest(
+            columns={"tool_response_column": ['{"weather": "sunny"}']},
+            turn_type="tool_response_injection",
+        )
+
+        result = valid_instances.format(
+            injection,
+            history=[(previous_request, previous_response)],
+            multiturn_reasoning=mode,
+        )
+
+        expected_history = [
+            {
+                "type": "function_call",
+                "call_id": "call_weather",
+                "name": "get_weather",
+                "arguments": "{}",
+            },
+            {
+                "type": "function_call_output",
+                "call_id": "call_weather",
+                "output": '{"weather": "sunny"}',
+            },
+        ]
+        if expected_content is not None:
+            expected_history.insert(
+                0, {"role": "assistant", "content": expected_content}
+            )
+        assert result.body["input"][1:] == expected_history
+
 
 class TestEnsureChatCompletionsTool:
     """Tests for ChatCompletionsRequestHandler._ensure_tool_format normalizer.
