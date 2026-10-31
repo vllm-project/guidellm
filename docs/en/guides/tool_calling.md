@@ -11,6 +11,8 @@ Tool calling is supported with both `/v1/chat/completions` and `/v1/responses`. 
 - **`/v1/chat/completions`** uses `role: "assistant"` messages with a `tool_calls` array, followed by `role: "tool"` messages carrying tool results.
 - **`/v1/responses`** uses `function_call` items in the `input` array, followed by `function_call_output` items.
 
+Streamed tool-call arguments are buffered as fragments and assembled when a response is compiled, including when a stream ends with partial arguments. For `/v1/responses`, a complete argument payload in `response.function_call_arguments.done` replaces the preceding fragments; if the payload is absent, the fragments are retained.
+
 For the full wire format of tool-call messages, see the [OpenAI function calling guide](https://developers.openai.com/api/docs/guides/function-calling).
 
 ## Mocked Client-side Tool Calls
