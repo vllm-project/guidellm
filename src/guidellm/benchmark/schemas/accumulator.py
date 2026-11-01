@@ -15,9 +15,10 @@ from __future__ import annotations
 import random
 import time
 from collections.abc import Callable
+from math import inf
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
 from guidellm.benchmark.schemas.base import BenchmarkAccumulator, BenchmarkConfig
 from guidellm.scheduler import SchedulerState
@@ -798,6 +799,8 @@ class GenerativeBenchmarkAccumulator(
     statistics for throughput and latency analysis.
     """
 
+    _last_scheduler_state: SchedulerState | None = PrivateAttr(default=None)
+
     timings: GenerativeBenchmarkTimings = Field(
         default_factory=GenerativeBenchmarkTimings,
         description="Timing phases and transitions during benchmark execution",
@@ -854,6 +857,95 @@ class GenerativeBenchmarkAccumulator(
         self.errored.sample_size = self.config.sample_size
         self.incomplete.sample_size = self.config.sample_size
 
+    def get_request_metrics_population(
+        self, scheduler_state: SchedulerState | None = None
+    ) -> tuple[
+        list[GenerativeRequestStats],
+        list[GenerativeRequestStats],
+        list[GenerativeRequestStats],
+    ]:
+        """Select requests for final per-request distributions, across statuses.
+
+        Count-based phases trim the first/last attempts in recorded start order.
+        Duration limits still use interval overlap. Event-rate compilation must
+        use its original time-window population instead of this selection.
+
+        :param scheduler_state: Final state for configured request/duration budgets.
+            Defaults to the latest update's state. With neither available, use
+            the recorded attempt count and no duration budget.
+        :return: Successful, incomplete, and errored request populations.
+        :raises ValueError: If count-based selection lacks a start timestamp or
+            encounters duplicate request IDs.
+        """
+        if scheduler_state is None:
+            scheduler_state = self._last_scheduler_state
+        groups = (self.completed, self.incomplete, self.errored)
+        max_requests = (
+            scheduler_state.progress.total_requests
+            if scheduler_state is not None
+            and scheduler_state.progress.total_requests is not None
+            else sum(len(group.requests_stats) for group in groups)
+        )
+        max_seconds = (
+            scheduler_state.progress.total_duration
+            if scheduler_state is not None
+            else None
+        )
+        warmup_seconds, warmup_requests = self.config.warmup.compute_limits(
+            max_requests, max_seconds
+        )
+        cooldown_seconds, cooldown_requests = self.config.cooldown.compute_limits(
+            max_requests, max_seconds
+        )
+        if warmup_requests is None and cooldown_requests is None:
+            start = self.timings.finalized_measure_start
+            end = self.timings.finalized_measure_end
+            successful, incomplete, errored = (
+                group.get_within_range(start, end) for group in groups
+            )
+            return successful, incomplete, errored
+
+        starts: dict[str, float] = {}
+        for group in groups:
+            for stats in group.requests_stats:
+                if stats.request_start_time is None:
+                    raise ValueError(
+                        "Request-count phases require a start timestamp "
+                        "for every attempt"
+                    )
+                if stats.request_id in starts:
+                    raise ValueError("Request-count phases require unique request IDs")
+                starts[stats.request_id] = stats.request_start_time
+        ordered_ids = sorted(starts, key=lambda key: (starts[key], key))
+        first = warmup_requests or 0
+        last = max(first, len(ordered_ids) - (cooldown_requests or 0))
+        selected = set(ordered_ids[first:last])
+
+        # Apply only duration boundaries here: reapplying count-derived time
+        # boundaries would exclude extra requests when completion order changes.
+        origin = (
+            scheduler_state.start_time
+            if scheduler_state is not None
+            else self.timings.finalized_request_start
+        )
+        start = origin + warmup_seconds if warmup_seconds is not None else -inf
+        end = (
+            origin + max_seconds - cooldown_seconds
+            if cooldown_seconds is not None and max_seconds is not None
+            else inf
+        )
+        if start > end:
+            return [], [], []
+        successful, incomplete, errored = (
+            [
+                stats
+                for stats in group.get_within_range(start, end)
+                if stats.request_id in selected
+            ]
+            for group in groups
+        )
+        return successful, incomplete, errored
+
     def update_estimate(
         self,
         response: GenerationResponse | None,
@@ -874,6 +966,7 @@ class GenerativeBenchmarkAccumulator(
         :param info: Request execution information and timing
         :param scheduler_state: Current scheduler state for phase tracking
         """
+        self._last_scheduler_state = scheduler_state
         self.timings.update_estimate(info, scheduler_state, self.config)
         duration = self.timings.duration
         elapsed_time_last_update = self.timings.elapsed_time_last_update
