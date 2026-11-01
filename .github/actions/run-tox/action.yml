@@ -31,6 +31,8 @@ runs:
       shell: bash
     - name: Run tox
       run: |
+        tox --version
+        tox config -e "${{ inputs.tox-env }}" -k runner
         tox run -e "${{ inputs.tox-env }}" -- ${{ inputs.tox-args }} || ret=$?
         # tox run --runner uv-venv-lock-runner -e "${{ inputs.tox-env }}" -- ${{ inputs.tox-args }} || ret=$?
         # errno 5 means all tests were filtered out, ignore
