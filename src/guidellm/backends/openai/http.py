@@ -11,6 +11,7 @@ tracking with flexible parameter customization.
 from __future__ import annotations
 
 import asyncio
+import codecs
 import contextlib
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -39,6 +40,7 @@ __all__ = [
 ]
 
 _READ_TO_END_TIMEOUT = 1.0  # seconds
+_ERROR_BODY_LIMIT = 1000  # bytes of an error response body kept in the error
 
 
 @Backend.register("openai_http")
@@ -146,7 +148,7 @@ class OpenAIHTTPBackend(Backend):
             built_headers = self._build_headers(existing_headers)
             validate_kwargs["headers"] = built_headers
             response = await self._async_client.request(**validate_kwargs)
-            response.raise_for_status()
+            await self._raise_for_status(response)
         except Exception as exc:
             raise RuntimeError(
                 "Backend validation request failed. Could not connect to the server "
@@ -166,7 +168,7 @@ class OpenAIHTTPBackend(Backend):
 
         target = f"{self._args.target}/{self._args.api_routes['/v1/models']}"
         response = await self._async_client.get(target, headers=self._build_headers())
-        response.raise_for_status()
+        await self._raise_for_status(response)
 
         return [item["id"] for item in response.json()["data"]]
 
@@ -320,8 +322,7 @@ class OpenAIHTTPBackend(Backend):
             extensions={"trace": self._trace_request_start(request_info)},
         )
         request_info.timings.request_end = time.time()
-        response.raise_for_status()
-
+        await self._raise_for_status(response)
         request_handler.set_response_headers(response.headers)
         data: Any = (
             response.content if request_handler.raw_response else response.json()
@@ -381,7 +382,7 @@ class OpenAIHTTPBackend(Backend):
             )
 
             try:
-                stream.raise_for_status()
+                await self._raise_for_status(stream)
                 request_handler.set_response_headers(stream.headers)
 
                 async for chunk in chunks:
@@ -516,6 +517,39 @@ class OpenAIHTTPBackend(Backend):
                 request_timings.first_audio_iteration = iter_time
             request_timings.last_audio_iteration = iter_time
         return iterations
+
+    @staticmethod
+    async def _raise_for_status(response: httpx2.Response) -> None:
+        """
+        Raise for an error status, keeping the server's response body in the error.
+
+        :param response: HTTP response to check; at most the first
+            _ERROR_BODY_LIMIT bytes of a streamed body are read
+        :raises httpx2.HTTPStatusError: If the response status is not a success
+        """
+        try:
+            response.raise_for_status()
+        except httpx2.HTTPStatusError as err:
+            raw = b""
+            try:
+                async with contextlib.aclosing(response.aiter_bytes()) as chunks:
+                    async for chunk in chunks:
+                        raw += chunk
+                        if len(raw) >= _ERROR_BODY_LIMIT:
+                            break
+            except (httpx2.HTTPError, httpx2.StreamError):
+                raise err from None
+            # The decoder is not flushed, so a multi-byte character split at the
+            # limit is left out instead of escaped
+            decoder = codecs.getincrementaldecoder("utf-8")(errors="backslashreplace")
+            body = decoder.decode(raw[:_ERROR_BODY_LIMIT]).strip()
+            if not body:
+                raise
+            raise httpx2.HTTPStatusError(
+                f"{err}\nResponse body: {body}",
+                request=err.request,
+                response=err.response,
+            ) from err
 
     async def _aiter_lines(self, stream: httpx2.Response) -> AsyncIterator[str]:
         """

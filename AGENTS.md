@@ -12,7 +12,7 @@ This file provides agents and LLMs with guidance on development practices within
 
 **IMPORTANT**: `tox` should be used before attempting to run individual tools.
 
-**IMPORTANT** For any command that is not `tox`, `uv run` must be prepended to the command.
+**IMPORTANT**: For every command `uv run` must be prepended to the command.
 
 ```bash
 # Run all tests
