@@ -28,11 +28,13 @@ def test_audio_parser_is_registered_and_ignores_content_parts():
 
 @pytest.mark.regression
 def test_create_returns_none_for_unregistered_modality():
-    """Return None when no parser is registered for the requested modality.
+    """Raise when the requested modality parser is not registered.
 
     :return: None.
+    ## WRITTEN BY AI ##
     """
-    assert ModalityParserRegistry.create("unknown-modality") is None
+    with pytest.raises(ValueError, match="unknown-modality"):
+        ModalityParserRegistry.create("unknown-modality")
 
 
 @pytest.mark.regression

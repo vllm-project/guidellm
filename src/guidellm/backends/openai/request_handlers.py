@@ -1310,10 +1310,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             """
             for parser_name in parser_names:
                 parser_cls = ModalityParserRegistry.create(parser_name)
-                if (
-                    parser_cls is not None
-                    and (item := parser_cls.parse_content_part(part)) is not None
-                ):
+                if (item := parser_cls.parse_content_part(part)) is not None:
                     media.append(item)
                     break
 
@@ -1849,10 +1846,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
             audio_parser = ModalityParserRegistry.create("audio")
             if (
-                audio_parser is not None
-                and (item := audio_parser.parse_dedicated_field(message.get("audio")))
-                is not None
-            ):
+                item := audio_parser.parse_dedicated_field(message.get("audio"))
+            ) is not None:
                 _apply_audio_metadata(item, choice.get("audio_metadata"))
                 item["choice_index"] = choice.get("index", 0)
                 output_media.append(item)
@@ -1939,7 +1934,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         self,
         data: dict[str, Any],
         choice: dict[str, Any],
-        audio_parser: ModalityOutputParser | None,
+        audio_parser: ModalityOutputParser,
     ) -> tuple[bool, bool]:
         """
         Process one choice delta and return its update and content flags.
@@ -1978,7 +1973,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         choice: dict[str, Any],
         index: int,
         delta: dict[str, Any],
-        audio_parser: ModalityOutputParser | None,
+        audio_parser: ModalityOutputParser,
     ) -> tuple[bool, bool]:
         """
         Process text and audio content for one choice.
@@ -1986,12 +1981,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         content = delta.get("content")
         content_was_audio = False
-        if (
-            data.get("modality") == "audio"
-            and content
-            and isinstance(content, str)
-            and audio_parser is not None
-        ):
+        if data.get("modality") == "audio" and content and isinstance(content, str):
             audio_item = audio_parser.parse_dedicated_field({"data": content})
             if audio_item is not None:
                 _apply_audio_metadata(audio_item, choice.get("audio_metadata"))
@@ -2012,13 +2002,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     _apply_audio_metadata(media_item, choice.get("audio_metadata"))
                 self._append_streaming_media_item(index, media_item)
 
-            if audio_parser is not None:
-                self._process_streaming_audio_delta(
-                    delta,
-                    choice,
-                    index,
-                    audio_parser,
-                )
+            self._process_streaming_audio_delta(delta, choice, index, audio_parser)
 
         return content_updated, choice_had_content
 
