@@ -58,11 +58,18 @@ class ModalityParserRegistry(RegistryMixin[type[ModalityOutputParser]]):
     """
 
     @classmethod
-    def create(cls, modality: str) -> ModalityOutputParser | None:
+    def create(cls, modality: str) -> ModalityOutputParser:
         """Construct the parser registered for a modality.
 
         :param modality: Registered modality name, such as "audio".
-        :return: The parser instance, or None when no parser is registered.
+        :return: The parser instance if found a registered one.
+        :raises ValueError: If no parser is registered for this modality.
         """
         parser_class = cls.get_registered_object(modality)
-        return parser_class() if parser_class is not None else None
+        if parser_class is None:
+            raise ValueError(
+                f"Modality parser type '{modality}' is not registered. "
+                f"Available types: {list(cls.registry.keys()) if cls.registry else []}"
+            )
+
+        return parser_class()
