@@ -192,10 +192,7 @@ def test_run_constraint_missing_field_stays_specific():
     ],
 )
 def test_run_websocket_backend_rtf_reaches_backend_args(monkeypatch, key, value):
-    """``--backend`` carries the realtime factor into the scenario.
-
-    ## WRITTEN BY AI ##
-    """
+    """## WRITTEN BY AI ##"""
     benchmark = AsyncMock()
     monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
     result = CliRunner().invoke(
@@ -218,10 +215,7 @@ def test_run_websocket_backend_rtf_reaches_backend_args(monkeypatch, key, value)
 
 @pytest.mark.sanity
 def test_run_websocket_backend_rtf_rejects_negative():
-    """The CLI rejects a negative realtime factor.
-
-    ## WRITTEN BY AI ##
-    """
+    """## WRITTEN BY AI ##"""
     result = CliRunner().invoke(
         cli,
         [

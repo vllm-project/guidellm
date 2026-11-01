@@ -628,8 +628,6 @@ def _pcm16_b64(seconds: float) -> str:
 
 
 class _ScriptedRealtimeSocket:
-    """In-memory realtime socket that records each outbound frame."""
-
     def __init__(self, trace: list[tuple[object, ...]]) -> None:
         self._trace = trace
         self._announced = False
@@ -678,10 +676,7 @@ class _ScriptedRealtimeSocket:
     ],
 )
 def test_websocket_backend_rtf_config_spellings(payload: dict[str, float]) -> None:
-    """Backend config accepts the field, the CLI key, and the issue name.
-
-    ## WRITTEN BY AI ##
-    """
+    """## WRITTEN BY AI ##"""
     args = OpenAIWebSocketBackendArgs.model_validate(
         {"target": "http://localhost:8000", **payload}
     )
@@ -690,10 +685,7 @@ def test_websocket_backend_rtf_config_spellings(payload: dict[str, float]) -> No
 
 @pytest.mark.sanity
 def test_websocket_backend_rtf_rejects_negative() -> None:
-    """A negative real-time factor is rejected at the config boundary.
-
-    ## WRITTEN BY AI ##
-    """
+    """## WRITTEN BY AI ##"""
     with pytest.raises(ValidationError):
         OpenAIWebSocketBackendArgs(
             target="http://localhost:8000",
@@ -707,10 +699,7 @@ def test_websocket_backend_rtf_rejects_negative() -> None:
 async def test_resolve_paces_audio_appends_by_rtf(
     monkeypatch: pytest.MonkeyPatch, rtf: float
 ) -> None:
-    """Append packets wait ``audio_seconds * rtf``. Zero does not sleep.
-
-    ## WRITTEN BY AI ##
-    """
+    """## WRITTEN BY AI ##"""
     durations = (0.25, 0.5)
     trace: list[tuple[object, ...]] = []
 

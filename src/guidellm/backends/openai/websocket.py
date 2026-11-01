@@ -129,18 +129,6 @@ def _json_text(obj: Any) -> str:
 
 
 def _audio_append_delay_seconds(b64_chunk: str, rtf: float) -> float:
-    """
-    Seconds to wait after one ``input_audio_buffer.append`` packet.
-
-    The wait is the PCM16 duration of ``b64_chunk`` multiplied by ``rtf``.
-    A real-time factor of ``0`` returns ``0`` without inspecting the packet.
-    ``1`` waits one second per second of audio, ``2`` waits two seconds per
-    second of audio, and ``0.5`` waits half a second per second of audio.
-
-    :param b64_chunk: Base64 PCM16 mono audio at 16 kHz.
-    :param rtf: Non-negative real-time factor from backend configuration.
-    :return: Sleep duration in seconds.
-    """
     if rtf == 0:
         return 0.0
     pcm_bytes = len(base64.b64decode(b64_chunk))
@@ -360,9 +348,7 @@ class OpenAIWebSocketBackend(Backend):
         Delegates event interpretation to the registered
         :class:`~guidellm.backends.openai.request_handlers.OpenAIWSRequestHandler`
         via ``add_streaming_event`` / ``compile_streaming``, while this method handles
-        only I/O and timing. When ``websocket_backend_rtf`` is greater than zero,
-        each audio append is followed by a wait of ``audio_seconds * rtf``.
-        Zero leaves the append sends unthrottled.
+        only I/O and timing.
 
         :param request: Must contain exactly one ``audio_column`` entry.
         :param request_info: Timings updated as events arrive.
