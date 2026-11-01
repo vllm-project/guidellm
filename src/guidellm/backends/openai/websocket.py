@@ -11,6 +11,7 @@ Implements the JSON event protocol used by vLLM's ``/v1/realtime`` endpoint:
 from __future__ import annotations
 
 import asyncio
+import base64
 import ssl
 import time
 from collections.abc import AsyncIterator
@@ -53,6 +54,8 @@ _WS_API_ROUTES = {
 }
 
 _MAX_IGNORED_WS_EVENT_TYPES = 50_000
+_REALTIME_PCM16_SAMPLE_RATE_HZ = 16_000
+_REALTIME_PCM16_BYTES_PER_SAMPLE = 2
 
 
 def _record_content_tokens(
@@ -125,6 +128,28 @@ def _json_text(obj: Any) -> str:
     return raw.decode("utf-8") if isinstance(raw, bytes) else raw
 
 
+def _audio_append_delay_seconds(b64_chunk: str, rtf: float) -> float:
+    """
+    Seconds to wait after one ``input_audio_buffer.append`` packet.
+
+    The wait is the PCM16 duration of ``b64_chunk`` multiplied by ``rtf``.
+    A real-time factor of ``0`` returns ``0`` without inspecting the packet.
+    ``1`` waits one second per second of audio, ``2`` waits two seconds per
+    second of audio, and ``0.5`` waits half a second per second of audio.
+
+    :param b64_chunk: Base64 PCM16 mono audio at 16 kHz.
+    :param rtf: Non-negative real-time factor from backend configuration.
+    :return: Sleep duration in seconds.
+    """
+    if rtf == 0:
+        return 0.0
+    pcm_bytes = len(base64.b64decode(b64_chunk))
+    audio_seconds = pcm_bytes / (
+        _REALTIME_PCM16_BYTES_PER_SAMPLE * _REALTIME_PCM16_SAMPLE_RATE_HZ
+    )
+    return audio_seconds * rtf
+
+
 @Backend.register("openai_websocket")
 class OpenAIWebSocketBackend(Backend):
     """
@@ -179,13 +204,15 @@ class OpenAIWebSocketBackend(Backend):
         """
         Return a snapshot of backend configuration for logging or debugging.
 
-        :return: Dict of target, model, WebSocket path, timeouts, and validation opts.
+        :return: Dict of target, model, WebSocket path, chunking, real-time
+            factor, timeouts, and validation opts.
         """
         return {
             "target": self._args.target,
             "model": self._resolved_model or self._args.model,
             "websocket_path": self.websocket_path,
             "chunk_samples": self._args.chunk_samples,
+            "websocket_backend_rtf": self._args.websocket_backend_rtf,
             "timeout": self._args.timeout,
             "timeout_connect": self._args.timeout_connect,
             "verify": self._args.verify,
@@ -333,7 +360,9 @@ class OpenAIWebSocketBackend(Backend):
         Delegates event interpretation to the registered
         :class:`~guidellm.backends.openai.request_handlers.OpenAIWSRequestHandler`
         via ``add_streaming_event`` / ``compile_streaming``, while this method handles
-        only I/O and timing.
+        only I/O and timing. When ``websocket_backend_rtf`` is greater than zero,
+        each audio append is followed by a wait of ``audio_seconds * rtf``.
+        Zero leaves the append sends unthrottled.
 
         :param request: Must contain exactly one ``audio_column`` entry.
         :param request_info: Timings updated as events arrive.
@@ -402,6 +431,7 @@ class OpenAIWebSocketBackend(Backend):
                     )
                 await ws.send(_json_text(session_update))
                 _record_request_sent(request_info)
+                rtf = self._args.websocket_backend_rtf
                 for b64_chunk in chunks:
                     await ws.send(
                         _json_text(
@@ -409,6 +439,9 @@ class OpenAIWebSocketBackend(Backend):
                         )
                     )
                     _record_request_sent(request_info)
+                    delay = _audio_append_delay_seconds(b64_chunk, rtf)
+                    if delay > 0:
+                        await asyncio.sleep(delay)
                 await ws.send(
                     _json_text({"type": "input_audio_buffer.commit", "final": False})
                 )

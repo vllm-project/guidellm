@@ -182,6 +182,66 @@ def test_run_constraint_missing_field_stays_specific():
     assert "Expected format" not in result.output
 
 
+@pytest.mark.sanity
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("websocket_backend_rtf", "1"),
+        ("websocket-backend-rtf", "2"),
+        ("websocket_backend_RTF", "0.5"),
+    ],
+)
+def test_run_websocket_backend_rtf_reaches_backend_args(monkeypatch, key, value):
+    """``--backend`` carries the realtime factor into the scenario.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = AsyncMock()
+    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            f"kind=openai_websocket,target=http://127.0.0.1:9,{key}={value}",
+            "--data",
+            "kind=synthetic_text,prompt_tokens=8",
+            "--profile",
+            "kind=synchronous",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    benchmark.assert_awaited_once()
+    backend = benchmark.call_args.kwargs["args"].spec.backend
+    assert backend.websocket_backend_rtf == float(value)
+
+
+@pytest.mark.sanity
+def test_run_websocket_backend_rtf_rejects_negative():
+    """The CLI rejects a negative realtime factor.
+
+    ## WRITTEN BY AI ##
+    """
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            (
+                "kind=openai_websocket,target=http://127.0.0.1:9,"
+                "websocket-backend-rtf=-1"
+            ),
+            "--data",
+            "kind=synthetic_text,prompt_tokens=8",
+            "--profile",
+            "kind=synchronous",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "websocket-backend-rtf" in result.output
+    assert "greater than or equal to 0" in result.output
+
+
 @pytest.mark.regression
 def test_run_rejects_duplicate_backend_flags():
     """

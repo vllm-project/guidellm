@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import json
 from typing import Any
@@ -614,6 +615,142 @@ def test_openai_websocket_backend_args_model() -> None:
     assert a.request_format == "/v1/realtime"
     assert a.chunk_samples == 3200
     assert a.timeout is None
+    assert a.websocket_backend_rtf == 0
+
+
+_PCM16_BYTES_PER_SECOND = 16_000 * 2
+
+
+def _pcm16_b64(seconds: float) -> str:
+    return base64.b64encode(b"\x00" * int(seconds * _PCM16_BYTES_PER_SECOND)).decode(
+        "ascii"
+    )
+
+
+class _ScriptedRealtimeSocket:
+    """In-memory realtime socket that records each outbound frame."""
+
+    def __init__(self, trace: list[tuple[object, ...]]) -> None:
+        self._trace = trace
+        self._announced = False
+
+    async def __aenter__(self) -> _ScriptedRealtimeSocket:
+        return self
+
+    async def __aexit__(self, *_exc: object) -> None:
+        return None
+
+    async def send(self, message: str | bytes) -> None:
+        text = message.decode() if isinstance(message, bytes) else message
+        payload = json.loads(text)
+        kind = payload.get("type")
+        if kind == "input_audio_buffer.append":
+            self._trace.append(("send", "append"))
+        elif kind == "input_audio_buffer.commit":
+            self._trace.append(("send", "commit", payload.get("final")))
+        else:
+            self._trace.append(("send", kind))
+
+    async def recv(self) -> str:
+        if not self._announced:
+            self._announced = True
+            return json.dumps({"type": "session.created", "id": "s", "created": 0})
+        return json.dumps(
+            {
+                "type": "transcription.done",
+                "text": "ok",
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            }
+        )
+
+
+@pytest.mark.sanity
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"websocket_backend_rtf": 1},
+        {"websocket-backend-rtf": 2},
+        {"websocket_backend_RTF": 0.5},
+    ],
+)
+def test_websocket_backend_rtf_config_spellings(payload: dict[str, float]) -> None:
+    """Backend config accepts the field, the CLI key, and the issue name.
+
+    ## WRITTEN BY AI ##
+    """
+    args = OpenAIWebSocketBackendArgs.model_validate(
+        {"target": "http://localhost:8000", **payload}
+    )
+    assert args.websocket_backend_rtf == next(iter(payload.values()))
+
+
+@pytest.mark.sanity
+def test_websocket_backend_rtf_rejects_negative() -> None:
+    """A negative real-time factor is rejected at the config boundary.
+
+    ## WRITTEN BY AI ##
+    """
+    with pytest.raises(ValidationError):
+        OpenAIWebSocketBackendArgs(
+            target="http://localhost:8000",
+            websocket_backend_rtf=-0.1,
+        )
+
+
+@pytest.mark.sanity
+@pytest.mark.asyncio
+@pytest.mark.parametrize("rtf", [0, 0.5, 1, 2])
+async def test_resolve_paces_audio_appends_by_rtf(
+    monkeypatch: pytest.MonkeyPatch, rtf: float
+) -> None:
+    """Append packets wait ``audio_seconds * rtf``. Zero does not sleep.
+
+    ## WRITTEN BY AI ##
+    """
+    durations = (0.25, 0.5)
+    trace: list[tuple[object, ...]] = []
+
+    async def _sleep(delay: float) -> None:
+        trace.append(("sleep", delay))
+
+    monkeypatch.setattr(
+        "guidellm.backends.openai.request_handlers.pcm16_append_b64_chunks",
+        lambda *_args, **_kwargs: [_pcm16_b64(seconds) for seconds in durations],
+    )
+    monkeypatch.setattr(
+        "guidellm.backends.openai.websocket.ws_connect",
+        lambda *_args, **_kwargs: _ScriptedRealtimeSocket(trace),
+    )
+    monkeypatch.setattr("guidellm.backends.openai.websocket.asyncio.sleep", _sleep)
+
+    backend = _make_ws_backend(
+        target="http://127.0.0.1:9",
+        model="m",
+        validate_backend=False,
+        websocket_backend_rtf=rtf,
+    )
+    await backend.process_startup()
+    request = GenerationRequest(
+        request_id="rtf",
+        columns={"audio_column": [{"audio": b"fake"}]},
+    )
+    info = RequestInfo(timings=RequestTimings())
+    responses = [item async for item in backend.resolve(request, info)]
+    await backend.process_shutdown()
+
+    assert backend.info["websocket_backend_rtf"] == rtf
+    assert responses[-1][0].text == "ok"
+    expected: list[tuple[object, ...]] = [("send", "session.update")]
+    for duration in durations:
+        expected.append(("send", "append"))
+        if rtf > 0:
+            expected.append(("sleep", pytest.approx(duration * rtf)))
+    expected.extend([("send", "commit", False), ("send", "commit", True)])
+    assert trace == expected
 
 
 def test_openai_websocket_backend_args_rejects_non_path_request_format() -> None:
