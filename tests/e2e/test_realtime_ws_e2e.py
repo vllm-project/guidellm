@@ -133,5 +133,5 @@ async def test_realtime_ws_full_stack_in_one_event_loop(
     final = out[1][0]
     assert final is not None
     assert final.text == "hello"
-    assert final.input_metrics.audio_tokens == 10
+    assert final.input_metrics.audio_tokens is None
     assert final.output_metrics.text_tokens == 5

@@ -1326,3 +1326,217 @@ async def test_handles_requests_with_huggingface_processor(
 
     assert response.status_code == 200
     assert response.json()["usage"][usage_field] == len(tokenizer.encode(prompt_text))
+
+
+class TestOmniAudioMock:
+    """Regression coverage for mock generated-audio responses."""
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_non_streaming_chat_returns_audio_only_choice(
+        self, mock_server_instance
+    ):
+        """Return dedicated audio data and metadata for audio-only chat.
+
+        :param mock_server_instance: Existing running mock-server fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        server_url, config = mock_server_instance
+        async with httpx2.AsyncClient() as client:
+            response = await client.post(
+                f"{server_url}/v1/chat/completions",
+                json={
+                    "model": config.model,
+                    "messages": [{"role": "user", "content": "Speak."}],
+                    "modalities": ["audio"],
+                    "stream": False,
+                },
+                timeout=10.0,
+            )
+
+        response.raise_for_status()
+        choice = response.json()["choices"][0]
+        audio = base64.b64decode(choice["message"]["audio"]["data"])
+
+        assert choice["message"]["content"] is None
+        assert audio.startswith(b"RIFF")
+        assert choice["audio_metadata"]["frame_count"] > 0
+        assert response.json()["usage"]["completion_tokens"] == 0
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_streaming_chat_returns_audio(self, mock_server_instance):
+        """Emit separately encoded audio packets and terminal usage in chat SSE.
+
+        :param mock_server_instance: Existing running mock-server fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        server_url, config = mock_server_instance
+        async with httpx2.AsyncClient() as client:
+            response = await client.post(
+                f"{server_url}/v1/chat/completions",
+                json={
+                    "model": config.model,
+                    "messages": [{"role": "user", "content": "Speak."}],
+                    "modalities": ["audio"],
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                },
+                timeout=10.0,
+            )
+
+        response.raise_for_status()
+        events = [
+            json.loads(line[6:])
+            for line in response.text.splitlines()
+            if line.startswith("data: ") and line != "data: [DONE]"
+        ]
+        audio_events = [event for event in events if event.get("modality") == "audio"]
+
+        assert len(audio_events) == 2
+        for event in audio_events:
+            choice = event["choices"][0]
+            packet = base64.b64decode(choice["delta"]["content"])
+            assert packet.startswith(b"RIFF")
+            assert choice["audio_metadata"]["frame_count"] > 0
+        assert events[-1]["usage"]["completion_tokens"] == 0
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_streaming_chat_can_mix_text_and_audio(self, mock_server_instance):
+        """Emit text deltas and independently encoded audio packets together.
+
+        :param mock_server_instance: Existing running mock-server fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        server_url, config = mock_server_instance
+        async with httpx2.AsyncClient() as client:
+            response = await client.post(
+                f"{server_url}/v1/chat/completions",
+                json={
+                    "model": config.model,
+                    "messages": [{"role": "user", "content": "Speak."}],
+                    "modalities": ["text", "audio"],
+                    "max_tokens": 2,
+                    "stream": True,
+                    "stream_options": {"include_usage": True},
+                },
+                timeout=10.0,
+            )
+
+        response.raise_for_status()
+        events = [
+            json.loads(line[6:])
+            for line in response.text.splitlines()
+            if line.startswith("data: ") and line != "data: [DONE]"
+        ]
+        audio_events = [event for event in events if event.get("modality") == "audio"]
+        text_events = [
+            choice["delta"]["content"]
+            for event in events
+            if event.get("modality") != "audio"
+            for choice in event.get("choices", [])
+            if choice.get("delta", {}).get("content")
+        ]
+
+        assert len(audio_events) == 2
+        assert text_events
+        assert events[-1]["usage"]["completion_tokens"] == 2
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_non_streaming_pcm_speech_reports_layout(self, mock_server_instance):
+        """Return non-streaming PCM and advertise its sample layout.
+
+        :param mock_server_instance: Existing running mock-server fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        server_url, config = mock_server_instance
+        async with httpx2.AsyncClient() as client:
+            response = await client.post(
+                f"{server_url}/v1/audio/speech",
+                json={
+                    "model": config.model,
+                    "input": "Speak.",
+                    "response_format": "pcm",
+                    "sample_rate": 24000,
+                },
+                timeout=10.0,
+            )
+
+        response.raise_for_status()
+        assert response.headers["X-Audio-Sample-Rate"] == "24000"
+        assert response.headers["X-Audio-Channels"] == "1"
+        assert len(response.content) == 24000 * 2 * 0.4
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_raw_streaming_wav_speech_preserves_container(
+        self, mock_server_instance
+    ):
+        """Stream WAV header and PCM packets without converting the payload.
+
+        :param mock_server_instance: Existing running mock-server fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        server_url, config = mock_server_instance
+        async with httpx2.AsyncClient() as client:
+            response = await client.post(
+                f"{server_url}/v1/audio/speech",
+                json={
+                    "model": config.model,
+                    "input": "Speak.",
+                    "response_format": "wav",
+                    "stream_format": "audio",
+                },
+                timeout=10.0,
+            )
+
+        response.raise_for_status()
+        assert response.headers["Content-Type"].startswith("audio/wav")
+        assert response.content.startswith(b"RIFF")
+        assert response.content[8:12] == b"WAVE"
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_sse_speech_finishes_with_audio_done(self, mock_server_instance):
+        """Emit base64 speech deltas followed by the terminal usage event.
+
+        :param mock_server_instance: Existing running mock-server fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        server_url, config = mock_server_instance
+        async with httpx2.AsyncClient() as client:
+            response = await client.post(
+                f"{server_url}/v1/audio/speech",
+                json={
+                    "model": config.model,
+                    "input": "Speak.",
+                    "response_format": "pcm",
+                    "stream_format": "sse",
+                },
+                timeout=10.0,
+            )
+
+        response.raise_for_status()
+        assert response.headers["Content-Type"].startswith("text/event-stream")
+
+        events = [
+            json.loads(line[6:])
+            for line in response.text.splitlines()
+            if line.startswith("data: ")
+        ]
+
+        assert [event["type"] for event in events] == [
+            "speech.audio.delta",
+            "speech.audio.delta",
+            "speech.audio.done",
+        ]
+        assert all(event["sample_rate"] == 16000 for event in events[:2])
+        assert events[-1]["usage"]["output_tokens"] == 0

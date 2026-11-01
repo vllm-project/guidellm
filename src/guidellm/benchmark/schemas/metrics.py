@@ -11,7 +11,7 @@ performance metrics for request processing and queueing behavior.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from pydantic import Field, computed_field
 
@@ -46,7 +46,7 @@ __all__ = [
 ]
 
 
-TimedMetricTypeAlias = (
+TimedMetricTypeAlias: TypeAlias = (
     tuple[float, float, int | float | None, int | float | None] | None
 )
 """Timed metric tuple containing start_time, end_time, input_value, and output_value."""
@@ -689,6 +689,19 @@ class GenerativeAudioMetricsSummary(StandardBaseDict):
     bytes: GenerativeMetricsSummary | None = Field(
         description="Byte size metrics and distributions"
     )
+    ttfp_ms: GenerativeMetricsSummary | None = Field(
+        default=None,
+        description="Time to first playable audio payload distribution.",
+    )
+    rtf: GenerativeMetricsSummary | None = Field(
+        default=None, description="Client-request audio RTF distribution"
+    )
+    underrun_seconds: GenerativeMetricsSummary | None = Field(
+        default=None, description="Worst streaming playback deficit distribution"
+    )
+    continuity_ok_rate: GenerativeMetricsSummary | None = Field(
+        default=None, description="Streaming continuity indicator distribution"
+    )
 
     @classmethod
     def compile(
@@ -726,6 +739,30 @@ class GenerativeAudioMetricsSummary(StandardBaseDict):
             ),
             bytes=GenerativeMetricsSummary.compile(
                 property_name="audio_bytes",
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            ttfp_ms=GenerativeMetricsSummary.compile(
+                property_name="audio_ttfp_ms",
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            rtf=GenerativeMetricsSummary.compile(
+                property_name="audio_rtf",
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            underrun_seconds=GenerativeMetricsSummary.compile(
+                property_name="audio_underrun_seconds",
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+            ),
+            continuity_ok_rate=GenerativeMetricsSummary.compile(
+                property_name="audio_continuity_ok",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
@@ -954,7 +991,7 @@ class GenerativeTurnMetrics(StandardBaseDict):
                     inter_token_latency_ms=StatusDistributionSummary.from_values_function(
                         function=lambda req: (
                             req.inter_token_latency_ms or 0.0,
-                            (req.output_tokens or 1.0) - 1.0,
+                            (req.output_text_tokens or 1.0) - 1.0,
                         ),
                         successful=itl_successful,
                         incomplete=itl_incomplete,
@@ -1591,7 +1628,7 @@ class GenerativeMetrics(StandardBaseDict):
             time_per_output_token_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: (
                     req.time_per_output_token_ms or 0.0,
-                    req.output_tokens or 0.0,
+                    req.output_text_tokens or 0.0,
                 ),
                 successful=successful,
                 incomplete=incomplete,
@@ -1600,7 +1637,7 @@ class GenerativeMetrics(StandardBaseDict):
             inter_token_latency_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: (
                     req.inter_token_latency_ms or 0.0,
-                    (req.output_tokens or 1.0) - 1.0,
+                    (req.output_text_tokens or 1.0) - 1.0,
                 ),
                 successful=after_first_token_requests[0],
                 incomplete=after_first_token_requests[1],

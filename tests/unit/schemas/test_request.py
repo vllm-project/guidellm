@@ -18,6 +18,20 @@ from guidellm.schemas import (
 )
 
 
+@pytest.mark.regression
+def test_usage_metrics_include_audio_tokens_in_total():
+    """Include audio tokens in aggregate usage without inventing text tokens.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    metrics = UsageMetrics(audio_tokens=37, audio_samples=2400, audio_seconds=0.1)
+
+    assert metrics.total_tokens == 37
+    assert metrics.audio_samples == 2400
+    assert metrics.audio_seconds == pytest.approx(0.1)
+
+
 class TestGenerationRequestArguments:
     """Test cases for GenerationRequestArguments model."""
 

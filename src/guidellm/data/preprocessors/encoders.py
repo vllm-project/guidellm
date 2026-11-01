@@ -14,6 +14,14 @@ from guidellm.utils import vision as guidellm_vision
 __all__ = ["MediaEncoder"]
 
 
+def _is_encoded_audio(item: Any) -> bool:
+    return (
+        isinstance(item, dict)
+        and item.get("type") == "audio_file"
+        and isinstance(item.get("audio"), bytes)
+    )
+
+
 def _is_encoded_image(item: Any) -> bool:
     return isinstance(item, dict) and "image" in item and "type" in item
 
@@ -67,17 +75,23 @@ class MediaEncoder(DatasetPreprocessor):
             )
         return encoded_videos
 
+    def _encode_audio(self, audio_items: list[Any]) -> list[Any]:
+        encoded_audio = []
+        for audio in audio_items:
+            if _is_empty_media(audio):
+                continue
+            if _is_encoded_audio(audio):
+                encoded_audio.append(audio)
+                continue
+
+            encoded_audio.append(
+                guidellm_audio.encode_audio(audio, **self.config.audio_kwargs)
+            )
+        return encoded_audio
+
     def encode_turn(self, columns: dict[str, list[Any]]) -> dict[str, list[Any]]:
         if columns.get("audio_column"):
-            encoded_audio = []
-            for audio in columns["audio_column"]:
-                if _is_empty_media(audio):
-                    continue
-
-                encoded_audio.append(
-                    guidellm_audio.encode_audio(audio, **self.config.audio_kwargs)
-                )
-            columns["audio_column"] = encoded_audio
+            columns["audio_column"] = self._encode_audio(columns["audio_column"])
 
         if columns.get("image_column"):
             columns["image_column"] = self._encode_images(columns["image_column"])

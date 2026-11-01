@@ -73,6 +73,14 @@ class RequestTimings(StandardBaseDict):
             "Equals first_token_iteration when no reasoning tokens are emitted."
         ),
     )
+    first_audio_iteration: float | None = Field(
+        default=None,
+        description="Unix timestamp of the first playable audio payload.",
+    )
+    last_audio_iteration: float | None = Field(
+        default=None,
+        description="Unix timestamp of the last playable audio payload.",
+    )
     last_token_iteration: float | None = Field(
         default=None,
     )

@@ -30,6 +30,7 @@ from guidellm.schemas import (
     GenerationRequestArguments,
     GenerationResponse,
     RequestInfo,
+    RequestTimings,
 )
 from guidellm.schemas.backends import OpenAIHTTPBackendArgs
 from guidellm.utils.dict import deep_filter
@@ -263,6 +264,8 @@ class OpenAIHTTPBackend(Backend):
             max_tokens=self._args.max_tokens,
             server_history=self._args.server_history,
             multiturn_reasoning=self._args.multiturn_reasoning,
+            audio_output_sample_rate=self._args.audio_output_sample_rate,
+            audio_output_channels=self._args.audio_output_channels,
         )
 
         request_url = f"{self._args.target}/{request_path}"
@@ -320,9 +323,18 @@ class OpenAIHTTPBackend(Backend):
         )
         request_info.timings.request_end = time.time()
         await self._raise_for_status(response)
-        data = response.json()
+        request_handler.set_response_headers(response.headers)
+        data: Any = (
+            response.content if request_handler.raw_response else response.json()
+        )
+
         gen_response = request_handler.compile_non_streaming(request, arguments, data)
         request_handler.post_validation(gen_response)
+        self._update_audio_response_timings(
+            gen_response,
+            request_info.timings,
+            request_handler,
+        )
         try:
             self._check_tool_call_expectations(request, gen_response)
         except asyncio.CancelledError:
@@ -352,7 +364,7 @@ class OpenAIHTTPBackend(Backend):
             raise RuntimeError("Backend not started up for process.")
 
         try:
-            # This timestamp is overridden if a trace event is handled
+            # This timestamp is overridden if a trace event is handled.
             request_info.timings.request_start = time.time()
 
             stream = await self._async_client.send(
@@ -363,27 +375,31 @@ class OpenAIHTTPBackend(Backend):
                 stream=True,
             )
             end_reached = False
-            lines = self._aiter_lines(stream)
+            chunks: AsyncIterator[str | bytes] = (
+                self._aiter_raw_bytes(stream)
+                if request_handler.raw_streaming
+                else self._aiter_lines(stream)
+            )
+
             try:
                 await self._raise_for_status(stream)
+                request_handler.set_response_headers(stream.headers)
 
-                async for chunk in lines:
+                async for chunk in chunks:
                     stream.raise_for_status()
                     iter_time = time.time()
+                    iterations = self._process_streaming_chunk(
+                        request_handler,
+                        request_info.timings,
+                        chunk,
+                        iter_time,
+                    )
 
-                    if request_info.timings.first_request_iteration is None:
-                        request_info.timings.first_request_iteration = iter_time
-                    request_info.timings.last_request_iteration = iter_time
-                    request_info.timings.request_iterations += 1
-
-                    iterations = request_handler.add_streaming_line(chunk)
                     if iterations is None or iterations <= 0 or end_reached:
                         end_reached = end_reached or iterations is None
                         if end_reached:
-                            # Break eagerly once the handler signals completion
-                            # (e.g. "data: [DONE]" or "response.completed").
-                            # Using continue instead would hang on servers that
-                            # keep the HTTP/2 stream open after the last event.
+                            # Stop after the handler signals completion. Cleanup
+                            # drains remaining HTTP/1.1 response data.
                             break
                         continue
 
@@ -406,16 +422,101 @@ class OpenAIHTTPBackend(Backend):
 
                 request_info.timings.request_end = time.time()
             finally:
-                await self._close_stream(stream, lines, end_reached)
+                await self._close_stream(stream, chunks, end_reached)
 
+            request_handler.mark_stream_complete()
             gen_response = request_handler.compile_streaming(request, arguments)
             request_handler.post_validation(gen_response)
+            self._update_audio_response_timings(
+                gen_response,
+                request_info.timings,
+                request_handler,
+            )
             self._check_tool_call_expectations(request, gen_response)
             yield gen_response, request_info
         except asyncio.CancelledError as err:
-            # Yield current result to store iterative results before propagating
-            yield request_handler.compile_streaming(request, arguments), request_info
+            # Yield the current result before propagating cancellation.
+            gen_response = request_handler.compile_streaming(request, arguments)
+            self._update_audio_response_timings(
+                gen_response,
+                request_info.timings,
+                request_handler,
+            )
+            yield gen_response, request_info
             raise err
+
+    @staticmethod
+    def _update_audio_response_timings(
+        response: GenerationResponse,
+        timings: RequestTimings,
+        request_handler: OpenAIRequestHandler,
+    ) -> None:
+        """Calculate audio timing metrics from HTTP request timings.
+
+        :param response: Compiled generation response.
+        :param timings: Timings recorded by the HTTP backend.
+        :param request_handler: Handler specifying the chat audio RTF boundary.
+        :return: None.
+        """
+        request_start = timings.request_start
+
+        if request_start is not None and timings.first_audio_iteration is not None:
+            response.output_metrics.audio_ttfp_ms = 1000 * (
+                timings.first_audio_iteration - request_start
+            )
+
+        duration = response.output_metrics.audio_seconds
+        if duration is None:
+            return
+        if duration <= 0:
+            response.output_metrics.audio_rtf = 0.0
+            return
+        if request_start is None:
+            return
+
+        audio_end = timings.request_end
+        if (
+            request_handler.audio_rtf_uses_last_audio_payload
+            and timings.last_audio_iteration is not None
+        ):
+            audio_end = timings.last_audio_iteration
+
+        if audio_end is not None:
+            response.output_metrics.audio_rtf = (audio_end - request_start) / duration
+
+    @staticmethod
+    def _process_streaming_chunk(
+        request_handler: OpenAIRequestHandler,
+        request_timings: RequestTimings,
+        chunk: str | bytes,
+        iter_time: float,
+    ) -> int | None:
+        """
+        Update the streaming chunk timings.
+
+        :param request_handler: Handler of the streaming request.
+        :param request_timings: Request timings state that should be updated.
+        :param chunk: The data can be either raw audio bytes or decoded response line.
+        :param iter_time: Recorded arrival timestamp for this chunk.
+        :return: Handler iteration counter or None if stream is complete.
+        """
+        request_handler.set_streaming_arrival_time(iter_time)
+
+        if request_timings.first_request_iteration is None:
+            request_timings.first_request_iteration = iter_time
+        request_timings.last_request_iteration = iter_time
+        request_timings.request_iterations += 1
+
+        if isinstance(chunk, bytes):
+            iterations = request_handler.add_streaming_chunk(chunk)
+        else:
+            iterations = request_handler.add_streaming_line(chunk)
+
+        if request_handler.last_iteration_had_audio:
+            if request_timings.first_audio_iteration is None:
+                request_timings.first_audio_iteration = iter_time
+            request_timings.last_audio_iteration = iter_time
+        return iterations
 
     @staticmethod
     async def _raise_for_status(response: httpx2.Response) -> None:
@@ -462,8 +563,22 @@ class OpenAIHTTPBackend(Backend):
                 continue  # Skip blank lines
             yield line
 
+    async def _aiter_raw_bytes(self, stream: httpx2.Response) -> AsyncIterator[bytes]:
+        """
+        Asynchronously iterate over raw bytes chunks in an HTTP response stream.
+
+        :param stream: HTTP response object with streaming content
+        :yield: Raw bytes chunks as they arrive
+        """
+        async for chunk in stream.aiter_bytes():
+            if chunk:  # skip empty keep-alive chunks
+                yield chunk
+
     async def _close_stream(
-        self, stream: httpx2.Response, lines: AsyncIterator[str], end_reached: bool
+        self,
+        stream: httpx2.Response,
+        lines: AsyncIterator[str | bytes],
+        end_reached: bool,
     ) -> None:
         """Close a response, or read the rest of it in a task after its final event."""
         if not end_reached or stream.http_version != "HTTP/1.1":
@@ -474,7 +589,9 @@ class OpenAIHTTPBackend(Backend):
         task.add_done_callback(self._read_to_end_tasks.discard)
 
     @staticmethod
-    async def _read_to_end(stream: httpx2.Response, lines: AsyncIterator[str]) -> None:
+    async def _read_to_end(
+        stream: httpx2.Response, lines: AsyncIterator[str | bytes]
+    ) -> None:
         """Read the rest of a response within the time limit, then close it."""
 
         async def consume() -> None:

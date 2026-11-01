@@ -17,13 +17,20 @@ from guidellm.benchmark.outputs.html import (
     build_report_view,
     render_html_report,
 )
+from guidellm.benchmark.schemas import GenerativeAudioMetricsSummary
 from guidellm.benchmark.schemas.warnings import BenchmarkWarning
 from guidellm.scheduler import (
     AsyncConstantStrategy,
     ConcurrentStrategy,
     ThroughputStrategy,
 )
-from guidellm.schemas import DistributionSummary
+from guidellm.schemas import (
+    DistributionSummary,
+    GenerativeRequestStats,
+    RequestInfo,
+    RequestTimings,
+    UsageMetrics,
+)
 from guidellm.schemas.benchmark import BenchmarkOutputArgs
 from tests.unit.benchmark.html_report_fixtures import (
     make_benchmark as _make_benchmark,
@@ -37,6 +44,38 @@ from tests.unit.benchmark.html_report_fixtures import (
 from tests.unit.benchmark.html_report_fixtures import (
     report as _report,
 )
+
+
+@pytest.mark.regression
+def test_audio_html_report_exposes_quality_metrics_and_zero_values():
+    """Render audio quality distributions, retaining a measured zero value.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    stats = GenerativeRequestStats(
+        request_id="audio-report",
+        info=RequestInfo(
+            request_id="audio-report",
+            status="completed",
+            timings=RequestTimings(request_start=1, request_end=2, resolve_end=2),
+        ),
+        input_metrics=UsageMetrics(),
+        output_metrics=UsageMetrics(
+            audio_ttfp_ms=100,
+            audio_rtf=0.5,
+            audio_underrun_seconds=0,
+            audio_continuity_ok=0,
+        ),
+    )
+    benchmark = _make_benchmark(strategy=ConcurrentStrategy(streams=1), rps=1, tps=0)
+    benchmark.metrics.audio = GenerativeAudioMetricsSummary.compile([stats], [], [])
+
+    html = render_html_report(build_report_view(_report(benchmark)))
+
+    assert "TTFP (ms)" in html
+    assert "Underrun (seconds)" in html
+    assert "Continuity OK rate (0-1)" in html
 
 
 @pytest.mark.smoke

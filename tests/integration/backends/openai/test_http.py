@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import socket
 import time
@@ -12,7 +13,12 @@ import httpx2
 import pytest
 
 from guidellm.backends.openai.http import OpenAIHTTPBackend
-from guidellm.schemas import GenerationRequest, RequestInfo
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationRequestArguments,
+    GenerationResponse,
+    RequestInfo,
+)
 from guidellm.schemas.backends import OpenAIHTTPBackendArgs
 
 
@@ -92,6 +98,199 @@ class _LocalChatServer:
             return
         finally:
             writer.close()
+
+
+class _LocalSpeechServer:
+    """Serve deterministic speech responses over a real local HTTP connection."""
+
+    def __init__(self, *, sse: bool):
+        """Initialize one local speech server.
+
+        :param sse: Whether the server should return speech SSE events.
+        """
+        self.sse = sse
+        self.audio = b"\x00\x00" * 2400
+        self.request_path: str | None = None
+        self.request_body: dict[str, object] | None = None
+        self._server: asyncio.Server | None = None
+
+    async def __aenter__(self) -> _LocalSpeechServer:
+        """Start the local server and return this test fixture."""
+        self._server = await asyncio.start_server(self._handle, "127.0.0.1", 0)
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        """Close the local listening socket."""
+        if self._server is not None:
+            self._server.close()
+            await self._server.wait_closed()
+
+    @property
+    def url(self) -> str:
+        """Return this server's base URL."""
+        assert self._server is not None
+        port = self._server.sockets[0].getsockname()[1]
+        return f"http://127.0.0.1:{port}"
+
+    async def _handle(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        """Read one request and return the configured speech response.
+
+        :param reader: Stream for reading the HTTP request.
+        :param writer: Stream for writing the HTTP response.
+        :return: None.
+        """
+        try:
+            head = await reader.readuntil(b"\r\n\r\n")
+            request_line, *header_lines = head.decode("latin-1").split("\r\n")
+            self.request_path = request_line.split(" ")[1]
+            headers = dict(
+                line.lower().split(": ", 1) for line in header_lines if ": " in line
+            )
+            body_size = int(headers.get("content-length", "0"))
+            self.request_body = json.loads(await reader.readexactly(body_size))
+
+            if self.sse:
+                await self._send_sse(writer)
+            else:
+                await self._send_headerless_pcm(writer)
+        except (asyncio.IncompleteReadError, ConnectionError):
+            return
+        finally:
+            writer.close()
+
+    async def _send_headerless_pcm(self, writer: asyncio.StreamWriter) -> None:
+        """Return complete PCM without sample-rate or channel headers.
+
+        :param writer: Stream for writing the HTTP response.
+        :return: None.
+        """
+        headers = (
+            b"HTTP/1.1 200 OK\r\n"
+            b"Content-Type: audio/pcm\r\n"
+            + f"Content-Length: {len(self.audio)}\r\n".encode("ascii")
+            + b"Connection: close\r\n\r\n"
+        )
+        writer.write(headers + self.audio)
+        await writer.drain()
+
+    async def _send_sse(self, writer: asyncio.StreamWriter) -> None:
+        """Return one layout-bearing audio delta and its terminal usage event.
+
+        :param writer: Stream for writing the HTTP response.
+        :return: None.
+        """
+        writer.write(
+            b"HTTP/1.1 200 OK\r\n"
+            b"Content-Type: text/event-stream\r\n"
+            b"Transfer-Encoding: chunked\r\n"
+            b"Connection: close\r\n\r\n"
+        )
+        await writer.drain()
+
+        delta = {
+            "type": "speech.audio.delta",
+            "audio": base64.b64encode(self.audio).decode("ascii"),
+            "response_format": "pcm",
+            "sample_rate": 24000,
+            "channels": 1,
+        }
+        done = {
+            "type": "speech.audio.done",
+            "usage": {
+                "input_tokens": 7,
+                "output_tokens": 2,
+                "total_tokens": 9,
+                "input_token_details": {
+                    "text_tokens": 3,
+                    "audio_tokens": 4,
+                },
+            },
+        }
+        events = (
+            "event: speech.audio.delta\ndata: " + json.dumps(delta) + "\n\n",
+            "event: speech.audio.done\ndata: " + json.dumps(done) + "\n\n",
+        )
+
+        for index, event in enumerate(events):
+            encoded = event.encode("utf-8")
+            if index == 0:
+                split_at = len(encoded) // 2
+                parts = (encoded[:split_at], encoded[split_at:])
+            else:
+                parts = (encoded,)
+
+            for part in parts:
+                writer.write(f"{len(part):X}\r\n".encode("ascii") + part + b"\r\n")
+                await writer.drain()
+
+        writer.write(b"0\r\n\r\n")
+        await writer.drain()
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+@pytest.mark.parametrize("mode", ["non_streaming_headerless", "sse"])
+async def test_speech_http_handles_headerless_pcm_and_sse(mode: str):
+    """Resolve headerless non-streaming PCM and a complete SSE response over HTTP.
+
+    :param mode: Headerless non-streaming PCM or SSE response mode.
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    sse = mode == "sse"
+    async with _LocalSpeechServer(sse=sse) as server:
+        body = {"response_format": "pcm"}
+        if sse:
+            body["stream_format"] = "sse"
+
+        backend = OpenAIHTTPBackend(
+            OpenAIHTTPBackendArgs(
+                target=server.url,
+                model="test-speech-model",
+                request_format="/v1/audio/speech",
+                stream=sse,
+                validate_backend=False,
+                extras=GenerationRequestArguments(body=body),
+            )
+        )
+        request = GenerationRequest(columns={"text_column": ["Speak this."]})
+        request_info = RequestInfo(request_id="speech-http-test")
+        responses: list[GenerationResponse] = []
+
+        await backend.process_startup()
+        try:
+            async for response, _ in backend.resolve(request, request_info):
+                if response is not None:
+                    responses.append(response)
+        finally:
+            await backend.process_shutdown()
+
+    assert server.request_path == "/v1/audio/speech"
+    assert server.request_body is not None
+    assert server.request_body["response_format"] == "pcm"
+    assert len(responses) == 1
+
+    response = responses[0]
+    assert response.output_media[0]["data"] == server.audio
+    assert response.output_media[0]["format"] == "pcm"
+    assert response.output_metrics.audio_bytes == len(server.audio)
+
+    if sse:
+        assert server.request_body["stream_format"] == "sse"
+        assert server.request_body["stream"] is True
+        assert response.output_metrics.audio_samples == 2400
+        assert response.output_metrics.audio_seconds == pytest.approx(0.1)
+        assert response.input_metrics.text_tokens == 3
+        assert response.input_metrics.audio_tokens == 4
+        assert response.output_metrics.audio_tokens == 2
+        assert request_info.timings.first_audio_iteration is not None
+    else:
+        assert "stream" not in server.request_body
+        assert response.output_metrics.audio_samples is None
+        assert response.output_metrics.audio_seconds is None
 
 
 class _DelayedTransport(httpx2.AsyncHTTPTransport):

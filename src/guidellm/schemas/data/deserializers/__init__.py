@@ -14,6 +14,7 @@ from guidellm.schemas.data.deserializers.synthetic import (
     SyntheticTextPrefixBucketConfig,
     _require_mean_if_distribution_knobs,
 )
+from guidellm.schemas.data.deserializers.synthetic_audio import SyntheticAudioDataArgs
 from guidellm.schemas.data.deserializers.synthetic_image import (
     RESOLUTION_PRESETS,
     SyntheticImageDataArgs,
@@ -40,6 +41,7 @@ __all__ = [
     "MinimalTraceFormatArgs",
     "MooncakeTraceFormatArgs",
     "OTELTraceFormatArgs",
+    "SyntheticAudioDataArgs",
     "SyntheticImageDataArgs",
     "SyntheticTextDataArgs",
     "SyntheticTextPrefixBucketConfig",

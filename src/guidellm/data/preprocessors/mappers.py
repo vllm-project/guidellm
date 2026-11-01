@@ -78,6 +78,10 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
             "wav",
             "mp3",
         ],
+        "ref_text_column": [
+            "ref_text",
+            "reference_text",
+        ],
         "tools_column": [
             "tools",
             "functions",

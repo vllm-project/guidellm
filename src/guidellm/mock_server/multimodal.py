@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import base64
 import binascii
+import io
 import math
+import wave
 
 from pydantic import BaseModel, Field
 
@@ -28,6 +30,8 @@ __all__ = [
     "MultimodalPromptStats",
     "accumulate_multimodal_content",
     "estimate_audio_seconds",
+    "mock_pcm16",
+    "mock_wav",
 ]
 
 WAV_BYTES_PER_SECOND = 32000
@@ -223,3 +227,17 @@ def accumulate_multimodal_content(
         ),
         audio_seconds=round(audio_seconds, 3) if audio_parts else None,
     )
+
+
+def mock_pcm16(sample_rate: int = WAV_BYTES_PER_SECOND, seconds: float = 0.4) -> bytes:
+    return b"\x00\x00" * round(sample_rate * seconds)
+
+
+def mock_wav(pcm: bytes, sample_rate: int = WAV_BYTES_PER_SECOND) -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as fd_wav:
+        fd_wav.setnchannels(1)
+        fd_wav.setsampwidth(2)
+        fd_wav.setframerate(sample_rate)
+        fd_wav.writeframes(pcm)
+    return buffer.getvalue()

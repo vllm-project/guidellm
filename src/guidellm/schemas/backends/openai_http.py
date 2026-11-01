@@ -22,6 +22,7 @@ DEFAULT_API_PATHS = {
     "/v1/responses": "v1/responses",
     "/v1/audio/transcriptions": "v1/audio/transcriptions",
     "/v1/audio/translations": "v1/audio/translations",
+    "/v1/audio/speech": "v1/audio/speech",
     "/pooling": "pooling",
 }
 
@@ -50,6 +51,7 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         "/v1/responses",
         "/v1/audio/transcriptions",
         "/v1/audio/translations",
+        "/v1/audio/speech",
         "/pooling",
     ] = Field(
         default="/v1/chat/completions",
@@ -76,6 +78,7 @@ class OpenAIHTTPBackendArgs(BackendArgs):
                 "/v1/embeddings": "/v1/embeddings",
                 "/v1/responses": "/v1/responses",
                 "/v1/audio/translations": "/v1/audio/translations",
+                "/v1/audio/speech": "/v1/audio/speech",
             }
         ],
     )
@@ -108,6 +111,14 @@ class OpenAIHTTPBackendArgs(BackendArgs):
     stream: bool = Field(
         default=True,
         description="Use streaming responses for generation requests when supported.",
+    )
+    audio_output_sample_rate: int | None = Field(
+        default=None,
+        description="Output sample-rate for headerless PCM speech responses.",
+    )
+    audio_output_channels: int | None = Field(
+        default=None,
+        description="Output channel-count for headerless PCM speech responses.",
     )
     extras: GenerationRequestArguments | None = Field(
         default=None,

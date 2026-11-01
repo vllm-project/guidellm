@@ -62,6 +62,10 @@ class GenerativeRequestStats(StandardBaseDict):
         default=None,
         description="Raw tool call payloads from the model response in OpenAI format",
     )
+    output_media: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Generated non-text output artifacts in OpenAI format",
+    )
     info: RequestInfo = Field(description="Request metadata and timing information")
     input_metrics: UsageMetrics = Field(
         description="Token usage statistics for the input prompt"
@@ -323,6 +327,16 @@ class GenerativeRequestStats(StandardBaseDict):
         mean_received = timings.token_received_sum / timings.token_received_count
         return 1000 * (mean_received - mean_sent)
 
+    @property
+    def output_text_tokens(self) -> int | None:
+        """
+        Return the text tokens timing.
+        :return: Reported text tokens, or the existing estimate.
+        """
+        if self.output_metrics.text_tokens is not None:
+            return self.output_metrics.text_tokens
+        return self.info.timings.token_iterations or None
+
     @computed_field  # type: ignore[misc]
     @property
     def time_per_output_token_ms(self) -> float | None:
@@ -337,7 +351,7 @@ class GenerativeRequestStats(StandardBaseDict):
                 (last_token := self.last_token_iteration or self.request_end_time)
                 is None
             )
-            or (output_tokens := self.output_tokens) is None
+            or (output_tokens := self.output_text_tokens) is None
             or output_tokens == 0
         ):
             return None
@@ -354,7 +368,7 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         first_token = self.first_token_iteration
         last_token = self.last_token_iteration
-        output_tokens = self.output_tokens
+        output_tokens = self.output_text_tokens
         if (
             first_token is None
             or last_token is None
@@ -432,6 +446,24 @@ class GenerativeRequestStats(StandardBaseDict):
             return None
 
         return self.output_tokens / self.token_iterations
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def audio_rtf(self) -> float | None:
+        """
+        Return audio RTF (Real-time factor) or the request-latency fallback.
+        :return: Audio RTF, or None when latency or duration are unavailable.
+        """
+        if self.output_metrics.audio_rtf is not None:
+            return self.output_metrics.audio_rtf
+
+        duration = self.output_metrics.audio_seconds
+        latency = self.request_latency
+        if duration is not None and duration <= 0:
+            return 0.0
+        if duration is None or latency is None:
+            return None
+        return latency / duration
 
     @property
     def first_token_iteration(self) -> float | None:
