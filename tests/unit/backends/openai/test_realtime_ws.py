@@ -628,9 +628,15 @@ def _pcm16_b64(seconds: float) -> str:
 
 
 class _ScriptedRealtimeSocket:
-    def __init__(self, trace: list[tuple[object, ...]]) -> None:
+    def __init__(
+        self,
+        trace: list[tuple[object, ...]],
+        *,
+        on_append: Any = None,
+    ) -> None:
         self._trace = trace
         self._announced = False
+        self._on_append = on_append
 
     async def __aenter__(self) -> _ScriptedRealtimeSocket:
         return self
@@ -644,6 +650,8 @@ class _ScriptedRealtimeSocket:
         kind = payload.get("type")
         if kind == "input_audio_buffer.append":
             self._trace.append(("send", "append"))
+            if self._on_append is not None:
+                self._on_append()
         elif kind == "input_audio_buffer.commit":
             self._trace.append(("send", "commit", payload.get("final")))
         else:
@@ -695,16 +703,38 @@ def test_websocket_backend_rtf_rejects_negative() -> None:
 
 @pytest.mark.sanity
 @pytest.mark.asyncio
-@pytest.mark.parametrize("rtf", [0, 0.5, 1, 2])
+@pytest.mark.parametrize(
+    ("rtf", "send_cost", "expected_sleeps"),
+    [
+        (0, 0.2, []),
+        (1, 0.1, [0.15, 0.4]),
+        (2, 0.05, [0.45, 0.95]),
+        (0.5, 0.05, [0.075, 0.2]),
+        (1, 1.0, [0.0, 0.0]),
+    ],
+)
 async def test_resolve_paces_audio_appends_by_rtf(
-    monkeypatch: pytest.MonkeyPatch, rtf: float
+    monkeypatch: pytest.MonkeyPatch,
+    rtf: float,
+    send_cost: float,
+    expected_sleeps: list[float],
 ) -> None:
     """## WRITTEN BY AI ##"""
     durations = (0.25, 0.5)
     trace: list[tuple[object, ...]] = []
+    clock = {"t": 0.0}
+
+    def _monotonic() -> float:
+        if rtf == 0:
+            raise AssertionError("rtf 0 must not read the pace clock")
+        return clock["t"]
+
+    def _on_append() -> None:
+        clock["t"] += send_cost
 
     async def _sleep(delay: float) -> None:
         trace.append(("sleep", delay))
+        clock["t"] += delay
 
     monkeypatch.setattr(
         "guidellm.backends.openai.request_handlers.pcm16_append_b64_chunks",
@@ -712,9 +742,13 @@ async def test_resolve_paces_audio_appends_by_rtf(
     )
     monkeypatch.setattr(
         "guidellm.backends.openai.websocket.ws_connect",
-        lambda *_args, **_kwargs: _ScriptedRealtimeSocket(trace),
+        lambda *_args, **_kwargs: _ScriptedRealtimeSocket(trace, on_append=_on_append),
     )
     monkeypatch.setattr("guidellm.backends.openai.websocket.asyncio.sleep", _sleep)
+    monkeypatch.setattr(
+        "guidellm.backends.openai.websocket.time.monotonic",
+        _monotonic,
+    )
 
     backend = _make_ws_backend(
         target="http://127.0.0.1:9",
@@ -734,10 +768,10 @@ async def test_resolve_paces_audio_appends_by_rtf(
     assert backend.info["websocket_backend_rtf"] == rtf
     assert responses[-1][0].text == "ok"
     expected: list[tuple[object, ...]] = [("send", "session.update")]
-    for duration in durations:
+    for index, _duration in enumerate(durations):
         expected.append(("send", "append"))
         if rtf > 0:
-            expected.append(("sleep", pytest.approx(duration * rtf)))
+            expected.append(("sleep", pytest.approx(expected_sleeps[index])))
     expected.extend([("send", "commit", False), ("send", "commit", True)])
     assert trace == expected
 

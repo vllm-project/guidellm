@@ -11,7 +11,6 @@ Implements the JSON event protocol used by vLLM's ``/v1/realtime`` endpoint:
 from __future__ import annotations
 
 import asyncio
-import base64
 import ssl
 import time
 from collections.abc import AsyncIterator
@@ -42,6 +41,7 @@ from guidellm.schemas import (
     RequestInfo,
 )
 from guidellm.schemas.backends import OpenAIWebSocketBackendArgs
+from guidellm.utils.audio import pcm16_b64_duration_seconds
 from guidellm.utils.imports import json
 
 __all__ = [
@@ -54,8 +54,6 @@ _WS_API_ROUTES = {
 }
 
 _MAX_IGNORED_WS_EVENT_TYPES = 50_000
-_REALTIME_PCM16_SAMPLE_RATE_HZ = 16_000
-_REALTIME_PCM16_BYTES_PER_SAMPLE = 2
 
 
 def _record_content_tokens(
@@ -126,16 +124,6 @@ def _json_text(obj: Any) -> str:
     """Serialize *obj* to a JSON string (handles orjson bytes transparently)."""
     raw = json.dumps(obj)
     return raw.decode("utf-8") if isinstance(raw, bytes) else raw
-
-
-def _audio_append_delay_seconds(b64_chunk: str, rtf: float) -> float:
-    if rtf == 0:
-        return 0.0
-    pcm_bytes = len(base64.b64decode(b64_chunk))
-    audio_seconds = pcm_bytes / (
-        _REALTIME_PCM16_BYTES_PER_SAMPLE * _REALTIME_PCM16_SAMPLE_RATE_HZ
-    )
-    return audio_seconds * rtf
 
 
 @Backend.register("openai_websocket")
@@ -418,6 +406,8 @@ class OpenAIWebSocketBackend(Backend):
                 await ws.send(_json_text(session_update))
                 _record_request_sent(request_info)
                 rtf = self._args.websocket_backend_rtf
+                pace_start = time.monotonic() if rtf > 0 else 0.0
+                cumulative_audio_seconds = 0.0
                 for b64_chunk in chunks:
                     await ws.send(
                         _json_text(
@@ -425,9 +415,16 @@ class OpenAIWebSocketBackend(Backend):
                         )
                     )
                     _record_request_sent(request_info)
-                    delay = _audio_append_delay_seconds(b64_chunk, rtf)
-                    if delay > 0:
-                        await asyncio.sleep(delay)
+                    if rtf > 0:
+                        cumulative_audio_seconds += pcm16_b64_duration_seconds(
+                            b64_chunk
+                        )
+                        remaining = (
+                            pace_start
+                            + cumulative_audio_seconds * rtf
+                            - time.monotonic()
+                        )
+                        await asyncio.sleep(max(0.0, remaining))
                 await ws.send(
                     _json_text({"type": "input_audio_buffer.commit", "final": False})
                 )
