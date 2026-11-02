@@ -56,6 +56,7 @@ from guidellm.schemas.benchmark import (
     BenchmarkScenario,
     CollectorArgs,
     GenerativeMetricsArgs,
+    OutputFileError,
     ProfileArgs,
 )
 from guidellm.utils.console import Console
@@ -687,7 +688,7 @@ async def benchmark_generative_text(  # noqa: C901
 
     if output_errors:
         kinds = ", ".join(kind for kind, _ in output_errors)
-        raise RuntimeError(f"Failed to write output(s): {kinds}")
+        raise OutputFileError(f"Failed to write output(s): {kinds}")
 
     return report, output_format_results
 
@@ -731,6 +732,6 @@ async def reimport_benchmarks_report(
 
     if output_errors:
         kinds = ", ".join(kind for kind, _ in output_errors)
-        raise RuntimeError(f"Failed to write output(s): {kinds}")
+        raise OutputFileError(f"Failed to write output(s): {kinds}")
 
     return report, output_results

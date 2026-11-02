@@ -13,6 +13,7 @@ from guidellm.benchmark.schemas import (
 from guidellm.schemas.benchmark import (
     BenchmarkScenario,
     JSONBenchmarkOutputArgs,
+    OutputFileError,
     YAMLBenchmarkOutputArgs,
 )
 
@@ -302,7 +303,7 @@ async def test_one_failing_output_does_not_discard_the_others(
     good = tmp_path / "good.json"
 
     try:
-        with pytest.raises(RuntimeError, match="Failed to write output"):
+        with pytest.raises(OutputFileError, match="Failed to write output"):
             await reimport_benchmarks_report(
                 saved_json_report,
                 [

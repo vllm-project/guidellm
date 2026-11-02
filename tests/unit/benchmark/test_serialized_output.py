@@ -314,7 +314,7 @@ class TestFinalizeFormats:
         handler = GenerativeBenchmarkerSerialized(
             output_path=tmp_path / "report.yaml", format_type="json"
         )
-        with pytest.warns(UserWarning, match="different format"):
+        with pytest.warns(UserWarning, match=r"Writing json to .*report\.yaml$"):
             result_path = await handler.finalize(minimal_report)
 
         assert json.loads(result_path.read_text())

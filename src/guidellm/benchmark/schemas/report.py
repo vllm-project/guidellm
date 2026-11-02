@@ -118,8 +118,7 @@ class GenerativeBenchmarksReport(StandardBaseModel):
             type_ == "json"
         ):
             warnings.warn(
-                f"Writing {type_} to {file_path}, whose .{suffix} suffix names a "
-                f"different format.",
+                f"Writing {type_} to {file_path}",
                 category=UserWarning,
                 stacklevel=2,
             )
