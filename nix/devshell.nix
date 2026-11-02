@@ -20,8 +20,6 @@ pkgs.mkShell {
   ];
 
   env = {
-    UV_PYTHON = python.interpreter;
-    UV_PYTHON_DOWNLOADS = "never";
     # tox-uv otherwise prefers the UV wheel bundled with its Python package.
     TOX_UV_PATH = "${pkgs.uv}/bin/uv";
   };
