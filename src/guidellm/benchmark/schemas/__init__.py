@@ -37,6 +37,7 @@ from .metrics import (
     GenerativeTextMetricsSummary,
     GenerativeVideoMetricsSummary,
     SchedulerMetrics,
+    SLOAttainmentSummary,
 )
 from .report import GenerativeBenchmarkMetadata, GenerativeBenchmarksReport
 
@@ -60,6 +61,7 @@ __all__ = [
     "GenerativeTextMetricsSummary",
     "GenerativeVideoMetricsSummary",
     "RunningMetricStats",
+    "SLOAttainmentSummary",
     "SchedulerMetrics",
     "SchedulerMetricsAccumulator",
 ]

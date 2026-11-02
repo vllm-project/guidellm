@@ -15,7 +15,7 @@ The `sweep` profile automatically tests increasing load levels; starting from a 
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --data kind=synthetic_text,prompt_tokens=512,output_tokens=256 # change this to your desired
+  --data kind=synthetic_text,prompt_tokens=512,output_tokens=256 \
   --profile kind=sweep,sweep_size=10 \
   --constraint kind=max_duration,seconds=120 \
   --seed kind=static,value=42 \

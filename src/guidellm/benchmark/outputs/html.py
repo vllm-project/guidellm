@@ -13,7 +13,7 @@ import math
 import statistics
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
 from typing import Any, ClassVar, Literal
@@ -265,7 +265,7 @@ def _build_header(
     timestamps = [float(benchmark.start_time) for benchmark in report.benchmarks]
     latest_timestamp = max(timestamps) if timestamps else None
     timestamp_iso = (
-        datetime.fromtimestamp(latest_timestamp, tz=timezone.utc).isoformat()
+        datetime.fromtimestamp(latest_timestamp, tz=UTC).isoformat()
         if latest_timestamp is not None
         else None
     )

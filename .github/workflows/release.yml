@@ -9,7 +9,7 @@ jobs:
   tests:
     strategy:
       matrix:
-        python: ["3.10", "3.11", "3.12", "3.13"]
+        python: ["3.11", "3.12", "3.13", "3.14", "3.15"]
     uses: ./.github/workflows/testing.yml
     with:
       python: ${{ matrix.python }}
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.10"]
+        python: ["3.11"]
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -92,7 +92,7 @@ jobs:
       - name: Build & Deploy Docs
         uses: ./.github/actions/run-tox
         with:
-          python-version: "3.13"
+          python-version: "3.15"
           tox-env: docs-build
           tox-args: "mike deploy ${{ needs.extract-version.outputs.version }} stable --push --update-aliases"
 

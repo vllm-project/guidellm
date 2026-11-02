@@ -721,14 +721,16 @@ class AsyncPoissonStrategy(SchedulingStrategy):
         Generates inter-arrival times following exponential distribution,
         accumulating delays to produce Poisson-distributed request arrivals.
 
-        :param worker_index: Unused for Poisson strategy
+        :param worker_index: Worker process index, used to seed this worker's
+            random generator so workers draw independent delays
         :return: Next arrival time based on Poisson process
         """
-        _ = worker_index  # unused
         _ = await self.get_processes_start_time()  # ensure offset is initialized
 
         if self._random is None:
-            self._random = random.Random(self.random_seed)
+            # Each worker process has its own copy of this strategy; a shared seed
+            # would make every worker draw the same sequence of delays.
+            self._random = random.Random(self.random_seed + worker_index)
 
         next_delay = self._random.expovariate(self.rate)
 

@@ -7,6 +7,7 @@ Unit tests for guidellm.data.tokenizers.huggingface module.
 from __future__ import annotations
 
 import pytest
+from huggingface_hub.errors import HFValidationError
 
 from guidellm.data.tokenizers.huggingface import HuggingFaceTokenizer
 from guidellm.schemas.data import HuggingFaceTokenizerArgs
@@ -169,3 +170,80 @@ class TestHuggingFaceTokenizer:
         assert captured["model"] == str(MINIMAL_TOKENIZER_DIR)
         assert captured["kwargs"]["local_files_only"] is True
         assert captured["kwargs"]["use_fast"] is False
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "qwen3:4b",  # disallowed character
+            "q" * 97,  # longer than 96 characters
+            "-olama",  # starts with "-"
+            ".foo",  # starts with "."
+            "foo--bar",  # contains "--"
+            "a/b/c",  # more than one "/"
+        ],
+    )
+    def test_invalid_name_fails_with_a_hint(
+        self, monkeypatch: pytest.MonkeyPatch, name: str
+    ):
+        """A name that is not an existing path and breaks any Hugging Face repo
+        id rule fails before any download, with a message that names the fix.
+
+        ### WRITTEN BY AI ###
+        """
+
+        def fail_from_pretrained(*args, **kwargs):
+            raise AssertionError("from_pretrained must not be called")
+
+        monkeypatch.setattr(
+            "guidellm.data.tokenizers.huggingface.AutoTokenizer.from_pretrained",
+            fail_from_pretrained,
+        )
+        tokenizer = HuggingFaceTokenizer(HuggingFaceTokenizerArgs(model=name))
+        hint = "--tokenizer kind=huggingface_auto"
+        with pytest.raises(ValueError, match=hint) as info:
+            tokenizer()
+        assert str(info.value).count(name) == 1
+        assert isinstance(info.value.__cause__, HFValidationError)
+
+    @pytest.mark.sanity
+    def test_valid_repo_id_is_passed_through(self, monkeypatch: pytest.MonkeyPatch):
+        """A well-formed Hugging Face id still reaches from_pretrained.
+
+        ### WRITTEN BY AI ###
+        """
+        captured: dict = {}
+
+        def fake_from_pretrained(model, **kwargs):
+            captured["model"] = model
+            return object()
+
+        monkeypatch.setattr(
+            "guidellm.data.tokenizers.huggingface.AutoTokenizer.from_pretrained",
+            fake_from_pretrained,
+        )
+        HuggingFaceTokenizer(HuggingFaceTokenizerArgs(model="Qwen/Qwen3-4B"))()
+        assert captured["model"] == "Qwen/Qwen3-4B"
+
+    @pytest.mark.sanity
+    def test_existing_local_path_is_not_validated_as_repo_id(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ):
+        """A local directory is loaded even if its name is not a valid repo id.
+
+        ### WRITTEN BY AI ###
+        """
+        local = tmp_path / "tokenizer:v1"
+        local.mkdir()
+        captured: dict = {}
+
+        def fake_from_pretrained(model, **kwargs):
+            captured["model"] = model
+            return object()
+
+        monkeypatch.setattr(
+            "guidellm.data.tokenizers.huggingface.AutoTokenizer.from_pretrained",
+            fake_from_pretrained,
+        )
+        HuggingFaceTokenizer(HuggingFaceTokenizerArgs(model=str(local)))()
+        assert captured["model"] == str(local)

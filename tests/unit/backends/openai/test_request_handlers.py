@@ -797,8 +797,10 @@ class TestTextCompletionsRequestHandler:
     @pytest.mark.parametrize(
         "line",
         [
-            'data: {"error": {"message": "TimeoutError", "type": '
-            '"GatewayTimeout", "code": 504}}',
+            (
+                'data: {"error": {"message": "TimeoutError", "type": '
+                '"GatewayTimeout", "code": 504}}'
+            ),
             'data: {"error": "boom"}',
         ],
     )
@@ -3853,13 +3855,19 @@ class TestResponsesRequestHandler:
         arguments = instance.format(generation_request)
 
         lines = [
-            'data: {"type": "response.reasoning_summary_text.delta", '
-            '"delta": "First, "}',
-            'data: {"type": "response.reasoning_summary_text.delta", '
-            '"delta": "consider..."}',
+            (
+                'data: {"type": "response.reasoning_summary_text.delta", '
+                '"delta": "First, "}'
+            ),
+            (
+                'data: {"type": "response.reasoning_summary_text.delta", '
+                '"delta": "consider..."}'
+            ),
             'data: {"type": "response.output_text.delta", "delta": "Answer"}',
-            'data: {"type": "response.completed", "response": '
-            '{"id": "resp_1", "usage": {"input_tokens": 5, "output_tokens": 3}}}',
+            (
+                'data: {"type": "response.completed", "response": '
+                '{"id": "resp_1", "usage": {"input_tokens": 5, "output_tokens": 3}}}'
+            ),
         ]
         for line in lines:
             result = instance.add_streaming_line(line)

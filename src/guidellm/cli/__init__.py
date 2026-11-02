@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import click
 
+from .config import config
 from .env import env
 from .export import export
 from .mock_server import mock_server
@@ -51,4 +52,5 @@ cli.add_command(env)
 cli.add_command(mock_server)
 cli.add_command(preprocess)
 cli.add_command(run)
+cli.add_command(config)
 cli.add_command(export)
