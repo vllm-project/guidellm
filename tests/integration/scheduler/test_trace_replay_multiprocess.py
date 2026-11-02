@@ -138,9 +138,11 @@ class FastMockBackend(BackendInterface):
         self,
         resolve_delay: float = RESOLVE_DELAY,
         processes_limit: int | None = None,
+        requests_limit: int | None = None,
     ):
         self._resolve_delay = resolve_delay
         self._processes_limit = processes_limit
+        self._requests_limit = requests_limit
 
     @property
     def processes_limit(self) -> int | None:
@@ -148,7 +150,7 @@ class FastMockBackend(BackendInterface):
 
     @property
     def requests_limit(self) -> int | None:
-        return None
+        return self._requests_limit
 
     def info(self) -> dict[str, Any]:
         return {"type": "fast_mock_trace_replay", "delay": self._resolve_delay}
@@ -216,7 +218,10 @@ async def test_trace_replay_multiprocess_from_trace_file(tmp_path: Path):
 
     strategy = TraceReplayStrategy()
     group = WorkerProcessGroup(
-        backend=FastMockBackend(resolve_delay=RESOLVE_DELAY),
+        # Two total concurrent requests create two workers with one slot each,
+        # so a single worker cannot consume the whole short trace before the
+        # other process is scheduled.
+        backend=FastMockBackend(resolve_delay=RESOLVE_DELAY, requests_limit=2),
         requests=requests,
         strategy=strategy,
         max_number=MaxNumberConstraint(

@@ -64,6 +64,30 @@ def test_run_allows_synthetic_text_without_output_tokens():
 
 
 @pytest.mark.regression
+def test_run_data_list_value_shows_usage_error():
+    """
+    A list value in a key=value ``--data`` string is split at its comma; the
+    resulting YAML error should become a usage error, not a traceback.
+    """
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "run",
+            "--data",
+            "kind=synthetic_text,prompt_tokens=256,turns=4,tool_call_turns=[0,2]",
+        ],
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "--data" in result.output
+    assert "key 'tool_call_turns' was assigned a value that cannot be parsed" in (
+        result.output
+    )
+    assert "(read as 'tool_call_turns=[0')" in result.output
+
+
+@pytest.mark.regression
 def test_run_constraint_bare_word_shows_kind_usage():
     """
     A bare non-dict ``--constraint`` value documents expected format and kinds

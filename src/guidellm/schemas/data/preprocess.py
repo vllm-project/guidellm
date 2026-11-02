@@ -237,9 +237,9 @@ class PadPreprocessStrategyArgs(PreprocessStrategyArgs):
         description="Pad short prompts with a character until the target length.",
     )
     pad: str = Field(
-        default="",
+        min_length=1,
         description=(
-            "Character or string used to pad short prompts. Supports Unicode "
+            "Required nonempty string used to pad short prompts. Supports Unicode "
             "text and backslash escape sequences."
         ),
         examples=[" ", "X"],

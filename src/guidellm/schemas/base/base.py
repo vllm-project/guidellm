@@ -136,6 +136,7 @@ class ReloadableBaseModel(BaseModel):
                         cls._uses_type(target, field_info.annotation)
                         for field_info in candidate.model_fields.values()
                         if field_info.annotation is not None
+                        and isinstance(field_info.annotation, type)
                     )
                 ):
                     try:

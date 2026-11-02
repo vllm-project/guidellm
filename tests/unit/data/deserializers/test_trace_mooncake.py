@@ -270,13 +270,17 @@ class TestMooncakeTraceFormat:
         ("content", "match"),
         [
             (
-                '{"timestamp": 0, "input_length": 10, "output_length": 5, '
-                '"hash_ids": [-1]}\n',
+                (
+                    '{"timestamp": 0, "input_length": 10, "output_length": 5, '
+                    '"hash_ids": [-1]}\n'
+                ),
                 "non-negative",
             ),
             (
-                '{"timestamp": 0, "input_length": 1024, "output_length": 5, '
-                '"hash_ids": [0]}\n',
+                (
+                    '{"timestamp": 0, "input_length": 1024, "output_length": 5, '
+                    '"hash_ids": [0]}\n'
+                ),
                 "given 1 blocks",
             ),
         ],

@@ -15,7 +15,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-import httpx
+import httpx2
 
 from guidellm.collectors.collector import Collector, PeriodicCollector
 from guidellm.logger import logger
@@ -419,7 +419,7 @@ class PrometheusCollector(PeriodicCollector):
         interval: float,
         timeout: float,
         metrics: list[str],
-        transport: httpx.AsyncBaseTransport | None = None,
+        transport: httpx2.AsyncBaseTransport | None = None,
         kind: str = "prometheus",
     ):
         """
@@ -427,7 +427,7 @@ class PrometheusCollector(PeriodicCollector):
         :param interval: Seconds between scrapes while a benchmark runs
         :param timeout: Seconds to wait for a single scrape
         :param metrics: Metric family names to collect
-        :param transport: Optional httpx transport, used to substitute the server
+        :param transport: Optional httpx2 transport, used to substitute the server
         :param kind: The kind this collector was configured with
         """
         super().__init__(kind, interval)
@@ -435,7 +435,7 @@ class PrometheusCollector(PeriodicCollector):
         self.timeout = timeout
         self.metrics = metrics
         self._transport = transport
-        self._client: httpx.AsyncClient | None = None
+        self._client: httpx2.AsyncClient | None = None
         self._snapshots: list[PrometheusSnapshot] = []
         self._scrape_errors = 0
 
@@ -469,7 +469,7 @@ class PrometheusCollector(PeriodicCollector):
     async def sample(self) -> None:
         """Scrape the endpoint once, counting a failure instead of raising."""
         if self._client is None:
-            self._client = httpx.AsyncClient(
+            self._client = httpx2.AsyncClient(
                 timeout=self.timeout, transport=self._transport
             )
         requested_at = time.time()
@@ -478,7 +478,7 @@ class PrometheusCollector(PeriodicCollector):
                 self.url, headers={"Accept": _ACCEPT_HEADER}
             )
             response.raise_for_status()
-        except (httpx.HTTPError, httpx.InvalidURL) as err:
+        except (httpx2.HTTPError, httpx2.InvalidURL) as err:
             self._scrape_errors += 1
             if self._scrape_errors == 1:
                 logger.warning("Failed to scrape metrics from {}: {}", self.url, err)

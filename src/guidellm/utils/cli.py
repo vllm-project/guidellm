@@ -87,6 +87,9 @@ def parse_arguments(
             try:
                 value_parsed = arg_string.loads(value)
             # If arg_string parsing fails, attempt to parse the original string
+            except arg_string.ArgStringValueError as e:
+                # A key=value string with a malformed value, not a plain string
+                raise click.BadParameter(str(e)) from e
             except arg_string.ArgStringParseError as e:
                 if not yaml_parsed:
                     raise click.BadParameter(

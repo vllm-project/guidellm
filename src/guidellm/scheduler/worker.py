@@ -375,7 +375,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 graph: ConversationGraph[RequestT] = await self.messaging.get(
                     timeout=self.messaging.poll_interval
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             for node_id, node in graph.nodes.items():
                 request_info = graph.request_infos.get(node_id)
@@ -414,7 +414,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     graph: ConversationGraph[RequestT] = await self.messaging.get(
                         timeout=timeout
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
             else:
                 graph = await self.messaging.get()
