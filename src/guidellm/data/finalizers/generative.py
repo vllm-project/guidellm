@@ -100,11 +100,12 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerativeConversationGraph | 
 
             input_metrics.add_text_metrics(text)
 
-        # Count pixels and bytes in images
+        # Count images, pixels, and bytes in images
         for image in columns.get("image_column", []):
             if not image:
                 continue
 
+            input_metrics.image_count = (input_metrics.image_count or 0) + 1
             if (image_pixels := image.get("image_pixels")) is not None:
                 input_metrics.image_pixels = (
                     input_metrics.image_pixels or 0
