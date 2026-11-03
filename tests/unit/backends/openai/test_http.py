@@ -33,6 +33,7 @@ from guidellm.schemas import (
     ToolCallFunction,
 )
 from guidellm.schemas.backends import OpenAIHTTPBackendArgs
+from guidellm.schemas.data.tokenizers import HuggingFaceTokenizerArgs
 from tests.unit.testing_utils import async_timeout
 
 
@@ -1431,3 +1432,136 @@ async def test_raise_for_status_decodes_error_body(
     assert expected in str(exc_info.value)
     for text in unexpected:
         assert text not in str(exc_info.value)
+
+
+class TestOutputTokensWithoutUsage:
+    """Count output tokens from the response text when the server omits usage."""
+
+    @staticmethod
+    def _stream_chunks(with_usage: bool) -> list[bytes]:
+        chunks = [
+            b'data: {"choices": [{"delta": {"content": "one two"}}]}\n\n',
+            b'data: {"choices": [{"delta": {"content": " three"}}]}\n\n',
+        ]
+        if with_usage:
+            chunks.append(
+                b'data: {"choices": [], "usage": '
+                b'{"prompt_tokens": 4, "completion_tokens": 7}}\n\n'
+            )
+        chunks.append(b"data: [DONE]\n\n")
+        return chunks
+
+    @staticmethod
+    def _tokenizer_factory(encode: Mock | None = None, error: Exception | None = None):
+        tokenizer = Mock()
+        tokenizer.encode = encode or Mock(side_effect=lambda text, **_: text.split())
+        factory = Mock(side_effect=error, return_value=tokenizer)
+        return factory, tokenizer
+
+    async def _resolve(self, httpx2_mock, chunks, tokenizer_config):
+        httpx2_mock.route(url="http://test/v1/chat/completions").respond(
+            content=_async_chunks(chunks)
+        )
+        backend = _make_backend(
+            target="http://test",
+            model="test-model",
+            stream=True,
+            validate_backend=False,
+            request_format="/v1/chat/completions",
+        )
+        if tokenizer_config is not None:
+            backend.set_output_tokenizer(tokenizer_config)
+        await backend.process_startup()
+        request = GenerationRequest(columns={"text_column": ["hi"]})
+        request_info = RequestInfo(
+            request_id=request.request_id,
+            status="pending",
+            scheduler_node_id=1,
+            scheduler_process_id=1,
+            scheduler_start_time=123.0,
+        )
+        final = None
+        async for response, _info in backend.resolve(request, request_info):
+            if response is not None:
+                final = response
+        await backend.process_shutdown()
+        assert final is not None
+        return final
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_counts_text_with_tokenizer_when_usage_missing(
+        self, httpx2_mock: respx.Router
+    ):
+        """
+        Without usage, output tokens come from the response text, not the request
+        target, so early-stopped streams are not reported at the target length.
+
+        ## WRITTEN BY AI ##
+        """
+        factory, tokenizer = self._tokenizer_factory()
+        with patch(
+            "guidellm.backends.openai.http.TokenizerRegistry.create",
+            return_value=factory,
+        ):
+            response = await self._resolve(
+                httpx2_mock,
+                self._stream_chunks(with_usage=False),
+                HuggingFaceTokenizerArgs(model="test-tokenizer"),
+            )
+
+        assert response.output_metrics.text_tokens == 3
+        tokenizer.encode.assert_called_once_with(
+            "one two three", add_special_tokens=False
+        )
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_usage_wins_over_tokenizer_count(self, httpx2_mock: respx.Router):
+        """
+        When the server reports usage, its count is kept and the tokenizer is
+        not used.
+
+        ## WRITTEN BY AI ##
+        """
+        factory, tokenizer = self._tokenizer_factory()
+        with patch(
+            "guidellm.backends.openai.http.TokenizerRegistry.create",
+            return_value=factory,
+        ):
+            response = await self._resolve(
+                httpx2_mock,
+                self._stream_chunks(with_usage=True),
+                HuggingFaceTokenizerArgs(model="test-tokenizer"),
+            )
+
+        assert response.output_metrics.text_tokens == 7
+        tokenizer.encode.assert_not_called()
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(10.0)
+    async def test_tokenizer_load_failure_keeps_previous_behavior(
+        self, httpx2_mock: respx.Router
+    ):
+        """
+        If the tokenizer cannot be loaded, the request still succeeds and the
+        output token count is left unset, as before.
+
+        ## WRITTEN BY AI ##
+        """
+        factory, _tokenizer = self._tokenizer_factory(error=OSError("no such model"))
+        with patch(
+            "guidellm.backends.openai.http.TokenizerRegistry.create",
+            return_value=factory,
+        ):
+            response = await self._resolve(
+                httpx2_mock,
+                self._stream_chunks(with_usage=False),
+                HuggingFaceTokenizerArgs(model="test-tokenizer"),
+            )
+
+        assert response.text == "one two three"
+        assert response.output_metrics.text_tokens is None

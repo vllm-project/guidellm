@@ -571,6 +571,7 @@ async def benchmark_generative_text(  # noqa: C901
         console=console,
     )
     await resolve_tokenizer(args=benchmark_args, model=model, console=console)
+    backend.set_output_tokenizer(benchmark_args.tokenizer)
     request_loader: DataLoader[GenerationRequest] = await create_data_loader(
         loader_config=benchmark_args.data_loader,
         data_config=benchmark_args.data,
