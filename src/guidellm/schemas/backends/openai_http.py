@@ -168,8 +168,16 @@ class OpenAIHTTPBackendArgs(BackendArgs):
     @field_validator("api_routes", mode="after")
     @classmethod
     def merge_api_routes(cls, value: dict[str, str]) -> dict[str, str]:
-        """Merge user-provided API routes with default routes."""
-        return DEFAULT_API_PATHS | value
+        """
+        Merge user-provided API routes with default routes.
+
+        Route values are joined to the target as ``{target}/{path}``, so a
+        leading slash is stripped from each user-provided path to avoid
+        producing ``//`` in request URLs.
+        """
+        return DEFAULT_API_PATHS | {
+            route: path.lstrip("/") for route, path in value.items()
+        }
 
     @model_validator(mode="after")
     def validate_server_history(self):

@@ -304,6 +304,29 @@ class TestOpenAIHTTPBackend:
         backend3 = _make_backend(target="http://localhost:8000/v1/")
         assert backend3._args.target == "http://localhost:8000"
 
+    @pytest.mark.regression
+    def test_api_routes_leading_slash_normalization(self):
+        """Test api_routes values with a leading slash are joined without ``//``.
+
+        ### WRITTEN BY AI ###
+        """
+        backend = _make_backend(
+            target="http://localhost:8000",
+            api_routes={
+                "/v1/chat/completions": "/v1/chat/completions",
+                "/health": "//custom/health",
+            },
+        )
+
+        routes = backend._args.api_routes
+        assert routes["/v1/chat/completions"] == "v1/chat/completions"
+        assert routes["/health"] == "custom/health"
+        assert routes["/v1/models"] == "v1/models"
+        assert (
+            f"{backend._args.target}/{routes['/v1/chat/completions']}"
+            == "http://localhost:8000/v1/chat/completions"
+        )
+
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
