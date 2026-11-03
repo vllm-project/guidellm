@@ -14,6 +14,11 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DOCS_ROOT = Path("docs")
 ENGLISH_DOCS_ROOT = DOCS_ROOT / "en"
+DEVELOPER_SOURCES = {
+    Path("developer/code-of-conduct.md"): Path("CODE_OF_CONDUCT.md"),
+    Path("developer/contributing.md"): Path("CONTRIBUTING.md"),
+    Path("developer/developing.md"): Path("DEVELOPING.md"),
+}
 TRANSLATION_ROOTS = {
     "zh": DOCS_ROOT / "zh",
     "ko": DOCS_ROOT / "ko",
@@ -79,7 +84,7 @@ def _translation_source(
     project_root: Path, translation: Path, translations_root: Path
 ) -> TranslationSource:
     relative_path = translation.relative_to(project_root / translations_root)
-    source = ENGLISH_DOCS_ROOT / relative_path
+    source = DEVELOPER_SOURCES.get(relative_path, ENGLISH_DOCS_ROOT / relative_path)
     translation_path = translations_root / relative_path
     _, metadata = _front_matter(
         translation.read_text(encoding="utf-8"), translation_path
@@ -167,7 +172,9 @@ def _validate_entry(
     except ValueError as error:
         return TranslationStatus(errors=(str(error),), stale=())
 
-    if not source.is_relative_to(english_root):
+    if not source.is_relative_to(english_root) and entry.source not in (
+        DEVELOPER_SOURCES.values()
+    ):
         errors.append(f"English source must be under docs/en/: {entry.source}")
     if not translation.is_relative_to(translations_root):
         errors.append(
@@ -220,7 +227,9 @@ def update_source_hashes(
             raise FileNotFoundError(f"Translation does not exist: {translation_path}")
 
         relative_path = translation.relative_to(translations_root)
-        source_path = ENGLISH_DOCS_ROOT / relative_path
+        source_path = DEVELOPER_SOURCES.get(
+            relative_path, ENGLISH_DOCS_ROOT / relative_path
+        )
         source = project_root / source_path
         if not source.is_file():
             raise FileNotFoundError(f"English source does not exist: {source_path}")
@@ -255,7 +264,10 @@ def translation_routes(
         if not source.is_file() or not translation.is_file():
             continue
 
-        source_route = _documentation_route(entry.source, DOCS_ROOT)
+        relative_path = entry.translation.relative_to(translations_root)
+        source_route = _documentation_route(
+            ENGLISH_DOCS_ROOT / relative_path, DOCS_ROOT
+        )
         translation_route = _documentation_route(entry.translation, DOCS_ROOT)
         routes[source_route] = {
             "translation": translation_route,
