@@ -1,1 +1,4 @@
 include LICENSE
+include Cargo.toml
+include Cargo.lock
+recursive-include rust *.rs *.toml

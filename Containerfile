@@ -25,7 +25,7 @@ RUN /usr/bin/python3 -m venv /tmp/uv \
 
 # Install build dependencies
 RUN --mount=type=cache,sharing=locked,target=/var/cache/dnf \
-    dnf install -y git
+    dnf install -y git rust cargo
 
 # Set correct build type for versioning
 # Configure uv for building guidellm
