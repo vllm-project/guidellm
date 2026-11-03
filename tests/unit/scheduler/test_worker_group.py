@@ -304,6 +304,81 @@ class TestWorkerProcessGroup:
 
     @pytest.mark.regression
     @pytest.mark.asyncio
+    async def test_request_updates_rechecks_stop_events_on_idle_stop_queueing(self):
+        """Idle max_duration stop must re-check stop events after setting stop_send.
+
+        Same ordering as #1475/#1476: if the last request already completed, no
+        further update arrives, so the idle poll that sets stop_send must also
+        run update_stop_events or the run hangs with shutdown never set.
+
+        ### WRITTEN BY AI ###
+        """
+        group = WorkerProcessGroup(
+            requests=["req"],
+            backend=MockBackend(),
+            strategy=SynchronousStrategy(),
+        )
+        messaging = Mock()
+        messaging.buffer_receive_queue = Mock()
+        state = WorkerGroupState(
+            start_time=time.time() - 10,
+            processes=[],
+            strategy=SynchronousStrategy(),
+            constraints={
+                "max_duration": MaxDurationConstraint(
+                    args=MaxDurationConstraintArgs(seconds=1)
+                )
+            },
+            stop_send_requests_event=threading.Event(),
+            send_requests_stopped_event=threading.Event(),
+            requests_generated_event=multiprocessing.Event(),
+            constraint_reached_event=multiprocessing.Event(),
+            shutdown_event=multiprocessing.Event(),
+            error_event=multiprocessing.Event(),
+            messaging=messaging,
+        )
+        generator = state.requests_generator([_single_node_graph("g1", "r1")])
+        (request_id,) = [
+            info.request_id for info in next(generator).request_infos.values()
+        ]
+        for status in ("pending", "in_progress", "completed"):
+            info = RequestInfo(request_id=request_id, status=status)
+            state.received_callback((None, request_id, info))
+        # Leave the generator suspended so only the idle poll can set stop_send.
+        assert not state.stop_send_requests_event.is_set()
+        assert not state.shutdown_event.is_set()
+
+        group.state = state
+        group.error_event = state.error_event
+        group.shutdown_event = state.shutdown_event
+        group.constraint_reached_event = state.constraint_reached_event
+        group.requests_generated_event = state.requests_generated_event
+
+        get_calls = 0
+
+        async def mock_get(*, timeout: float | None = None):
+            nonlocal get_calls
+            get_calls += 1
+            if get_calls == 1:
+                raise TimeoutError
+            # After the idle poll sets shutdown, the next timeout exits the loop.
+            raise TimeoutError
+
+        group.messaging = Mock()
+        group.messaging.get = mock_get
+        group.messaging.receive_stopped_event.is_set.return_value = True
+        group.messaging.buffer_receive_queue.empty.return_value = True
+
+        results = [update async for update in group.request_updates()]
+
+        assert results == []
+        assert state.stop_send_requests_event.is_set()
+        assert state.requests_generated_event.is_set()
+        assert state.constraint_reached_event.is_set()
+        assert state.shutdown_event.is_set()
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
     async def test_request_updates_skips_constraint_eval_when_shutdown(self):
         """Idle timeout with shutdown already set must not re-evaluate constraints.
 
