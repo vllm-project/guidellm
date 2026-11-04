@@ -55,6 +55,7 @@ from guidellm.schemas.benchmark import (
     BenchmarkOutputArgs,
     BenchmarkScenario,
     CollectorArgs,
+    ConsoleBenchmarkOutputArgs,
     GenerativeMetricsArgs,
     OutputFileError,
     ProfileArgs,
@@ -348,22 +349,34 @@ async def resolve_collectors(
 async def resolve_output_formats(
     outputs: list[BenchmarkOutputArgs],
     console: Console | None = None,
-) -> list[GenerativeBenchmarkerOutput]:
+) -> list[tuple[BenchmarkOutputArgs, GenerativeBenchmarkerOutput]]:
     """
     Resolve output format specifications into configured output handler instances.
 
+    With a console, the console tables are printed by default: a console output
+    using that console is added last unless a ``console`` output is specified.
+
     :param outputs: List of BenchmarkOutputArgs specifying output kind and path
-    :param console: Console instance for progress reporting, or None
-    :return: Ordered list of configured output handler instances, one per input
-        specification (repeated kinds are preserved as separate entries)
+    :param console: Console instance for progress reporting and the default
+        console output, or None
+    :return: Ordered list of (output arguments, output handler) pairs, one per input
+        specification (repeated kinds are preserved as separate entries), plus
+        the default console output when added
     """
     console_step = (
         console.print_update_step(title="Resolving output formats") if console else None
     )
 
-    resolved: list[GenerativeBenchmarkerOutput] = []
+    resolved: list[tuple[BenchmarkOutputArgs, GenerativeBenchmarkerOutput]] = []
     for output_arg in outputs:
-        resolved.append(GenerativeBenchmarkerOutput.resolve(output_arg))
+        resolved.append((output_arg, GenerativeBenchmarkerOutput.resolve(output_arg)))
+    if console and not any(args.kind == "console" for args, _ in resolved):
+        resolved.append(
+            (
+                ConsoleBenchmarkOutputArgs(),
+                GenerativeBenchmarkerConsole(console=console),
+            )
+        )
 
     if console_step:
         console_step.finish(
@@ -668,17 +681,10 @@ async def benchmark_generative_text(  # noqa: C901
         report.conclusions.append(conclusion)
 
     output_format_results, output_errors = await _finalize_outputs(
-        report, zip(benchmark_args.outputs, output_formats, strict=True)
+        report, output_formats
     )
 
     if console:
-        # The console tables are printed by default; an explicit console output
-        # has already printed them above, so they are not printed a second time.
-        if not any(
-            isinstance(output, GenerativeBenchmarkerConsole)
-            for output in output_formats
-        ):
-            await GenerativeBenchmarkerConsole(console=console).finalize(report)
         console.print("\n\n")
         console.print_update(
             title=(
