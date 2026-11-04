@@ -177,8 +177,15 @@ class CompositeBenchmarkerProgress(
         :param loaded: Request nodes loaded so far
         :param target: Request nodes to load, or ``None`` when loading all
         """
+        errors: list[Exception] = []
+
         for tracker in self.trackers:
-            tracker.on_requests_prefetched(loaded, target)
+            try:
+                tracker.on_requests_prefetched(loaded, target)
+            except Exception as error:
+                errors.append(error)
+        if errors:
+            raise errors[0]
 
     async def on_benchmark_update(
         self, accumulator: BenchmarkAccumulatorT, scheduler_state: SchedulerState
@@ -387,6 +394,7 @@ class GenerativeLoggingBenchmarkerProgress(
         self._started_at = 0.0
         self._last_update = 0.0
         self._logged_prefetch = False
+        self._pending_prefetch = False
 
     async def on_initialize(self, profile: Profile):
         """
@@ -398,6 +406,7 @@ class GenerativeLoggingBenchmarkerProgress(
         self._index = 0
         self._state = None
         self._logged_prefetch = False
+        self._pending_prefetch = False
 
     async def on_benchmark_start(self, strategy: SchedulingStrategy):
         """
@@ -410,6 +419,7 @@ class GenerativeLoggingBenchmarkerProgress(
         self._state.start(strategy)
         self._started_at = monotonic()
         self._logged_prefetch = False
+        self._pending_prefetch = False
         self._log_update("started")
 
     def on_requests_prefetched(self, loaded: int, target: int | None) -> None:
@@ -427,7 +437,10 @@ class GenerativeLoggingBenchmarkerProgress(
             or monotonic() - self._last_update >= self.interval
         ):
             self._logged_prefetch = True
+            self._pending_prefetch = False
             self._log_update("loading")
+        else:
+            self._pending_prefetch = True
 
     async def on_benchmark_update(
         self,
@@ -440,9 +453,13 @@ class GenerativeLoggingBenchmarkerProgress(
         :param accumulator: Accumulated benchmark metrics
         :param scheduler_state: Scheduler counters and progress
         """
-        if self._state and monotonic() - self._last_update >= self.interval:
-            self._state.update(accumulator, scheduler_state)
-            self._log_update(self._state.benchmark_status)
+        if self._state:
+            if self._pending_prefetch:
+                self._pending_prefetch = False
+                self._log_update("loading")
+            if monotonic() - self._last_update >= self.interval:
+                self._state.update(accumulator, scheduler_state)
+                self._log_update(self._state.benchmark_status)
 
     async def on_benchmark_compile(self):
         """Log result processing immediately, regardless of the interval."""

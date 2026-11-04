@@ -11,6 +11,7 @@ singleton operations for consistent state management across concurrent workflows
 from __future__ import annotations
 
 import asyncio
+import threading
 import uuid
 from abc import ABC
 from collections.abc import AsyncIterator
@@ -123,12 +124,19 @@ class Benchmarker(
                 if progress:
                     await progress.on_benchmark_start(strategy)
 
-                strategy_requests = await asyncio.to_thread(
-                    prefetch_requests,
-                    requests,
-                    strategy.prefetch_count(),
-                    on_fetched=(progress.on_requests_prefetched if progress else None),
-                )
+                prefetch_stop_event = threading.Event()
+                try:
+                    strategy_requests = await asyncio.to_thread(
+                        prefetch_requests,
+                        requests,
+                        strategy.prefetch_count(),
+                        on_fetched=(
+                            progress.on_requests_prefetched if progress else None
+                        ),
+                        stop_event=prefetch_stop_event,
+                    )
+                finally:
+                    prefetch_stop_event.set()
 
                 config = BenchmarkConfig(
                     run_id=run_id,

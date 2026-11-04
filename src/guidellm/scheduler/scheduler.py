@@ -9,6 +9,7 @@ various scenarios including LLM inference benchmarking.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import AsyncIterator, Callable
 from itertools import chain
 from typing import Generic, Literal, Protocol, runtime_checkable
@@ -47,6 +48,7 @@ def prefetch_requests(
     requests: DatasetIterT[RequestT],
     count: int | Literal["all"],
     on_fetched: Callable[[int, int | None], None] | None = None,
+    stop_event: threading.Event | None = None,
 ) -> DatasetIterT[RequestT]:
     """
     Load request graphs until ``count`` request nodes are buffered.
@@ -60,6 +62,8 @@ def prefetch_requests(
     :param count: Number of request nodes to load, or ``"all"`` to load every
         request
     :param on_fetched: Optional sync callback ``(loaded, target)``
+    :param stop_event: Optional event that stops prefetching before another
+        graph is loaded
     :return: Buffered graphs followed by the remainder of the dataset
     :raises ValueError: If ``count`` is ``"all"`` and the dataset is infinite
     """
@@ -70,9 +74,14 @@ def prefetch_requests(
                 "Set data_loader.samples to a positive limit or choose a "
                 "finite dataset."
             )
+        iterator = iter(requests)
         buffered = []
         fetched = 0
-        for graph in requests:
+        while stop_event is None or not stop_event.is_set():
+            try:
+                graph = next(iterator)
+            except StopIteration:
+                break
             buffered.append(graph)
             fetched += len(graph.nodes)
             if on_fetched is not None:
@@ -85,7 +94,7 @@ def prefetch_requests(
     iterator = iter(requests)
     buffered = []
     fetched = 0
-    while fetched < count:
+    while fetched < count and (stop_event is None or not stop_event.is_set()):
         try:
             graph = next(iterator)
         except StopIteration:

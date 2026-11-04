@@ -340,3 +340,49 @@ def test_prefetch_logs_loaded_count_then_waits_for_the_interval(monkeypatch):
     ]
     assert "prefetched=2/4" in records[0]["message"]
     assert "prefetched=4/4" in records[1]["message"]
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_suppressed_prefetch_logs_before_first_benchmark_status(
+    monkeypatch, accumulator
+):
+    """
+    Suppressed prefetch updates are logged before the first benchmark status.
+
+    ## WRITTEN BY AI ##
+    """
+    now = [100.0]
+    monkeypatch.setattr(progress_module, "monotonic", lambda: now[0])
+    records = []
+    sink = progress_module.logger.add(
+        lambda message: records.append(message.record),
+        enqueue=False,
+        filter=lambda record: "progress_status" in record["extra"],
+    )
+    progress = GenerativeLoggingBenchmarkerProgress(interval=10)
+    profile = ProfileFactory.create(SynchronousProfileArgs(), random_seed=0)
+    try:
+        await progress.on_initialize(profile)
+        await progress.on_benchmark_start(SynchronousStrategy(prefetch=4))
+        now[0] = 101.0
+        progress.on_requests_prefetched(1, 4)
+        now[0] = 102.0
+        progress.on_requests_prefetched(2, 4)
+        now[0] = 103.0
+        progress.on_requests_prefetched(3, 4)
+        now[0] = 104.0
+        progress.on_requests_prefetched(4, 4)
+        now[0] = 105.0
+        await progress.on_benchmark_update(accumulator, SchedulerState())
+    finally:
+        await progress.on_finalize()
+        progress_module.logger.remove(sink)
+
+    assert [record["extra"]["progress_status"] for record in records] == [
+        "started",
+        "loading",
+        "loading",
+    ]
+    assert "prefetched=1/4" in records[1]["message"]
+    assert "prefetched=4/4" in records[2]["message"]

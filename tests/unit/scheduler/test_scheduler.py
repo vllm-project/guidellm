@@ -442,6 +442,42 @@ def test_prefetch_all_rejects_an_infinite_dataset():
         prefetch_requests(_Infinite(), "all")
 
 
+@pytest.mark.regression
+@pytest.mark.parametrize("count", ["all", 3])
+def test_prefetch_requests_stops_before_loading_another_graph(count):
+    """
+    A stop event prevents prefetching from requesting another graph.
+
+    ## WRITTEN BY AI ##
+    """
+    graphs = [_graph(["a"]), _graph(["b"])]
+    pulled = []
+    reported = []
+    stop_event = threading.Event()
+
+    def source():
+        pulled.append(graphs[0])
+        yield graphs[0]
+        pulled.append(graphs[1])
+        yield graphs[1]
+
+    def on_fetched(loaded: int, target: int | None) -> None:
+        reported.append((loaded, target))
+        stop_event.set()
+
+    prefetched = prefetch_requests(
+        source(),
+        count,
+        on_fetched=on_fetched,
+        stop_event=stop_event,
+    )
+
+    assert pulled == [graphs[0]]
+    assert reported == [(1, None if count == "all" else 3)]
+    assert list(prefetched) == [graphs[0]]
+    assert pulled == [graphs[0]]
+
+
 def _wait_for_overlap(event: threading.Event, message: str) -> None:
     if not event.wait(timeout=2):
         raise TimeoutError(message)
