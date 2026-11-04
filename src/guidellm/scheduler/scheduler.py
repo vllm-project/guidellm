@@ -91,6 +91,20 @@ def prefetch_requests(
     if count == 0:
         return requests
 
+    return _prefetch_finite_requests(
+        requests,
+        count,
+        on_fetched=on_fetched,
+        stop_event=stop_event,
+    )
+
+
+def _prefetch_finite_requests(
+    requests: DatasetIterT[RequestT],
+    count: int,
+    on_fetched: Callable[[int, int | None], None] | None = None,
+    stop_event: threading.Event | None = None,
+) -> DatasetIterT[RequestT]:
     iterator = iter(requests)
     buffered = []
     fetched = 0
@@ -103,6 +117,9 @@ def prefetch_requests(
         fetched += len(graph.nodes)
         if on_fetched is not None:
             on_fetched(fetched, count)
+
+    if stop_event is not None and stop_event.is_set():
+        return buffered
 
     return chain(buffered, iterator)
 

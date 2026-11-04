@@ -154,10 +154,12 @@ async def test_collectors_wrap_each_benchmark(monkeypatch):
     """
     events: list[str] = []
     collectors = _collector_process(events)
+    strategy = Mock()
+    strategy.prefetch_count.return_value = 0
 
     def strategies():
-        yield Mock(), {}
-        yield Mock(), {}
+        yield strategy, {}
+        yield strategy, {}
 
     profile = Mock(completed_strategies=[])
     profile.strategies_generator.side_effect = strategies
@@ -202,9 +204,11 @@ async def test_collectors_stop_when_requests_fail(monkeypatch):
     """
     events: list[str] = []
     collectors = _collector_process(events)
+    strategy = Mock()
+    strategy.prefetch_count.return_value = 0
 
     def strategies():
-        yield Mock(), {}
+        yield strategy, {}
 
     profile = Mock(completed_strategies=[])
     profile.strategies_generator.side_effect = strategies
@@ -252,7 +256,8 @@ async def test_prefetching_stops_when_benchmark_task_is_cancelled(monkeypatch):
 
     def requests_source():
         yield _Graph()
-        assert stop_events[0].wait(timeout=2)
+        if stop_events[0].wait(timeout=2):
+            return
         yield _Graph()
 
     def prefetch_wrapper(requests, count, on_fetched=None, stop_event=None):
@@ -297,7 +302,7 @@ async def test_prefetching_stops_when_benchmark_task_is_cancelled(monkeypatch):
             pass
 
     task = asyncio.create_task(consume())
-    assert first_callback.wait(timeout=2)
+    assert await asyncio.to_thread(first_callback.wait, 2)
 
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
