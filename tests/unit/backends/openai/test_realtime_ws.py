@@ -675,29 +675,32 @@ class _ScriptedRealtimeSocket:
 
 
 @pytest.mark.sanity
-@pytest.mark.parametrize(
-    "payload",
-    [
-        {"websocket_backend_rtf": 1},
-        {"websocket-backend-rtf": 2},
-        {"websocket_backend_RTF": 0.5},
-    ],
-)
-def test_websocket_backend_rtf_config_spellings(payload: dict[str, float]) -> None:
+def test_websocket_backend_rtf_accepts_field_name() -> None:
     """## WRITTEN BY AI ##"""
     args = OpenAIWebSocketBackendArgs.model_validate(
-        {"target": "http://localhost:8000", **payload}
+        {"target": "http://localhost:8000", "websocket_backend_rtf": 1}
     )
-    assert args.websocket_backend_rtf == next(iter(payload.values()))
+    assert args.websocket_backend_rtf == 1
 
 
 @pytest.mark.sanity
-def test_websocket_backend_rtf_rejects_negative() -> None:
+@pytest.mark.parametrize("key", ["websocket-backend-rtf", "websocket_backend_RTF"])
+def test_websocket_backend_rtf_rejects_aliases(key: str) -> None:
+    """## WRITTEN BY AI ##"""
+    with pytest.raises(ValidationError):
+        OpenAIWebSocketBackendArgs.model_validate(
+            {"target": "http://localhost:8000", key: 1}
+        )
+
+
+@pytest.mark.sanity
+@pytest.mark.parametrize("value", [-0.1, float("inf"), float("nan")])
+def test_websocket_backend_rtf_rejects_negative_and_non_finite(value: float) -> None:
     """## WRITTEN BY AI ##"""
     with pytest.raises(ValidationError):
         OpenAIWebSocketBackendArgs(
             target="http://localhost:8000",
-            websocket_backend_rtf=-0.1,
+            websocket_backend_rtf=value,
         )
 
 

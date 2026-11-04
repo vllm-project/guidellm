@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import AliasChoices, Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 
 from guidellm.schemas.backends.backend import BackendArgs
 
@@ -48,11 +48,7 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
     websocket_backend_rtf: float = Field(
         default=0.0,
         ge=0.0,
-        validation_alias=AliasChoices(
-            "websocket_backend_rtf",
-            "websocket-backend-rtf",
-            "websocket_backend_RTF",
-        ),
+        allow_inf_nan=False,
         description=(
             "Real-time factor for pacing input_audio_buffer.append packets. "
             "0 sends packets as fast as possible. "
