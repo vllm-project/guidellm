@@ -1,6 +1,7 @@
 """Regression tests for independent concurrent progress observers."""
 
 import asyncio
+import threading
 from functools import partial
 from typing import Any
 from unittest.mock import AsyncMock, Mock
@@ -47,6 +48,7 @@ async def test_progress_observers_run_concurrently_and_finalize(monkeypatch, fai
             )
 
     strategy = Mock()
+    strategy.prefetch_count = Mock(return_value=0)
 
     def strategies():
         yield strategy, {}
@@ -152,10 +154,12 @@ async def test_collectors_wrap_each_benchmark(monkeypatch):
     """
     events: list[str] = []
     collectors = _collector_process(events)
+    strategy = Mock()
+    strategy.prefetch_count.return_value = 0
 
     def strategies():
-        yield Mock(), {}
-        yield Mock(), {}
+        yield strategy, {}
+        yield strategy, {}
 
     profile = Mock(completed_strategies=[])
     profile.strategies_generator.side_effect = strategies
@@ -200,9 +204,11 @@ async def test_collectors_stop_when_requests_fail(monkeypatch):
     """
     events: list[str] = []
     collectors = _collector_process(events)
+    strategy = Mock()
+    strategy.prefetch_count.return_value = 0
 
     def strategies():
-        yield Mock(), {}
+        yield strategy, {}
 
     profile = Mock(completed_strategies=[])
     profile.strategies_generator.side_effect = strategies
@@ -231,3 +237,76 @@ async def test_collectors_stop_when_requests_fail(monkeypatch):
 
     assert events == ["start", "stop"]
     collectors.results.assert_not_awaited()
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_prefetching_stops_when_benchmark_task_is_cancelled(monkeypatch):
+    """Cancelling a benchmark task signals prefetching to stop loading graphs.
+
+    ## WRITTEN BY AI ##
+    """
+    real_prefetch_requests = module.prefetch_requests
+    stop_events = []
+    first_callback = threading.Event()
+    prefetch_done = threading.Event()
+
+    class _Graph:
+        nodes = ["request"]
+
+    def requests_source():
+        yield _Graph()
+        if stop_events[0].wait(timeout=2):
+            return
+        yield _Graph()
+
+    def prefetch_wrapper(requests, count, on_fetched=None, stop_event=None):
+        stop_events.append(stop_event)
+        try:
+            return real_prefetch_requests(
+                requests,
+                count,
+                on_fetched=on_fetched,
+                stop_event=stop_event,
+            )
+        finally:
+            prefetch_done.set()
+
+    monkeypatch.setattr(module, "prefetch_requests", prefetch_wrapper)
+
+    strategy = Mock()
+    strategy.prefetch_count.return_value = "all"
+
+    def strategies():
+        yield strategy, {}
+
+    profile = Mock(completed_strategies=[])
+    profile.strategies_generator.side_effect = strategies
+    progress = Mock(spec=BenchmarkerProgress)
+    progress.on_initialize = AsyncMock()
+    progress.on_benchmark_start = AsyncMock()
+    progress.on_requests_prefetched.side_effect = lambda *_: first_callback.set()
+
+    async def consume():
+        async for _ in module.Benchmarker().run(
+            accumulator_class=Mock(),
+            benchmark_class=Mock(),
+            requests=requests_source(),
+            backend=Mock(),
+            profile=profile,
+            environment=Mock(),
+            warmup=Mock(),
+            cooldown=Mock(),
+            progress=progress,
+        ):
+            pass
+
+    task = asyncio.create_task(consume())
+    assert await asyncio.to_thread(first_callback.wait, 2)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert prefetch_done.wait(timeout=2)
+    assert progress.on_requests_prefetched.call_count == 1
