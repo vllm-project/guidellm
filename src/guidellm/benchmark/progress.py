@@ -182,7 +182,7 @@ class CompositeBenchmarkerProgress(
         for tracker in self.trackers:
             try:
                 tracker.on_requests_prefetched(loaded, target)
-            except Exception as error: # noqa: BLE001  Re-raises an error
+            except Exception as error:  # noqa: BLE001  Re-raises an error
                 errors.append(error)
         if errors:
             raise errors[0]
