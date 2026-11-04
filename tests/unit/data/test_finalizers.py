@@ -193,6 +193,35 @@ class TestGenerativeRequestFinalizerMultimodal:
         assert gen_req.input_metrics.image_bytes == 22500  # 5000 + 10000 + 7500
 
     @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("image_column", "expected_count"),
+        [
+            ([{"image": "data:image/jpeg;base64,a", "image_pixels": 4}], 1),
+            (
+                [
+                    {"image": "data:image/jpeg;base64,a", "image_pixels": 4},
+                    None,
+                    {"image": "https://example.com/b.png"},
+                ],
+                2,
+            ),
+            ([], None),
+            ([None], None),
+        ],
+        ids=["single", "multiple_with_empty", "no_images", "only_empty"],
+    )
+    def test_finalize_counts_images(
+        self, valid_instances, image_column, expected_count
+    ):
+        """Test finalize sets image_count to the number of non-empty images.
+
+        ### WRITTEN BY AI ###
+        """
+        gen_req, _ = valid_instances.finalize_turn({"image_column": image_column})
+
+        assert gen_req.input_metrics.image_count == expected_count
+
+    @pytest.mark.regression
     def test_finalize_preserves_columns(self, valid_instances):
         """Test finalize preserves input columns in result.
 
