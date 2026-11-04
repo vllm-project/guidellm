@@ -62,7 +62,7 @@ class Benchmarker(
     scheduling strategies and execution environments.
     """
 
-    async def run(  # noqa: C901, PLR0912, PLR0915
+    async def run(
         self,
         accumulator_class: type[BenchmarkAccumulatorT],
         benchmark_class: type[BenchmarkT],
@@ -72,11 +72,9 @@ class Benchmarker(
         environment: Environment,
         warmup: TransientPhaseConfig,
         cooldown: TransientPhaseConfig,
+        progress: BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT],
         sample_size: int | None = None,
         prefer_response_metrics: bool = True,
-        progress: (
-            BenchmarkerProgress[BenchmarkAccumulatorT, BenchmarkT] | None
-        ) = None,
         slo: GoodputSLO | None = None,
         confidence: float | None = 0.95,
         warnings: list[WarningRuleArgs] | None = None,
@@ -93,12 +91,12 @@ class Benchmarker(
         :param environment: Environment for execution coordination
         :param warmup: Warmup phase configuration before benchmarking
         :param cooldown: Cooldown phase configuration after benchmarking
+        :param progress: Tracker for benchmark lifecycle events
         :param sample_size: Maximum number of requests per status group
             (completed, errored, incomplete) to retain full data for.
             None keeps all, 0 strips all, N > 0 uses reservoir sampling.
         :param prefer_response_metrics: Whether to prefer response metrics over
             request metrics, defaults to True
-        :param progress: Optional tracker for benchmark lifecycle events
         :param slo: Per-request latency objectives defining which requests count
             toward goodput, or None to disable goodput measurement
         :param confidence: Two-sided confidence level for the intervals reported
@@ -110,8 +108,7 @@ class Benchmarker(
         :raises Exception: If benchmark execution or compilation fails
         """
         with self.thread_lock:
-            if progress:
-                await progress.on_initialize(profile)
+            await progress.on_initialize(profile)
 
             run_id = str(uuid.uuid4())
             strategies_generator = profile.strategies_generator()
@@ -121,8 +118,7 @@ class Benchmarker(
 
             while strategy is not None:
                 logger.info("Starting benchmark for strategy: {}", strategy)
-                if progress:
-                    await progress.on_benchmark_start(strategy)
+                await progress.on_benchmark_start(strategy)
 
                 prefetch_stop_event = threading.Event()
                 try:
@@ -130,9 +126,7 @@ class Benchmarker(
                         prefetch_requests,
                         requests,
                         strategy.prefetch_count(),
-                        on_fetched=(
-                            progress.on_requests_prefetched if progress else None
-                        ),
+                        on_fetched=progress.on_requests_prefetched,
                         stop_event=prefetch_stop_event,
                     )
                 finally:
@@ -192,10 +186,9 @@ class Benchmarker(
                                 request_info,
                                 scheduler_state,
                             )
-                            if progress:
-                                await progress.on_benchmark_update(
-                                    accumulator, scheduler_state
-                                )
+                            await progress.on_benchmark_update(
+                                accumulator, scheduler_state
+                            )
                         except Exception as err:  # noqa: BLE001
                             logger.error(
                                 "Error updating benchmark estimate/progress: {}", err
@@ -204,8 +197,7 @@ class Benchmarker(
                     if collectors:
                         await collectors.benchmark_stopped()
 
-                if progress:
-                    await progress.on_benchmark_compile()
+                await progress.on_benchmark_compile()
 
                 benchmark = benchmark_class.compile(
                     accumulator=accumulator,
@@ -220,8 +212,7 @@ class Benchmarker(
                         }
                     )
 
-                if progress:
-                    await progress.on_benchmark_complete(benchmark)
+                await progress.on_benchmark_complete(benchmark)
 
                 yield benchmark
 
@@ -232,5 +223,4 @@ class Benchmarker(
                     constraints = None
 
             logger.info("All benchmarks finalized")
-            if progress:
-                await progress.on_finalize()
+            await progress.on_finalize()
