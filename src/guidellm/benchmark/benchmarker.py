@@ -62,7 +62,7 @@ class Benchmarker(
     scheduling strategies and execution environments.
     """
 
-    async def run(  # noqa: C901, PLR0912
+    async def run(  # noqa: C901, PLR0912, PLR0915
         self,
         accumulator_class: type[BenchmarkAccumulatorT],
         benchmark_class: type[BenchmarkT],
