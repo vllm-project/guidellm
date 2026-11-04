@@ -316,7 +316,7 @@ class DistributionSummary(StandardBaseModel):
     )
 
     @classmethod
-    def from_pdf(  # noqa: PLR0913
+    def from_pdf(
         cls,
         pdf: np.ndarray,
         count: int | None = None,
@@ -857,7 +857,7 @@ class StatusDistributionSummary(
         return self.total.total_sum
 
     @classmethod
-    def from_values(  # noqa: PLR0913
+    def from_values(
         cls,
         successful: Sequence[float | tuple[float, float]] | np.ndarray,
         incomplete: Sequence[float | tuple[float, float]] | np.ndarray,
@@ -910,7 +910,7 @@ class StatusDistributionSummary(
         )
 
     @classmethod
-    def from_values_function(  # noqa: PLR0913
+    def from_values_function(
         cls,
         function: Callable[
             [FunctionObjT],

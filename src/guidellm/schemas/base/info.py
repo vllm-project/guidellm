@@ -311,7 +311,7 @@ class RequestInfo(StandardBaseModel):
         """
         return self.timings.request_end or self.timings.resolve_end
 
-    def model_copy(self, **_kwargs) -> RequestInfo:  # type: ignore[override]  # noqa: ARG002
+    def model_copy(self, **_kwargs) -> RequestInfo:  # type: ignore[override]
         """
         Create a deep copy of the request info with copied timing objects.
 
