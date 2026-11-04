@@ -314,7 +314,7 @@ class TestOpenAIHTTPBackend:
             target="http://localhost:8000",
             api_routes={
                 "/v1/chat/completions": "/v1/chat/completions",
-                "/health": "//custom/health",
+                "/health": "/custom/health",
             },
         )
 
