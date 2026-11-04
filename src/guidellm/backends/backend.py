@@ -14,6 +14,7 @@ from typing import Any, ClassVar
 from guidellm.scheduler import BackendInterface
 from guidellm.schemas import GenerationRequest, GenerationResponse
 from guidellm.schemas.backends import BackendArgs
+from guidellm.schemas.data import DataTokenizerArgs
 from guidellm.utils.registry import RegistryMixin
 
 __all__ = [
@@ -94,6 +95,16 @@ class Backend(
         Return a snapshot of backend configuration for logging or debugging.
         """
         return self._args.model_dump(mode="json") if self._args else {}
+
+    def set_output_tokenizer(self, config: DataTokenizerArgs) -> None:
+        """
+        Provide the benchmark's tokenizer for counting output tokens.
+
+        Backends that can receive responses without token usage override this to
+        count the generated text themselves. The default ignores it.
+
+        :param config: The resolved tokenizer configuration for the benchmark
+        """
 
     @property
     def processes_limit(self) -> int | None:
