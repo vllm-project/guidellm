@@ -10,6 +10,8 @@ singleton operations for consistent state management across concurrent workflows
 
 from __future__ import annotations
 
+import asyncio
+import threading
 import uuid
 from abc import ABC
 from collections.abc import AsyncIterator
@@ -33,6 +35,7 @@ from guidellm.scheduler import (
     ResponseT,
     Scheduler,
     SchedulingStrategy,
+    prefetch_requests,
 )
 from guidellm.schemas.benchmark import GoodputSLO, TransientPhaseConfig
 from guidellm.schemas.benchmark.warnings import (
@@ -59,7 +62,7 @@ class Benchmarker(
     scheduling strategies and execution environments.
     """
 
-    async def run(  # noqa: C901, PLR0912
+    async def run(  # noqa: C901, PLR0912, PLR0915
         self,
         accumulator_class: type[BenchmarkAccumulatorT],
         benchmark_class: type[BenchmarkT],
@@ -121,6 +124,20 @@ class Benchmarker(
                 if progress:
                     await progress.on_benchmark_start(strategy)
 
+                prefetch_stop_event = threading.Event()
+                try:
+                    strategy_requests = await asyncio.to_thread(
+                        prefetch_requests,
+                        requests,
+                        strategy.prefetch_count(),
+                        on_fetched=(
+                            progress.on_requests_prefetched if progress else None
+                        ),
+                        stop_event=prefetch_stop_event,
+                    )
+                finally:
+                    prefetch_stop_event.set()
+
                 config = BenchmarkConfig(
                     run_id=run_id,
                     run_index=len(profile.completed_strategies),
@@ -162,7 +179,7 @@ class Benchmarker(
                         request_info,
                         scheduler_state,
                     ) in scheduler.run(
-                        requests=requests,
+                        requests=strategy_requests,
                         backend=backend,
                         strategy=strategy,
                         env=environment,
