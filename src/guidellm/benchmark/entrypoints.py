@@ -18,6 +18,7 @@ from typing import Any, TypeVar
 
 from guidellm.backends import Backend
 from guidellm.benchmark.benchmarker import Benchmarker
+from guidellm.benchmark.output_tokens import OutputTokenCounter
 from guidellm.benchmark.outputs import (
     GenerativeBenchmarkerConsole,
     GenerativeBenchmarkerOutput,
@@ -571,7 +572,7 @@ async def benchmark_generative_text(  # noqa: C901
         console=console,
     )
     await resolve_tokenizer(args=benchmark_args, model=model, console=console)
-    backend.set_output_tokenizer(benchmark_args.tokenizer)
+    output_token_counter = await OutputTokenCounter.load(benchmark_args.tokenizer)
     request_loader: DataLoader[GenerationRequest] = await create_data_loader(
         loader_config=benchmark_args.data_loader,
         data_config=benchmark_args.data,
@@ -628,6 +629,7 @@ async def benchmark_generative_text(  # noqa: C901
             confidence=metrics_args.confidence,
             warnings=metrics_args.warnings,
             collectors=collectors,
+            process_response=output_token_counter,
         ):
             # Completed benchmark
             if benchmark:
