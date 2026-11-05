@@ -162,8 +162,8 @@ guidellm run \
 
 - `--data`: Data type plus config — `synthetic_text`, `huggingface`, `json_file`, `csv_file`, `text_file`, `trace_synthetic`, and others. Repeat for multiple sources.
 - `--data-column-mapper`: Column mapping preprocessor and JSON config for fields such as `text_column` or `output_tokens_count_column`
-- `--data-loader type=pytorch,samples=1000`: Limit how many rows are loaded (`-1` for all)
-- `--tokenizer huggingface_auto "model=gpt2"`: Tokenizer for synthetic data or local token counting
+- `--data-loader kind=pytorch,samples=1000`: Limit how many rows are loaded (`-1` for all)
+- `--tokenizer kind=huggingface_auto,model=gpt2`: Tokenizer for synthetic data or local token counting
 
 ### Synthetic Visual Data
 
@@ -185,17 +185,17 @@ guidellm run \
 
 ### Using Scenarios
 
-Built-in scenarios bundle schedules, dataset settings, and request formatting to standardize common testing patterns. This example uses the pre-configured chat scenario which includes appropriate defaults for chat model evaluation, with any additional CLI arguments overriding the scenario's settings.
+Built-in scenarios bundle schedules, dataset settings, and request formatting to standardize common testing patterns. This example uses the built-in `rhaiis/concurrent-1k-1k-equal` scenario, a concurrent workload with 1,000 prompt and 1,000 output tokens, with any additional CLI arguments overriding the scenario's settings.
 
 ```bash
 guidellm run \
-  --config chat \
+  --config rhaiis/concurrent-1k-1k-equal \
   --backend kind=openai_http,target=http://localhost:8000
 ```
 
 **Key parameters:**
 
-- `--config` (alias `--scenario`, `-c`): Built-in scenario name or path to a custom scenario file. CLI options override scenario defaults.
+- `--config` (alias `--scenario`, `-c`): Built-in scenario name or path to a custom scenario file. CLI options override scenario defaults. See [built-in configuration files](docs/en/getting-started/benchmark.md#built-in-configuration-files) for the available scenarios.
 
 ### Benchmark Controls
 
