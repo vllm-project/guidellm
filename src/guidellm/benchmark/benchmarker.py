@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 from abc import ABC
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Generic
 
 from guidellm.benchmark.profiles import Profile
@@ -78,6 +78,7 @@ class Benchmarker(
         confidence: float | None = 0.95,
         warnings: list[WarningRuleArgs] | None = None,
         collectors: CollectorProcess | None = None,
+        process_response: Callable[[ResponseT | None], Awaitable[None]] | None = None,
     ) -> AsyncIterator[BenchmarkT]:
         """
         Execute benchmark runs across scheduling strategies in the profile.
@@ -103,6 +104,8 @@ class Benchmarker(
         :param warnings: Post-benchmark warning checks. None uses the defaults.
         :param collectors: Started collector process, told when each benchmark
             starts and stops, whose results are added to each benchmark
+        :param process_response: Optional coroutine applied to each response
+            before it is accumulated, such as filling in missing token counts
         :yield: Compiled benchmark result for each strategy execution
         :raises Exception: If benchmark execution or compilation fails
         """
@@ -169,6 +172,8 @@ class Benchmarker(
                         **constraints or {},
                     ):
                         try:
+                            if process_response:
+                                await process_response(response)
                             accumulator.update_estimate(
                                 response,
                                 request,

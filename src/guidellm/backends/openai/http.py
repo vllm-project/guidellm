@@ -25,8 +25,6 @@ from guidellm.backends.openai.request_handlers import (
     OpenAIRequestHandler,
     OpenAIRequestHandlerFactory,
 )
-from guidellm.data.tokenizers import DataTokenizer, TokenizerRegistry
-from guidellm.logger import logger
 from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
@@ -34,7 +32,6 @@ from guidellm.schemas import (
     RequestInfo,
 )
 from guidellm.schemas.backends import OpenAIHTTPBackendArgs
-from guidellm.schemas.data import DataTokenizerArgs
 from guidellm.utils.dict import deep_filter
 
 __all__ = [
@@ -85,17 +82,6 @@ class OpenAIHTTPBackend(Backend):
         self._in_process = False
         self._async_client: httpx2.AsyncClient | None = None
         self._read_to_end_tasks: set[asyncio.Task] = set()
-        self._output_tokenizer_config: DataTokenizerArgs | None = None
-        self._output_tokenizer: DataTokenizer | None = None
-        self._warned_counted_output_tokens = False
-
-    def set_output_tokenizer(self, config: DataTokenizerArgs) -> None:
-        """
-        Count output tokens with this tokenizer when a response has no usage.
-
-        :param config: The resolved tokenizer configuration for the benchmark
-        """
-        self._output_tokenizer_config = config
 
     async def process_startup(self):
         """
@@ -123,7 +109,6 @@ class OpenAIHTTPBackend(Backend):
                 keepalive_expiry=5.0,  # default
             ),
         )
-        self._output_tokenizer = await self._load_output_tokenizer()
         self._in_process = True
 
     async def process_shutdown(self):
@@ -337,7 +322,6 @@ class OpenAIHTTPBackend(Backend):
         await self._raise_for_status(response)
         data = response.json()
         gen_response = request_handler.compile_non_streaming(request, arguments, data)
-        await self._count_output_tokens(gen_response)
         request_handler.post_validation(gen_response)
         try:
             self._check_tool_call_expectations(request, gen_response)
@@ -345,63 +329,6 @@ class OpenAIHTTPBackend(Backend):
             yield gen_response, request_info
             raise
         yield gen_response, request_info
-
-    async def _count_output_tokens(self, response: GenerationResponse) -> None:
-        """
-        Count output tokens from the response text when the server sent no usage.
-
-        Without a count here, the benchmark falls back to the request's target
-        output length, which overstates throughput when generation stops early.
-
-        :param response: The compiled response, updated in place
-        """
-        config = self._output_tokenizer_config
-        if (
-            response.output_metrics.text_tokens is not None
-            or self._output_tokenizer is None
-            or config is None
-        ):
-            return
-
-        text = (response.reasoning_text or "") + (response.text or "")
-        if not text:
-            return
-
-        encoded = await asyncio.to_thread(
-            self._output_tokenizer().encode, text, add_special_tokens=False
-        )
-        response.output_metrics.text_tokens = len(encoded)
-        if not self._warned_counted_output_tokens:
-            self._warned_counted_output_tokens = True
-            logger.warning(
-                "The server returned no token usage; counting output tokens from "
-                "the response text with tokenizer '{}'.",
-                config.model,
-            )
-
-    async def _load_output_tokenizer(self) -> DataTokenizer | None:
-        """
-        Load the output tokenizer at startup so loading never delays a request.
-
-        :return: The loaded tokenizer, or None if none is set or it fails to load
-        """
-        if self._output_tokenizer_config is None:
-            return None
-
-        tokenizer = TokenizerRegistry.create(self._output_tokenizer_config)
-        try:
-            await asyncio.to_thread(tokenizer)
-        except Exception as err:  # noqa: BLE001
-            logger.warning(
-                "Tokenizer '{}' could not be loaded ({}); if the server returns no "
-                "token usage, output token counts fall back to the requested output "
-                "length.",
-                self._output_tokenizer_config.model,
-                err,
-            )
-            return None
-
-        return tokenizer
 
     async def _resolve_streaming(
         self,
@@ -482,7 +409,6 @@ class OpenAIHTTPBackend(Backend):
                 await self._close_stream(stream, lines, end_reached)
 
             gen_response = request_handler.compile_streaming(request, arguments)
-            await self._count_output_tokens(gen_response)
             request_handler.post_validation(gen_response)
             self._check_tool_call_expectations(request, gen_response)
             yield gen_response, request_info

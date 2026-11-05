@@ -231,3 +231,46 @@ async def test_collectors_stop_when_requests_fail(monkeypatch):
 
     assert events == ["start", "stop"]
     collectors.results.assert_not_awaited()
+
+
+@pytest.mark.sanity
+@pytest.mark.asyncio
+async def test_process_response_runs_before_accumulation(monkeypatch):
+    """Apply the response hook before the accumulator records the response.
+
+    ## WRITTEN BY AI ##
+    """
+    events: list[str] = []
+    response = Mock()
+
+    def strategies():
+        yield Mock(), {}
+
+    profile = Mock(completed_strategies=[])
+    profile.strategies_generator.side_effect = strategies
+    monkeypatch.setattr(module.InfoMixin, "extract_from_obj", lambda _: {})
+    monkeypatch.setattr(module, "BenchmarkConfig", Mock())
+
+    async def schedule(**kwargs):
+        yield response, None, None, Mock()
+
+    monkeypatch.setattr(module, "Scheduler", Mock(return_value=Mock(run=schedule)))
+    accumulator = Mock()
+    accumulator.update_estimate.side_effect = lambda *args: events.append("update")
+    process_response = AsyncMock(side_effect=lambda _: events.append("process"))
+
+    async for _ in module.Benchmarker().run(
+        accumulator_class=Mock(return_value=accumulator),
+        benchmark_class=Mock(),
+        requests=[],
+        backend=Mock(),
+        profile=profile,
+        environment=Mock(),
+        warmup=Mock(),
+        cooldown=Mock(),
+        process_response=process_response,
+    ):
+        pass
+
+    process_response.assert_awaited_once_with(response)
+    assert events == ["process", "update"]
