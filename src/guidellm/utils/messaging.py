@@ -1123,7 +1123,7 @@ class InterProcessMessagingPipe(InterProcessMessaging[SendMessageT, ReceiveMessa
         finally:
             local_stop.set()
 
-    def _receive_messages_task_thread(  # noqa: C901
+    def _receive_messages_task_thread(
         self,
         pipe: tuple[Connection, Connection],
         receive_callback: Callable[[Any], Any] | None,

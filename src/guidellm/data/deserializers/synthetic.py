@@ -93,7 +93,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
         self.random_seed = random_seed
         self.iteration_count = 0
 
-    def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:  # noqa: C901, PLR0915
+    def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:
         iteration = self.iteration_count
         self.iteration_count += 1
 
@@ -262,7 +262,7 @@ class _SyntheticTextExamplesIterable(_BaseExamplesIterable):
             raise ValueError("prompt token sampler produced no value")
         return count
 
-    def _create_conversation_row(  # noqa: C901 PLR0912 PLR0915
+    def _create_conversation_row(  # noqa: C901, PLR0912
         self,
         faker: Faker,
         samples_count: int,

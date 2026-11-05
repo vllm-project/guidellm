@@ -531,11 +531,11 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         if state.is_complete:
             self.turns_queue.remove(state)
 
-    def _handle_node_error(  # noqa: PLR0913
+    def _handle_node_error(
         self,
         exc: Exception,
         state: DAGExecutionState[RequestT, ResponseT] | None,
-        node_id: str | None,  # noqa: ARG002
+        node_id: str | None,
         request: RequestT | None,
         request_info: RequestInfo | None,
         response: ResponseT | None,

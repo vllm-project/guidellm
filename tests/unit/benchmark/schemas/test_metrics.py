@@ -1598,7 +1598,7 @@ class TestSchedulerMetricsGenerationDelayCompile:
             assert summary.cached_token_count.count == 0
 
 
-def _make_streamed_request(  # noqa: PLR0913
+def _make_streamed_request(
     request_id: str,
     start: float,
     ttft: float,

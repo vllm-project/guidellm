@@ -187,6 +187,7 @@ async def test_collectors_wrap_each_benchmark(monkeypatch):
             environment=Mock(),
             warmup=Mock(),
             cooldown=Mock(),
+            progress=Mock(spec=BenchmarkerProgress),
             collectors=collectors,
         )
     ]
@@ -231,6 +232,7 @@ async def test_collectors_stop_when_requests_fail(monkeypatch):
             environment=Mock(),
             warmup=Mock(),
             cooldown=Mock(),
+            progress=Mock(spec=BenchmarkerProgress),
             collectors=collectors,
         ):
             pass
