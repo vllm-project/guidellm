@@ -703,7 +703,8 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
 
         updated = False
         choices, usage = self.extract_choices_and_usage(data)
-        choice = choices[0] if choices else {}
+        # vLLM streams alternatives in separate events; select by choice index.
+        choice = next((c for c in choices if c.get("index", 0) == 0), {})
 
         if choices and (text := choice.get("text")):
             self.streaming_texts.append(text)
@@ -1299,7 +1300,10 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # reasoning-only). Used by the HTTP layer to set TTFOT timing.
         had_content = False
         choices, usage = self.extract_choices_and_usage(data)
-        choice: dict[str, dict] = choices[0] if choices else {}
+        # vLLM streams alternatives in separate events; select by choice index.
+        choice: dict[str, dict] = next(
+            (c for c in choices if c.get("index", 0) == 0), {}
+        )
         delta = choice.get("delta", {}) if choices else {}
 
         # Reasoning tokens trigger TTFT (updated=True) but are not
