@@ -31,6 +31,7 @@ from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
     GenerationResponse,
+    RequestInfo,
     ToolCall,
     ToolCallFunction,
     UsageMetrics,
@@ -2309,6 +2310,31 @@ class TestAudioRequestHandler:
 
     ### WRITTEN BY AI ###
     """
+
+    @pytest.mark.regression
+    def test_streaming_preserves_unsplit_vllm_prompt_token_total(self):
+        """Retain vLLM's reported input total without requiring a modality split.
+
+        Ensures that the input token count is preserved as reported by vLLM, even if the
+        model does not provide a breakdown of tokens by modality.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = AudioRequestHandler()
+        request = GenerationRequest(columns={})
+        # vLLM sends aggregate usage in a final SSE event
+        handler.add_streaming_line(
+            'data: {"choices": [], "usage": {"prompt_tokens": 100, '
+            '"completion_tokens": 5, "total_tokens": 105}}'
+        )
+        response = handler.compile_streaming(request, GenerationRequestArguments())
+        stats = response.compile_stats(
+            request,
+            RequestInfo(request_id=request.request_id, status="completed"),
+        )
+
+        assert stats.output_tokens == 5
+        assert (stats.prompt_tokens, stats.total_tokens) == (100, 105)
 
     @pytest.fixture
     def valid_instances(self):
