@@ -451,6 +451,8 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                         self.constraint_reached_event.set()
                     if state_update.stop_queueing:
                         self.state.stop_send_requests_event.set()
+                        # No further request update may arrive; re-check now.
+                        self.state.update_stop_events(self.state.update_state())
 
     async def shutdown(self) -> list[Exception]:
         """
