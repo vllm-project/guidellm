@@ -440,6 +440,58 @@ class TestTextCompletionsRequestHandler:
     ### WRITTEN BY AI ###
     """
 
+    @pytest.mark.regression
+    def test_non_streaming_keeps_alternative_choices_isolated(self, generation_request):
+        """Return the first completion without concatenating alternative choices.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = TextCompletionsRequestHandler()
+        response = handler.compile_non_streaming(
+            generation_request,
+            GenerationRequestArguments(body={"n": 2}),
+            {
+                "choices": [
+                    {"index": 0, "text": "First answer."},
+                    {"index": 1, "text": "Second answer."},
+                ]
+            },
+        )
+
+        assert response.text == "First answer."
+
+    @pytest.mark.regression
+    def test_streaming_keeps_alternative_choices_isolated(self, generation_request):
+        """Assemble only choice zero from interleaved vLLM completion events.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = TextCompletionsRequestHandler()
+        # vLLM sends each choice in its own SSE event.
+        for index, text in [
+            (1, "Second "),
+            (0, "First "),
+            (0, "answer."),
+            (1, "answer."),
+        ]:
+            handler.add_streaming_line(
+                "data: " + json.dumps({"choices": [{"index": index, "text": text}]})
+            )
+        # Usage must still be recorded when attached to an ignored choice.
+        handler.add_streaming_line(
+            'data: {"choices": [{"index": 1, "text": ""}], '
+            '"usage": {"prompt_tokens": 10, "completion_tokens": 20}}'
+        )
+        handler.add_streaming_line("data: [DONE]")
+        response = handler.compile_streaming(
+            generation_request,
+            GenerationRequestArguments(body={"n": 2}, stream=True),
+        )
+
+        assert response.text == "First answer."
+        assert response.input_metrics.text_tokens == 10
+        assert response.output_metrics.text_tokens == 20
+
     @pytest.fixture
     def valid_instances(self):
         """Create instance of TextCompletionsRequestHandler.
@@ -922,6 +974,122 @@ class TestChatCompletionsRequestHandler:
 
     ### WRITTEN BY AI ###
     """
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("reasoning_field", ["reasoning", "reasoning_content"])
+    def test_non_streaming_keeps_alternative_choices_isolated(
+        self, generation_request, reasoning_field
+    ):
+        """Use only the first choice, including its absent reasoning and tools.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        response = handler.compile_non_streaming(
+            generation_request,
+            GenerationRequestArguments(body={"n": 2}),
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "First answer."},
+                        "finish_reason": "stop",
+                    },
+                    {
+                        "index": 1,
+                        "message": {
+                            "role": "assistant",
+                            "content": "Second answer.",
+                            reasoning_field: "Second reasoning.",
+                            "tool_calls": [
+                                {
+                                    "id": "call_second",
+                                    "type": "function",
+                                    "function": {"name": "clock", "arguments": "{}"},
+                                }
+                            ],
+                        },
+                        "finish_reason": "tool_calls",
+                    },
+                ],
+            },
+        )
+
+        assert response.text == "First answer."
+        assert response.reasoning_text is None
+        assert response.tool_calls is None
+        assert response.output_metrics.tool_call_count is None
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("reasoning_field", ["reasoning", "reasoning_content"])
+    def test_streaming_keeps_alternative_choices_isolated(
+        self, generation_request, reasoning_field
+    ):
+        """Use only choice zero's text, reasoning, tools, and tool count.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        first_tool = {
+            "id": "call_first",
+            "type": "function",
+            "function": {"name": "weather", "arguments": "{}"},
+        }
+        second_tool = {
+            "id": "call_second",
+            "type": "function",
+            "function": {"name": "clock", "arguments": "{}"},
+        }
+        for index, reasoning, tool in [
+            (1, "Second reasoning.", second_tool),
+            (0, "First reasoning.", first_tool),
+        ]:
+            handler.add_streaming_line(
+                "data: "
+                + json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "index": index,
+                                "delta": {
+                                    reasoning_field: reasoning,
+                                    "tool_calls": [{"index": 0, **tool}],
+                                },
+                            }
+                        ]
+                    }
+                )
+            )
+        # vLLM sends each choice in its own SSE event.
+        for index, text in [
+            (1, "Second "),
+            (0, "First "),
+            (0, "answer."),
+            (1, "answer."),
+        ]:
+            handler.add_streaming_line(
+                "data: "
+                + json.dumps(
+                    {"choices": [{"index": index, "delta": {"content": text}}]}
+                )
+            )
+        # Usage must still be recorded when attached to an ignored choice.
+        handler.add_streaming_line(
+            'data: {"choices": [{"index": 1, "delta": {}}], '
+            '"usage": {"prompt_tokens": 10, "completion_tokens": 20}}'
+        )
+        handler.add_streaming_line("data: [DONE]")
+        response = handler.compile_streaming(
+            generation_request,
+            GenerationRequestArguments(body={"n": 2}, stream=True),
+        )
+
+        assert response.text == "First answer."
+        assert response.reasoning_text == "First reasoning."
+        assert response.tool_calls == [ToolCall.model_validate(first_tool)]
+        assert response.output_metrics.tool_call_count == 1
+        assert response.input_metrics.text_tokens == 10
+        assert response.output_metrics.text_tokens == 20
 
     @pytest.fixture
     def valid_instances(self):
