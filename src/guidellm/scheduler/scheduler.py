@@ -230,7 +230,7 @@ class Scheduler(
                         response, request, request_info, state
                     )
                     yield response, request, request_info, state
-            except Exception as err:  # noqa: BLE001
+            except Exception as err:
                 await env.sync_run_error(err)
                 raise err
             finally:
