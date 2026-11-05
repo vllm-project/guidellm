@@ -162,8 +162,8 @@ guidellm run \
 
 - `--data`：数据类型及配置 —— `synthetic_text`、`huggingface`、`json_file`、`csv_file`、`text_file`、`trace_synthetic` 等。可重复指定以组合多个数据源。
 - `--data-column-mapper`：列映射预处理器及其 JSON 配置，可指定 `text_column`、`output_tokens_count_column` 等映射关系。
-- `--data-loader type=pytorch,samples=1000`：控制数据加载的最大样本行数（`-1` 代表加载全部样本）。
-- `--tokenizer huggingface_auto "model=gpt2"`：指定用于合成数据或本地离线 Token 计数的分词器（Tokenizer）。
+- `--data-loader kind=pytorch,samples=1000`：控制数据加载的最大样本行数（`-1` 代表加载全部样本）。
+- `--tokenizer kind=huggingface_auto,model=gpt2`：指定用于合成数据或本地离线 Token 计数的分词器（Tokenizer）。
 
 ### 多模态视觉合成数据 (Synthetic Visual Data)
 
@@ -185,17 +185,17 @@ guidellm run \
 
 ### 预设压测场景 (Using Scenarios)
 
-内置场景（Scenarios）将压测调度计划、数据集设置和请求格式化参数进行了标准化打包，开箱即用。以下示例采用预配置的 `chat` 对话场景，包含针对对话模型评测的最佳实践默认参数，同时允许通过额外的 CLI 参数按需覆盖特定项：
+内置场景（Scenarios）将压测调度计划、数据集设置和请求格式化参数进行了标准化打包，可作为通用测试场景。以下示例采用内置的 `rhaiis/concurrent-1k-1k-equal` 场景（并发负载，1,000 个 prompt token 和 1,000 个输出 token），同时允许通过额外的 CLI 参数按需覆盖特定项：
 
 ```bash
 guidellm run \
-  --config chat \
+  --config rhaiis/concurrent-1k-1k-equal \
   --backend kind=openai_http,target=http://localhost:8000
 ```
 
 **核心关键参数：**
 
-- `--config`（别名 `--scenario`、`-c`）：内置预设场景名称或自定义场景文件路径。命令行中传入的显式参数具有更高优先级，将覆盖场景内的同名默认设置。
+- `--config`（别名 `--scenario`、`-c`）：内置预设场景名称或自定义场景文件路径。命令行中显式传入的参数具有更高优先级，将覆盖场景内的同名默认配置。可用场景列表参见[配置文件](docs/en/getting-started/benchmark.md#built-in-configuration-files)。
 
 ### 压测控制与稳定性保障 (Benchmark Controls)
 
