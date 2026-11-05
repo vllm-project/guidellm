@@ -1,6 +1,6 @@
 ---
 weight: 15
-source_sha256: !!str "19294b49d173bdf267cb1c483547a7e4e6ef18e914ec92a96c62a50fa02b14d5"
+source_sha256: !!str "fe0b22e16a2382148358a9af7a53dd226362964f4ffe9b9cd70d61c8b0ae6c5c"
 ---
 
 # 故障排查
@@ -91,7 +91,7 @@ Worker process <pid> died unexpectedly (signal 11)
 
 ### 修复方法
 
-GuideLLM 默认使用 `fork` 多进程启动方式，这可能会在 macOS 上触发段错误。请改用 `spawn`：
+GuideLLM 0.8.0 及之后的版本在所有平台上默认使用 `spawn` 多进程启动方式，并且不再接受 `fork`，因此在默认设置下不应出现这个崩溃。0.8.0 之前的版本默认使用 `fork`，这可能会在 macOS 上触发段错误；在这些版本上请显式改用 `spawn`：
 
 ```bash
 GUIDELLM__MP_CONTEXT_TYPE=spawn guidellm run ...
