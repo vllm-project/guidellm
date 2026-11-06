@@ -52,6 +52,7 @@ from .strategies import (
     SynchronousStrategy,
     ThroughputStrategy,
     TraceReplayStrategy,
+    UsersStrategy,
 )
 from .worker import WorkerProcess
 from .worker_group import WorkerProcessGroup
@@ -95,6 +96,7 @@ __all__ = [
     "ThroughputStrategy",
     "TraceReplayStrategy",
     "UnserializableConstraintInitializer",
+    "UsersStrategy",
     "WorkerProcess",
     "WorkerProcessGroup",
 ]

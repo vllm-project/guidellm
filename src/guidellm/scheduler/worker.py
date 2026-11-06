@@ -145,6 +145,13 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.backend_started = False
         self.messaging_started = False
         self.turns_queue: list[DAGExecutionState[RequestT, ResponseT]] = []
+        # Maximum active conversation graphs (None = unlimited). Strategies
+        # that bind a slot to a session, like users, cap this at the worker's
+        # request concurrency.
+        self._session_limit = async_limit if strategy.binds_sessions else None
+        # Wake event for waiters blocked on the session cap; created inside
+        # the worker's event loop because asyncio primitives are not pickled.
+        self._turns_changed: asyncio.Event | None = None
 
     def run(self):
         """
@@ -392,8 +399,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
         Preference order:
         1. A schedulable node from an in-flight graph (claim it).
-        2. Wait until a think-time gate expires or a new graph arrives.
-        3. Block on IPC for a new graph when nothing is delayed.
+        2. At the session cap, wait until a think-time gate expires or a
+           session finishes; do not pull new graphs from IPC.
+        3. Otherwise wait until a think-time gate expires or a new graph
+           arrives, or block on IPC for a new graph when nothing is delayed.
         """
         while True:
             now = time.time()
@@ -408,6 +417,21 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     if earliest is None or nxt[1] < earliest:
                         earliest = nxt[1]
 
+            if self._at_session_cap():
+                # Sessions hold their user slots across think time. Wait for
+                # the earliest gate or for a session to finish; the scan runs
+                # again after either. No await happens between the scan above
+                # and the clear below, so a set-then-clear race cannot occur.
+                turns_changed = self._get_turns_changed()
+                turns_changed.clear()
+                if earliest is not None:
+                    timeout = max(0.0, earliest - time.time())
+                    with contextlib.suppress(TimeoutError):
+                        await asyncio.wait_for(turns_changed.wait(), timeout)
+                else:
+                    await turns_changed.wait()
+                continue
+
             if earliest is not None:
                 timeout = max(0.0, earliest - time.time())
                 try:
@@ -421,6 +445,24 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
 
             state = DAGExecutionState(graph)
             self.turns_queue.append(state)
+
+    def _at_session_cap(self) -> bool:
+        """Whether the worker already holds its maximum active sessions."""
+        return (
+            self._session_limit is not None
+            and len(self.turns_queue) >= self._session_limit
+        )
+
+    def _get_turns_changed(self) -> asyncio.Event:
+        """Return the turn-change wake event, creating it on first use."""
+        if self._turns_changed is None:
+            self._turns_changed = asyncio.Event()
+        return self._turns_changed
+
+    def _notify_turns_changed(self) -> None:
+        """Wake waiters blocked on the session cap after a state change."""
+        if self._turns_changed is not None:
+            self._turns_changed.set()
 
     async def _process_next_graph_node(self, target_start: float) -> None:
         """Process a single graph node from queue to completion."""
@@ -530,6 +572,9 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         state.mark_completed(node_id, request, response)
         if state.is_complete:
             self.turns_queue.remove(state)
+        # Children may have become ready (or a session slot may have freed);
+        # wake waiters blocked on the session cap.
+        self._notify_turns_changed()
 
     def _handle_node_error(  # noqa: PLR0913
         self,
@@ -582,6 +627,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 self._send_update("cancelled", None, rem_node.request, rem_info)
         if state in self.turns_queue:
             self.turns_queue.remove(state)
+            # A session slot freed; wake waiters blocked on the session cap.
+            self._notify_turns_changed()
 
     async def _schedule_request(
         self, request: RequestT, request_info: RequestInfo, target_start: float
