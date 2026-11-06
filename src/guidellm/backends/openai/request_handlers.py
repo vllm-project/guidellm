@@ -1829,16 +1829,15 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 res.reasoning_text if res else None, multiturn_reasoning
             )
             if res is not None:
-                if res.tool_calls:
-                    # Tool-call turn: function_call items only.
-                    # function_call_output items come from the injection turn.
-                    for tc in res.tool_calls:
-                        items.append(self._tool_call_to_responses_item(tc))
-                elif res.text is not None or wrapped:
+                if res.text or wrapped or (res.text is not None and not res.tool_calls):
                     content = res.text or ""
                     if wrapped:
                         content = wrapped + content
                     items.append({"role": "assistant", "content": content})
+                if res.tool_calls:
+                    # function_call_output items come from the injection turn.
+                    for tc in res.tool_calls:
+                        items.append(self._tool_call_to_responses_item(tc))
 
         return items
 
