@@ -460,6 +460,9 @@ class TestWEKATraceFormat:
             0.0,
             17.0,
         ]
+        assert [
+            turn.columns["request_duration_column"][0] for turn in turns
+        ] == pytest.approx([4.87, 2.87])
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(

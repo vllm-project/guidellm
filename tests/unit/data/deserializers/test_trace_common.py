@@ -111,11 +111,13 @@ class TestTraceDataArgsSessionDuration:
             max_wait=30.0,
             max_session_wait=60.0,
             min_concurrent_sessions=8,
+            max_concurrent_sessions=16,
             time_scale=2.0,
         )
         assert args.max_wait == 30.0
         assert args.max_session_wait == 60.0
         assert args.min_concurrent_sessions == 8
+        assert args.max_concurrent_sessions == 16
         assert args.time_scale == 2.0
 
     @pytest.mark.smoke
@@ -132,6 +134,7 @@ class TestTraceDataArgsSessionDuration:
         assert args.max_wait is None
         assert args.max_session_wait is None
         assert args.min_concurrent_sessions is None
+        assert args.max_concurrent_sessions is None
         assert args.time_scale == 1.0
         assert args.copies == 1
         assert args.copy_offset == 1.0
@@ -188,6 +191,58 @@ class TestTraceDataArgsSessionDuration:
         with pytest.raises(ValidationError):
             MinimalTraceFormatArgs(source=trace_file_source(path), copy_offset=-0.1)
 
+    @pytest.mark.smoke
+    def test_rejects_max_concurrent_sessions_below_one(self, tmp_path: Path):
+        """max_concurrent_sessions must be at least 1.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        with pytest.raises(ValidationError):
+            MinimalTraceFormatArgs(
+                source=trace_file_source(path), max_concurrent_sessions=0
+            )
+
+    @pytest.mark.smoke
+    def test_rejects_min_greater_than_max_concurrent_sessions(self, tmp_path: Path):
+        """min_concurrent_sessions cannot exceed max_concurrent_sessions.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        with pytest.raises(ValidationError):
+            MinimalTraceFormatArgs(
+                source=trace_file_source(path),
+                min_concurrent_sessions=4,
+                max_concurrent_sessions=2,
+            )
+
+    @pytest.mark.smoke
+    def test_accepts_min_less_than_or_equal_max_concurrent_sessions(
+        self, tmp_path: Path
+    ):
+        """min and max concurrent bounds may be set together when min <= max.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        args = MinimalTraceFormatArgs(
+            source=trace_file_source(path),
+            min_concurrent_sessions=2,
+            max_concurrent_sessions=4,
+        )
+        assert args.min_concurrent_sessions == 2
+        assert args.max_concurrent_sessions == 4
+
 
 @dataclasses.dataclass
 class TraceColumnGenerator:
@@ -240,6 +295,7 @@ class TestTraceDatasetDeserializer:
                 "max_wait",
                 "max_session_wait",
                 "min_concurrent_sessions",
+                "max_concurrent_sessions",
                 "time_scale",
                 "copies",
                 "copy_offset",
