@@ -703,8 +703,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
 
         updated = False
         choices, usage = self.extract_choices_and_usage(data)
-        # vLLM streams alternatives in separate events; select by choice index.
-        choice = next((c for c in choices if c.get("index", 0) == 0), {})
+        choice = choices[0] if choices else {}
 
         if choices and (text := choice.get("text")):
             self.streaming_texts.append(text)
@@ -771,10 +770,16 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
 
         :param response: Complete API response containing choices and usage data
         :return: Tuple of choices list and usage dictionary
+        :raises NotImplementedError: If the response contains multiple choices.
         """
         if isinstance(metrics := response.get("metrics"), dict):
             self.response_metrics = metrics
-        return response.get("choices", []), response.get("usage", {})
+        choices = response.get("choices", [])
+        # vLLM may stream each alternative in a separate event. Check only the
+        # first index to keep this shared parsing path constant-time.
+        if choices and (len(choices) > 1 or choices[0].get("index", 0) != 0):
+            raise NotImplementedError("Multiple completion choices are not supported")
+        return choices, response.get("usage", {})
 
     def extract_metrics(
         self, usage: dict[str, int | dict[str, int]] | None, text: str | None
@@ -1300,10 +1305,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         # reasoning-only). Used by the HTTP layer to set TTFOT timing.
         had_content = False
         choices, usage = self.extract_choices_and_usage(data)
-        # vLLM streams alternatives in separate events; select by choice index.
-        choice: dict[str, dict] = next(
-            (c for c in choices if c.get("index", 0) == 0), {}
-        )
+        choice: dict[str, dict] = choices[0] if choices else {}
         delta = choice.get("delta", {}) if choices else {}
 
         # Reasoning tokens trigger TTFT (updated=True) but are not

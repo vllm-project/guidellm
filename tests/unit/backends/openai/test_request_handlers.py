@@ -441,56 +441,42 @@ class TestTextCompletionsRequestHandler:
     """
 
     @pytest.mark.regression
-    def test_non_streaming_keeps_alternative_choices_isolated(self, generation_request):
-        """Return the first completion without concatenating alternative choices.
+    @pytest.mark.parametrize("indices", [[0, 1], [1], [0, 0]])
+    def test_non_streaming_rejects_multiple_choices(self, generation_request, indices):
+        """Reject unsupported alternative completions before compiling metrics.
 
         ## WRITTEN BY AI ##
         """
         handler = TextCompletionsRequestHandler()
-        response = handler.compile_non_streaming(
-            generation_request,
-            GenerationRequestArguments(body={"n": 2}),
-            {
-                "choices": [
-                    {"index": 0, "text": "First answer."},
-                    {"index": 1, "text": "Second answer."},
-                ]
-            },
-        )
-
-        assert response.text == "First answer."
+        with pytest.raises(NotImplementedError, match="Multiple completion choices"):
+            handler.compile_non_streaming(
+                generation_request,
+                GenerationRequestArguments(body={"n": 2}),
+                {"choices": [{"index": index, "text": "Answer."} for index in indices]},
+            )
 
     @pytest.mark.regression
-    def test_streaming_keeps_alternative_choices_isolated(self, generation_request):
-        """Assemble only choice zero from interleaved vLLM completion events.
+    @pytest.mark.parametrize("indices", [[0, 1], [1], [0, 0]])
+    def test_streaming_rejects_multiple_choices(self, indices):
+        """Reject alternatives in one event or streamed as separate events.
 
         ## WRITTEN BY AI ##
         """
         handler = TextCompletionsRequestHandler()
-        # vLLM sends each choice in its own SSE event.
-        for index, text in [
-            (1, "Second "),
-            (0, "First "),
-            (0, "answer."),
-            (1, "answer."),
-        ]:
-            handler.add_streaming_line(
-                "data: " + json.dumps({"choices": [{"index": index, "text": text}]})
-            )
-        # Usage must still be recorded when attached to an ignored choice.
         handler.add_streaming_line(
-            'data: {"choices": [{"index": 1, "text": ""}], '
-            '"usage": {"prompt_tokens": 10, "completion_tokens": 20}}'
+            'data: {"choices": [{"index": 0, "text": "Answer."}]}'
         )
-        handler.add_streaming_line("data: [DONE]")
-        response = handler.compile_streaming(
-            generation_request,
-            GenerationRequestArguments(body={"n": 2}, stream=True),
-        )
-
-        assert response.text == "First answer."
-        assert response.input_metrics.text_tokens == 10
-        assert response.output_metrics.text_tokens == 20
+        with pytest.raises(NotImplementedError, match="Multiple completion choices"):
+            handler.add_streaming_line(
+                "data: "
+                + json.dumps(
+                    {
+                        "choices": [
+                            {"index": index, "text": "Answer."} for index in indices
+                        ]
+                    }
+                )
+            )
 
     @pytest.fixture
     def valid_instances(self):
@@ -976,74 +962,40 @@ class TestChatCompletionsRequestHandler:
     """
 
     @pytest.mark.regression
-    @pytest.mark.parametrize("reasoning_field", ["reasoning", "reasoning_content"])
-    def test_non_streaming_keeps_alternative_choices_isolated(
-        self, generation_request, reasoning_field
-    ):
-        """Use only the first choice, including its absent reasoning and tools.
+    @pytest.mark.parametrize("indices", [[0, 1], [1], [0, 0]])
+    def test_non_streaming_rejects_multiple_choices(self, generation_request, indices):
+        """Reject unsupported alternative completions before compiling metrics.
 
         ## WRITTEN BY AI ##
         """
         handler = ChatCompletionsRequestHandler()
-        response = handler.compile_non_streaming(
-            generation_request,
-            GenerationRequestArguments(body={"n": 2}),
-            {
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": "First answer."},
-                        "finish_reason": "stop",
-                    },
-                    {
-                        "index": 1,
-                        "message": {
-                            "role": "assistant",
-                            "content": "Second answer.",
-                            reasoning_field: "Second reasoning.",
-                            "tool_calls": [
-                                {
-                                    "id": "call_second",
-                                    "type": "function",
-                                    "function": {"name": "clock", "arguments": "{}"},
-                                }
-                            ],
-                        },
-                        "finish_reason": "tool_calls",
-                    },
-                ],
-            },
-        )
-
-        assert response.text == "First answer."
-        assert response.reasoning_text is None
-        assert response.tool_calls is None
-        assert response.output_metrics.tool_call_count is None
+        with pytest.raises(NotImplementedError, match="Multiple completion choices"):
+            handler.compile_non_streaming(
+                generation_request,
+                GenerationRequestArguments(body={"n": 2}),
+                {
+                    "choices": [
+                        {
+                            "index": index,
+                            "message": {"content": "Answer."},
+                        }
+                        for index in indices
+                    ]
+                },
+            )
 
     @pytest.mark.regression
-    @pytest.mark.parametrize("reasoning_field", ["reasoning", "reasoning_content"])
-    def test_streaming_keeps_alternative_choices_isolated(
-        self, generation_request, reasoning_field
-    ):
-        """Use only choice zero's text, reasoning, tools, and tool count.
+    @pytest.mark.parametrize("indices", [[0, 1], [1], [0, 0]])
+    def test_streaming_rejects_multiple_choices(self, indices):
+        """Reject alternatives in one event or streamed as separate events.
 
         ## WRITTEN BY AI ##
         """
         handler = ChatCompletionsRequestHandler()
-        first_tool = {
-            "id": "call_first",
-            "type": "function",
-            "function": {"name": "weather", "arguments": "{}"},
-        }
-        second_tool = {
-            "id": "call_second",
-            "type": "function",
-            "function": {"name": "clock", "arguments": "{}"},
-        }
-        for index, reasoning, tool in [
-            (1, "Second reasoning.", second_tool),
-            (0, "First reasoning.", first_tool),
-        ]:
+        handler.add_streaming_line(
+            'data: {"choices": [{"index": 0, "delta": {"content": "Answer."}}]}'
+        )
+        with pytest.raises(NotImplementedError, match="Multiple completion choices"):
             handler.add_streaming_line(
                 "data: "
                 + json.dumps(
@@ -1051,45 +1003,13 @@ class TestChatCompletionsRequestHandler:
                         "choices": [
                             {
                                 "index": index,
-                                "delta": {
-                                    reasoning_field: reasoning,
-                                    "tool_calls": [{"index": 0, **tool}],
-                                },
+                                "delta": {"content": "Answer."},
                             }
+                            for index in indices
                         ]
                     }
                 )
             )
-        # vLLM sends each choice in its own SSE event.
-        for index, text in [
-            (1, "Second "),
-            (0, "First "),
-            (0, "answer."),
-            (1, "answer."),
-        ]:
-            handler.add_streaming_line(
-                "data: "
-                + json.dumps(
-                    {"choices": [{"index": index, "delta": {"content": text}}]}
-                )
-            )
-        # Usage must still be recorded when attached to an ignored choice.
-        handler.add_streaming_line(
-            'data: {"choices": [{"index": 1, "delta": {}}], '
-            '"usage": {"prompt_tokens": 10, "completion_tokens": 20}}'
-        )
-        handler.add_streaming_line("data: [DONE]")
-        response = handler.compile_streaming(
-            generation_request,
-            GenerationRequestArguments(body={"n": 2}, stream=True),
-        )
-
-        assert response.text == "First answer."
-        assert response.reasoning_text == "First reasoning."
-        assert response.tool_calls == [ToolCall.model_validate(first_tool)]
-        assert response.output_metrics.tool_call_count == 1
-        assert response.input_metrics.text_tokens == 10
-        assert response.output_metrics.text_tokens == 20
 
     @pytest.fixture
     def valid_instances(self):
