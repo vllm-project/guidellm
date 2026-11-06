@@ -346,22 +346,31 @@ async def resolve_collectors(
 async def resolve_output_formats(
     outputs: list[BenchmarkOutputArgs],
     console: Console | None = None,
-) -> list[GenerativeBenchmarkerOutput]:
+) -> list[tuple[str, GenerativeBenchmarkerOutput]]:
     """
     Resolve output format specifications into configured output handler instances.
 
+    With a console, the console tables are printed by default: a console output
+    using that console is added last unless a ``console`` output is specified.
+
     :param outputs: List of BenchmarkOutputArgs specifying output kind and path
-    :param console: Console instance for progress reporting, or None
-    :return: Ordered list of configured output handler instances, one per input
-        specification (repeated kinds are preserved as separate entries)
+    :param console: Console instance for progress reporting and the default
+        console output, or None
+    :return: Ordered list of (kind, output handler) pairs, one per input
+        specification (repeated kinds are preserved as separate entries), plus
+        the default console output when added
     """
     console_step = (
         console.print_update_step(title="Resolving output formats") if console else None
     )
 
-    resolved: list[GenerativeBenchmarkerOutput] = []
+    resolved: list[tuple[str, GenerativeBenchmarkerOutput]] = []
     for output_arg in outputs:
-        resolved.append(GenerativeBenchmarkerOutput.resolve(output_arg))
+        resolved.append(
+            (output_arg.kind, GenerativeBenchmarkerOutput.resolve(output_arg))
+        )
+    if console and not any(kind == "console" for kind, _ in resolved):
+        resolved.append(("console", GenerativeBenchmarkerConsole(console=console)))
 
     if console_step:
         console_step.finish(
@@ -641,11 +650,10 @@ async def benchmark_generative_text(  # noqa: C901
         report.conclusions.append(conclusion)
 
     output_format_results: list[tuple[str, Any]] = []
-    for output_arg, output in zip(benchmark_args.outputs, output_formats, strict=True):
-        output_format_results.append((output_arg.kind, await output.finalize(report)))
+    for kind, output in output_formats:
+        output_format_results.append((kind, await output.finalize(report)))
 
     if console:
-        await GenerativeBenchmarkerConsole(console=console).finalize(report)
         console.print("\n\n")
         console.print_update(
             title=(
