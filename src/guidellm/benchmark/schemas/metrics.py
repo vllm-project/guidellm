@@ -987,8 +987,7 @@ def root_dispatch_delay_distribution(
     First turns are requests with ``preceding_nodes == 0``. Later turns are
     omitted because a slow early turn moves them. ``turn_index`` is not used:
     with some history modes every turn stays at index 0. A request with no
-    dispatch delay, which is the case when the profile has no arrival
-    schedule, is omitted.
+    dispatch delay is omitted.
 
     :param requests: In-window requests, across every status
     :return: The first-turn delays, or None when none of them have a dispatch delay
@@ -1090,7 +1089,9 @@ class GenerativeMetrics(StandardBaseDict):
         default=None,
         description=(
             "Dispatch delay for the first request of each conversation. "
-            "Later turns are omitted. None when no first turn has a dispatch delay"
+            "Later turns are omitted. None when no first turn has a dispatch "
+            "delay, and for the throughput strategy, which targets every request "
+            "at the run start"
         ),
     )
     request_streaming_iterations_count: StatusDistributionSummary = Field(
@@ -1500,8 +1501,12 @@ class GenerativeMetrics(StandardBaseDict):
             request_scheduled_latency=scheduled_latency,
             turn_predecessor_delay=predecessor_delay,
             turn_scheduling_delay=scheduling_delay,
-            root_dispatch_delay=root_dispatch_delay_distribution(
-                [*successful, *incomplete, *errored],
+            root_dispatch_delay=(
+                root_dispatch_delay_distribution(
+                    [*successful, *incomplete, *errored],
+                )
+                if accumulator.config.strategy.defines_root_dispatch_delay
+                else None
             ),
             request_streaming_iterations_count=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.info.timings.request_iterations or 0.0,
