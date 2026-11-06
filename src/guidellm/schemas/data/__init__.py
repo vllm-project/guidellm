@@ -21,6 +21,7 @@ from guidellm.schemas.data.deserializers import (
     SyntheticVideoDataArgs,
     SyntheticVisionDataArgs,
     TraceDataArgs,
+    WeightedSamplerDataArgs,
     WEKATraceFormatArgs,
     parse_aspect_ratio,
 )
@@ -87,5 +88,6 @@ __all__ = [
     "TraceDataArgs",
     "TurnPivotArgs",
     "WEKATraceFormatArgs",
+    "WeightedSamplerDataArgs",
     "parse_aspect_ratio",
 ]
