@@ -440,6 +440,44 @@ class TestTextCompletionsRequestHandler:
     ### WRITTEN BY AI ###
     """
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize("indices", [[0, 1], [1], [0, 0]])
+    def test_non_streaming_rejects_multiple_choices(self, generation_request, indices):
+        """Reject unsupported alternative completions before compiling metrics.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = TextCompletionsRequestHandler()
+        with pytest.raises(NotImplementedError, match="Multiple completion choices"):
+            handler.compile_non_streaming(
+                generation_request,
+                GenerationRequestArguments(body={"n": 2}),
+                {"choices": [{"index": index, "text": "Answer."} for index in indices]},
+            )
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("indices", [[0, 1], [1], [0, 0]])
+    def test_streaming_rejects_multiple_choices(self, indices):
+        """Reject alternatives in one event or streamed as separate events.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = TextCompletionsRequestHandler()
+        handler.add_streaming_line(
+            'data: {"choices": [{"index": 0, "text": "Answer."}]}'
+        )
+        with pytest.raises(NotImplementedError, match="Multiple completion choices"):
+            handler.add_streaming_line(
+                "data: "
+                + json.dumps(
+                    {
+                        "choices": [
+                            {"index": index, "text": "Answer."} for index in indices
+                        ]
+                    }
+                )
+            )
+
     @pytest.fixture
     def valid_instances(self):
         """Create instance of TextCompletionsRequestHandler.
@@ -922,6 +960,56 @@ class TestChatCompletionsRequestHandler:
 
     ### WRITTEN BY AI ###
     """
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("indices", [[0, 1], [1], [0, 0]])
+    def test_non_streaming_rejects_multiple_choices(self, generation_request, indices):
+        """Reject unsupported alternative completions before compiling metrics.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        with pytest.raises(NotImplementedError, match="Multiple completion choices"):
+            handler.compile_non_streaming(
+                generation_request,
+                GenerationRequestArguments(body={"n": 2}),
+                {
+                    "choices": [
+                        {
+                            "index": index,
+                            "message": {"content": "Answer."},
+                        }
+                        for index in indices
+                    ]
+                },
+            )
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("indices", [[0, 1], [1], [0, 0]])
+    def test_streaming_rejects_multiple_choices(self, indices):
+        """Reject alternatives in one event or streamed as separate events.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        handler.add_streaming_line(
+            'data: {"choices": [{"index": 0, "delta": {"content": "Answer."}}]}'
+        )
+        with pytest.raises(NotImplementedError, match="Multiple completion choices"):
+            handler.add_streaming_line(
+                "data: "
+                + json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "index": index,
+                                "delta": {"content": "Answer."},
+                            }
+                            for index in indices
+                        ]
+                    }
+                )
+            )
 
     @pytest.fixture
     def valid_instances(self):

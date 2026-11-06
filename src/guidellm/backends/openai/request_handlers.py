@@ -770,10 +770,16 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
 
         :param response: Complete API response containing choices and usage data
         :return: Tuple of choices list and usage dictionary
+        :raises NotImplementedError: If the response contains multiple choices.
         """
         if isinstance(metrics := response.get("metrics"), dict):
             self.response_metrics = metrics
-        return response.get("choices", []), response.get("usage", {})
+        choices = response.get("choices", [])
+        # vLLM may stream each alternative in a separate event. Check only the
+        # first index to keep this shared parsing path constant-time.
+        if choices and (len(choices) > 1 or choices[0].get("index", 0) != 0):
+            raise NotImplementedError("Multiple completion choices are not supported")
+        return choices, response.get("usage", {})
 
     def extract_metrics(
         self, usage: dict[str, int | dict[str, int]] | None, text: str | None
