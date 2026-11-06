@@ -51,6 +51,10 @@ class GenerativeBenchmarkerSerialized(GenerativeBenchmarkerOutput):
         default="json",
         description="Serialization format, used to determine the default filename",
     )
+    include_media: bool = Field(
+        default=True,
+        description="Whether to preserve embedded media payloads for replay.",
+    )
 
     @classmethod
     def from_args(cls, args: BenchmarkOutputArgs) -> GenerativeBenchmarkerSerialized:
@@ -63,7 +67,11 @@ class GenerativeBenchmarkerSerialized(GenerativeBenchmarkerOutput):
         if not isinstance(args, JSONBenchmarkOutputArgs | YAMLBenchmarkOutputArgs):
             raise ValueError(f"Invalid args type: {type(args)}.")
 
-        return cls(output_path=args.path, format_type=args.kind)
+        return cls(
+            output_path=args.path,
+            format_type=args.kind,
+            include_media=args.include_media,
+        )
 
     async def finalize(self, report: GenerativeBenchmarksReport) -> Path:
         """
@@ -75,4 +83,4 @@ class GenerativeBenchmarkerSerialized(GenerativeBenchmarkerOutput):
         output_path = self.output_path
         if output_path.is_dir():
             output_path = output_path / f"benchmarks.{self.format_type}"
-        return report.save_file(output_path)
+        return report.save_file(output_path, include_media=self.include_media)

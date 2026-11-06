@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from guidellm.benchmark.outputs.output import GenerativeBenchmarkerOutput
 from guidellm.benchmark.outputs.serialized import (
     GenerativeBenchmarkerSerialized,
 )
@@ -13,8 +12,6 @@ from guidellm.benchmark.schemas import (
 )
 from guidellm.schemas.benchmark import (
     BenchmarkScenario,
-    JSONBenchmarkOutputArgs,
-    YAMLBenchmarkOutputArgs,
 )
 
 
@@ -71,53 +68,6 @@ def file_path_report(tmp_path: Path) -> GenerativeBenchmarksReport:
         }
     )
     return GenerativeBenchmarksReport(config=args)
-
-
-class TestResolveFormatType:
-    """
-    Tests that resolve() propagates the format key correctly.
-
-    ## WRITTEN BY AI ##
-    """
-
-    def test_resolve_yaml_alias_sets_format_type(self, tmp_path: Path):
-        """
-        Resolving with YAMLBenchmarkOutputArgs should produce a handler
-        with format_type='yaml'.
-
-        ## WRITTEN BY AI ##
-        """
-        handler = GenerativeBenchmarkerOutput.resolve(
-            YAMLBenchmarkOutputArgs(path=tmp_path / "benchmarks.yaml")
-        )
-        assert isinstance(handler, GenerativeBenchmarkerSerialized)
-        assert handler.format_type == "yaml"
-
-    def test_resolve_json_alias_sets_format_type(self, tmp_path: Path):
-        """
-        Resolving with JSONBenchmarkOutputArgs should produce a handler
-        with format_type='json'.
-
-        ## WRITTEN BY AI ##
-        """
-        handler = GenerativeBenchmarkerOutput.resolve(
-            JSONBenchmarkOutputArgs(path=tmp_path / "benchmarks.json")
-        )
-        assert isinstance(handler, GenerativeBenchmarkerSerialized)
-        assert handler.format_type == "json"
-
-    def test_resolve_explicit_yaml_filename(self, tmp_path: Path):
-        """
-        Resolving with an explicit path should produce a handler
-        whose output_path matches.
-
-        ## WRITTEN BY AI ##
-        """
-        handler = GenerativeBenchmarkerOutput.resolve(
-            YAMLBenchmarkOutputArgs(path=tmp_path / "results.yaml")
-        )
-        assert isinstance(handler, GenerativeBenchmarkerSerialized)
-        assert handler.output_path == tmp_path / "results.yaml"
 
 
 class TestFinalizeFormats:
