@@ -1431,3 +1431,33 @@ async def test_raise_for_status_decodes_error_body(
     assert expected in str(exc_info.value)
     for text in unexpected:
         assert text not in str(exc_info.value)
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@async_timeout(10.0)
+async def test_validate_and_models_send_extras_headers_and_params(
+    httpx2_mock: respx.Router,
+):
+    """Send the configured extra headers and params on the health check and models."""
+    health = httpx2_mock.route(url__startswith="http://test/health").respond(200)
+    models = httpx2_mock.route(url__startswith="http://test/v1/models").respond(
+        json={"data": [{"id": "test-model"}]}
+    )
+    backend = _make_backend(
+        target="http://test",
+        extras=GenerationRequestArguments(
+            headers={"X-Api-Key": "secret"}, params={"api-version": "2024-10-21"}
+        ),
+    )
+    await backend.process_startup()
+    try:
+        await backend.validate()
+        assert await backend.available_models() == ["test-model"]
+    finally:
+        await backend.process_shutdown()
+
+    for route in (health, models):
+        sent = route.calls.last.request
+        assert sent.headers["X-Api-Key"] == "secret"
+        assert sent.url.params["api-version"] == "2024-10-21"

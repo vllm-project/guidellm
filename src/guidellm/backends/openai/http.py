@@ -143,9 +143,11 @@ class OpenAIHTTPBackend(Backend):
                 "method": "GET",
                 "url": f"{self._args.target}/{self._args.api_routes['/health']}",
             }
-            existing_headers = validate_kwargs.get("headers")
-            built_headers = self._build_headers(existing_headers)
-            validate_kwargs["headers"] = built_headers
+            extras = self._args.extras
+            validate_kwargs["params"] = extras.params if extras else None
+            validate_kwargs["headers"] = self._build_headers(
+                extras.headers if extras else None
+            )
             response = await self._async_client.request(**validate_kwargs)
             await self._raise_for_status(response)
         except Exception as exc:
@@ -166,7 +168,12 @@ class OpenAIHTTPBackend(Backend):
             raise RuntimeError("Backend not started up for process.")
 
         target = f"{self._args.target}/{self._args.api_routes['/v1/models']}"
-        response = await self._async_client.get(target, headers=self._build_headers())
+        extras = self._args.extras
+        response = await self._async_client.get(
+            target,
+            params=extras.params if extras else None,
+            headers=self._build_headers(extras.headers if extras else None),
+        )
         await self._raise_for_status(response)
 
         return [item["id"] for item in response.json()["data"]]
