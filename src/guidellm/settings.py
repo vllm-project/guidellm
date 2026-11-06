@@ -104,6 +104,7 @@ class Settings(BaseSettings):
     scheduler_start_delay_non_distributed: float = 1.0
     constraint_error_window_size: float = 30
     constraint_error_min_processed: float = 30
+    loop_lag_interval: float = Field(default=0.1, gt=0, allow_inf_nan=False)
 
     # Data settings
     dataset: DatasetSettings = DatasetSettings()

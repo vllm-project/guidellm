@@ -35,6 +35,7 @@ from guidellm.schemas.benchmark.warnings import (
     MetricRef,
     WarningCondition,
     WarningRuleArgs,
+    default_warning_rules,
 )
 from guidellm.utils.console import Console
 
@@ -71,6 +72,7 @@ class _SchedulerFixture(BaseModel):
     """Scheduler metrics fields the warning walker is asked to read."""
 
     generation_delay: DistributionSummary | None = None
+    worker_loop_lag: DistributionSummary | None = None
     dataset_incomplete: bool = False
     strategy_type: str = ""
 
@@ -127,6 +129,7 @@ def _analyze(
     requests: list[GenerativeRequestStats] | None = None,
     time_to_first_token_ms: list[float] | None = None,
     dataset_incomplete: bool = False,
+    worker_loop_lag: list[float] | None = None,
 ):
     """
     Evaluate rules against the given generation and request-latency samples.
@@ -138,6 +141,7 @@ def _analyze(
     """
     scheduler_metrics = _SchedulerFixture(
         generation_delay=_distribution(generation_delay),
+        worker_loop_lag=_distribution(worker_loop_lag or []),
         dataset_incomplete=dataset_incomplete,
         strategy_type=strategy.type_,
     )
@@ -602,3 +606,35 @@ def test_console_prints_warnings_grouped_by_strategy():
     assert "\x1b[38;2;253;181;22m⚠" in printed
     assert "mean generation delay was 40% of mean request latency." in printed
     assert "See https://example.com/warnings" in printed
+
+
+@pytest.mark.regression
+def test_default_loop_lag_rule_warns_on_the_95th_percentile():
+    """
+    The built-in loop-lag rule warns when p95 lag exceeds 10% of mean TTFT.
+
+    ## WRITTEN BY AI ##
+    """
+    rules = [
+        rule for rule in default_warning_rules() if rule.code == "worker_loop_lag_ttft"
+    ]
+    warned = _analyze(
+        rules,
+        ConcurrentStrategy(streams=1),
+        [],
+        [],
+        time_to_first_token_ms=[100.0],
+        worker_loop_lag=[0.001] * 90 + [0.012] * 10,
+    )
+    quiet = _analyze(
+        rules,
+        ConcurrentStrategy(streams=1),
+        [],
+        [],
+        time_to_first_token_ms=[100.0],
+        worker_loop_lag=[0.008] * 100,
+    )
+
+    assert [warning.code for warning in warned] == ["worker_loop_lag_ttft"]
+    assert warned[0].observed == pytest.approx(0.12)
+    assert quiet == []
