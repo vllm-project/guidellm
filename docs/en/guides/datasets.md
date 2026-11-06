@@ -71,6 +71,20 @@ With `--data-finalizer` you can control how dataset rows are converted to reques
 
 Use `--seed` with a configuration string to control how sequences (in scheduling and synthetic data generation) are randomized: For example, `--seed kind=static,value=42`.
 
+### Running the Examples
+
+The `guidellm run` examples in this guide send requests to an OpenAI-compatible server at `http://localhost:8000`. To run them as written, start one of:
+
+- **A real model server**, such as vLLM. See [Start a Server](../getting-started/server.md).
+
+- **The bundled mock server**, which needs no GPU and listens on `http://127.0.0.1:8000` by default:
+
+  ```bash
+  guidellm mock-server &
+  ```
+
+  The mock server reports a model name that is not a Hugging Face model ID, so add `--tokenizer kind=huggingface_auto,model=gpt2` to examples that do not already set a tokenizer.
+
 ### Example Usage
 
 ```bash
@@ -78,9 +92,9 @@ guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
-  --data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}' \
-  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}' \
-  --tokenizer '{"kind":"huggingface_auto","model":"path/to/processor","load_kwargs":{"use_fast":false}}' \
+  --data '{"kind":"huggingface","source":"garage-bAInd/Open-Platypus","load_kwargs":{"split":"train"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"instruction"}}' \
+  --tokenizer '{"kind":"huggingface_auto","model":"gpt2","load_kwargs":{"use_fast":false}}' \
   --data-loader kind=pytorch,shuffle=true
 ```
 
@@ -155,23 +169,33 @@ guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
-  --data kind=huggingface,source=garage-bAInd/Open-Platypus
+  --data kind=huggingface,source=garage-bAInd/Open-Platypus \
+  --data-column-mapper kind=generative_column_mapper,column_mappings.text_column=instruction
 ```
 
-Or using a local dataset directory:
+Open-Platypus stores prompts in `instruction` and has a mostly empty `input` column, so the column mapper selects the prompt column explicitly.
+
+Or using a local dataset directory. For example, save a Hub dataset to disk first:
+
+```bash
+python -c "from datasets import load_dataset; load_dataset('garage-bAInd/Open-Platypus', split='train').save_to_disk('open-platypus')"
+```
+
+Then point `source` at the directory:
 
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
-  --data kind=huggingface,source=path/to/dataset
+  --data kind=huggingface,source=open-platypus \
+  --data-column-mapper kind=generative_column_mapper,column_mappings.text_column=instruction
 ```
 
 Pass HuggingFace `load_dataset` options through `load_kwargs`:
 
 ```bash
---data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"train"}}'
+--data '{"kind":"huggingface","source":"garage-bAInd/Open-Platypus","load_kwargs":{"split":"train"}}'
 ```
 
 #### Notes
@@ -217,13 +241,22 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 
   In this example, the second request is scheduled 0.5 seconds after the first request. Trace rows are ordered by timestamp before GuideLLM schedules requests and generates synthetic payloads. This keeps each scheduled event aligned with the prompt and output token lengths from the same row.
 
-  Use a supported [trace file format](./trace_replay.md#supported-formats) to enable trace loading:
+  Use a supported [trace file format](./trace_replay.md#supported-formats) to enable trace loading. For example, save the two rows as `trace.jsonl`:
+
+  ```bash
+  cat > trace.jsonl <<'EOF'
+  {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
+  {"timestamp": 1234500.5, "input_length": 512, "output_length": 64}
+  EOF
+  ```
+
+  Then replay it:
 
   ```bash
   guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
-    --data kind=trace_synthetic,source.kind=json_file,source.path=path/to/trace.jsonl,time_scale=1.0
+    --data kind=trace_synthetic,source.kind=json_file,source.path=trace.jsonl,time_scale=1.0
   ```
 
   All trace formats by default look for the columns "timestamp", "input_length", and "output_length". If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
@@ -232,7 +265,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
   guidellm run \
     --backend kind=openai_http,target=http://localhost:8000 \
     --profile kind=replay \
-    --data kind=trace_synthetic,source.kind=json_file,source.path=replay.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
+    --data kind=trace_synthetic,source.kind=json_file,source.path=trace.jsonl,timestamp_column=timestamp,prompt_tokens_column=input_length,output_tokens_column=output_length
   ```
 
   `otel` uses the same nested `source` field. Token counts come from span attributes rather than top-level columns. Hugging Face is the fastest way to start:
@@ -269,12 +302,23 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 
 #### Example Commands
 
+Save two rows as `prompts.jsonl`:
+
+```bash
+cat > prompts.jsonl <<'EOF'
+{"prompt": "Hello, how are you?", "output_tokens_count": 5}
+{"prompt": "What is your name?", "output_tokens_count": 3}
+EOF
+```
+
+Then benchmark with it:
+
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
-  --data kind=json_file,path=path/to/dataset.json \
+  --data kind=json_file,path=prompts.jsonl \
   --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}'
 ```
 
