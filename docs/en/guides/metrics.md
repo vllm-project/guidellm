@@ -112,7 +112,7 @@ Dispatch Delay, Turn Predecessor Delay, Turn Scheduling Delay, and Scheduled Lat
 
 ### Inter-Token Latency (ITL)
 
-- **Definition**: The average time between generating consecutive tokens in the output, excluding the first token.
+- **Definition**: The average time between generating consecutive tokens in the output, excluding the first token. Measured only for streaming requests; a request without streamed token timings, such as one sent with `stream=false`, is left out of the distribution rather than counted as zero.
 - **Use Case**: Helps assess the smoothness and speed of token generation.
 
 ### Time Per Output Token

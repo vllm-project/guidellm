@@ -953,8 +953,12 @@ class GenerativeTurnMetrics(StandardBaseDict):
                     ),
                     inter_token_latency_ms=StatusDistributionSummary.from_values_function(
                         function=lambda req: (
-                            req.inter_token_latency_ms or 0.0,
-                            (req.output_tokens or 1.0) - 1.0,
+                            None
+                            if req.inter_token_latency_ms is None
+                            else (
+                                req.inter_token_latency_ms,
+                                (req.output_tokens or 1.0) - 1.0,
+                            )
                         ),
                         successful=itl_successful,
                         incomplete=itl_incomplete,
@@ -1597,10 +1601,14 @@ class GenerativeMetrics(StandardBaseDict):
                 incomplete=incomplete,
                 errored=errored,
             ),
+            # A request without streamed token timings, such as a non-streaming
+            # one, has no ITL. It is skipped rather than recorded as zero-length
+            # gaps weighted by its output tokens.
             inter_token_latency_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: (
-                    req.inter_token_latency_ms or 0.0,
-                    (req.output_tokens or 1.0) - 1.0,
+                    None
+                    if req.inter_token_latency_ms is None
+                    else (req.inter_token_latency_ms, (req.output_tokens or 1.0) - 1.0)
                 ),
                 successful=after_first_token_requests[0],
                 incomplete=after_first_token_requests[1],
