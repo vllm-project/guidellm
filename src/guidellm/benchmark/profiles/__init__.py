@@ -20,6 +20,7 @@ from .replay import ReplayProfile
 from .sweep import SweepProfile
 from .synchronous import SynchronousProfile
 from .throughput import ThroughputProfile
+from .users import UsersProfile
 
 __all__ = [
     "AsyncProfile",
@@ -32,4 +33,5 @@ __all__ = [
     "SweepProfile",
     "SynchronousProfile",
     "ThroughputProfile",
+    "UsersProfile",
 ]

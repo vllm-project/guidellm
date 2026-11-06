@@ -49,7 +49,8 @@ def common_run_options(func: Callable[..., Any]) -> Callable[..., Any]:
         multiple=True,
         help=(
             "Define overrides for each sub-benchmark. "
-            "Currently this only supports `profile.streams` or `profile.rate`. "
+            "Currently this only supports `profile.streams`, `profile.rate`, "
+            "or `profile.users`. "
             "Example: `--profile kind=concurrent --override 'profile.streams' "
             "1,2,4,8,16` [repeatable]"
         ),
