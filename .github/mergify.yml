@@ -5,7 +5,6 @@ queue_rules:
       - "#changes-requested-reviews-by = 0"
       - check-success = DCO
       - check-success = update-description
-      - check-success = certification-check
       - -draft
       - -closed
       - label != hold
@@ -45,3 +44,5 @@ merge_protections_settings:
     - "#approved-reviews-by >= 2"
     - "#changes-requested-reviews-by = 0"
     - "#review-threads-unresolved = 0"
+    - check-success = certification-check
+
