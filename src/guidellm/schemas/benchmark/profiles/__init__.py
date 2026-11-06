@@ -7,6 +7,7 @@ from guidellm.schemas.benchmark.profiles.replay import ReplayProfileArgs
 from guidellm.schemas.benchmark.profiles.sweep import SweepProfileArgs
 from guidellm.schemas.benchmark.profiles.synchronous import SynchronousProfileArgs
 from guidellm.schemas.benchmark.profiles.throughput import ThroughputProfileArgs
+from guidellm.schemas.benchmark.profiles.users import UsersProfileArgs
 
 __all__ = [
     "AsyncProfileArgs",
@@ -18,4 +19,5 @@ __all__ = [
     "SweepProfileArgs",
     "SynchronousProfileArgs",
     "ThroughputProfileArgs",
+    "UsersProfileArgs",
 ]

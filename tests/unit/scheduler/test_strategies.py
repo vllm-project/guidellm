@@ -16,6 +16,7 @@ from guidellm.scheduler import (
     StrategyT,
     SynchronousStrategy,
     ThroughputStrategy,
+    UsersStrategy,
 )
 from guidellm.scheduler.strategies import StrategyType, TraceReplayStrategy
 from guidellm.schemas import RequestInfo
@@ -822,6 +823,186 @@ class TestAsyncPoissonStrategy:
         assert first == second
 
 
+class TestUsersStrategy:
+    """
+    Test suite for the users scheduling strategy.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture(
+        params=[
+            {"users": 1},
+            {"users": 8},
+            {"users": 4, "rampup_duration": 2.0},
+        ]
+    )
+    def valid_instances(self, request):
+        """Creates various valid configurations of UsersStrategy."""
+        constructor_args = request.param
+        instance = UsersStrategy(**constructor_args)
+        return instance, constructor_args
+
+    @pytest.mark.smoke
+    def test_initialization(self, valid_instances: tuple[UsersStrategy, dict]):
+        """Test initialization of UsersStrategy.
+
+        ## WRITTEN BY AI ##
+        """
+        instance, constructor_args = valid_instances
+        assert instance.type_ == "users"
+
+        dumped = instance.model_dump()
+        for key, value in constructor_args.items():
+            assert dumped[key] == value
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("users", 0),
+            ("users", -1),
+            ("rampup_duration", -1.0),
+        ],
+    )
+    def test_invalid_initialization(self, field, value):
+        """Test invalid initialization.
+
+        ## WRITTEN BY AI ##
+        """
+        kwargs = {"users": 2}
+        kwargs[field] = value
+        with pytest.raises(ValidationError):
+            UsersStrategy(**kwargs)
+
+    @pytest.mark.smoke
+    def test_limits(self, valid_instances: tuple[UsersStrategy, dict]):
+        """Test that UsersStrategy returns correct limits.
+
+        ## WRITTEN BY AI ##
+        """
+        instance, constructor_args = valid_instances
+        users = constructor_args["users"]
+        assert instance.processes_limit == users
+        assert instance.requests_limit == users
+
+    @pytest.mark.smoke
+    def test_string_representation(self, valid_instances: tuple[UsersStrategy, dict]):
+        """Test __str__ method for UsersStrategy.
+
+        ## WRITTEN BY AI ##
+        """
+        instance, constructor_args = valid_instances
+        result = str(instance)
+        assert result == f"users@{constructor_args['users']}"
+
+    @pytest.mark.smoke
+    def test_marshalling(self, valid_instances: tuple[UsersStrategy, dict]):
+        """Test marshalling to/from pydantic dict formats.
+
+        ## WRITTEN BY AI ##
+        """
+        instance, constructor_args = valid_instances
+
+        data = instance.model_dump()
+        assert isinstance(data, dict)
+        assert data["type_"] == "users"
+
+        for key, value in constructor_args.items():
+            assert data[key] == value
+
+        reconstructed = UsersStrategy.model_validate(data)
+        assert isinstance(reconstructed, UsersStrategy)
+
+        for key, value in constructor_args.items():
+            assert getattr(reconstructed, key) == value
+
+        # Test polymorphic reconstruction via base registry class
+        base_reconstructed = SchedulingStrategy.model_validate(data)
+        assert isinstance(base_reconstructed, UsersStrategy)
+        assert base_reconstructed.type_ == "users"
+
+        # Test model_validate_json pathway
+        json_str = instance.model_dump_json()
+        json_reconstructed = UsersStrategy.model_validate_json(json_str)
+        assert isinstance(json_reconstructed, UsersStrategy)
+
+        for key, value in constructor_args.items():
+            assert getattr(json_reconstructed, key) == value
+
+    @pytest.mark.smoke
+    def test_binds_sessions(self):
+        """One user slot maps to one active conversation per worker slot.
+
+        ## WRITTEN BY AI ##
+        """
+        assert UsersStrategy(users=8).binds_sessions is True
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_next_request_time_ramps_initial_users(self):
+        """Initial user sessions spread across the rampup, then dispatch now.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = UsersStrategy(users=4, rampup_duration=8.0)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=4, mp_context=get_context()
+        )
+        strategy.init_processes_start(1000.0)
+
+        # request indices 1..3 stagger over the rampup; index >= 4 is immediate
+        times = [await strategy.next_request_time(0) for _ in range(6)]
+        assert times == [1002.0, 1004.0, 1006.0, 1000.0, 1000.0, 1000.0]
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_next_request_time_without_rampup_is_immediate(self):
+        """Without rampup, every request dispatches at the benchmark start.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = UsersStrategy(users=2)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=2, mp_context=get_context()
+        )
+        strategy.init_processes_start(1000.0)
+
+        times = [await strategy.next_request_time(0) for _ in range(3)]
+        assert times == [1000.0, 1000.0, 1000.0]
+
+    @pytest.mark.regression
+    def test_request_completed_is_noop(self):
+        """Completions must not change scheduling state for users.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = UsersStrategy(users=4)
+        strategy.request_completed(
+            RequestInfo(request_id="r", completed_at=123.0, status="completed")
+        )
+        assert str(strategy) == "users@4"
+
+
+class TestStrategySessionBinding:
+    """
+    Verify the default session binding keeps today's behavior.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.regression
+    def test_default_does_not_bind_sessions(self):
+        """Existing strategies do not cap active conversation graphs.
+
+        ## WRITTEN BY AI ##
+        """
+        assert SynchronousStrategy().binds_sessions is False
+        assert ConcurrentStrategy(streams=4).binds_sessions is False
+        assert ThroughputStrategy().binds_sessions is False
+        assert TraceReplayStrategy().binds_sessions is False
+
+
 class TestDefinesArrivalSchedule:
     """
     Verify which strategies report an independent arrival schedule.
@@ -836,6 +1017,7 @@ class TestDefinesArrivalSchedule:
             (SynchronousStrategy(), False),
             (ConcurrentStrategy(streams=2), False),
             (ThroughputStrategy(), False),
+            (UsersStrategy(users=2), False),
             (AsyncConstantStrategy(rate=10.0), True),
             (AsyncPoissonStrategy(rate=10.0), True),
             (TraceReplayStrategy(), True),

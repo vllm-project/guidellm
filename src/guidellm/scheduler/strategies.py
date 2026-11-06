@@ -32,7 +32,11 @@ from pydantic import (
     PrivateAttr,
 )
 
-from guidellm.schemas import PydanticClassRegistryMixin, RequestInfo, RequestSettings
+from guidellm.schemas import (
+    PydanticClassRegistryMixin,
+    RequestInfo,
+    RequestSettings,
+)
 from guidellm.schemas.scheduler.prefetch import PrefetchType
 from guidellm.utils.mixins import InfoMixin
 
@@ -46,11 +50,20 @@ __all__ = [
     "SynchronousStrategy",
     "ThroughputStrategy",
     "TraceReplayStrategy",
+    "UsersStrategy",
 ]
 
 
 StrategyType = Annotated[
-    Literal["synchronous", "concurrent", "throughput", "constant", "poisson", "trace"],
+    Literal[
+        "synchronous",
+        "concurrent",
+        "throughput",
+        "constant",
+        "poisson",
+        "trace",
+        "users",
+    ],
     "Valid strategy type identifiers for scheduling request patterns",
 ]
 
@@ -152,6 +165,22 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         them.
 
         :return: True if targeted start times follow an arrival schedule
+        """
+        return False
+
+    @property
+    def binds_sessions(self) -> bool:
+        """
+        Whether a conversation holds its request slot while out of flight.
+
+        The default of False means a worker may pull a new conversation from
+        the dataset as soon as one of its slots frees, even while other
+        conversations wait out their think time, so the number of active
+        conversations is unbounded. Strategies that bind a slot to a
+        conversation for its whole session, such as the users profile,
+        override this to cap active conversations at the worker's slots.
+
+        :return: True if a conversation occupies a slot until it completes
         """
         return False
 
@@ -434,6 +463,96 @@ class ConcurrentStrategy(SchedulingStrategy):
         """
         if request_info.completed_at is not None:
             self._process_last_request_time = request_info.completed_at
+
+
+@SchedulingStrategy.register("users")
+class UsersStrategy(SchedulingStrategy):
+    """
+    Simulated users, each holding one dataset-defined session at a time.
+
+    Models ``users`` people using the server: each user owns one
+    conversation and waits out the dataset ``requeue_delay`` between
+    turns (synthetic data's ``delay`` options), starting the next
+    conversation immediately after one finishes. Unlike ``concurrent``,
+    the user's slot stays bound to the session across the delay instead
+    of pulling new conversations, so the gaps between turns of the same
+    conversation grow, which stresses the server's prefix cache more.
+    """
+
+    type_: Literal["users"] = "users"  # type: ignore[assignment]
+    users: PositiveInt = Field(
+        description="Number of simulated users to schedule",
+    )
+    rampup_duration: NonNegativeFloat = Field(
+        default=0.0,
+        description=(
+            "Duration in seconds to spread the initial user sessions "
+            "at the beginning of each strategy run"
+        ),
+    )
+
+    def __str__(self) -> str:
+        """
+        :return: String identifier with user count
+        """
+        return f"users@{self.users}"
+
+    @property
+    def processes_limit(self) -> PositiveInt:
+        """
+        :return: Number of users as maximum worker processes
+        """
+        return self.users
+
+    @property
+    def requests_limit(self) -> PositiveInt:
+        """
+        :return: Number of users as maximum concurrent requests
+        """
+        return self.users
+
+    async def next_request_time(self, worker_index: PositiveInt) -> float:
+        """
+        Calculate next request time with ramp-up spread for initial users.
+
+        Initial sessions are staggered linearly across the rampup duration.
+        All later requests are dispatched immediately: gating comes from
+        the per-user session slot and the dataset think time, not from
+        completions.
+
+        :param worker_index: Worker process index for distributing initial users
+        :return: Staggered start time during rampup, otherwise benchmark start
+        """
+        _ = worker_index  # unused
+        current_index = self.next_request_index()
+        start_time = await self.get_processes_start_time()
+
+        if current_index < self.users and self.rampup_duration > 0:
+            # linearly spread start times for the first user sessions
+            return start_time + self.rampup_duration * (current_index / self.users)
+
+        return start_time
+
+    def request_completed(self, request_info: RequestInfo):
+        """
+        Handle request completion (no-op for users strategy).
+
+        Think time comes from the dataset ``requeue_delay``, which the DAG
+        applies between turns, so no completion state is kept.
+
+        :param request_info: Completed request metadata (unused)
+        """
+        _ = request_info  # request_info unused for users strategy
+
+    @property
+    def binds_sessions(self) -> bool:
+        """
+        :return: True; one user slot maps to one active conversation graph
+
+        The graph is held across think time until the session's dataset
+        conversation completes.
+        """
+        return True
 
 
 @SchedulingStrategy.register("throughput")

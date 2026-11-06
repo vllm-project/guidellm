@@ -374,7 +374,7 @@ async def resolve_output_formats(
 
 
 _SKIP_FIELDS: frozenset[str] = frozenset({"profile", "constraints"})
-_PROFILE_RATE_FIELDS: frozenset[str] = frozenset({"rate", "streams"})
+_PROFILE_RATE_FIELDS: frozenset[str] = frozenset({"rate", "streams", "users"})
 _CONSTRAINT_LIST_FIELDS: frozenset[str] = frozenset(
     {
         "seconds",
