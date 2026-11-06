@@ -30,7 +30,7 @@ def ascending_processor() -> Mock:
     traces as there is no way to generate distinct token blocks for sibling
     nodes."""
     proc = Mock()
-    proc.encode.side_effect = lambda text: list(range(len(text.split())))
+    proc.encode.side_effect = lambda text, **_kwargs: list(range(len(text.split())))
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
         f"tok{i}" for i, _ in enumerate(tokens)
     )
@@ -44,7 +44,7 @@ def compatible_processor() -> Mock:
     sibling nodes."""
     random.seed(0)
     proc = Mock()
-    proc.encode.side_effect = lambda text: [
+    proc.encode.side_effect = lambda text, **_kwargs: [
         random.randint(0, 1000) for _ in range(len(text.split()))
     ]
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
