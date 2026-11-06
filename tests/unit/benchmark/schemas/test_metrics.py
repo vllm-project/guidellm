@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import pytest
 
-from guidellm.benchmark.schemas.accumulator import GenerativeBenchmarkAccumulator
+from guidellm.benchmark.schemas.accumulator import (
+    GenerativeBenchmarkAccumulator,
+    GenerativeBenchmarkTimings,
+)
 from guidellm.benchmark.schemas.base import BenchmarkConfig
 from guidellm.benchmark.schemas.metrics import (
     GenerativeMetrics,
@@ -17,11 +20,13 @@ from guidellm.benchmark.schemas.metrics import (
 )
 from guidellm.scheduler import (
     AsyncConstantStrategy,
+    ConcurrentStrategy,
     SchedulerState,
     SchedulingStrategy,
     ThroughputStrategy,
 )
 from guidellm.schemas import (
+    GenerationRequest,
     GenerativeRequestStats,
     RequestInfo,
     RequestTimings,
@@ -29,6 +34,425 @@ from guidellm.schemas import (
     UsageMetrics,
 )
 from guidellm.schemas.benchmark import GoodputSLO
+from guidellm.schemas.benchmark.transient import TransientPhaseConfig
+
+
+def _concurrent_transient_accumulator(
+    warmup: TransientPhaseConfig | None = None,
+    cooldown: TransientPhaseConfig | None = None,
+    completion_order: tuple[int, ...] = (1, 2, 0, 3, 4, 5, 6, 7, 8, 9),
+    start_delivery_order: tuple[int, ...] = tuple(range(10)),
+) -> GenerativeBenchmarkAccumulator:
+    """Replay a burst with fixed, out-of-order completions through native timings.
+
+    All ten requests start before any finishes. Four token events per request
+    let the tests distinguish request selection from event-window accounting.
+
+    ## WRITTEN BY AI ##
+    """
+    accumulator = GenerativeBenchmarkAccumulator(
+        config=BenchmarkConfig(
+            run_id="concurrent-transient",
+            run_index=0,
+            strategy=ConcurrentStrategy(streams=10),
+            constraints={},
+            profile={},
+            requests={},
+            backend={},
+            environment={},
+            confidence=None,
+            warmup=warmup or TransientPhaseConfig(),
+            cooldown=cooldown or TransientPhaseConfig(),
+        )
+    )
+    state = SchedulerState(start_time=10.0, start_requests_time=10.0)
+    state.progress.total_requests = 10
+    state.progress.total_duration = 30.0
+    infos = []
+    for index in range(10):
+        start = 10.0 + index * 0.01
+        info = RequestInfo(
+            request_id=f"request-{index}",
+            status="in_progress",
+            timings=RequestTimings(resolve_start=start, request_start=start),
+        )
+        infos.append(info)
+    for index in start_delivery_order:
+        info = infos[index]
+        state.processing_requests += 1
+        accumulator.timings.update_estimate(info, state, accumulator.config)
+
+    for completed, index in enumerate(completion_order, start=1):
+        info = infos[index]
+        end = 20.0 + (completed - 1) * 0.1
+        info.status = "completed"
+        info.timings.request_end = end
+        info.timings.resolve_end = end
+        info.timings.first_token_iteration = 10.2 + index * 0.01
+        info.timings.first_output_token_iteration = info.timings.first_token_iteration
+        info.timings.last_token_iteration = end - 0.1
+        info.timings.token_iterations = 4
+        state.processed_requests = completed
+        state.successful_requests = completed
+        state.processing_requests -= 1
+        state.progress.remaining_requests = 10 - completed
+        if completed == 10:
+            state.end_processing_time = end
+        accumulator.timings.update_estimate(info, state, accumulator.config)
+        accumulator.completed.requests_stats.append(
+            GenerativeRequestStats(
+                request_id=info.request_id,
+                info=info,
+                input_metrics=UsageMetrics(text_tokens=8),
+                output_metrics=UsageMetrics(text_tokens=4),
+            )
+        )
+    return accumulator
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("completion_order", "expected_start"),
+    [
+        ((0, 1, 2, 3, 4, 5, 6, 7, 8, 9), 10.02),
+        ((1, 2, 0, 3, 4, 5, 6, 7, 8, 9), 10.0),
+    ],
+)
+def test_concurrent_request_warmup_selects_by_start_order(
+    completion_order: tuple[int, ...], expected_start: float
+) -> None:
+    """Count selection is independent of the legacy event-window boundary.
+
+    Requests zero and one are excluded even if they complete out of order.
+    Their token events remain eligible inside the separate event window.
+
+    ## WRITTEN BY AI ##
+    """
+    accumulator = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="requests", value=2),
+        completion_order=completion_order,
+    )
+    metrics = GenerativeMetrics.compile(accumulator)
+
+    assert accumulator.timings.measure_start == pytest.approx(expected_start)
+    assert metrics.request_totals.successful == 8
+    assert metrics.request_latency.successful.count == 8
+    selected, _, _ = accumulator.get_request_metrics_population()
+    assert {req.request_id for req in selected} == {
+        f"request-{i}" for i in range(2, 10)
+    }
+    assert metrics.time_to_first_token_ms.successful.count == 10
+    duration = accumulator.timings.finalized_measure_end - expected_start
+    assert metrics.output_tokens_per_second.successful.mean == pytest.approx(
+        40 / duration
+    )
+
+
+@pytest.mark.regression
+def test_concurrent_request_cooldown_selects_requests_separately_from_events() -> None:
+    """Request overlap and output-token event selection have different populations.
+
+    ## WRITTEN BY AI ##
+    """
+    accumulator = _concurrent_transient_accumulator(
+        cooldown=TransientPhaseConfig(mode="requests", value=2)
+    )
+    metrics = GenerativeMetrics.compile(accumulator)
+    start = accumulator.timings.finalized_measure_start
+    end = accumulator.timings.finalized_measure_end
+
+    assert end < accumulator.timings.finalized_request_end
+    assert metrics.request_latency.successful.count == 8
+    selected, _, _ = accumulator.get_request_metrics_population()
+    assert {req.request_id for req in selected} == {f"request-{i}" for i in range(8)}
+    assert metrics.output_token_count.successful.mean == 4
+    assert metrics.output_tokens_per_second.successful.mean * (end - start) < 40
+
+
+@pytest.mark.regression
+def test_duration_warmup_filters_token_events_but_keeps_overlapping_requests() -> None:
+    """The documented event window keeps 30 tokens even though all starts precede it.
+
+    Changing the shared request filter to start-only would incorrectly remove
+    these valid output-token events. This is the duration-mode control for #1379.
+
+    ## WRITTEN BY AI ##
+    """
+    accumulator = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="duration", value=1)
+    )
+    metrics = GenerativeMetrics.compile(accumulator)
+
+    assert accumulator.timings.measure_start == 11.0
+    assert metrics.request_latency.successful.count == 10
+    assert metrics.time_to_first_token_ms.successful.count == 0
+    assert metrics.output_tokens_per_second.successful.mean == pytest.approx(30 / 9.9)
+
+
+@pytest.mark.regression
+def test_concurrent_burst_without_transients_counts_every_request_and_token() -> None:
+    """No-transient control validates all ten requests and forty token events.
+
+    ## WRITTEN BY AI ##
+    """
+    accumulator = _concurrent_transient_accumulator()
+    metrics = GenerativeMetrics.compile(accumulator)
+
+    assert metrics.request_latency.successful.count == 10
+    assert metrics.time_to_first_token_ms.successful.count == 10
+    assert metrics.output_tokens_per_second.successful.mean == pytest.approx(40 / 10.9)
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("warmup", "cooldown", "expected"),
+    [(0, 0, 10), (2, 0, 8), (0, 2, 8), (2, 2, 6), (6, 6, 0), (10, 0, 0), (0, 12, 0)],
+)
+def test_request_count_population_exact_counts(
+    warmup: int, cooldown: int, expected: int
+) -> None:
+    """Overlapping phases form a union and never re-include excluded attempts.
+
+    ## WRITTEN BY AI ##
+    """
+    acc = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="requests", value=warmup),
+        cooldown=TransientPhaseConfig(mode="requests", value=cooldown),
+    )
+    metrics = GenerativeMetrics.compile(acc)
+    assert metrics.request_latency.successful.count == expected
+    assert metrics.request_totals.total == expected
+
+
+@pytest.mark.regression
+def test_request_count_selection_ignores_start_notification_order() -> None:
+    """Start reports can arrive out of order without changing final membership.
+
+    ## WRITTEN BY AI ##
+    """
+    acc = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="requests", value=2),
+        cooldown=TransientPhaseConfig(mode="requests", value=2),
+        start_delivery_order=(9, 8, 7, 6, 5, 4, 3, 2, 1, 0),
+        completion_order=(9, 8, 7, 6, 5, 4, 3, 2, 1, 0),
+    )
+    selected, _, _ = acc.get_request_metrics_population()
+    assert {req.request_id for req in selected} == {f"request-{i}" for i in range(2, 8)}
+    assert GenerativeMetrics.compile(acc).request_totals.total == 6
+
+
+@pytest.mark.regression
+def test_request_count_selection_ties_have_stable_id_tiebreak() -> None:
+    """Equal start timestamps do not turn count-based exclusion into a time filter.
+
+    ## WRITTEN BY AI ##
+    """
+    acc = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="requests", value=2),
+        cooldown=TransientPhaseConfig(mode="requests", value=2),
+    )
+    for stats in acc.completed.requests_stats:
+        stats.info.timings.request_start = 10.0
+    selected, _, _ = acc.get_request_metrics_population()
+    assert {req.request_id for req in selected} == {f"request-{i}" for i in range(2, 8)}
+
+
+@pytest.mark.regression
+def test_request_count_selection_is_global_across_statuses() -> None:
+    """Errors and started cancellations share the same exclusion budget.
+
+    ## WRITTEN BY AI ##
+    """
+    acc = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="requests", value=2),
+        cooldown=TransientPhaseConfig(mode="requests", value=2),
+    )
+    for stats in list(acc.completed.requests_stats):
+        if stats.request_id in {"request-0", "request-5"}:
+            stats.info.status = "errored"
+            acc.errored.requests_stats.append(stats)
+            acc.completed.requests_stats.remove(stats)
+        elif stats.request_id in {"request-6", "request-9"}:
+            stats.info.status = "cancelled"
+            acc.incomplete.requests_stats.append(stats)
+            acc.completed.requests_stats.remove(stats)
+    totals = GenerativeMetrics.compile(acc).request_totals
+    assert (totals.successful, totals.incomplete, totals.errored, totals.total) == (
+        4,
+        1,
+        1,
+        6,
+    )
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("mode", ["both", "prefer_requests", "prefer_duration"])
+def test_request_count_selection_respects_duration_preference(mode: str) -> None:
+    """Use the final scheduler budgets to resolve combined and preferred modes.
+
+    ## WRITTEN BY AI ##
+    """
+    acc = _concurrent_transient_accumulator()
+    acc.config.warmup = TransientPhaseConfig.model_validate({"mode": mode, "value": 2})
+    acc.timings.measure_start = 12.0
+    state = SchedulerState(start_time=10.0)
+    state.progress.total_requests = 10
+    state.progress.total_duration = 30.0
+    selected, _, _ = acc.get_request_metrics_population(state)
+    assert len(selected) == (10 if mode == "prefer_duration" else 8)
+
+
+@pytest.mark.regression
+def test_request_percent_uses_planned_budget_on_shortened_run() -> None:
+    """Percentage counts retain the configured budget when execution ends early.
+
+    ## WRITTEN BY AI ##
+    """
+    acc = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="requests", percent=0.2)
+    )
+    state = SchedulerState(start_time=10.0)
+    state.progress.total_requests = 20
+    assert GenerativeMetrics.compile(acc, state).request_totals.total == 6
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("invalid", ["missing_start", "duplicate_id"])
+def test_request_count_population_rejects_unorderable_records(invalid: str) -> None:
+    """Do not silently drop invalid records or miscount duplicate attempts.
+
+    ## WRITTEN BY AI ##
+    """
+    acc = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="requests", value=2)
+    )
+    if invalid == "missing_start":
+        acc.completed.requests_stats[0].info.timings.request_start = None
+        acc.completed.requests_stats[0].info.timings.resolve_start = None
+    else:
+        acc.completed.requests_stats.append(acc.completed.requests_stats[0])
+    with pytest.raises(ValueError, match="Request-count phases require"):
+        acc.get_request_metrics_population()
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("warmup", "cooldown", "expected"),
+    [(0, 0, 10), (2, 0, 8), (0, 2, 8), (2, 2, 6), (6, 6, 0)],
+)
+def test_synchronous_request_population_counts(
+    warmup: int, cooldown: int, expected: int
+) -> None:
+    """Synchronous requests use the same count selection without rewriting #1348.
+
+    Replay start/terminal updates chronologically through the native timing
+    accumulator. Its event boundaries remain independent of the count cohort.
+
+    ## WRITTEN BY AI ##
+    """
+    acc = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="requests", value=warmup),
+        cooldown=TransientPhaseConfig(mode="requests", value=cooldown),
+    )
+    acc.timings = GenerativeBenchmarkTimings()
+    state = SchedulerState(start_time=10.0, start_requests_time=10.0)
+    state.progress.total_requests = 10
+    for index, stats in enumerate(
+        sorted(acc.completed.requests_stats, key=lambda s: s.request_id)
+    ):
+        start = 10.0 + 2 * index
+        stats.info.timings = RequestTimings(
+            request_start=start,
+            resolve_start=start,
+            first_token_iteration=start + 0.2,
+            last_token_iteration=start + 0.8,
+            request_end=start + 1,
+            resolve_end=start + 1,
+            token_iterations=4,
+        )
+        info = stats.info.model_copy()
+        info.status = "in_progress"
+        info.timings.request_end = info.timings.resolve_end = None
+        state.progress.remaining_requests = 10 - index
+        acc.timings.update_estimate(info, state, acc.config)
+        state.processed_requests = index + 1
+        state.progress.remaining_requests = 9 - index
+        if index == 9:
+            state.end_processing_time = start + 1
+        acc.timings.update_estimate(stats.info, state, acc.config)
+    metrics = GenerativeMetrics.compile(acc, state)
+    assert metrics.request_latency.successful.count == expected
+    assert metrics.request_totals.total == expected
+
+
+@pytest.mark.regression
+def test_duration_filter_can_further_restrict_count_population() -> None:
+    """A combined duration condition applies after exact count exclusion.
+
+    ## WRITTEN BY AI ##
+    """
+    acc = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="both", value=2)
+    )
+    state = SchedulerState(start_time=20.0)
+    state.progress.total_duration = 30.0
+    state.progress.total_requests = 10
+    assert GenerativeMetrics.compile(acc, state).request_totals.total == 0
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(("warmup", "cooldown"), [(2, 0), (0, 2), (2, 2), (6, 6)])
+def test_count_selection_preserves_event_metrics_for_the_same_window(
+    warmup: int, cooldown: int
+) -> None:
+    """Changing the request cohort does not alter aggregate window-based metrics.
+
+    Compare the same captured records and boundaries, not two independently
+    timed executions. Only the request selection configuration changes.
+
+    ## WRITTEN BY AI ##
+    """
+    acc = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="requests", value=warmup),
+        cooldown=TransientPhaseConfig(mode="requests", value=cooldown),
+    )
+    selected = GenerativeMetrics.compile(acc).model_dump()
+    acc.config.warmup = TransientPhaseConfig()
+    acc.config.cooldown = TransientPhaseConfig()
+    overlap = GenerativeMetrics.compile(acc).model_dump()
+    for metric in (
+        "requests_per_second",
+        "request_concurrency",
+        "prompt_tokens_per_second",
+        "output_tokens_per_second",
+        "tokens_per_second",
+        "time_to_first_token_ms",
+        "time_to_first_output_token_ms",
+        "inter_token_latency_ms",
+    ):
+        assert selected[metric] == overlap[metric], metric
+
+
+@pytest.mark.regression
+def test_direct_metrics_compile_uses_latest_scheduler_budget() -> None:
+    """Existing direct compile callers retain duration preference after an update.
+
+    ## WRITTEN BY AI ##
+    """
+    acc = _concurrent_transient_accumulator(
+        warmup=TransientPhaseConfig(mode="prefer_duration", value=2)
+    )
+    state = SchedulerState(start_time=10.0, start_requests_time=10.0)
+    state.progress.total_requests = 10
+    state.progress.total_duration = 30.0
+    acc.update_estimate(
+        None,
+        GenerationRequest(columns={}),
+        RequestInfo(status="in_progress", timings=RequestTimings(request_start=10.0)),
+        state,
+    )
+    assert acc.timings.measure_start == 12.0
+    assert GenerativeMetrics.compile(acc).request_totals.total == 10
 
 
 def _make_errored_tool_call_stats(request_id: str) -> GenerativeRequestStats:
