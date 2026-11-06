@@ -113,13 +113,13 @@ guidellm run \
 
 基准评测执行完成后，GuideLLM 默认会在结果目录写入 `benchmarks.json` 与 `benchmarks.csv`。结果文件将保存在由环境变量 `GUIDELLM__DEFAULT_RESULTS_DIR` 指定的路径中，未显式设置时默认存储在当前工作目录下。同时，控制台终端也会打印出汇总表格与生成文件的具体物理路径。
 
-显式指定 `--output` 参数将替代默认的 JSON 和 CSV 产物配置。有关多格式输出配置（包括同时生成交互式 HTML 报告、JSON 与 CSV）的示例，请参见[输出配置指南](docs/en/guides/outputs.md#cli-output-configuration)。
+显式指定 `--output` 参数将替代默认的 JSON 和 CSV 产物配置。有关多格式输出配置（包括同时生成交互式 HTML 报告、JSON 与 CSV）的示例，请参见[输出配置指南](docs/zh/guides/outputs.md#cli-output-configuration)。
 
 ## 输出文件与评测报告 (Output Files and Reports)
 
-GuideLLM 支持多种维度的结果导出：使用 JSON 或 YAML 进行深入的自动化数据分析，使用 CSV 导入电子表格横向对比，使用自包含的 HTML 文件生成直观的可视化图表报告，或使用 PLOT 生成静态性能趋势图。各类格式的详细内容字段与默认文件命名请参阅[支持的文件格式说明](docs/en/guides/outputs.md#supported-file-formats)，有关自定义输出路径请查阅[配置文件输出指南](docs/en/guides/outputs.md#configuring-file-outputs)。
+GuideLLM 支持多种维度的结果导出：使用 JSON 或 YAML 进行深入的自动化数据分析，使用 CSV 导入电子表格横向对比，使用自包含的 HTML 文件生成直观的可视化图表报告，或使用 PLOT 生成静态性能趋势图。各类格式的详细内容字段与默认文件命名请参阅[支持的文件格式说明](docs/zh/guides/outputs.md#supported-file-formats)，有关自定义输出路径请查阅[配置文件输出指南](docs/zh/guides/outputs.md#configuring-file-outputs)。
 
-控制台终端输出直观展示了每次评测的核心指标。表格文本可以直接以 `|` 作为分隔符复制并粘贴至各类电子表格软件中。更多关于进度展示和控制台打印样式的定制请参见[控制台输出文档](docs/en/guides/outputs.md#console-output)。
+控制台终端输出直观展示了每次评测的核心指标。表格文本可以直接以 `|` 作为分隔符复制并粘贴至各类电子表格软件中。更多关于进度展示和控制台打印样式的定制请参见[控制台输出文档](docs/zh/guides/outputs.md#console-output)。
 
 <img alt="GuideLLM 基准评测输出范例" src="https://raw.githubusercontent.com/vllm-project/guidellm/main/docs/assets/sample-output.png" />
 
@@ -167,7 +167,7 @@ guidellm run \
 
 ### 多模态视觉合成数据 (Synthetic Visual Data)
 
-GuideLLM 能够在运行时动态合成图像与简短视频，因此用户无需准备庞大的多模态数据集即可直接评测视觉大模型（VLM）服务配置。通过 `--data` 的两种类型 —— `synthetic_image` 与 `synthetic_video` —— 可与 `synthetic_text` 自由组合构成复合多模态 Prompt。详细使用命令与全量配置选项请参见[合成视觉数据指南](docs/en/guides/multimodal/synthetic_vision.md)。
+GuideLLM 能够在运行时动态合成图像与简短视频，因此用户无需准备庞大的多模态数据集即可直接评测视觉大模型（VLM）服务配置。通过 `--data` 的两种类型 —— `synthetic_image` 与 `synthetic_video` —— 可与 `synthetic_text` 自由组合构成复合多模态 Prompt。详细使用命令与全量配置选项请参见[合成视觉数据指南](docs/zh/guides/multimodal/synthetic_vision.md)。
 
 ### 请求类型与 API 目标 (Request Types and API Targets)
 
@@ -227,12 +227,12 @@ guidellm run \
 
 更详尽的技术文档包含了超出本 README 篇幅的所有深入细节，包含安装手册、后端连接配置、数据集调度、指标数学定义、导出格式、使用教程以及完整的架构概览，帮助你深度挖掘平台潜能并将其无缝接入现有生产工作流：
 
-- [**安装指南 (Installation Guide)**](https://github.com/vllm-project/guidellm/blob/main/docs/en/getting-started/install.md) - 提供安装 GuideLLM 的逐步指南，包括运行环境前置条件和环境排障建议。
-- [**后端指南 (Backends Guide)**](https://github.com/vllm-project/guidellm/blob/main/docs/en/guides/backends.md) - 深入解析所有支持的推理后端以及如何配置以对接 GuideLLM。
-- [**数据与数据集指南 (Data/Datasets Guide)**](https://github.com/vllm-project/guidellm/blob/main/docs/en/guides/datasets.md) - 详解受支持的数据集格式以及如何将其应用于压测基准。
-- [**指标详解指南 (Metrics Guide)**](https://github.com/vllm-project/guidellm/blob/main/docs/en/guides/metrics.md) - 详尽解释 GuideLLM 所采集的各项性能指标定义、统计口径以及结果解读方法。
-- [**输出产物指南 (Outputs Guide)**](https://github.com/vllm-project/guidellm/blob/main/docs/en/guides/outputs.md) - 介绍 GuideLLM 支持的不同输出格式及其使用方式。
-- [**系统架构概览 (Architecture Overview)**](https://github.com/vllm-project/guidellm/blob/main/docs/en/guides/architecture.md) - 深度解析 GuideLLM 的内部软件架构设计、核心模块划分及各组件间的交互机制。
+- [**安装指南 (Installation Guide)**](https://github.com/vllm-project/guidellm/blob/main/docs/zh/getting-started/install.md) - 提供安装 GuideLLM 的逐步指南，包括运行环境前置条件和环境排障建议。
+- [**后端指南 (Backends Guide)**](https://github.com/vllm-project/guidellm/blob/main/docs/zh/guides/backends.md) - 深入解析所有支持的推理后端以及如何配置以对接 GuideLLM。
+- [**数据与数据集指南 (Data/Datasets Guide)**](https://github.com/vllm-project/guidellm/blob/main/docs/zh/guides/datasets.md) - 详解受支持的数据集格式以及如何将其应用于压测基准。
+- [**指标详解指南 (Metrics Guide)**](https://github.com/vllm-project/guidellm/blob/main/docs/zh/guides/metrics.md) - 详尽解释 GuideLLM 所采集的各项性能指标定义、统计口径以及结果解读方法。
+- [**输出产物指南 (Outputs Guide)**](https://github.com/vllm-project/guidellm/blob/main/docs/zh/guides/outputs.md) - 介绍 GuideLLM 支持的不同输出格式及其使用方式。
+- [**系统架构概览 (Architecture Overview)**](https://github.com/vllm-project/guidellm/blob/main/docs/zh/guides/architecture.md) - 深度解析 GuideLLM 的内部软件架构设计、核心模块划分及各组件间的交互机制。
 
 ## 开源许可证 (License)
 
