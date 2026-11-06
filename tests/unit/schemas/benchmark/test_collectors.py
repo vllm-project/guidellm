@@ -10,6 +10,7 @@ from guidellm.schemas.benchmark import (
     BenchmarkArgs,
     CollectorArgs,
     PrometheusCollectorArgs,
+    VLLMServerInfoCollectorArgs,
 )
 
 BASE_ARGS = {
@@ -105,3 +106,56 @@ class TestBenchmarkArgsCollectors:
         ]
         assert args.collectors[1].interval == 5.0
         assert args.collectors[1].metrics == ["vllm:num_requests_running"]
+
+
+@pytest.mark.smoke
+def test_server_info_arguments_round_trip():
+    """Keep repeated server-info collectors and their independent host settings.
+
+    ## WRITTEN BY AI ##
+    """
+    args = BenchmarkArgs.model_validate(
+        {
+            **BASE_ARGS,
+            "collectors": [
+                {
+                    "kind": "vllm_server_info",
+                    "url": "http://replica-0:8000/server_info",
+                },
+                {
+                    "kind": "vllm_server_info",
+                    "url": "http://replica-1:8000/server_info",
+                    "redact_hosts": False,
+                },
+            ],
+        }
+    )
+    reloaded = BenchmarkArgs.model_validate_json(args.model_dump_json())
+    assert all(
+        isinstance(item, VLLMServerInfoCollectorArgs) for item in reloaded.collectors
+    )
+    assert [item.redact_hosts for item in reloaded.collectors] == [True, False]
+    assert reloaded.collectors[0].url == "http://replica-0:8000/server_info"
+
+
+@pytest.mark.sanity
+@pytest.mark.parametrize(
+    "url",
+    [
+        "localhost:8000/server_info",
+        "ftp://host/server_info",
+        "http://",
+        "http://user:password@host/server_info",
+        "http://host/server_info?token=secret",
+        "http://host/server_info#fragment",
+        "http://host:bad/server_info",
+        "http://[bad/server_info",
+    ],
+)
+def test_invalid_server_info_urls(url):
+    """Reject invalid endpoints and credentials that would persist in run arguments.
+
+    ## WRITTEN BY AI ##
+    """
+    with pytest.raises(ValidationError):
+        VLLMServerInfoCollectorArgs(url=url)
