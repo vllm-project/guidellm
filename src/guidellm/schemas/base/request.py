@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Literal
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, field_serializer
 
 from guidellm.schemas.base.base import StandardBaseDict, StandardBaseModel
 from guidellm.utils.dict import deep_update
@@ -30,6 +30,18 @@ __all__ = [
     "TurnType",
     "UsageMetrics",
 ]
+
+
+_SECRET_HEADER_PARTS = (
+    "auth",
+    "cookie",
+    "credential",
+    "key",
+    "password",
+    "secret",
+    "token",
+)
+_MASKED_VALUE = "**********"
 
 
 class GenerationRequestArguments(StandardBaseDict):
@@ -78,6 +90,32 @@ class GenerationRequestArguments(StandardBaseDict):
             "if applicable."
         ),
     )
+
+    @field_serializer("headers", when_used="json")
+    def _mask_secret_headers(
+        self, headers: dict[str, str] | None
+    ) -> dict[str, str] | None:
+        """
+        Mask the values of credential headers in JSON output.
+
+        Matches the masking of ``api_key`` so reports and logs do not store
+        tokens passed as headers. Python-mode dumps keep the real values,
+        since ``model_combine`` uses them to build the sent request.
+
+        :param headers: Request headers to serialize
+        :return: Headers with credential values replaced by a mask
+        """
+        if not headers:
+            return headers
+
+        return {
+            name: (
+                _MASKED_VALUE
+                if any(part in name.lower() for part in _SECRET_HEADER_PARTS)
+                else value
+            )
+            for name, value in headers.items()
+        }
 
     def model_combine(
         self, additional: GenerationRequestArguments | dict[str, Any]
