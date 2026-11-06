@@ -145,8 +145,8 @@ def default_warning_rules() -> list[WarningRuleArgs]:
             ),
             threshold=0.1,
             note=(
-                "This means that GuideLLM's worker event loops ran late, so time "
-                "to first token is likely overstated."
+                "This means that GuideLLM's worker event loops ran late, which "
+                "may overstate time to first token."
             ),
         ),
         WarningRuleArgs(

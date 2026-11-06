@@ -86,7 +86,7 @@ These metrics provide a breakdown of the overall request statuses, helping users
 ### Worker Loop Lag
 
 - **Definition**: `worker_loop_lag` is how late a timer fires on each worker's event loop while the worker runs requests, in seconds. Each worker checks at random times, 0.1 seconds apart on average by default, set with `GUIDELLM__LOOP_LAG_INTERVAL`. Each sample has 1 ms of timer resolution subtracted, so lag up to 1 ms is reported as zero. It is recorded on scheduler state, not on individual requests.
-- **Use Case**: Shows whether GuideLLM itself kept up. A worker whose event loop runs late reads responses late, which overstates time to first token.
+- **Use Case**: Indicates whether GuideLLM itself kept up. A worker whose event loop runs late may read responses late, which can overstate time to first token. The lag does not measure the size of that error.
 
 ### Dispatch Delay
 

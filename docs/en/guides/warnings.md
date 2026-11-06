@@ -13,7 +13,7 @@ These rules run when `metrics.warnings` is omitted:
   - Means that the data generation is lagging by a great enough fraction of the server's TTFT that it's likely slowing down the benchmark. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
 - `worker_loop_lag_ttft`:
   - Warn when the 95th percentile of `worker_loop_lag` is more than 10% of mean `time_to_first_token_ms.total`.
-  - This means that GuideLLM's workers read responses late, so time to first token is likely overstated. Run GuideLLM with more CPU, or raise `GUIDELLM__MAX_WORKER_PROCESSES` (default 10). Short bursts, such as every stream of a fixed-length concurrent run receiving its first token at once, can overstate time to first token without raising the 95th percentile.
+  - This means that GuideLLM's worker event loops ran late, which may overstate time to first token. Run GuideLLM with more CPU, or raise `GUIDELLM__MAX_WORKER_PROCESSES` (default 10). Short bursts, such as every stream of a fixed-length concurrent run receiving its first token at once, can overstate time to first token without raising the 95th percentile.
 - `root_late`:
   - Warn when the 95th percentile of `root_dispatch_delay` is greater than 0.75 seconds, or when the mean is greater than 0.25 seconds.
   - This means that the first turn of conversations arrived later than the scheduler scheduled them. Often due to data lag. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).

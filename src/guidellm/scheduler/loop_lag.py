@@ -23,7 +23,8 @@ _BUCKETS_PER_DOUBLING = 8
 # Bucket 0 holds lags under 1 microsecond. The last bucket ends at 2**27
 # microseconds, about 134 seconds, and also holds anything longer.
 _BUCKETS = 1 + 27 * _BUCKETS_PER_DOUBLING
-# uvloop timers fire to the millisecond, so lag up to 1 ms is not starvation
+# uvloop timers fire to the millisecond, so lag up to 1 ms can come from timer
+# resolution alone
 _TIMER_RESOLUTION = 0.001  # seconds
 
 

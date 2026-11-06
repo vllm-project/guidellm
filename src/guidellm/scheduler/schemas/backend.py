@@ -45,7 +45,7 @@ class BackendInterface(Protocol, Generic[RequestT, ResponseT]):
     """
 
     #: Whether token timestamps are taken on the worker's event loop as tokens
-    #: arrive, so that a lagging loop delays them.
+    #: arrive, so that a lagging loop can delay them.
     stamps_tokens_on_event_loop: ClassVar[bool] = True
 
     @property
