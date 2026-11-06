@@ -991,6 +991,15 @@ def _select_distribution(
     return metric.total
 
 
+def _measured(distribution: DistributionSummary | None) -> DistributionSummary | None:
+    # A per-request metric without observations reports 0.0 for every
+    # statistic although nothing was measured. Rates are read through _mean,
+    # where a distribution without events is a measured zero.
+    if distribution is None or distribution.count == 0:
+        return None
+    return distribution
+
+
 def _mean(
     metric: StatusDistributionSummary | DistributionSummary | None,
     *,
@@ -1006,7 +1015,7 @@ def _median(
     *,
     status: _StatusName = "successful",
 ) -> float | None:
-    distribution = _select_distribution(metric, status)
+    distribution = _measured(_select_distribution(metric, status))
     value = distribution.median if distribution is not None else None
     return float(value) if value is not None else None
 
@@ -1017,7 +1026,7 @@ def _percentile(
     *,
     status: _StatusName = "successful",
 ) -> float | None:
-    distribution = _select_distribution(metric, status)
+    distribution = _measured(_select_distribution(metric, status))
     return _percentile_from_dist(distribution, name)
 
 

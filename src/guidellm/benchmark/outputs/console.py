@@ -117,6 +117,7 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
         name: str | None = None,
         precision: int = 1,
         types: Sequence[StatTypesAlias] = ("median", "p95"),
+        empty_as_missing: bool = True,
     ):
         """
         Add statistical summary columns (mean and p95) for a metric.
@@ -129,11 +130,17 @@ class ConsoleTableColumnsCollection(dict[str, ConsoleTableColumn]):
         :param group: Optional group header for the columns
         :param name: Column name for display
         :param precision: Decimal precision for numbers
+        :param empty_as_missing: Render a distribution without observations as
+            missing. An empty per-request metric reports 0.0 for every statistic
+            although nothing was measured, while a rate without events is a
+            measured zero, so rates pass False.
         """
         key = f"{group}_{name}"
         status_stats: DistributionSummary | None = (
             getattr(stats, status) if stats else None
         )
+        if empty_as_missing and status_stats is not None and status_stats.count == 0:
+            status_stats = None
 
         for stat_type in types:
             col_key = f"{key}_{stat_type}"
@@ -713,6 +720,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 group="Requests",
                 name="Concurrency",
                 types=("median", "mean"),
+                empty_as_missing=False,
             )
             columns.add_stats(
                 benchmark.metrics.requests_per_second,
@@ -720,6 +728,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 group="Requests",
                 name="Per Sec",
                 types=("mean",),
+                empty_as_missing=False,
             )
             columns.add_stats(
                 benchmark.metrics.prompt_tokens_per_second,
@@ -727,6 +736,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 group="Input Tokens",
                 name="Per Sec",
                 types=("mean",),
+                empty_as_missing=False,
             )
             columns.add_stats(
                 benchmark.metrics.output_tokens_per_second,
@@ -734,6 +744,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 group="Output Tokens",
                 name="Per Sec",
                 types=("mean",),
+                empty_as_missing=False,
             )
             columns.add_stats(
                 benchmark.metrics.tokens_per_second,
@@ -741,6 +752,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 group="Total Tokens",
                 name="Per Sec",
                 types=("mean",),
+                empty_as_missing=False,
             )
             if report_has_goodput:
                 attainment = benchmark.metrics.slo_attainment
@@ -757,6 +769,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                     group="Goodput",
                     name="Per Sec",
                     types=("mean",),
+                    empty_as_missing=False,
                 )
                 columns.add_stats(
                     benchmark.metrics.output_token_goodput,
@@ -764,6 +777,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                     group="Goodput",
                     name="Output Tok/Sec",
                     types=("mean",),
+                    empty_as_missing=False,
                 )
 
         headers, values = columns.get_table_data()
@@ -872,6 +886,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                     group=f"Input {display_name}",
                     name="Per Second",
                     types=("median", "mean"),
+                    empty_as_missing=False,
                 )
                 output_stats: StatusDistributionSummary | None = (
                     getattr(metric_obj, "output", None) if metric_obj else None
@@ -891,6 +906,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                     group=f"Output {display_name}",
                     name="Per Second",
                     types=("median", "mean"),
+                    empty_as_missing=False,
                 )
 
         self._print_inp_out_tables(
