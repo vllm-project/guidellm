@@ -5,6 +5,7 @@ queue_rules:
       - "#changes-requested-reviews-by = 0"
       - check-success = DCO
       - check-success = update-description
+      - check-success = certification-check
       - -draft
       - -closed
       - label != hold

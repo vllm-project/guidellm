@@ -54,3 +54,31 @@ jobs:
 
           gh pr edit "$PR_NUMBER" --body-file "$NEW_BODY_FILE"
           rm -f "$NEW_BODY_FILE"
+
+  certification-check:
+    # Skip Mergify queues, as above
+    if: >-
+      ${{ !(github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name &&
+            startsWith(github.head_ref, 'mergify/merge-queue/')) }}
+    runs-on: ubuntu-slim
+    # The body is read from the event payload; no token scopes are needed
+    permissions: {}
+    steps:
+      # Bot-authored PRs (e.g. Dependabot) never use the template. Skip the
+      # step, not the job, so the job still reports success for check-success.
+      - name: Verify certification checkbox
+        if: ${{ github.event.pull_request.user.type != 'Bot' }}
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Ignore generated content below the same marker format_pr.py uses
+          BODY="${PR_BODY:-}"
+          BODY="${BODY%%<!-- begin:squash-data -->*}"
+          if grep -qiE '^[[:space:]]*[-*+][[:space:]]+\[x\][[:space:]]*"?I certify that all code in this PR is my own, except as noted below\.' <<< "$BODY"; then
+            echo "Certification checkbox is checked."
+            exit 0
+          fi
+          echo "::error title=Certification required::Check the certification checkbox in the PR description:"
+          echo '- [x] "I certify that all code in this PR is my own, except as noted below."'
+          exit 1
