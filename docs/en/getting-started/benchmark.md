@@ -99,7 +99,7 @@ See [Over-Saturation Stopping](../guides/over_saturation_stopping.md) for over-s
 
 ### Sub-benchmark (per-strategy) Constraints
 
-When you use the `sweep` profile, or specify multiple `rate` values in the `async`/`constant`/`poisson` profiles, or multiple `streams` values in the `concurrent` profile, you are running multiple "benchmark strategies" within the profile. GuideLLM allows you to specify distinct control parameters for your constraints using the `--override` option. For example, `--profile kind=sweep,sweep_size=5 --constraint kind=max_duration,seconds=30` runs 5 strategies (synchronous, throughput, and three interpolated constant rates) for 30 seconds each. You can use `--override constraint[0].seconds 10,20,10,15,20` to run the synchronous strategy for 10 seconds, the throughput strategy for 20 seconds, and the three interpolated constant rates for 10 seconds, 15 seconds, and 20 seconds. Note that specifying fewer values, e.g. `--override constraint[0].seconds 10,20,10`, will reuse the final value of 10 seconds for all three constant strategies.
+When you use the `sweep` profile, or specify multiple `rate` values in the `async`/`constant`/`poisson` profiles, multiple `streams` values in the `concurrent` profile, or multiple `users` values in the `users` profile, you are running multiple "benchmark strategies" within the profile. GuideLLM allows you to specify distinct control parameters for your constraints using the `--override` option. For example, `--profile kind=sweep,sweep_size=5 --constraint kind=max_duration,seconds=30` runs 5 strategies (synchronous, throughput, and three interpolated constant rates) for 30 seconds each. You can use `--override constraint[0].seconds 10,20,10,15,20` to run the synchronous strategy for 10 seconds, the throughput strategy for 20 seconds, and the three interpolated constant rates for 10 seconds, 15 seconds, and 20 seconds. Note that specifying fewer values, e.g. `--override constraint[0].seconds 10,20,10`, will reuse the final value of 10 seconds for all three constant strategies.
 
 ### Benchmark Profiles (`--profile`)
 
@@ -145,6 +145,30 @@ guidellm run --profile kind=concurrent,streams=10
 | `max_concurrency` | Maximum concurrent requests to schedule       | `--profile kind=concurrent,streams=10,max_concurrency=10`                                       |
 
 You can use the `--override` option to specify a list of stream values, to run a set of concurrent "strategies" (sub-benchmarks) with different stream values. For example, `--profile kind=concurrent --override profile.streams 10,20,30` will run a concurrent strategy with 10 streams, a concurrent strategy with 20 streams, and a concurrent strategy with 30 streams.
+
+#### Users Profile
+
+Simulates a fixed number of users, each holding one session (conversation) from the dataset at a time. Unlike `concurrent`, which counts concurrency per turn and pulls new conversations while others wait out their delays, a user's slot stays bound to their session: they send a turn, wait out the dataset's requeue delay, send the next turn of the same conversation, and only start a new conversation when that one finishes. Use it to answer questions like "server X with model Y can support Z concurrent users".
+
+```bash
+guidellm run --profile kind=users,users=10 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=5,delay=5
+```
+
+| Profile parameter | Description                                 | Example                                            |
+| ----------------- | ------------------------------------------- | -------------------------------------------------- |
+| `users`           | Simulated users to maintain                 | `--profile kind=users,users=10`                    |
+| `rampup_duration` | Seconds to spread the initial user sessions | `--profile kind=users,users=10,rampup_duration=10` |
+
+Think time comes from the dataset: each turn's `requeue_delay` gates the next turn of the same conversation. With synthetic data, the `delay*` options (`delay`, `delay_stdev`, `delay_min`, `delay_max`) define that delay, including its distribution.
+
+Delay only gates turns *within* a conversation: when a session ends, the user immediately starts the next conversation. Single-turn data therefore has no between-turn gap to gate — with no delay configured it chains conversations as fast as the server responds, behaving like `concurrent`.
+
+Because each user waits between turns, the same conversation's turns are spaced further apart than under `concurrent`, so prefixes are more likely to be evicted from the server's prefix cache. This is a harsher and more realistic cache workload.
+
+The next turn is due `delay` after the previous response finishes, like a person who reads the reply and then thinks. This is closed-loop pacing: as latency rises, each user slows down, so the offered request rate falls near capacity. When comparing user counts, compare the achieved request rate rather than assuming it is constant.
+
+You can use the `--override` option to specify a list of user counts, to run a set of users "strategies" (sub-benchmarks) with different user counts. For example, `--profile kind=users --override profile.users 10,20,30` will run a users strategy with 10 users, a users strategy with 20 users, and a users strategy with 30 users.
 
 #### Knee Profile
 

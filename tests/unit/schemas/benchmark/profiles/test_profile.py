@@ -29,6 +29,7 @@ DEFAULT_HOOK_PROFILES = (
     {"kind": "sweep"},
     {"kind": "synchronous"},
     {"kind": "throughput", "max_concurrency": 64},
+    {"kind": "users", "users": 4},
 )
 
 

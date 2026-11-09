@@ -357,3 +357,62 @@ def test_knee_profile_accepts_canonical_cli_options(
         ).profile.resolved_initial_streams()
         == expected
     )
+
+
+@pytest.mark.sanity
+def test_run_accepts_users_profile(monkeypatch):
+    """Select the users profile through the existing profile CLI option.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = AsyncMock()
+    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            "kind=openai_http,target=http://localhost:8000",
+            "--data",
+            "kind=synthetic_text,prompt_tokens=8",
+            "--profile",
+            "kind=users,users=4",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    benchmark.assert_awaited_once()
+    profile = benchmark.call_args.kwargs["args"].spec.profile
+    assert profile.kind == "users"
+    assert profile.users == [4]
+
+
+@pytest.mark.regression
+def test_run_users_profile_override_fans_out_sub_benchmarks(monkeypatch):
+    """``--override profile.users`` creates one sub-benchmark per user count.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = AsyncMock()
+    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            "kind=openai_http,target=http://localhost:8000",
+            "--data",
+            "kind=synthetic_text,prompt_tokens=8",
+            "--profile",
+            "kind=users,users=2",
+            "--constraint",
+            "kind=max_requests,count=1",
+            "--override",
+            "profile.users",
+            "2,4",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    benchmark.assert_awaited_once()
+    scenario = benchmark.call_args.kwargs["args"]
+    benchmarks = scenario.get_benchmarks()
+    assert [b.profile.users for b in benchmarks] == [[2], [4]]

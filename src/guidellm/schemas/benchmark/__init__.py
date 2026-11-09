@@ -42,6 +42,7 @@ from guidellm.schemas.benchmark.profiles import (
     SweepProfileArgs,
     SynchronousProfileArgs,
     ThroughputProfileArgs,
+    UsersProfileArgs,
 )
 from guidellm.schemas.benchmark.random import RandomArgs, StaticRandomArgs
 from guidellm.schemas.benchmark.scenarios import SCENARIO_DIR, get_builtin_scenarios
@@ -86,6 +87,7 @@ __all__ = [
     "SynchronousProfileArgs",
     "ThroughputProfileArgs",
     "TransientPhaseConfig",
+    "UsersProfileArgs",
     "WarningCondition",
     "WarningRuleArgs",
     "YAMLBenchmarkOutputArgs",
