@@ -329,12 +329,23 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         Average time per output token in milliseconds including first token.
 
+        Prefer ``last_request_iteration`` (finish/usage chunk) over the last
+        content-token timestamp so a server that counts the EOS token in
+        ``usage.completion_tokens`` keeps the numerator and denominator on the
+        same tokens.
+
         :return: Average milliseconds per output token, or None if unavailable
         """
         if (
             (start := self.info.timings.request_start) is None
             or (
-                (last_token := self.last_token_iteration or self.request_end_time)
+                (
+                    last_token := (
+                        self.info.timings.last_request_iteration
+                        or self.last_token_iteration
+                        or self.request_end_time
+                    )
+                )
                 is None
             )
             or (output_tokens := self.output_tokens) is None
@@ -350,10 +361,17 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         Average inter-token latency in milliseconds excluding first token.
 
+        Prefer ``last_request_iteration`` (finish/usage chunk) over the last
+        content-token timestamp so a server that counts the EOS token in
+        ``usage.completion_tokens`` keeps the numerator and denominator on the
+        same tokens.
+
         :return: Average milliseconds between token generations, or None if unavailable
         """
         first_token = self.first_token_iteration
-        last_token = self.last_token_iteration
+        last_token = (
+            self.info.timings.last_request_iteration or self.last_token_iteration
+        )
         output_tokens = self.output_tokens
         if (
             first_token is None

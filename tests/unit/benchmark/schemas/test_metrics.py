@@ -1133,6 +1133,75 @@ class TestDetailedGoodputMetrics:
         assert restored.output_token_goodput.successful.mean == pytest.approx(2.0)
 
 
+
+class TestEosCountedInUsageTokens:
+    """
+    Keep ITL/TPOT aligned when usage.completion_tokens includes the EOS token.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.regression
+    def test_itl_uses_last_request_iteration_when_usage_counts_eos(self):
+        """
+        When the finish chunk arrives one interval after the last content token
+        and usage counts that EOS step, ITL should stay at the true 10 ms pace.
+
+        ## WRITTEN BY AI ##
+        """
+        # TTFT 100 ms, one token every 10 ms, 16 content tokens, usage=17.
+        first = 0.100
+        last_content = first + (16 - 1) * 0.010
+        finish = last_content + 0.010
+        timings = RequestTimings(
+            request_start=0.0,
+            first_request_iteration=first,
+            first_token_iteration=first,
+            last_token_iteration=last_content,
+            last_request_iteration=finish,
+            token_iterations=16,
+            request_end=finish,
+        )
+        stats = GenerativeRequestStats(
+            request_id="r",
+            info=RequestInfo(request_id="r", timings=timings),
+            input_metrics=UsageMetrics(text_tokens=26),
+            output_metrics=UsageMetrics(text_tokens=17),
+        )
+
+        assert stats.inter_token_latency_ms == pytest.approx(10.0, abs=0.001)
+        assert stats.time_per_output_token_ms == pytest.approx(
+            1000 * finish / 17, abs=0.001
+        )
+
+    @pytest.mark.regression
+    def test_itl_unchanged_when_usage_matches_content_tokens(self):
+        """
+        Without an extra EOS count, preferring last_request_iteration must not
+        change ITL when the finish chunk shares the last content timestamp.
+
+        ## WRITTEN BY AI ##
+        """
+        first = 0.100
+        last = first + (16 - 1) * 0.010
+        timings = RequestTimings(
+            request_start=0.0,
+            first_token_iteration=first,
+            last_token_iteration=last,
+            last_request_iteration=last,
+            token_iterations=16,
+            request_end=last,
+        )
+        stats = GenerativeRequestStats(
+            request_id="r",
+            info=RequestInfo(request_id="r", timings=timings),
+            input_metrics=UsageMetrics(text_tokens=26),
+            output_metrics=UsageMetrics(text_tokens=16),
+        )
+
+        assert stats.inter_token_latency_ms == pytest.approx(10.0, abs=0.001)
+
+
 class TestGoodputObjectiveMapping:
     """
     Verify which measured latency each objective is compared against.
