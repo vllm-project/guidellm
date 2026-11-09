@@ -1133,7 +1133,6 @@ class TestDetailedGoodputMetrics:
         assert restored.output_token_goodput.successful.mean == pytest.approx(2.0)
 
 
-
 class TestEosCountedInUsageTokens:
     """
     Keep ITL/TPOT aligned when usage.completion_tokens includes the EOS token.
@@ -1200,6 +1199,37 @@ class TestEosCountedInUsageTokens:
         )
 
         assert stats.inter_token_latency_ms == pytest.approx(10.0, abs=0.001)
+
+    @pytest.mark.regression
+    def test_itl_ignores_late_finish_without_extra_usage_token(self):
+        """
+        A metadata-only finish event after the last content token must not
+        stretch ITL/TPOT when usage does not report an extra token.
+
+        ## WRITTEN BY AI ##
+        """
+        first = 0.100
+        last = first + (16 - 1) * 0.010
+        finish = last + 0.050
+        timings = RequestTimings(
+            request_start=0.0,
+            first_token_iteration=first,
+            last_token_iteration=last,
+            last_request_iteration=finish,
+            token_iterations=16,
+            request_end=finish,
+        )
+        stats = GenerativeRequestStats(
+            request_id="r",
+            info=RequestInfo(request_id="r", timings=timings),
+            input_metrics=UsageMetrics(text_tokens=26),
+            output_metrics=UsageMetrics(text_tokens=16),
+        )
+
+        assert stats.inter_token_latency_ms == pytest.approx(10.0, abs=0.001)
+        assert stats.time_per_output_token_ms == pytest.approx(
+            1000 * last / 16, abs=0.001
+        )
 
 
 class TestGoodputObjectiveMapping:

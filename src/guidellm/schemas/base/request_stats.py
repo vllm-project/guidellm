@@ -329,10 +329,9 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         Average time per output token in milliseconds including first token.
 
-        Prefer ``last_request_iteration`` (finish/usage chunk) over the last
-        content-token timestamp so a server that counts the EOS token in
-        ``usage.completion_tokens`` keeps the numerator and denominator on the
-        same tokens.
+        Uses ``_last_generation_iteration`` so a server that counts the EOS
+        token in ``usage.completion_tokens`` keeps the numerator and
+        denominator on the same tokens.
 
         :return: Average milliseconds per output token, or None if unavailable
         """
@@ -341,9 +340,7 @@ class GenerativeRequestStats(StandardBaseDict):
             or (
                 (
                     last_token := (
-                        self.info.timings.last_request_iteration
-                        or self.last_token_iteration
-                        or self.request_end_time
+                        self._last_generation_iteration or self.request_end_time
                     )
                 )
                 is None
@@ -361,17 +358,14 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         Average inter-token latency in milliseconds excluding first token.
 
-        Prefer ``last_request_iteration`` (finish/usage chunk) over the last
-        content-token timestamp so a server that counts the EOS token in
-        ``usage.completion_tokens`` keeps the numerator and denominator on the
-        same tokens.
+        Uses ``_last_generation_iteration`` so a server that counts the EOS
+        token in ``usage.completion_tokens`` keeps the numerator and
+        denominator on the same tokens.
 
         :return: Average milliseconds between token generations, or None if unavailable
         """
         first_token = self.first_token_iteration
-        last_token = (
-            self.info.timings.last_request_iteration or self.last_token_iteration
-        )
+        last_token = self._last_generation_iteration
         output_tokens = self.output_tokens
         if (
             first_token is None
@@ -450,6 +444,28 @@ class GenerativeRequestStats(StandardBaseDict):
             return None
 
         return self.output_tokens / self.token_iterations
+
+    @property
+    def _last_generation_iteration(self) -> float | None:
+        """
+        Timestamp of the last generated token for ITL/TPOT numerators.
+
+        The finish/usage chunk time (``last_request_iteration``) is used only
+        when usage reports more output tokens than content iterations, i.e.
+        the extra (EOS) token is confirmed. Otherwise a trailing metadata-only
+        event would add post-generation delay to the token timing.
+
+        :return: Timestamp of the last generated token, or None if unavailable
+        """
+        last_request = self.info.timings.last_request_iteration
+        output_tokens = self.output_tokens
+        if (
+            last_request is not None
+            and output_tokens is not None
+            and output_tokens > self.token_iterations
+        ):
+            return last_request
+        return self.last_token_iteration
 
     @property
     def first_token_iteration(self) -> float | None:
