@@ -124,6 +124,8 @@ To keep the key out of command lines, environment dumps, and scenario files, you
 
 The same field can be set in a scenario file (`spec.backend.api_key_file`) or with the `GUIDELLM__SPEC__BACKEND__API_KEY_FILE` environment variable.
 
+`api_key_file` is only an alternative way to set `api_key`: the file is read once, when the backend arguments are processed, and only the resulting `api_key` is kept. Configurations written by `guidellm config` and reports saved after a run therefore contain the masked `api_key`, not the file path, and must be given the key again (with `api_key` or `api_key_file`) before they are reused.
+
 > [!IMPORTANT]\
 > For security, avoid hardcoding API keys in scripts. Consider using environment variables or secure credential management tools when passing API keys via `--backend`.
 
