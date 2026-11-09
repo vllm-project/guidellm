@@ -45,4 +45,3 @@ merge_protections_settings:
     - "#changes-requested-reviews-by = 0"
     - "#review-threads-unresolved = 0"
     - check-success = certification-check
-
