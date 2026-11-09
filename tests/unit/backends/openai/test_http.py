@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import AsyncIterator, Iterable
 from contextlib import nullcontext
 from typing import Literal
@@ -33,6 +34,7 @@ from guidellm.schemas import (
     ToolCallFunction,
 )
 from guidellm.schemas.backends import OpenAIHTTPBackendArgs
+from guidellm.schemas.backends.backend import MAX_API_KEY_FILE_BYTES
 from tests.unit.testing_utils import async_timeout
 
 
@@ -1493,6 +1495,31 @@ class TestOpenAIHTTPBackendArgsApiKeyFile:
         key_file.write_text(" \n\n", encoding="utf-8")
 
         with pytest.raises(ValidationError, match=str(key_file)):
+            OpenAIHTTPBackendArgs(target="http://test", api_key_file=key_file)
+
+    @pytest.mark.sanity
+    @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires os.mkfifo")
+    def test_non_regular_api_key_file_rejected(self, tmp_path):
+        """A FIFO is rejected without blocking on open.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "api_key_fifo"
+        os.mkfifo(key_file)
+
+        with pytest.raises(ValidationError, match="not a regular file"):
+            OpenAIHTTPBackendArgs(target="http://test", api_key_file=key_file)
+
+    @pytest.mark.sanity
+    def test_oversized_api_key_file_rejected(self, tmp_path):
+        """A file larger than the size limit is rejected.
+
+        ## WRITTEN BY AI ##
+        """
+        key_file = tmp_path / "api_key"
+        key_file.write_text("x" * (MAX_API_KEY_FILE_BYTES + 1), encoding="utf-8")
+
+        with pytest.raises(ValidationError, match="exceeds"):
             OpenAIHTTPBackendArgs(target="http://test", api_key_file=key_file)
 
     @pytest.mark.sanity

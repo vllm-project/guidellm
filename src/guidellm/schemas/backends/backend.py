@@ -4,6 +4,7 @@ Base backend Args schema for polymorphic backend configuration.
 
 from __future__ import annotations
 
+import stat
 from abc import ABC
 from pathlib import Path
 from typing import ClassVar
@@ -12,7 +13,9 @@ from pydantic import Field, SecretStr
 
 from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
 
-__all__ = ["BackendArgs", "resolve_api_key_file"]
+__all__ = ["MAX_API_KEY_FILE_BYTES", "BackendArgs", "resolve_api_key_file"]
+
+MAX_API_KEY_FILE_BYTES = 64 * 1024
 
 
 def resolve_api_key_file(
@@ -22,13 +25,16 @@ def resolve_api_key_file(
     Resolve the effective API key from an inline value or a key file.
 
     The file is read as UTF-8 and surrounding whitespace (such as the trailing
-    newline common in mounted secrets) is stripped. Error messages include the
-    file path but never the file content.
+    newline common in mounted secrets) is stripped. Only regular files up to
+    ``MAX_API_KEY_FILE_BYTES`` are accepted, so FIFOs and devices cannot block or
+    exhaust memory. Error messages include the file path but never the file
+    content.
 
     :param api_key: API key provided inline, if any
     :param api_key_file: Path to a file containing the API key, if any
     :return: The API key loaded from ``api_key_file`` if set, else ``api_key``
-    :raises ValueError: If both are set, or the file is unreadable or empty
+    :raises ValueError: If both are set, or the file is unreadable, not a
+        regular file, too large, or empty
     """
     if api_key_file is None:
         return api_key
@@ -37,7 +43,16 @@ def resolve_api_key_file(
         raise ValueError("Only one of api_key or api_key_file may be set, not both.")
 
     try:
-        value = api_key_file.read_text(encoding="utf-8").strip()
+        # Check the type before opening: open() blocks on a FIFO with no writer
+        if not stat.S_ISREG(api_key_file.stat().st_mode):
+            raise ValueError(f"api_key_file '{api_key_file}' is not a regular file.")
+        with api_key_file.open("rb") as file:
+            raw = file.read(MAX_API_KEY_FILE_BYTES + 1)
+        if len(raw) > MAX_API_KEY_FILE_BYTES:
+            raise ValueError(
+                f"api_key_file '{api_key_file}' exceeds {MAX_API_KEY_FILE_BYTES} bytes."
+            )
+        value = raw.decode("utf-8").strip()
     except (OSError, UnicodeDecodeError) as err:
         raise ValueError(
             f"Could not read api_key_file '{api_key_file}': {type(err).__name__}"
