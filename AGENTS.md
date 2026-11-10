@@ -57,11 +57,38 @@ uv run tox -e tests -- -m smoke              # Run tests with specific marker
 - All imports **SHALL** be done at the top of the file
 - **DO NOT** use `getattr` or `setattr` as it hides incorrect usage of types
 
-### Design Requirements
+## Change Risk Assessment
 
-- Only touch sections of code that need to be changed for the given task
-- When handling variant-specific logic, encapsulate it in methods on registry class implementations rather than adding if/else branches to generic code paths
-- Class implementations must fully encapsulate their unique logic and that logic must not leak into caller code paths.
+Before submitting code, assess the likelihood and impact of regressions beyond the motivating use case. GuideLLM is a performance benchmarking tool: overhead introduced by the client can distort both the workload delivered to a server and the measurements reported. Match the change's scope and validation to its risks.
+
+### Performance and Measurement Integrity
+
+- Minimize overhead in request handling, streaming, scheduling, and metrics.
+- Preserve metric definitions, aggregation, missing-data behavior, and timing.
+- Validate performance and measurement accuracy with representative evidence, accounting for instrumentation overhead.
+
+### Compatibility and Shared Behavior
+
+- Check other consumers, supported workloads, and paths where the feature is unused.
+- Preserve configuration contracts, reproducibility, persisted data, and replayability.
+- Evaluate concurrency, shared state, cancellation, and shutdown together.
+
+### Architecture, Complexity, and Scope
+
+- Keep behavior with its owning component and variants behind shared interfaces.
+- Isolate optional features from critical execution paths.
+- Reuse established mechanisms; justify added abstractions and dependencies.
+- Keep changes focused. Separate unrelated cleanup and independently useful features when doing so makes review and validation clearer.
+
+### Validation and Operational Risk
+
+- Fix root causes rather than compensating in callers, reports, or tests.
+- Investigate failing assertions before changing expected behavior.
+- Keep automated tests self-contained, CI-reliable, and aligned with repository conventions.
+- Validate affected existing behavior as well as the new use case.
+- Consider supported runtimes and effects on build, release, and merge automation.
+
+In the PR, explain material risks, the evidence addressing them, and remaining uncertainty. Distinguish demonstrated defects from plausible risks and design preferences. Sensitive code deserves proportionate validation, not automatic rejection or speculative redesign.
 
 ## Common Tasks
 
