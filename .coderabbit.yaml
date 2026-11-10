@@ -15,15 +15,20 @@ reviews:
   estimate_code_review_effort: false
   suggested_labels: false
   suggested_reviewers: false
-  review_status: true
+  review_status: false
   collapse_walkthrough: true
   auto_apply_labels: false
   auto_assign_reviewers: false
   auto_review:
-    enabled: false
+    enabled: true
     auto_incremental_review: false
+    drafts: false
     description_keyword: ""
     labels: []
+    ignore_usernames:
+      - "mergify[bot]"
+      - "dependabot[bot]"
+      - "github-actions[bot]"
   path_instructions:
     - path: "src/guidellm/**/*.py"
       instructions: |
