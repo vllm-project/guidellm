@@ -23,7 +23,51 @@ from guidellm.schemas.benchmark.transient import TransientPhaseConfig
 from guidellm.schemas.scheduler.prefetch import PrefetchType
 from guidellm.utils.imports import json
 
-__all__ = ["ProfileArgs"]
+__all__ = ["ProfileArgs", "coerce_int_list"]
+
+
+def coerce_int_list(value: Any, field_name: str) -> Any:
+    """
+    Normalize a single number, JSON array, list, or tuple to a list of values.
+
+    Items are returned unchanged so Pydantic's own validation reports invalid
+    entries: a float such as ``8.0`` coerces to ``8``, while ``8.9``, ``None``,
+    booleans, and non-finite numbers fail validation instead of being
+    truncated or raising a raw error.
+
+    :param value: Raw field value
+    :param field_name: Field name used in error messages
+    :return: Lists and tuples unchanged, a one-element list for a number, or
+        the JSON-decoded value for a string
+    :raises ValueError: If the value is empty, boolean, or not number-shaped
+    """
+    if isinstance(value, str):
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
+            value = json.loads(value)
+
+    if value is None:
+        raise ValueError(f"{field_name} requires at least one value")
+
+    if isinstance(value, bool):
+        raise ValueError(
+            f"{field_name} must be a number or a list of numeric values, "
+            f"got {type(value).__name__}"
+        )
+
+    if isinstance(value, list | tuple):
+        if not value:
+            raise ValueError(f"{field_name} requires at least one value")
+        if any(isinstance(item, bool) for item in value):
+            raise ValueError(f"{field_name} values must be numbers, not booleans")
+        return value
+
+    if isinstance(value, int | float):
+        return [value]
+
+    raise ValueError(
+        f"{field_name} must be a number or a list of numeric values, "
+        f"got {type(value).__name__}"
+    )
 
 
 class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):

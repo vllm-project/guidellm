@@ -133,7 +133,7 @@ class GenerativeRequestStats(StandardBaseDict):
         split this into time blocked by a prior turn and time the harness
         itself was late. Only describes arrival-schedule delay for strategies
         that define an arrival schedule (constant, poisson, and trace when the
-        dataset supplies timestamps); the synchronous, concurrent, and
+        dataset supplies timestamps); the synchronous, concurrent, users, and
         throughput strategies target an ASAP start instead. See the metrics
         guide for full caveats.
 

@@ -9,8 +9,9 @@ The scheduling system separates timing logic from strategy constraints, enabling
 flexible combination of timing behaviors with process and concurrency limits.
 
 Available strategies include synchronous (sequential), concurrent (fixed streams),
-throughput (maximum load), constant-rate (steady intervals), and Poisson-distributed
-(realistic variance) patterns for comprehensive benchmarking scenarios.
+throughput (maximum load), constant-rate (steady intervals), Poisson-distributed
+(realistic variance), trace replay, and users (session-bound conversations) patterns
+for comprehensive benchmarking scenarios.
 """
 
 from __future__ import annotations
@@ -472,8 +473,11 @@ class UsersStrategy(SchedulingStrategy):
     turns (synthetic data's ``delay`` options), starting the next
     conversation immediately after one finishes. Unlike ``concurrent``,
     the user's slot stays bound to the session across the delay instead
-    of pulling new conversations, so the gaps between turns of the same
-    conversation grow, which stresses the server's prefix cache more.
+    of pulling new conversations.
+
+    Request slots remain shared among the sessions assigned to a worker
+    and are not reserved per user, so a conversation with parallel
+    branches can use several request slots at once.
     """
 
     type_: Literal["users"] = "users"  # type: ignore[assignment]
