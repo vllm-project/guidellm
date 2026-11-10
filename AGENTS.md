@@ -88,8 +88,6 @@ Before submitting code, assess the likelihood and impact of regressions beyond t
 - Validate affected existing behavior as well as the new use case.
 - Consider supported runtimes and effects on build, release, and merge automation.
 
-In the PR, explain material risks, the evidence addressing them, and remaining uncertainty. Distinguish demonstrated defects from plausible risks and design preferences. Sensitive code deserves proportionate validation, not automatic rejection or speculative redesign.
-
 ## Common Tasks
 
 ### Running Benchmarks
@@ -112,6 +110,12 @@ uv run guidellm run \
   --constraint kind=max_duration,seconds=300 \
   --override profile.streams 10,20
 ```
+
+### Submitting PRs
+
+When submitting a PR always start with the pull request template in `.github/PULL_REQUEST_TEMPLATE.md`. The template includes comments that guide you through the proper submission process so make sure to read them. Sections marked **OPTIONAL** may be removed and **REQUIRED** sections must be filled out. Failure to follow the template guidance will result in a rejected PR and can result in being banned from contributing.
+
+In the PR, explain material risks, the evidence addressing them, and remaining uncertainty. Distinguish demonstrated defects from plausible risks and design preferences. Sensitive code deserves proportionate validation, not automatic rejection or speculative redesign.
 
 ## Resources
 
