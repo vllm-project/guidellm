@@ -1,5 +1,4 @@
 ## Summary
-
 <!--
 **REQUIRED**
 Include a short paragraph of the changes introduced in this PR.
@@ -8,14 +7,12 @@ the changes are necessary.
 -->
 
 ## Details
-
 <!--
 **OPTIONAL**
 Provide a detailed description of all changes introduced in this pull request.
 -->
 
 ## Test Plan
-
 <!--
 **OPTIONAL**
 List the steps needed to test this PR. Only include if extra testing is
@@ -24,7 +21,6 @@ needed outside of automated tests.
 -
 
 ## Related Issues
-
 <!--
 **OPTIONAL**
 Link any relevant issues that this PR addresses or relates to.
