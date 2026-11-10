@@ -885,6 +885,7 @@ class TestUsersStrategy:
         users = constructor_args["users"]
         assert instance.processes_limit == users
         assert instance.requests_limit == users
+        assert instance.sessions_limit == users
 
     @pytest.mark.smoke
     def test_string_representation(self, valid_instances: tuple[UsersStrategy, dict]):
@@ -929,14 +930,6 @@ class TestUsersStrategy:
 
         for key, value in constructor_args.items():
             assert getattr(json_reconstructed, key) == value
-
-    @pytest.mark.smoke
-    def test_binds_sessions(self):
-        """One user slot maps to one active conversation per worker slot.
-
-        ## WRITTEN BY AI ##
-        """
-        assert UsersStrategy(users=8).binds_sessions is True
 
     @pytest.mark.sanity
     @pytest.mark.asyncio
@@ -984,23 +977,24 @@ class TestUsersStrategy:
         assert str(strategy) == "users@4"
 
 
-class TestStrategySessionBinding:
+class TestStrategySessionLimit:
     """
-    Verify the default session binding keeps today's behavior.
+    Verify only session-bound strategies cap active conversations.
 
     ## WRITTEN BY AI ##
     """
 
     @pytest.mark.regression
-    def test_default_does_not_bind_sessions(self):
-        """Existing strategies do not cap active conversation graphs.
+    def test_default_has_no_session_limit(self):
+        """Only session-binding strategies cap active conversations.
 
         ## WRITTEN BY AI ##
         """
-        assert SynchronousStrategy().binds_sessions is False
-        assert ConcurrentStrategy(streams=4).binds_sessions is False
-        assert ThroughputStrategy().binds_sessions is False
-        assert TraceReplayStrategy().binds_sessions is False
+        assert SynchronousStrategy().sessions_limit is None
+        assert ConcurrentStrategy(streams=4).sessions_limit is None
+        assert ThroughputStrategy().sessions_limit is None
+        assert TraceReplayStrategy().sessions_limit is None
+        assert UsersStrategy(users=4).sessions_limit == 4
 
 
 class TestDefinesArrivalSchedule:
