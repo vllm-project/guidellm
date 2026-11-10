@@ -307,6 +307,22 @@ class TestConcurrentStrategy:
         for key, value in constructor_args.items():
             assert getattr(base_json_reconstructed, key) == value
 
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_next_request_time_ramps_every_stream(self):
+        """The ramp covers all configured streams, including the last one.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = ConcurrentStrategy(streams=4, rampup_duration=8.0)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=4, mp_context=get_context()
+        )
+        strategy.init_processes_start(1000.0)
+
+        times = [await strategy.next_request_time(0) for _ in range(6)]
+        assert times == [1002.0, 1004.0, 1006.0, 1008.0, 1000.0, 1000.0]
+
 
 class TestThroughputStrategy:
     @pytest.fixture(
@@ -933,8 +949,8 @@ class TestUsersStrategy:
 
     @pytest.mark.sanity
     @pytest.mark.asyncio
-    async def test_next_request_time_ramps_initial_users(self):
-        """Initial user sessions spread across the rampup, then dispatch now.
+    async def test_next_request_time_is_always_the_benchmark_start(self):
+        """Slots always target the benchmark start; ramp is per session.
 
         ## WRITTEN BY AI ##
         """
@@ -944,9 +960,126 @@ class TestUsersStrategy:
         )
         strategy.init_processes_start(1000.0)
 
-        # request indices 1..3 stagger over the rampup; index >= 4 is immediate
         times = [await strategy.next_request_time(0) for _ in range(6)]
-        assert times == [1002.0, 1004.0, 1006.0, 1000.0, 1000.0, 1000.0]
+        assert times == [1000.0] * 6
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_root_sessions_consume_one_ramp_position_each(self):
+        """Root requests stagger across the rampup window, then dispatch now.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = UsersStrategy(users=4, rampup_duration=8.0)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=4, mp_context=get_context()
+        )
+        strategy.init_processes_start(1000.0)
+
+        roots = [
+            RequestInfo(request_id=f"r{idx}", preceding_nodes=0) for idx in range(6)
+        ]
+        times = [
+            await strategy.resolve_dequeued_target_start(
+                0, 1000.0, roots[idx].settings, roots[idx]
+            )
+            for idx in range(6)
+        ]
+        # indices 1..4 stagger across the rampup; later sessions start now
+        assert times == [1002.0, 1004.0, 1006.0, 1008.0, 1000.0, 1000.0]
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_follow_up_turns_keep_target_and_consume_no_position(self):
+        """A turn with a predecessor neither ramps nor spends a ramp position.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = UsersStrategy(users=4, rampup_duration=8.0)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=4, mp_context=get_context()
+        )
+        strategy.init_processes_start(1000.0)
+
+        root = RequestInfo(request_id="root", preceding_nodes=0)
+        follow_up = RequestInfo(request_id="turn", preceding_nodes=3)
+
+        assert (
+            await strategy.resolve_dequeued_target_start(
+                0, 1000.0, follow_up.settings, follow_up
+            )
+            == 1000.0
+        )
+        # the follow-up did not consume a position: this root gets the first one
+        assert (
+            await strategy.resolve_dequeued_target_start(0, 1000.0, root.settings, root)
+            == 1002.0
+        )
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_multiple_roots_consume_one_ramp_position(self):
+        """A graph with several roots ramps once, not once per root.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = UsersStrategy(users=4, rampup_duration=8.0)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=4, mp_context=get_context()
+        )
+        strategy.init_processes_start(1000.0)
+
+        first_branch = RequestInfo(request_id="a", preceding_nodes=0)
+        second_branch = RequestInfo(request_id="b", preceding_nodes=1)
+        third_branch = RequestInfo(request_id="c", preceding_nodes=2)
+        next_session = RequestInfo(request_id="d", preceding_nodes=0)
+
+        # only topological index 0 spends the session's ramp position
+        assert (
+            await strategy.resolve_dequeued_target_start(
+                0, 1000.0, first_branch.settings, first_branch
+            )
+            == 1002.0
+        )
+        # sibling roots are part of the same session and keep the target
+        assert (
+            await strategy.resolve_dequeued_target_start(
+                0, 1000.0, second_branch.settings, second_branch
+            )
+            == 1000.0
+        )
+        assert (
+            await strategy.resolve_dequeued_target_start(
+                0, 1000.0, third_branch.settings, third_branch
+            )
+            == 1000.0
+        )
+        # the next session's first root gets the following ramp position
+        assert (
+            await strategy.resolve_dequeued_target_start(
+                0, 1000.0, next_session.settings, next_session
+            )
+            == 1004.0
+        )
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_rampup_with_single_user(self):
+        """A single user still gets one full ramp position.
+
+        ## WRITTEN BY AI ##
+        """
+        strategy = UsersStrategy(users=1, rampup_duration=8.0)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=1, mp_context=get_context()
+        )
+        strategy.init_processes_start(1000.0)
+        root = RequestInfo(request_id="r", preceding_nodes=0)
+
+        assert (
+            await strategy.resolve_dequeued_target_start(0, 1000.0, root.settings, root)
+            == 1008.0
+        )
 
     @pytest.mark.sanity
     @pytest.mark.asyncio
@@ -965,15 +1098,25 @@ class TestUsersStrategy:
         assert times == [1000.0, 1000.0, 1000.0]
 
     @pytest.mark.regression
-    def test_request_completed_is_noop(self):
-        """Completions must not change scheduling state for users.
+    @pytest.mark.asyncio
+    async def test_request_completed_is_noop(self):
+        """Completions must not change later scheduling for users.
 
         ## WRITTEN BY AI ##
         """
         strategy = UsersStrategy(users=4)
+        strategy.init_processes_timings(
+            worker_count=1, max_concurrency=4, mp_context=get_context()
+        )
+        strategy.init_processes_start(1000.0)
+
+        before = await strategy.next_request_time(0)
         strategy.request_completed(
             RequestInfo(request_id="r", completed_at=123.0, status="completed")
         )
+        after = await strategy.next_request_time(0)
+
+        assert before == after == 1000.0
         assert str(strategy) == "users@4"
 
 

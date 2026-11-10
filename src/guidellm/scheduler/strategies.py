@@ -427,7 +427,7 @@ class ConcurrentStrategy(SchedulingStrategy):
         """
         return self.streams
 
-    async def next_request_time(self, worker_index: PositiveInt) -> float:
+    async def next_request_time(self, worker_index: NonNegativeInt) -> float:
         """
         Calculate next request time with stream-based distribution.
 
@@ -441,7 +441,7 @@ class ConcurrentStrategy(SchedulingStrategy):
         current_index = self.next_request_index()
         start_time = await self.get_processes_start_time()
 
-        if current_index < self.streams and self.rampup_duration > 0:
+        if current_index <= self.streams and self.rampup_duration > 0:
             # linearly spread start times for first concurrent requests across rampup
             return start_time + self.rampup_duration * (current_index / self.streams)
 
@@ -515,27 +515,60 @@ class UsersStrategy(SchedulingStrategy):
         """
         return self.users
 
-    async def next_request_time(self, worker_index: PositiveInt) -> float:
+    async def next_request_time(self, worker_index: NonNegativeInt) -> float:
         """
-        Calculate next request time with ramp-up spread for initial users.
+        Return the benchmark start for every worker scheduling slot.
 
-        Initial sessions are staggered linearly across the rampup duration.
-        All later requests are dispatched immediately: gating comes from
-        the per-user session slot and the dataset think time, not from
-        completions.
+        Ramp-up is applied per session in :meth:`resolve_dequeued_target_start`
+        so that follow-up turns do not consume ramp positions. Gating between
+        turns comes from the per-user session slot and the dataset think time,
+        not from completions.
 
-        :param worker_index: Worker process index for distributing initial users
-        :return: Staggered start time during rampup, otherwise benchmark start
+        :param worker_index: Unused for users strategy
+        :return: Benchmark start time
         """
         _ = worker_index  # unused
-        current_index = self.next_request_index()
-        start_time = await self.get_processes_start_time()
+        return await self.get_processes_start_time()
 
-        if current_index < self.users and self.rampup_duration > 0:
-            # linearly spread start times for the first user sessions
-            return start_time + self.rampup_duration * (current_index / self.users)
+    async def resolve_dequeued_target_start(
+        self,
+        worker_index: NonNegativeInt,
+        provisional_start: float,
+        settings: RequestSettings,
+        request_info: RequestInfo | None = None,
+    ) -> float:
+        """
+        Stagger the first request of each user session during ramp-up.
 
-        return start_time
+        Only root nodes (``preceding_nodes == 0``) consume a ramp position, so
+        a multi-turn conversation spends one position no matter how many turns
+        it has, and a conversation with several independent roots still
+        consumes exactly one. Follow-up turns keep the provisional target.
+        The shared request counter makes the stagger approximate across worker
+        processes.
+
+        :param worker_index: Unused for users strategy
+        :param provisional_start: Start time from the worker's scheduling slot
+        :param settings: Per-request scheduling metadata (unused)
+        :param request_info: Request metadata whose ``preceding_nodes`` marks
+            root requests
+        :return: Staggered start time for a root session, otherwise
+            ``provisional_start``
+        """
+        _ = (worker_index, settings)
+        if (
+            self.rampup_duration <= 0
+            or request_info is None
+            or request_info.preceding_nodes != 0
+        ):
+            return provisional_start
+
+        index = self.next_request_index()
+        if index <= self.users:
+            # linearly spread the first user sessions across the rampup window
+            return provisional_start + self.rampup_duration * (index / self.users)
+
+        return provisional_start
 
     def request_completed(self, request_info: RequestInfo):
         """
