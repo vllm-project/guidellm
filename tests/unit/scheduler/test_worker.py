@@ -21,6 +21,7 @@ from guidellm.scheduler import (
     WorkerProcess,
 )
 from guidellm.scheduler.dag import DAGExecutionState
+from guidellm.scheduler.loop_lag import LoopLagHistograms
 from guidellm.scheduler.schemas import (
     ConversationEdge,
     ConversationGraph,
@@ -1051,3 +1052,126 @@ class TestWorkerProcessRun:
             assert message in captured.err
         finally:
             reader.stop()
+
+
+def _block_event_loop(seconds: float) -> None:
+    """Hold the event loop the way a CPU-starved worker does."""
+    time.sleep(seconds)
+
+
+class _LoopBlockingBackend(MockBackend):
+    """Block the event loop while a request waits for its first token."""
+
+    def __init__(self, block: float):
+        super().__init__(lifecycle_delay=0.0, resolve_delay=0.0)
+        self.block = block
+
+    async def resolve(self, request, request_info, request_history):
+        request_info.timings.request_start = time.time()
+        await asyncio.sleep(0.05)
+        _block_event_loop(self.block)
+        request_info.timings.first_token_iteration = time.time()
+        yield None, request_info
+        await asyncio.sleep(0.05)
+        request_info.timings.request_end = time.time()
+        yield f"response_for_{request}", request_info
+
+
+def _loop_lag_worker(
+    backend: MockBackend, loop_lag: LoopLagHistograms
+) -> WorkerProcess:
+    strategy = SynchronousStrategy()
+    strategy.init_processes_timings(
+        worker_count=1, max_concurrency=5, mp_context=mp.get_context()
+    )
+    strategy.init_processes_start(time.time())
+    return WorkerProcess(
+        worker_index=0,
+        messaging=MockMessaging(worker_index=0),
+        backend=backend,
+        strategy=strategy,
+        async_limit=5,
+        fut_scheduling_time_limit=10.0,
+        startup_barrier=Barrier(2),
+        requests_generated_event=Event(),
+        constraint_reached_event=Event(),
+        shutdown_event=Event(),
+        error_event=Event(),
+        stdout_conn=None,
+        stderr_conn=None,
+        parent_logger=None,
+        loop_lag=loop_lag,
+    )
+
+
+async def _run_one_request(worker: WorkerProcess, cancel_requests_loop=None) -> None:
+    """Process one request through ``_process_requests``."""
+
+    async def noop():
+        pass
+
+    worker._processing_startup = noop
+    worker._cancel_requests_loop = cancel_requests_loop or noop
+    worker._processing_shutdown = noop
+    await worker.messaging.put(
+        ConversationGraph(
+            graph_id="loop_lag",
+            nodes={"n0": ConversationNode(node_id="n0", agent_id="a", request="r0")},
+            edges=[],
+            request_infos={"n0": RequestInfo(request_id="id0", node_id="n0")},
+        )
+    )
+    task = asyncio.create_task(worker._process_requests())
+    await wait_until(
+        lambda: any(
+            info.status == "completed" for _, _, info in worker.messaging._sent_items
+        )
+    )
+    worker.constraint_reached_event.set()
+    await task
+
+
+class TestWorkerLoopLag:
+    """Event-loop lag recorded by a worker while it processes requests."""
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(5)
+    @pytest.mark.parametrize(
+        ("block", "low", "high"), [(0.0, 0.0, 0.05), (0.2, 0.1, 1.0)]
+    )
+    async def test_worker_records_loop_lag_while_processing(
+        self, block: float, low: float, high: float
+    ):
+        """Record how long a backend held the event loop during a request.
+
+        ## WRITTEN BY AI ##
+        """
+        histograms = LoopLagHistograms(mp.get_context("spawn"), 1, 0.01)
+
+        await _run_one_request(
+            _loop_lag_worker(_LoopBlockingBackend(block), histograms)
+        )
+
+        assert low <= max(value for value, _ in histograms.samples()) < high
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(5)
+    async def test_worker_stops_recording_before_cancelling_requests(self):
+        """Leave lag after request processing ends out of the histogram.
+
+        ## WRITTEN BY AI ##
+        """
+        histograms = LoopLagHistograms(mp.get_context("spawn"), 1, 0.01)
+
+        async def blocking_cancel_loop():
+            _block_event_loop(0.2)
+            await asyncio.sleep(0.05)
+
+        await _run_one_request(
+            _loop_lag_worker(_LoopBlockingBackend(0.0), histograms),
+            cancel_requests_loop=blocking_cancel_loop,
+        )
+
+        assert max(value for value, _ in histograms.samples()) < 0.1

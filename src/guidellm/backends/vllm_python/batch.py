@@ -15,7 +15,7 @@ import gc
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 from pydantic import ConfigDict, Field
 
@@ -101,6 +101,9 @@ class VLLMPythonBatchBackend(VLLMPythonAsyncBackend):
     """
 
     _args: VLLMPythonBatchBackendArgs
+
+    #: Token timestamps come from vLLM's request metrics after the batch finishes.
+    stamps_tokens_on_event_loop: ClassVar[bool] = False
 
     @classmethod
     def backend_args(cls) -> type[BackendArgs]:
