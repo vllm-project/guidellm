@@ -96,6 +96,7 @@ knowledge_base:
     filePatterns:
       - "DEVELOPING.md"
       - "CONTRIBUTING.md"
+      - "AGENTS.md"
 
 issue_enrichment:
   auto_enrich:

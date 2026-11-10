@@ -10,52 +10,31 @@ This file provides agents and LLMs with guidance on development practices within
 
 ### Python Development
 
-**IMPORTANT**: `tox` should be used before attempting to run individual tools.
+> **IMPORTANT**: `tox` should be used before attempting to run individual tools.
 
-**IMPORTANT**: For every command `uv run` must be prepended to the command.
+> **IMPORTANT**: For every command `uv run` must be prepended to the command.
 
 ```bash
 # Run all tests
-tox -e tests
+uv run tox -e tests
 
 # Run specific test suites
-tox -e test-unit        # Unit tests only
-tox -e test-integration # Integration tests only
-tox -e test-e2e         # End-to-end tests only
+uv run tox -e test-unit        # Unit tests only
+uv run tox -e test-integration # Integration tests only
+uv run tox -e test-e2e         # End-to-end tests only
 
 # Code quality and linting
-tox -e lint-check       # Check code quality (ruff, mdformat)
-tox -e lint-fix         # Fix style issues automatically
-tox -e type-check       # Type checking with mypy
+uv run tox -e lint-check       # Check code quality (ruff, mdformat)
+uv run tox -e lint-fix         # Fix style issues automatically
+uv run tox -e type-check       # Type checking with mypy
 
 # Update dependency locks
-tox -e lock
+uv run tox -e lock
 
 # Advanced pytest usage
-tox -e tests -- tests/unit/benchmark  # Run specific test directory or file
-tox -e tests -- -m smoke              # Run tests with specific marker
+uv run tox -e tests -- tests/unit/benchmark  # Run specific test directory or file
+uv run tox -e tests -- -m smoke              # Run tests with specific marker
 ```
-
-### Pytest Markers
-
-Use these markers to categorize and run specific test types:
-
-```bash
-# Run smoke tests (quick sanity checks)
-tox -e tests -- -m smoke
-
-# Run sanity tests (detailed function tests)
-tox -e tests -- -m sanity
-
-# Run regression tests (regression prevention)
-tox -e tests -- -m regression
-```
-
-**Marker Definitions:**
-
-- `smoke`: Quick tests to check basic functionality
-- `sanity`: Detailed tests to ensure major functions work correctly
-- `regression`: Tests to ensure new changes don't break existing functionality
 
 ## Quality Standards
 
@@ -68,7 +47,7 @@ tox -e tests -- -m regression
 ### Quality Requirements
 
 - All Python code must pass linting and formatting
-- All Python code must pass type checking
+- Python code in `src/` must pass type checking
 - All tests must pass before committing
 - Markdown files must be properly formatted
 
@@ -101,12 +80,10 @@ uv run guidellm run \
 # Production-like benchmark with specific dataset
 uv run guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=constant \
+  --profile kind=concurrent \
   --data '{"kind":"huggingface","source":"openai/gsm8k","load_kwargs":{"name":"main","split":"test"}}' \
   --constraint kind=max_duration,seconds=300 \
-  --override profile.rate 10,20 \
-  --output kind=json,path=benchmark.json \
-  --output kind=csv,path=report.csv
+  --override profile.streams 10,20
 ```
 
 ## Resources
