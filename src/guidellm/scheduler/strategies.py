@@ -155,6 +155,19 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         return self.prefetch
 
     @property
+    def sessions_limit(self) -> PositiveInt | None:
+        """
+        Get the maximum number of active conversation sessions supported.
+
+        Unlike :attr:`requests_limit`, which caps concurrent requests, this
+        caps conversations held open across their think time. Strategies that
+        bind a slot to a conversation, such as users, override this.
+
+        :return: Maximum number of active sessions, None if unbounded
+        """
+        return None
+
+    @property
     def defines_arrival_schedule(self) -> bool:
         """
         Whether targeted start times follow an independent arrival schedule.
@@ -165,22 +178,6 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         them.
 
         :return: True if targeted start times follow an arrival schedule
-        """
-        return False
-
-    @property
-    def binds_sessions(self) -> bool:
-        """
-        Whether a conversation holds its request slot while out of flight.
-
-        The default of False means a worker may pull a new conversation from
-        the dataset as soon as one of its slots frees, even while other
-        conversations wait out their think time, so the number of active
-        conversations is unbounded. Strategies that bind a slot to a
-        conversation for its whole session, such as the users profile,
-        override this to cap active conversations at the worker's slots.
-
-        :return: True if a conversation occupies a slot until it completes
         """
         return False
 
@@ -511,6 +508,13 @@ class UsersStrategy(SchedulingStrategy):
         """
         return self.users
 
+    @property
+    def sessions_limit(self) -> PositiveInt:
+        """
+        :return: Number of users as the maximum number of active sessions
+        """
+        return self.users
+
     async def next_request_time(self, worker_index: PositiveInt) -> float:
         """
         Calculate next request time with ramp-up spread for initial users.
@@ -543,16 +547,6 @@ class UsersStrategy(SchedulingStrategy):
         :param request_info: Completed request metadata (unused)
         """
         _ = request_info  # request_info unused for users strategy
-
-    @property
-    def binds_sessions(self) -> bool:
-        """
-        :return: True; one user slot maps to one active conversation graph
-
-        The graph is held across think time until the session's dataset
-        conversation completes.
-        """
-        return True
 
 
 @SchedulingStrategy.register("throughput")

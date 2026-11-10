@@ -71,6 +71,18 @@ and receives (Response, Request, RequestInfo, SchedulerState) tuples.
 """
 
 
+def _distribute_capacity(total: int, parts: int) -> list[int]:
+    """
+    Split a capacity evenly across worker ranks, front-loading the remainder.
+
+    :param total: Capacity to distribute
+    :param parts: Number of worker ranks
+    :return: Capacity per rank, in rank order, summing to ``total``
+    """
+    base, remainder = divmod(total, parts)
+    return [base + (1 if rank < remainder else 0) for rank in range(parts)]
+
+
 class WorkerProcessGroup(Generic[RequestT, ResponseT]):
     """
     Orchestrates multiple worker processes for distributed request processing.
@@ -182,7 +194,13 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
         if num_processes <= 0:
             raise RuntimeError("num_processes resolved to 0; increase limits/config")
 
-        per_proc_max_conc = max_conc // num_processes
+        async_limits = _distribute_capacity(max_conc, num_processes)
+        sessions_limit = self.strategy.sessions_limit
+        session_limits: list[int | None] = (
+            _distribute_capacity(sessions_limit, num_processes)
+            if sessions_limit is not None
+            else [None] * num_processes
+        )
         max_pending_size = max(
             1, math.floor(max_conc * settings.mp_max_pending_buffer_percent)
         )
@@ -238,12 +256,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             max_concurrency=max_conc,
             mp_context=self.mp_context,
         )
-        for rank in range(num_processes):
-            # Distribute any remainder across the first N ranks
-            async_limit = per_proc_max_conc + (
-                1 if rank < (max_conc % num_processes) else 0
-            )
-
+        for rank, async_limit in enumerate(async_limits):
             worker = WorkerProcess[RequestT, ResponseT](
                 worker_index=rank,
                 messaging=self.messaging.create_worker_copy(  # type: ignore[arg-type]
@@ -254,6 +267,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 backend=self.backend,
                 strategy=self.strategy,
                 async_limit=async_limit,
+                session_limit=session_limits[rank],
                 fut_scheduling_time_limit=0.0,
                 startup_barrier=self.startup_barrier,
                 requests_generated_event=self.requests_generated_event,

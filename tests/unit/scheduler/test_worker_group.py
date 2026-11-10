@@ -24,7 +24,7 @@ from guidellm.scheduler import (
     WorkerProcessGroup,
 )
 from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
-from guidellm.scheduler.worker_group import WorkerGroupState
+from guidellm.scheduler.worker_group import WorkerGroupState, _distribute_capacity
 from guidellm.schemas import RequestInfo, RequestTimings
 from guidellm.schemas.scheduler import (
     MaxDurationConstraintArgs,
@@ -870,3 +870,28 @@ class TestRequestsGeneratorShutdown:
         assert state.requests_generated_event.is_set()
         assert state.constraint_reached_event.is_set()
         assert state.shutdown_event.is_set()
+
+
+class TestDistributeCapacity:
+    """Tests for the per-rank capacity split helper.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    @pytest.mark.parametrize(
+        ("total", "parts", "expected"),
+        [
+            (5, 3, [2, 2, 1]),
+            (16, 4, [4, 4, 4, 4]),
+            (2, 4, [1, 1, 0, 0]),
+            (1, 1, [1]),
+        ],
+    )
+    def test_distribute_capacity(self, total: int, parts: int, expected: list[int]):
+        """Remainders are front-loaded so the ranks sum to the total.
+
+        ## WRITTEN BY AI ##
+        """
+        assert _distribute_capacity(total, parts) == expected
+        assert sum(_distribute_capacity(total, parts)) == total

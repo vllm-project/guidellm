@@ -103,6 +103,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         stdout_conn: Connection | None,
         stderr_conn: Connection | None,
         parent_logger: Logger | None,
+        session_limit: int | None = None,
     ):
         """
         Initialize worker process instance.
@@ -112,6 +113,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :param backend: Backend interface for processing requests
         :param strategy: Scheduling strategy for determining request timing
         :param async_limit: Maximum concurrent requests this worker can process
+        :param session_limit: Maximum active conversation sessions this worker can
+            hold, or None for no session cap
         :param fut_scheduling_time_limit: Maximum time in seconds to schedule requests
             into the future
         :param startup_barrier: Synchronization barrier for coordinated startup
@@ -128,6 +131,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.backend = backend
         self.strategy = strategy
         self.async_limit = async_limit
+        self.session_limit = session_limit
         self.fut_scheduling_time_limit = fut_scheduling_time_limit
         self.startup_barrier = startup_barrier
         self.requests_generated_event = requests_generated_event
@@ -145,10 +149,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.backend_started = False
         self.messaging_started = False
         self.turns_queue: list[DAGExecutionState[RequestT, ResponseT]] = []
-        # Maximum active conversation graphs (None = unlimited). Strategies
-        # that bind a slot to a session, like users, cap this at the worker's
-        # request concurrency.
-        self._session_limit = async_limit if strategy.binds_sessions else None
+        # Sessions being pulled from IPC but not yet appended to turns_queue;
+        # reserved across the await so concurrent getters cannot overshoot
+        # session_limit.
+        self._sessions_pending = 0
         # Wake event for waiters blocked on the session cap; created inside
         # the worker's event loop because asyncio primitives are not pickled.
         self._turns_changed: asyncio.Event | None = None
@@ -432,25 +436,34 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     await turns_changed.wait()
                 continue
 
-            if earliest is not None:
-                timeout = max(0.0, earliest - time.time())
-                try:
-                    graph: ConversationGraph[RequestT] = await self.messaging.get(
-                        timeout=timeout
-                    )
-                except TimeoutError:
-                    continue
-            else:
-                graph = await self.messaging.get()
-
-            state = DAGExecutionState(graph)
-            self.turns_queue.append(state)
+            pull_timeout = (
+                max(0.0, earliest - time.time()) if earliest is not None else None
+            )
+            # Reserve a session slot before awaiting IPC so concurrent getters
+            # cannot all pass the cap check, then release it once the graph is
+            # queued or the pull times out.
+            self._sessions_pending += 1
+            try:
+                if pull_timeout is not None:
+                    try:
+                        graph: ConversationGraph[RequestT] = await self.messaging.get(
+                            timeout=pull_timeout
+                        )
+                    except TimeoutError:
+                        continue
+                else:
+                    graph = await self.messaging.get()
+                state = DAGExecutionState(graph)
+                self.turns_queue.append(state)
+            finally:
+                self._sessions_pending -= 1
+                self._notify_turns_changed()
 
     def _at_session_cap(self) -> bool:
         """Whether the worker already holds its maximum active sessions."""
         return (
-            self._session_limit is not None
-            and len(self.turns_queue) >= self._session_limit
+            self.session_limit is not None
+            and len(self.turns_queue) + self._sessions_pending >= self.session_limit
         )
 
     def _get_turns_changed(self) -> asyncio.Event:
