@@ -450,21 +450,22 @@ class GenerativeRequestStats(StandardBaseDict):
         """
         Timestamp of the last generated token for ITL/TPOT numerators.
 
-        The finish/usage chunk time (``last_request_iteration``) is used only
-        when usage reports more output tokens than content iterations, i.e.
-        the extra (EOS) token is confirmed. Otherwise a trailing metadata-only
-        event would add post-generation delay to the token timing.
+        The time of the event that carried ``finish_reason``
+        (``finish_iteration``) is used only when usage reports more output
+        tokens than content iterations, i.e. the extra (EOS) token is
+        confirmed. A separate usage-only chunk or ``[DONE]`` line can arrive
+        later, so ``last_request_iteration`` is not used here.
 
         :return: Timestamp of the last generated token, or None if unavailable
         """
-        last_request = self.info.timings.last_request_iteration
+        finish = self.info.timings.finish_iteration
         output_tokens = self.output_tokens
         if (
-            last_request is not None
+            finish is not None
             and output_tokens is not None
             and output_tokens > self.token_iterations
         ):
-            return last_request
+            return finish
         return self.last_token_iteration
 
     @property

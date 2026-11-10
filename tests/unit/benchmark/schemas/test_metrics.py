@@ -1141,7 +1141,7 @@ class TestEosCountedInUsageTokens:
     """
 
     @pytest.mark.regression
-    def test_itl_uses_last_request_iteration_when_usage_counts_eos(self):
+    def test_itl_uses_finish_iteration_when_usage_counts_eos(self):
         """
         When the finish chunk arrives one interval after the last content token
         and usage counts that EOS step, ITL should stay at the true 10 ms pace.
@@ -1158,6 +1158,7 @@ class TestEosCountedInUsageTokens:
             first_token_iteration=first,
             last_token_iteration=last_content,
             last_request_iteration=finish,
+            finish_iteration=finish,
             token_iterations=16,
             request_end=finish,
         )
@@ -1176,7 +1177,7 @@ class TestEosCountedInUsageTokens:
     @pytest.mark.regression
     def test_itl_unchanged_when_usage_matches_content_tokens(self):
         """
-        Without an extra EOS count, preferring last_request_iteration must not
+        Without an extra EOS count, preferring finish_iteration must not
         change ITL when the finish chunk shares the last content timestamp.
 
         ## WRITTEN BY AI ##
@@ -1188,6 +1189,7 @@ class TestEosCountedInUsageTokens:
             first_token_iteration=first,
             last_token_iteration=last,
             last_request_iteration=last,
+            finish_iteration=last,
             token_iterations=16,
             request_end=last,
         )
@@ -1216,6 +1218,7 @@ class TestEosCountedInUsageTokens:
             first_token_iteration=first,
             last_token_iteration=last,
             last_request_iteration=finish,
+            finish_iteration=finish,
             token_iterations=16,
             request_end=finish,
         )
@@ -1229,6 +1232,74 @@ class TestEosCountedInUsageTokens:
         assert stats.inter_token_latency_ms == pytest.approx(10.0, abs=0.001)
         assert stats.time_per_output_token_ms == pytest.approx(
             1000 * last / 16, abs=0.001
+        )
+
+    @pytest.mark.regression
+    def test_itl_ignores_late_usage_chunk_after_finish(self):
+        """
+        Multi-token chunks plus a usage chunk that arrives well after the
+        finish_reason chunk must not inflate ITL: the finish timestamp is
+        used, not the later usage/[DONE] arrival.
+
+        ## WRITTEN BY AI ##
+        """
+        # 8 chunks of 2 tokens every 20 ms, finish chunk 20 ms later,
+        # usage chunk 500 ms after that. usage=17 (16 content + EOS).
+        first = 0.100
+        last_content = first + (8 - 1) * 0.020
+        finish = last_content + 0.020
+        usage_arrival = finish + 0.500
+        timings = RequestTimings(
+            request_start=0.0,
+            first_request_iteration=first,
+            first_token_iteration=first,
+            last_token_iteration=last_content,
+            last_request_iteration=usage_arrival,
+            finish_iteration=finish,
+            token_iterations=16,
+            request_end=usage_arrival,
+        )
+        stats = GenerativeRequestStats(
+            request_id="r",
+            info=RequestInfo(request_id="r", timings=timings),
+            input_metrics=UsageMetrics(text_tokens=26),
+            output_metrics=UsageMetrics(text_tokens=17),
+        )
+
+        assert stats.inter_token_latency_ms == pytest.approx(
+            1000 * (finish - first) / 16, abs=0.001
+        )
+        assert stats.time_per_output_token_ms == pytest.approx(
+            1000 * finish / 17, abs=0.001
+        )
+
+    @pytest.mark.regression
+    def test_itl_falls_back_without_finish_iteration(self):
+        """
+        Backends that never record a finish event keep using the last
+        content token, even when usage counts an extra token.
+
+        ## WRITTEN BY AI ##
+        """
+        first = 0.100
+        last = first + (16 - 1) * 0.010
+        timings = RequestTimings(
+            request_start=0.0,
+            first_token_iteration=first,
+            last_token_iteration=last,
+            last_request_iteration=last + 0.500,
+            token_iterations=16,
+            request_end=last + 0.500,
+        )
+        stats = GenerativeRequestStats(
+            request_id="r",
+            info=RequestInfo(request_id="r", timings=timings),
+            input_metrics=UsageMetrics(text_tokens=26),
+            output_metrics=UsageMetrics(text_tokens=17),
+        )
+
+        assert stats.inter_token_latency_ms == pytest.approx(
+            1000 * (last - first) / 16, abs=0.001
         )
 
 

@@ -764,6 +764,7 @@ class VLLMPythonAsyncBackend(Backend):
                     request_output.outputs
                     and request_output.outputs[0].finish_reason is not None
                 ):
+                    request_info.timings.finish_iteration = iter_time
                     break
 
                 if stream:

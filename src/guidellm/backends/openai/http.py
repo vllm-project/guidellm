@@ -377,6 +377,10 @@ class OpenAIHTTPBackend(Backend):
                     request_info.timings.request_iterations += 1
 
                     iterations = request_handler.add_streaming_line(chunk)
+                    if request_info.timings.finish_iteration is None and getattr(
+                        request_handler, "finish_reason_received", False
+                    ):
+                        request_info.timings.finish_iteration = iter_time
                     if iterations is None or iterations <= 0 or end_reached:
                         end_reached = end_reached or iterations is None
                         if end_reached:
