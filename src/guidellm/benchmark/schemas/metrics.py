@@ -101,6 +101,13 @@ class SchedulerMetrics(StandardBaseDict):
             "from the request generator and actually yielding it (seconds)"
         ),
     )
+    worker_loop_lag: DistributionSummary = Field(
+        default_factory=lambda: DistributionSummary.from_values([]),
+        description=(
+            "Distribution of how late a timer fired on the worker event loops "
+            "while they processed requests (seconds)"
+        ),
+    )
     queued_time_avg: float = Field(
         description="Avg time requests spent in the queue (seconds)"
     )
@@ -167,6 +174,9 @@ class SchedulerMetrics(StandardBaseDict):
             # Scheduler internal performance timings
             generation_delay=DistributionSummary.from_values(
                 scheduler_state.generation_delay_samples
+            ),
+            worker_loop_lag=DistributionSummary.from_values(
+                scheduler_state.worker_loop_lag_samples
             ),
             queued_time_avg=accumulator.scheduler_metrics.queued_time.mean or -1.0,
             resolve_start_delay_avg=(
