@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -1608,7 +1608,7 @@ def test_parse_gen_ai_messages_tool_call_parts():
         ("2024-01-01T00:00:00+00:00", 1704067200.0),
         ("2024-01-01T00:00:00Z", 1704067200.0),
         ("2024-01-01T00:00:00", 1704067200.0),
-        (datetime(2024, 1, 1, tzinfo=timezone.utc), 1704067200.0),
+        (datetime(2024, 1, 1, tzinfo=UTC), 1704067200.0),
     ],
 )
 def test_parse_span_timestamp(value, expected):

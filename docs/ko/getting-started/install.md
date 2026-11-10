@@ -41,25 +41,25 @@ GuideLLM의 특정 버전이 필요한 경우 설치 시 버전 번호를 지정
 pip install guidellm==0.2.0
 ```
 
-### 3. Main Branch의 소스 코드에서 설치
+### 3. Main 브랜치의 소스 코드에서 설치
 
-Main Branch에서 GuideLLM의 최신 개발 버전을 설치하려면 다음 명령어를 실행하세요:
+Main 브랜치에서 GuideLLM의 최신 개발 버전을 설치하려면 다음 명령어를 실행하세요:
 
 ```bash
 pip install git+https://github.com/vllm-project/guidellm.git
 ```
 
-이 명령어는 Repository를 복제하고 main 브랜치에서 GuideLLM을 직접 설치합니다.
+이 명령어는 저장소를 복제하고 main 브랜치에서 GuideLLM을 직접 설치합니다.
 
-### 4. 특정 Branch에서 설치
+### 4. 특정 브랜치에서 설치
 
-특정 Branch(예: `feature-branch`)에서 GuideLLM을 설치하려면 다음 명령어를 실행하세요:
+특정 브랜치(예: `feature-branch`)에서 GuideLLM을 설치하려면 다음 명령어를 실행하세요:
 
 ```bash
 pip install git+https://github.com/vllm-project/guidellm.git@feature-branch
 ```
 
-`feature-branch`를 설치하려는 Branch 이름으로 변경하세요.
+`feature-branch`를 설치하려는 브랜치 이름으로 변경하세요.
 
 ### 5. 로컬에 복제한 저장소에서 설치
 
@@ -91,4 +91,4 @@ vLLM Python 백엔드(프로세스 내 추론)를 사용하려면 [vLLM Python �
 
 ## 문제 해결
 
-설치 중 문제가 발생하면 Python과 pip 버전이 사전 요구 사항을 충족하는지 확인하세요. 일반적인 실행 오류에 대한 해결 방법(debug logging, tokenizer loading, macOS 작업 프로세스의 비정상 종료)은 [문제 해결 가이드(영문)](../../guides/troubleshooting.md)를 참고하세요. 추가 도움이 필요하면 [GitHub Issues](https://github.com/vllm-project/guidellm/issues) 페이지를 참고하세요.
+설치 중 문제가 발생하면 Python과 pip 버전이 사전 요구 사항을 충족하는지 확인하세요. 일반적인 실행 오류에 대한 해결 방법(디버그 logging, 토크나이저 로딩, macOS 작업 프로세스의 비정상 종료)은 [문제 해결 가이드(영문)](../../guides/troubleshooting.md)를 참고하세요. 추가 도움이 필요하면 [GitHub Issues](https://github.com/vllm-project/guidellm/issues) 페이지를 참고하세요.

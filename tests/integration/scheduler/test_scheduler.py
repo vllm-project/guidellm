@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 import uuid
 from collections import defaultdict
 from functools import wraps
@@ -20,10 +21,13 @@ from guidellm.scheduler import (
     SchedulerState,
     SchedulingStrategy,
     SynchronousStrategy,
+    worker_group,
 )
+from guidellm.scheduler.loop_lag import LoopLagHistograms
 from guidellm.scheduler.schemas import ConversationGraph, ConversationNode
 from guidellm.schemas import RequestInfo, RequestSettings
 from guidellm.schemas.scheduler import MaxRequestsConstraintArgs
+from guidellm.settings import settings
 
 
 def async_timeout(delay: float):
@@ -212,3 +216,97 @@ async def test_scheduler_run_integration(
             ["queued", "in_progress", "errored"],
             ["queued", "pending", "in_progress"],
         )
+
+
+def _block_event_loop(seconds: float) -> None:
+    """Hold the event loop the way a CPU-starved worker does."""
+    time.sleep(seconds)
+
+
+class _LoopBlockingBackend(MockBackend):
+    """Hold the worker's event loop for each request, as a CPU-starved worker does."""
+
+    def __init__(self, block: float):
+        super().__init__(error_rate=0.0)
+        self._block = block
+
+    async def resolve(self, request: MockRequest, request_info, request_history):
+        await asyncio.sleep(0.02)
+        _block_event_loop(self._block)
+        yield f"response_for_{request.payload}", request_info
+
+
+class _EngineTimedBackend(_LoopBlockingBackend):
+    """Backend whose token times do not come from the worker's event loop."""
+
+    stamps_tokens_on_event_loop = False
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@async_timeout(60.0)
+@pytest.mark.parametrize(
+    ("backend", "low", "high"),
+    [
+        (_LoopBlockingBackend(block=0.0), 0.0, 0.1),
+        (_LoopBlockingBackend(block=0.2), 0.1, 1.0),
+    ],
+)
+async def test_scheduler_reports_worker_loop_lag(
+    monkeypatch: pytest.MonkeyPatch, backend: MockBackend, low: float, high: float
+):
+    """Report how long workers held their event loops in the final state.
+
+    ## WRITTEN BY AI ##
+    """
+    monkeypatch.setattr(settings, "loop_lag_interval", 0.01)
+    created: list[LoopLagHistograms] = []
+
+    def recording_histograms(*args: Any) -> LoopLagHistograms:
+        histograms = LoopLagHistograms(*args)
+        created.append(histograms)
+        return histograms
+
+    monkeypatch.setattr(worker_group, "LoopLagHistograms", recording_histograms)
+    if hasattr(Scheduler, "singleton_instance"):
+        Scheduler.singleton_instance = None
+    last_state = None
+
+    async for _, _, _, state in Scheduler().run(
+        requests=[_single_request_graph(f"req_{ind}") for ind in range(5)],
+        backend=backend,
+        strategy=SynchronousStrategy(),
+        env=NonDistributedEnvironment(),
+        max_requests=MaxNumberConstraint(args=MaxRequestsConstraintArgs(count=5)),
+    ):
+        last_state = state
+
+    assert [histograms.interval for histograms in created] == [0.01]
+    assert last_state is not None
+    assert sum(count for _, count in last_state.worker_loop_lag_samples) > 0
+    assert low <= max(lag for lag, _ in last_state.worker_loop_lag_samples) < high
+
+
+@pytest.mark.sanity
+@pytest.mark.asyncio
+@async_timeout(60.0)
+async def test_scheduler_skips_loop_lag_for_engine_timed_backends():
+    """Leave loop lag empty for a backend that does not stamp tokens on the loop.
+
+    ## WRITTEN BY AI ##
+    """
+    if hasattr(Scheduler, "singleton_instance"):
+        Scheduler.singleton_instance = None
+    last_state = None
+
+    async for _, _, _, state in Scheduler().run(
+        requests=[_single_request_graph(f"req_{ind}") for ind in range(3)],
+        backend=_EngineTimedBackend(block=0.0),
+        strategy=SynchronousStrategy(),
+        env=NonDistributedEnvironment(),
+        max_requests=MaxNumberConstraint(args=MaxRequestsConstraintArgs(count=3)),
+    ):
+        last_state = state
+
+    assert last_state is not None
+    assert last_state.worker_loop_lag_samples == []

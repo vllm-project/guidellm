@@ -7,6 +7,7 @@ queue_rules:
       - check-success = update-description
       - -draft
       - -closed
+      - label != hold
     merge_method: squash
     branch_protection_injection_mode: merge
     batch_size: 1
@@ -43,3 +44,4 @@ merge_protections_settings:
     - "#approved-reviews-by >= 2"
     - "#changes-requested-reviews-by = 0"
     - "#review-threads-unresolved = 0"
+    - check-success = certification-check

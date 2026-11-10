@@ -6,11 +6,10 @@ import inspect
 import multiprocessing as mp
 import random
 import time
-from dataclasses import dataclass
-from multiprocessing import Barrier, Event, Process
+from multiprocessing import Barrier, Event
 from multiprocessing.synchronize import Barrier as ProcessingBarrier
 from multiprocessing.synchronize import Event as ProcessingEvent
-from typing import Any, Generic, Literal
+from typing import Any, Generic
 
 import pytest
 import pytest_asyncio
@@ -22,6 +21,7 @@ from guidellm.scheduler import (
     WorkerProcess,
 )
 from guidellm.scheduler.dag import DAGExecutionState
+from guidellm.scheduler.loop_lag import LoopLagHistograms
 from guidellm.scheduler.schemas import (
     ConversationEdge,
     ConversationGraph,
@@ -32,20 +32,6 @@ from guidellm.settings import LoggingSettings
 from guidellm.utils.messaging import InterProcessMessagingQueue
 from guidellm.utils.pipe_stdout import PipeReaderThread
 from tests.unit.testing_utils import async_timeout, wait_until
-
-STANDARD_NUM_REQUESTS: int = 200
-
-
-@dataclass
-class TimingsBounds:
-    exact: float | None = None
-    lower: float | None = None
-    upper: float | None = None
-    prev_request: Literal["greater", "greater_equal", "less", "less_equal"] | None = (
-        None
-    )
-    tolerance: float = 10e-4
-    actual_tolerance: float = 10e-4
 
 
 class MockRequestTimings(RequestTimings):
@@ -305,369 +291,6 @@ class TestWorkerProcess:
             with pytest.raises(TypeError):
                 WorkerProcess(**kwargs)
 
-    @pytest.mark.xfail(reason="old and broken", run=False)
-    @pytest.mark.smoke
-    @pytest.mark.asyncio
-    @async_timeout(15)
-    @pytest.mark.parametrize(
-        ("num_requests", "num_canceled", "error_rate"),
-        [
-            (20, 0, 0),
-            (STANDARD_NUM_REQUESTS, 20, 0.5),
-        ],
-    )
-    async def test_run_async_lifecycle(  # noqa: C901, PLR0912
-        self,
-        valid_instances: tuple[WorkerProcess, InterProcessMessagingQueue, dict],
-        num_requests: int,
-        num_canceled: int,
-        error_rate: float,
-    ):
-        """Test the asynchronous request processing of WorkerProcess."""
-        instance, main_messaging, constructor_args = valid_instances
-        instance.backend.request_error_rate = error_rate
-        instance_task = asyncio.create_task(instance.run_async())
-
-        try:
-            await asyncio.to_thread(instance.startup_barrier.wait)
-            start_time = time.time()
-
-            # Send regular requests
-            requests_tracker = {}
-            for index in range(num_requests):
-                request = f"request_{index}"
-                request_info = RequestInfo(
-                    request_id=request,
-                    scheduler_start_time=start_time,
-                    scheduler_process_id=0,
-                )
-                request_info.scheduler_timings.queued = time.time()
-                requests_tracker[request] = {
-                    "sent": True,
-                    "received_pending": 0,
-                    "received_in_progress": 0,
-                    "received_resolved": 0,
-                }
-                await main_messaging.put(
-                    (request, request_info),
-                    timeout=2.0,
-                )
-
-            # Process regular requests
-            error_count = 0
-            for _ in range(num_requests * 3):
-                # Each request must have a pending, in_progress, and resolution
-                response, request, request_info = await main_messaging.get(timeout=2.0)
-                assert request is not None
-                assert request_info is not None
-                assert request_info.request_id is not None
-                assert request_info.status is not None
-                assert request_info.scheduler_node_id > -1
-                assert request_info.scheduler_process_id > -1
-                assert request_info.scheduler_start_time == start_time
-                assert request_info.scheduler_timings is not None
-                assert request_info.scheduler_timings.targeted_start is not None
-                assert request_info.scheduler_timings.targeted_start >= start_time
-
-                if request_info.status == "pending":
-                    requests_tracker[request]["received_pending"] += 1
-                    assert request_info.scheduler_timings.dequeued is not None
-                    assert (
-                        request_info.scheduler_timings.dequeued
-                        >= request_info.scheduler_timings.targeted_start
-                    )
-                elif request_info.status == "in_progress":
-                    requests_tracker[request]["received_in_progress"] += 1
-                    assert request_info.scheduler_timings.scheduled_at is not None
-                    assert (
-                        request_info.scheduler_timings.scheduled_at
-                        >= request_info.scheduler_timings.dequeued
-                    )
-                    assert request_info.scheduler_timings.resolve_start is not None
-                    assert (
-                        request_info.scheduler_timings.resolve_start
-                        >= request_info.scheduler_timings.scheduled_at
-                    )
-                elif request_info.status == "completed":
-                    assert response == f"response_for_{request}"
-                    requests_tracker[request]["received_resolved"] += 1
-                    assert request_info.scheduler_timings.resolve_end is not None
-                    assert (
-                        request_info.scheduler_timings.resolve_end
-                        > request_info.scheduler_timings.resolve_start
-                    )
-                elif request_info.status == "errored":
-                    assert response is None
-                    requests_tracker[request]["received_resolved"] += 1
-                    error_count += 1
-                    assert request_info.scheduler_timings.resolve_end is not None
-                    assert (
-                        request_info.scheduler_timings.resolve_end
-                        > request_info.scheduler_timings.resolve_start
-                    )
-                else:
-                    raise ValueError(f"Unexpected status: {request_info.status}")
-
-            # Ensure correct error rate
-            assert float(error_count) / num_requests == pytest.approx(
-                error_rate, rel=0.2
-            )
-
-            # Ensure no extra statuses
-            with pytest.raises(asyncio.TimeoutError):
-                await main_messaging.get(timeout=0.5)
-
-            # Send cancel requests
-            for index in range(num_canceled):
-                cancel_request = f"cancel_request_{index}"
-                cancel_info = RequestInfo(
-                    request_id=request,
-                    scheduler_start_time=start_time,
-                    scheduler_process_id=0,
-                )
-                cancel_info.scheduler_timings.queued = time.time()
-                requests_tracker[cancel_request] = {
-                    "sent": True,
-                    "received_pending": 0,
-                    "received_in_progress": 0,
-                    "received_resolved": 0,
-                }
-                await main_messaging.put(
-                    (cancel_request, cancel_info),
-                    timeout=2.0,
-                )
-
-            # Receive expected updates for cancel up to async number
-            for _ in range(2 * min(num_canceled, instance.async_limit)):
-                # Each request (up to async limit) will have pending, in_progress
-                response, request, request_info = await main_messaging.get(timeout=2.0)
-                if request_info.status == "pending":
-                    requests_tracker[request]["received_pending"] += 1
-                elif request_info.status == "in_progress":
-                    requests_tracker[request]["received_in_progress"] += 1
-                    error_count += 1
-                else:
-                    raise ValueError(f"Unexpected status: {request_info.status}")
-
-            # Signal constraints reached to start canceling
-            instance.constraint_reached_event.set()
-            await asyncio.sleep(0)
-
-            # Receive the remaining canceled updates
-            for _ in range(num_canceled):
-                # All cancel requests should resolve with canceled (no other statuses)
-                response, request, request_info = await main_messaging.get(timeout=2.0)
-                assert request is not None
-                assert request_info is not None
-                assert request_info.request_id is not None
-                assert request_info.status is not None
-                assert request_info.scheduler_node_id > -1
-                assert request_info.scheduler_process_id > -1
-                assert request_info.scheduler_start_time == start_time
-                assert request_info.scheduler_timings is not None
-
-                if request_info.status == "cancelled":
-                    requests_tracker[request]["received_resolved"] += 1
-                    assert request_info.scheduler_timings.resolve_end is not None
-                    assert request_info.scheduler_timings.resolve_end > start_time
-                else:
-                    raise ValueError(f"Unexpected status: {request_info.status}")
-
-            # Ensure no extra statuses
-            with pytest.raises(asyncio.TimeoutError):
-                await main_messaging.get(timeout=0.5)
-
-            # Signal requests stop now that all requests have been processed
-            instance.requests_generated_event.set()
-            await asyncio.sleep(0)
-
-            # Validate all the requests are correct
-            for request_key in [f"request_{index}" for index in range(num_requests)]:
-                assert request_key in requests_tracker
-                assert requests_tracker[request_key]["sent"]
-                assert requests_tracker[request_key]["received_pending"] == 1
-                assert requests_tracker[request_key]["received_resolved"] == 1
-                if request_key.startswith("request"):
-                    assert requests_tracker[request_key]["received_in_progress"] == 1
-        finally:
-            # Shut down
-            instance.shutdown_event.set()
-            await asyncio.wait_for(instance_task, timeout=2.0)
-
-    @pytest.mark.xfail(reason="old and broken", run=False)
-    @pytest.mark.smoke
-    @pytest.mark.asyncio
-    @async_timeout(15)
-    @pytest.mark.parametrize(
-        ("request_timings", "timing_bounds"),
-        [
-            (
-                RequestTimings(offset=0.1),
-                [
-                    TimingsBounds(lower=0.1, prev_request="greater_equal")
-                    for _ in range(STANDARD_NUM_REQUESTS)
-                ],
-            ),
-            (
-                RequestTimings(offset=0.05),
-                [
-                    TimingsBounds(lower=0.05, upper=0.05, actual_tolerance=1.0)
-                    for _ in range(STANDARD_NUM_REQUESTS)
-                ],
-            ),
-            (
-                RequestTimings(rate=100, offset=0.2),
-                [
-                    TimingsBounds(
-                        exact=0.2 + ind * 0.01,
-                        lower=0.2,
-                        prev_request="greater",
-                        actual_tolerance=10e-2,
-                    )
-                    for ind in range(STANDARD_NUM_REQUESTS)
-                ],
-            ),
-            (
-                RequestTimings(rate=200, offset=0.01),
-                [
-                    TimingsBounds(lower=0.01, prev_request="greater")
-                    for ind in range(STANDARD_NUM_REQUESTS)
-                ],
-            ),
-        ],
-        ids=[
-            "LastCompletion",
-            "NoDelay",
-            "ConstantRate",
-            "PoissonRate",
-        ],
-    )
-    async def test_run_with_timings(  # noqa: C901, PLR0912
-        self,
-        valid_instances: tuple[WorkerProcess, InterProcessMessagingQueue, dict],
-        request_timings: RequestTimings,
-        timing_bounds: list[TimingsBounds],
-    ):
-        instance, main_messaging, constructor_args = valid_instances
-        num_requests = STANDARD_NUM_REQUESTS
-        assert len(timing_bounds) == num_requests
-
-        # Start process
-        process = Process(target=instance.run)
-        process.start()
-
-        try:
-            await asyncio.to_thread(instance.startup_barrier.wait)
-            start_time = time.time() + 0.1
-
-            # Send regular requests
-            requests_tracker = {}
-            for ind in range(num_requests):
-                request = f"request_{ind}"
-                requests_tracker[request] = {
-                    "sent": True,
-                    "target_start_time": -1,
-                    "actual_start_time": -1,
-                    "received_pending": 0,
-                    "received_in_progress": 0,
-                    "received_resolved": 0,
-                }
-                await main_messaging.put(
-                    (
-                        request,
-                        RequestInfo(scheduler_start_time=start_time),
-                    ),
-                    timeout=2.0,
-                )
-
-            # Process regular requests
-            for _ in range(num_requests * 3):
-                # Each request must have pending, in_progress, and resolved statuses
-                response, request, request_info = await main_messaging.get(timeout=2.0)
-                if request_info.status == "pending":
-                    requests_tracker[request]["received_pending"] += 1
-                elif request_info.status == "in_progress":
-                    requests_tracker[request]["received_in_progress"] += 1
-                    requests_tracker[request]["target_start_time"] = (
-                        request_info.timings.targeted_start
-                    )
-                    requests_tracker[request]["actual_start_time"] = (
-                        request_info.timings.resolve_start
-                    )
-                elif request_info.status == "completed":
-                    assert response == f"response_for_{request}"
-                    requests_tracker[request]["received_resolved"] += 1
-                else:
-                    raise ValueError(f"Unexpected status: {request_info.status}")
-
-            # Ensure no extra statuses
-            with pytest.raises(asyncio.TimeoutError):
-                await main_messaging.get(timeout=0.1)
-
-            # Trigger stopping for constraints and requests
-            instance.requests_generated_event.set()
-            instance.constraint_reached_event.set()
-            await asyncio.sleep(0)
-
-            # Validate request values are correct
-            for ind in range(num_requests):
-                request = f"request_{ind}"
-                assert requests_tracker[request]["received_pending"] == 1
-                assert requests_tracker[request]["received_in_progress"] == 1
-                assert requests_tracker[request]["received_resolved"] == 1
-
-                bounds = timing_bounds[ind]
-                target_offset = (
-                    requests_tracker[request]["target_start_time"] - start_time
-                )
-                actual_offset = (
-                    requests_tracker[request]["actual_start_time"] - start_time
-                )
-                prev_offset = (
-                    requests_tracker[f"request_{ind - 1}"]["target_start_time"]
-                    - start_time
-                    if ind > 0
-                    else None
-                )
-
-                if bounds.exact is not None:
-                    assert target_offset == pytest.approx(
-                        bounds.exact, rel=bounds.tolerance
-                    )
-                    assert target_offset == pytest.approx(
-                        actual_offset, rel=bounds.actual_tolerance or bounds.tolerance
-                    )
-                if bounds.lower is not None:
-                    assert target_offset >= bounds.lower - bounds.tolerance
-                    assert actual_offset >= bounds.lower - (
-                        bounds.actual_tolerance or bounds.tolerance
-                    )
-                if bounds.upper is not None:
-                    assert target_offset <= bounds.upper + bounds.tolerance
-                    assert actual_offset <= bounds.upper + (
-                        bounds.actual_tolerance or bounds.tolerance
-                    )
-                if bounds.prev_request is not None and prev_offset is not None:
-                    if bounds.prev_request == "greater":
-                        assert target_offset > prev_offset - bounds.tolerance
-                    elif bounds.prev_request == "greater_equal":
-                        assert target_offset >= prev_offset - bounds.tolerance
-                    elif bounds.prev_request == "less":
-                        assert target_offset < prev_offset + bounds.tolerance
-                    elif bounds.prev_request == "less_equal":
-                        assert target_offset <= prev_offset + bounds.tolerance
-        finally:
-            # Trigger shutdown
-            instance.shutdown_event.set()
-            await asyncio.to_thread(process.join, timeout=2.0)
-
-            if process.is_alive():
-                process.terminate()
-                await asyncio.to_thread(process.join, timeout=2.0)
-            assert process.exitcode <= 0, (
-                f"Process exited with error code: {process.exitcode}"
-            )
-
     @pytest.mark.regression
     @pytest.mark.asyncio
     @async_timeout(5)
@@ -765,7 +388,7 @@ class MockMessaging:
                 self._item_available.clear()
             return item
         await asyncio.sleep(timeout)
-        raise asyncio.TimeoutError("Mock queue empty")
+        raise TimeoutError("Mock queue empty")
 
     async def put(self, item, timeout=None):
         """Mock put to queue."""
@@ -1216,7 +839,7 @@ class _ChildMockMessaging:
         self.poll_interval = 0.01
 
     async def get(self, timeout=None):
-        raise asyncio.TimeoutError
+        raise TimeoutError
 
     def put_sync(self, item, timeout=-1):
         pass
@@ -1429,3 +1052,126 @@ class TestWorkerProcessRun:
             assert message in captured.err
         finally:
             reader.stop()
+
+
+def _block_event_loop(seconds: float) -> None:
+    """Hold the event loop the way a CPU-starved worker does."""
+    time.sleep(seconds)
+
+
+class _LoopBlockingBackend(MockBackend):
+    """Block the event loop while a request waits for its first token."""
+
+    def __init__(self, block: float):
+        super().__init__(lifecycle_delay=0.0, resolve_delay=0.0)
+        self.block = block
+
+    async def resolve(self, request, request_info, request_history):
+        request_info.timings.request_start = time.time()
+        await asyncio.sleep(0.05)
+        _block_event_loop(self.block)
+        request_info.timings.first_token_iteration = time.time()
+        yield None, request_info
+        await asyncio.sleep(0.05)
+        request_info.timings.request_end = time.time()
+        yield f"response_for_{request}", request_info
+
+
+def _loop_lag_worker(
+    backend: MockBackend, loop_lag: LoopLagHistograms
+) -> WorkerProcess:
+    strategy = SynchronousStrategy()
+    strategy.init_processes_timings(
+        worker_count=1, max_concurrency=5, mp_context=mp.get_context()
+    )
+    strategy.init_processes_start(time.time())
+    return WorkerProcess(
+        worker_index=0,
+        messaging=MockMessaging(worker_index=0),
+        backend=backend,
+        strategy=strategy,
+        async_limit=5,
+        fut_scheduling_time_limit=10.0,
+        startup_barrier=Barrier(2),
+        requests_generated_event=Event(),
+        constraint_reached_event=Event(),
+        shutdown_event=Event(),
+        error_event=Event(),
+        stdout_conn=None,
+        stderr_conn=None,
+        parent_logger=None,
+        loop_lag=loop_lag,
+    )
+
+
+async def _run_one_request(worker: WorkerProcess, cancel_requests_loop=None) -> None:
+    """Process one request through ``_process_requests``."""
+
+    async def noop():
+        pass
+
+    worker._processing_startup = noop
+    worker._cancel_requests_loop = cancel_requests_loop or noop
+    worker._processing_shutdown = noop
+    await worker.messaging.put(
+        ConversationGraph(
+            graph_id="loop_lag",
+            nodes={"n0": ConversationNode(node_id="n0", agent_id="a", request="r0")},
+            edges=[],
+            request_infos={"n0": RequestInfo(request_id="id0", node_id="n0")},
+        )
+    )
+    task = asyncio.create_task(worker._process_requests())
+    await wait_until(
+        lambda: any(
+            info.status == "completed" for _, _, info in worker.messaging._sent_items
+        )
+    )
+    worker.constraint_reached_event.set()
+    await task
+
+
+class TestWorkerLoopLag:
+    """Event-loop lag recorded by a worker while it processes requests."""
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @async_timeout(5)
+    @pytest.mark.parametrize(
+        ("block", "low", "high"), [(0.0, 0.0, 0.05), (0.2, 0.1, 1.0)]
+    )
+    async def test_worker_records_loop_lag_while_processing(
+        self, block: float, low: float, high: float
+    ):
+        """Record how long a backend held the event loop during a request.
+
+        ## WRITTEN BY AI ##
+        """
+        histograms = LoopLagHistograms(mp.get_context("spawn"), 1, 0.01)
+
+        await _run_one_request(
+            _loop_lag_worker(_LoopBlockingBackend(block), histograms)
+        )
+
+        assert low <= max(value for value, _ in histograms.samples()) < high
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    @async_timeout(5)
+    async def test_worker_stops_recording_before_cancelling_requests(self):
+        """Leave lag after request processing ends out of the histogram.
+
+        ## WRITTEN BY AI ##
+        """
+        histograms = LoopLagHistograms(mp.get_context("spawn"), 1, 0.01)
+
+        async def blocking_cancel_loop():
+            _block_event_loop(0.2)
+            await asyncio.sleep(0.05)
+
+        await _run_one_request(
+            _loop_lag_worker(_LoopBlockingBackend(0.0), histograms),
+            cancel_requests_loop=blocking_cancel_loop,
+        )
+
+        assert max(value for value, _ in histograms.samples()) < 0.1

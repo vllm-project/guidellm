@@ -2,6 +2,15 @@
 Centralized benchmark argument schemas for GuideLLM.
 """
 
+from guidellm.schemas.benchmark.collectors import (
+    DEFAULT_VLLM_METRICS,
+    CollectorArgs,
+    PrometheusCollectorArgs,
+    PrometheusCounterSeries,
+    PrometheusGaugeSeries,
+    PrometheusHistogramSeries,
+    PrometheusSummary,
+)
 from guidellm.schemas.benchmark.entrypoints import (
     BenchmarkArgs,
     BenchmarkMetadata,
@@ -11,6 +20,7 @@ from guidellm.schemas.benchmark.entrypoints import (
     args_model_config,
     default_kind,
     default_kind_list,
+    merge_scenario_files,
 )
 from guidellm.schemas.benchmark.goodput import GoodputSLO
 from guidellm.schemas.benchmark.outputs import (
@@ -43,6 +53,7 @@ from guidellm.schemas.benchmark.warnings import (
 )
 
 __all__ = [
+    "DEFAULT_VLLM_METRICS",
     "SCENARIO_DIR",
     "AsyncProfileArgs",
     "BenchmarkArgs",
@@ -50,6 +61,7 @@ __all__ = [
     "BenchmarkOutputArgs",
     "BenchmarkScenario",
     "CSVBenchmarkOutputArgs",
+    "CollectorArgs",
     "ConcurrentProfileArgs",
     "ConsoleBenchmarkOutputArgs",
     "GenerativeMetricsArgs",
@@ -62,6 +74,11 @@ __all__ = [
     "MetricsArgs",
     "PlotBenchmarkOutputArgs",
     "ProfileArgs",
+    "PrometheusCollectorArgs",
+    "PrometheusCounterSeries",
+    "PrometheusGaugeSeries",
+    "PrometheusHistogramSeries",
+    "PrometheusSummary",
     "RandomArgs",
     "ReplayProfileArgs",
     "StaticRandomArgs",
@@ -76,4 +93,5 @@ __all__ = [
     "default_kind",
     "default_kind_list",
     "get_builtin_scenarios",
+    "merge_scenario_files",
 ]

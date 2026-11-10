@@ -319,6 +319,7 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         self.print_request_counts_table(report)
         self.print_request_latency_table(report)
         self.print_server_throughput_table(report)
+        self.print_slo_attainment_table(report)
         self.print_knee_profile_results(report)
         self.print_warnings(report)
 
@@ -757,12 +758,78 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                     name="Per Sec",
                     types=("mean",),
                 )
+                columns.add_stats(
+                    benchmark.metrics.output_token_goodput,
+                    status="successful",
+                    group="Goodput",
+                    name="Output Tok/Sec",
+                    types=("mean",),
+                )
 
         headers, values = columns.get_table_data()
         self.console.print("\n")
         self.console.print_table(
             headers, values, title="Server Throughput Statistics (All Requests)"
         )
+
+    def print_slo_attainment_table(self, report: GenerativeBenchmarksReport):
+        """
+        Print independent objective attainment with its evaluated population.
+
+        :param report: The benchmark report containing objectives and metrics
+        """
+        columns = ConsoleTableColumnsCollection()
+        for benchmark in report.benchmarks:
+            if benchmark.config.slo is None:
+                continue
+            by_metric = benchmark.metrics.slo_attainment_by_metric or {}
+            for index, (name, threshold) in enumerate(
+                benchmark.config.slo.model_dump(exclude_none=True).items()
+            ):
+                summary = by_metric.get(name)
+                attainment = None if summary is None else summary.attainment
+                columns.add_value(
+                    str(benchmark.config.strategy) if index == 0 else "",
+                    group="Benchmark",
+                    name="Strategy",
+                    type_="text",
+                )
+                columns.add_value(
+                    name.removesuffix("_ms").upper(),
+                    group="SLO",
+                    name="Objective",
+                    type_="text",
+                )
+                columns.add_value(threshold, group="SLO", name="Limit")
+                columns.add_value(
+                    "ms/token" if name == "tpot_ms" else "ms",
+                    group="SLO",
+                    name="Units",
+                    type_="text",
+                )
+                columns.add_value(
+                    None if summary is None else summary.conforming_requests,
+                    group="Requests",
+                    name="Passing",
+                    precision=0,
+                )
+                columns.add_value(
+                    None if summary is None else summary.determined_requests,
+                    group="Requests",
+                    name="Evaluated",
+                    precision=0,
+                )
+                columns.add_value(
+                    None if attainment is None else attainment * 100.0,
+                    group="Requests",
+                    name="Attainment",
+                    units="%",
+                )
+        if not columns:
+            return
+        headers, values = columns.get_table_data()
+        self.console.print("\n")
+        self.console.print_table(headers, values, title="Per-Objective SLO Attainment")
 
     def _print_modality_table(
         self,

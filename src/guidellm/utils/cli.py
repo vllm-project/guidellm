@@ -87,6 +87,9 @@ def parse_arguments(
             try:
                 value_parsed = arg_string.loads(value)
             # If arg_string parsing fails, attempt to parse the original string
+            except arg_string.ArgStringValueError as e:
+                # A key=value string with a malformed value, not a plain string
+                raise click.BadParameter(str(e)) from e
             except arg_string.ArgStringParseError as e:
                 if not yaml_parsed:
                     raise click.BadParameter(
@@ -171,8 +174,9 @@ def overrides_to_benchmarks(*overrides: tuple[str, list[Any]]) -> list[dict[str,
     """
     Convert a list of (benchmark_name, override_list) tuples into a list of benchmarks
 
-    Resulting benchmark list is as long as the longest override list.
-    None values are omitted.
+    Resulting benchmark list is as long as the longest override list. A blank
+    entry, or a position past the end of a shorter list, reuses the last value
+    given for that override. Positions before an override's first value are omitted.
 
     Example::
         >>> overrides_to_benchmarks(
@@ -182,17 +186,19 @@ def overrides_to_benchmarks(*overrides: tuple[str, list[Any]]) -> list[dict[str,
         [
             {"profile.streams": 1, "constraint[0].seconds": 10}
             {"profile.streams": 2, "constraint[0].seconds": 20}
-            {"profile.streams": 3}
+            {"profile.streams": 3, "constraint[0].seconds": 20}
             {"profile.streams": 4, "constraint[0].seconds": 30}
         ]
     """
-    benchmarks: list[dict[str, Any]] = []
+    num_benchmarks = max((len(values) for _, values in overrides), default=0)
+    benchmarks: list[dict[str, Any]] = [{} for _ in range(num_benchmarks)]
     for name, values in overrides:
-        for i, value in enumerate(values):
-            if len(benchmarks) <= i:
-                benchmarks.append({})
-            if value is not BLANK:
-                benchmarks[i][name] = value
+        last_value: Any = BLANK
+        for i, benchmark in enumerate(benchmarks):
+            if i < len(values) and values[i] is not BLANK:
+                last_value = values[i]
+            if last_value is not BLANK:
+                benchmark[name] = last_value
     return benchmarks
 
 

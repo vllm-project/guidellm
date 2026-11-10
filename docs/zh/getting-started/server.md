@@ -31,7 +31,7 @@ vllm serve "neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16"
 
 ## **其他服务器**
 
-GuideLLM 支持任何 OpenAI 兼容服务器，例如 TGI、SG Lang 等。有关所有受支持后端的详细信息，请参阅英文版[后端文档](../../guides/backends.md)。
+GuideLLM 支持任何 OpenAI 兼容服务器，例如 TGI、SG Lang 等。有关所有受支持后端的详细信息，请参阅[后端指南](../guides/backends.md)。
 
 ## **验证服务器**
 

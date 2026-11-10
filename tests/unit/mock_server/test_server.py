@@ -1244,7 +1244,12 @@ async def huggingface_mock_server():
 
     ## WRITTEN BY AI ##
     """
-    chat_template = "{% for message in messages %}{{ message['content'] }}{% endfor %}"
+    # Concatenate like real templates, so list content raises instead of rendering.
+    chat_template = (
+        "{% for message in messages %}"
+        "{{ message['role'] + ': ' + message['content'] + ' ' }}"
+        "{% endfor %}"
+    )
     config = MockServerConfig(
         host="127.0.0.1",
         port=8015,
@@ -1326,3 +1331,63 @@ async def test_handles_requests_with_huggingface_processor(
 
     assert response.status_code == 200
     assert response.json()["usage"][usage_field] == len(tokenizer.encode(prompt_text))
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True], ids=("non_stream", "stream"))
+async def test_handles_list_content_with_huggingface_processor(
+    huggingface_mock_server, stream
+):
+    """Test list-content chat messages are counted by a Hugging Face tokenizer.
+
+    ## WRITTEN BY AI ##
+    """
+    server_url, config, tokenizer = huggingface_mock_server
+    texts = ["Hello world " * 10, "Second text part"]
+    expected_text = tokenizer.apply_chat_template(
+        [{"role": "user", "content": " ".join(texts)}], tokenize=False
+    )
+    expected_tokens = len(tokenizer.encode(expected_text))
+    payload = {
+        "model": config.model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": text} for text in texts],
+            }
+        ],
+        "max_tokens": 1,
+        "stream": stream,
+    }
+    if stream:
+        payload["stream_options"] = {"include_usage": True}
+
+    async with httpx2.AsyncClient() as client:
+        if not stream:
+            response = await client.post(
+                f"{server_url}/v1/chat/completions", json=payload, timeout=10.0
+            )
+            assert response.status_code == 200
+            usage = response.json()["usage"]
+        else:
+            async with client.stream(
+                "POST",
+                f"{server_url}/v1/chat/completions",
+                json=payload,
+                timeout=10.0,
+            ) as response:
+                assert response.status_code == 200
+                usage = None
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    chunk = json.loads(data_str)
+                    if chunk.get("usage"):
+                        usage = chunk["usage"]
+
+    assert usage is not None
+    assert usage["prompt_tokens"] == expected_tokens

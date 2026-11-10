@@ -97,8 +97,9 @@ Use `sample_size` to set the maximum number of requests **per status group** (co
 | `0`               | Strip all request data (stats only)                        |
 | `N` (e.g. `100`)  | Retain full data for N randomly sampled requests per group |
 
+To retain full request data for at most 100 randomly sampled requests per status group, use:
+
 ```bash
-# Keep full data for only 100 sampled requests per group
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=sweep \

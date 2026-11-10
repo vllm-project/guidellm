@@ -9,8 +9,8 @@ various scenarios including LLM inference benchmarking.
 
 from __future__ import annotations
 
-import asyncio
-from collections.abc import AsyncIterator
+import threading
+from collections.abc import AsyncIterator, Callable
 from itertools import chain
 from typing import Generic, Literal, Protocol, runtime_checkable
 
@@ -31,7 +31,7 @@ from guidellm.scheduler.worker_group import WorkerProcessGroup
 from guidellm.schemas import RequestInfo
 from guidellm.utils.singleton import ThreadSafeSingletonMixin
 
-__all__ = ["Scheduler"]
+__all__ = ["Scheduler", "prefetch_requests"]
 
 
 @runtime_checkable
@@ -44,20 +44,26 @@ class InfiniteDataset(Protocol):
         """
 
 
-def _prefetch_requests(
+def prefetch_requests(
     requests: DatasetIterT[RequestT],
     count: int | Literal["all"],
+    on_fetched: Callable[[int, int | None], None] | None = None,
+    stop_event: threading.Event | None = None,
 ) -> DatasetIterT[RequestT]:
     """
     Load request graphs until ``count`` request nodes are buffered.
 
     Graphs that cross the count are kept whole. A count of ``0`` returns
     ``requests`` unchanged. ``"all"`` loads every graph, and raises when the
-    dataset reports that it is infinite.
+    dataset reports that it is infinite. ``on_fetched`` is called
+    with the loaded node count and the target after each graph.
 
     :param requests: Dataset iterable of conversation graphs
     :param count: Number of request nodes to load, or ``"all"`` to load every
         request
+    :param on_fetched: Optional sync callback ``(loaded, target)``
+    :param stop_event: Optional event that stops prefetching before another
+        graph is loaded
     :return: Buffered graphs followed by the remainder of the dataset
     :raises ValueError: If ``count`` is ``"all"`` and the dataset is infinite
     """
@@ -68,26 +74,52 @@ def _prefetch_requests(
                 "Set data_loader.samples to a positive limit or choose a "
                 "finite dataset."
             )
+        iterator = iter(requests)
         buffered = []
         fetched = 0
-        for graph in requests:
+        while stop_event is None or not stop_event.is_set():
+            try:
+                graph = next(iterator)
+            except StopIteration:
+                break
             buffered.append(graph)
             fetched += len(graph.nodes)
+            if on_fetched is not None:
+                on_fetched(fetched, None)
         return buffered
 
     if count == 0:
         return requests
 
+    return _prefetch_finite_requests(
+        requests,
+        count,
+        on_fetched=on_fetched,
+        stop_event=stop_event,
+    )
+
+
+def _prefetch_finite_requests(
+    requests: DatasetIterT[RequestT],
+    count: int,
+    on_fetched: Callable[[int, int | None], None] | None = None,
+    stop_event: threading.Event | None = None,
+) -> DatasetIterT[RequestT]:
     iterator = iter(requests)
     buffered = []
     fetched = 0
-    while fetched < count:
+    while fetched < count and (stop_event is None or not stop_event.is_set()):
         try:
             graph = next(iterator)
         except StopIteration:
             break
         buffered.append(graph)
         fetched += len(graph.nodes)
+        if on_fetched is not None:
+            on_fetched(fetched, count)
+
+    if stop_event is not None and stop_event.is_set():
+        return buffered
 
     return chain(buffered, iterator)
 
@@ -175,11 +207,6 @@ class Scheduler(
                     local_strategy,
                     local_constraints,
                 ) = await env.sync_run_params(requests, strategy, constraints)
-                local_requests = await asyncio.to_thread(
-                    _prefetch_requests,
-                    local_requests,
-                    local_strategy.prefetch_count(),
-                )
 
                 # Setup the worker group, sync start with the environment
                 worker_group = WorkerProcessGroup[RequestT, ResponseT](
@@ -203,7 +230,7 @@ class Scheduler(
                         response, request, request_info, state
                     )
                     yield response, request, request_info, state
-            except Exception as err:  # noqa: BLE001
+            except Exception as err:
                 await env.sync_run_error(err)
                 raise err
             finally:

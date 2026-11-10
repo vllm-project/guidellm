@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, computed_field
 
 from guidellm.benchmark.schemas.accumulator import (
     GenerativeBenchmarkAccumulator,
@@ -24,6 +24,7 @@ from guidellm.schemas import (
     GenerativeRequestStats,
     SampleUncertainty,
     StandardBaseDict,
+    StandardBaseModel,
     StatusBreakdown,
     StatusDistributionSummary,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "GenerativeToolCallMetricsSummary",
     "GenerativeTurnMetrics",
     "GenerativeVideoMetricsSummary",
+    "SLOAttainmentSummary",
     "SchedulerMetrics",
     "StatusTypes",
     "TimedMetricTypeAlias",
@@ -97,6 +99,13 @@ class SchedulerMetrics(StandardBaseDict):
         description=(
             "Distribution of time between attempting to yield a conversation "
             "from the request generator and actually yielding it (seconds)"
+        ),
+    )
+    worker_loop_lag: DistributionSummary = Field(
+        default_factory=lambda: DistributionSummary.from_values([]),
+        description=(
+            "Distribution of how late a timer fired on the worker event loops "
+            "while they processed requests (seconds)"
         ),
     )
     queued_time_avg: float = Field(
@@ -165,6 +174,9 @@ class SchedulerMetrics(StandardBaseDict):
             # Scheduler internal performance timings
             generation_delay=DistributionSummary.from_values(
                 scheduler_state.generation_delay_samples
+            ),
+            worker_loop_lag=DistributionSummary.from_values(
+                scheduler_state.worker_loop_lag_samples
             ),
             queued_time_avg=accumulator.scheduler_metrics.queued_time.mean or -1.0,
             resolve_start_delay_avg=(
@@ -1001,6 +1013,29 @@ def root_dispatch_delay_distribution(
     return DistributionSummary.from_values(delays)
 
 
+class SLOAttainmentSummary(StandardBaseModel):
+    """Counts and attainment for one configured latency objective."""
+
+    conforming_requests: int = Field(
+        default=0, ge=0, description="Successful requests satisfying this objective"
+    )
+    determined_requests: int = Field(
+        default=0,
+        ge=0,
+        description="Successful requests with a measurement, plus errored requests",
+    )
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def attainment(self) -> float | None:
+        """
+        :return: Conforming fraction, or None when no request can be evaluated
+        """
+        if not self.determined_requests:
+            return None
+        return self.conforming_requests / self.determined_requests
+
+
 class GenerativeMetrics(StandardBaseDict):
     """
     Comprehensive metrics for generative AI benchmarks.
@@ -1195,6 +1230,23 @@ class GenerativeMetrics(StandardBaseDict):
             "are directly comparable. None when no objectives are configured"
         ),
     )
+    output_token_goodput: StatusDistributionSummary | None = Field(
+        default=None,
+        description=(
+            "Distribution of output tokens per second from successful requests "
+            "meeting every objective, using the output throughput measurement "
+            "window and token-count fallback. None when goodput cannot be evaluated"
+        ),
+    )
+    slo_attainment_by_metric: dict[str, SLOAttainmentSummary] | None = Field(
+        default=None,
+        description=(
+            "Independent attainment for each configured objective, keyed by "
+            "ttft_ms, tpot_ms or e2el_ms. Each denominator excludes successful "
+            "requests missing that objective's measurement and includes errors. "
+            "None when no objectives are configured"
+        ),
+    )
 
     @classmethod
     def _compile_goodput(
@@ -1204,7 +1256,13 @@ class GenerativeMetrics(StandardBaseDict):
         errored: list[GenerativeRequestStats],
         start_time: float,
         end_time: float,
-    ) -> tuple[float | None, int, StatusDistributionSummary | None]:
+    ) -> tuple[
+        float | None,
+        int,
+        StatusDistributionSummary | None,
+        StatusDistributionSummary | None,
+        dict[str, SLOAttainmentSummary] | None,
+    ]:
         """
         Compile goodput attainment and rate against configured latency objectives.
 
@@ -1228,17 +1286,21 @@ class GenerativeMetrics(StandardBaseDict):
         :param errored: Errored request statistics within the window
         :param start_time: Measurement window start timestamp
         :param end_time: Measurement window end timestamp
-        :return: Tuple of (attainment ratio, determined request count,
-            conforming request rate). The ratio and rate are None when no
-            objectives are configured or none could be evaluated
+        :return: Combined attainment, determined count, request goodput,
+            output-token goodput, and per-objective attainment. Combined metrics
+            are None when no objectives are configured or none can be evaluated
         """
         if slo is None:
-            return None, 0, None
+            return None, 0, None, None, None
 
         conforming: list[GenerativeRequestStats] = []
         determined = 0
+        by_metric = {
+            name: SLOAttainmentSummary(determined_requests=len(errored))
+            for name in slo.model_dump(exclude_none=True)
+        }
         for stats in successful:
-            verdict = slo.is_conforming(
+            verdicts = slo.evaluate_objectives(
                 ttft_ms=stats.time_to_first_token_ms,
                 tpot_ms=stats.inter_token_latency_ms,
                 e2el_ms=(
@@ -1247,10 +1309,13 @@ class GenerativeMetrics(StandardBaseDict):
                     else None
                 ),
             )
-            if verdict is None:
+            for name, verdict in verdicts.items():
+                by_metric[name].determined_requests += verdict is not None
+                by_metric[name].conforming_requests += verdict is True
+            if None in verdicts.values():
                 continue
             determined += 1
-            if verdict:
+            if all(verdicts.values()):
                 conforming.append(stats)
 
         # An errored request produced no conforming response, so it lowers
@@ -1262,7 +1327,7 @@ class GenerativeMetrics(StandardBaseDict):
             # there is no population to average over. Reporting 0.0 here would
             # read as "nothing met the objectives" rather than "the objectives
             # do not apply to this workload".
-            return None, 0, None
+            return None, 0, None, None, by_metric
 
         goodput = StatusDistributionSummary.rate_distribution_from_timings_function(
             function=lambda req: req.request_end_time,
@@ -1273,7 +1338,24 @@ class GenerativeMetrics(StandardBaseDict):
             end_time=end_time,
         )
 
-        return len(conforming) / determined, determined, goodput
+        token_goodput = (
+            StatusDistributionSummary.rate_distribution_from_timings_function(
+                function=lambda req: req.output_tokens_timings,
+                successful=conforming,
+                incomplete=[],
+                errored=[],
+                start_time=start_time,
+                end_time=end_time,
+            )
+        )
+
+        return (
+            len(conforming) / determined,
+            determined,
+            goodput,
+            token_goodput,
+            by_metric,
+        )
 
     @classmethod
     def compile(cls, accumulator: GenerativeBenchmarkAccumulator) -> GenerativeMetrics:
@@ -1368,7 +1450,13 @@ class GenerativeMetrics(StandardBaseDict):
             ),
         )
 
-        slo_attainment, slo_determined, request_goodput = cls._compile_goodput(
+        (
+            slo_attainment,
+            slo_determined,
+            request_goodput,
+            output_token_goodput,
+            slo_attainment_by_metric,
+        ) = cls._compile_goodput(
             slo=accumulator.config.slo,
             successful=successful,
             errored=errored,
@@ -1380,6 +1468,8 @@ class GenerativeMetrics(StandardBaseDict):
             slo_attainment=slo_attainment,
             slo_determined_requests=slo_determined,
             request_goodput=request_goodput,
+            output_token_goodput=output_token_goodput,
+            slo_attainment_by_metric=slo_attainment_by_metric,
             # Request stats
             request_totals=StatusBreakdown(
                 successful=len(successful),

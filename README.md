@@ -9,7 +9,11 @@
 SLO-aware Benchmarking and Evaluation Platform for Optimizing Real-World LLM Inference
 </h3>
 
-[![GitHub Release](https://img.shields.io/github/release/vllm-project/guidellm.svg?label=Version)](https://github.com/vllm-project/guidellm/releases) [![Documentation](https://img.shields.io/badge/Documentation-8A2BE2?logo=read-the-docs&logoColor=%23ffffff&color=%231BC070)](https://github.com/vllm-project/guidellm/tree/main/docs) [![License](https://img.shields.io/github/license/vllm-project/guidellm.svg)](https://github.com/vllm-project/guidellm/blob/main/LICENSE) [![PyPI Release](https://img.shields.io/pypi/v/guidellm.svg?label=PyPI%20Release)](https://pypi.python.org/pypi/guidellm) [![Python Versions](https://img.shields.io/badge/Python-3.10--3.13-orange)](https://pypi.python.org/pypi/guidellm) [![Nightly Build](https://img.shields.io/github/actions/workflow/status/vllm-project/guidellm/nightly.yml?branch=main&label=Nightly%20Build)](https://github.com/vllm-project/guidellm/actions/workflows/nightly.yml)
+<p align="center">
+  <b>English</b> | <a href="https://github.com/vllm-project/guidellm/blob/main/README.zh.md">简体中文</a>
+</p>
+
+[![GitHub Release](https://img.shields.io/github/release/vllm-project/guidellm.svg?label=Version)](https://github.com/vllm-project/guidellm/releases) [![Documentation](https://img.shields.io/badge/Documentation-8A2BE2?logo=read-the-docs&logoColor=%23ffffff&color=%231BC070)](https://github.com/vllm-project/guidellm/tree/main/docs) [![License](https://img.shields.io/github/license/vllm-project/guidellm.svg)](https://github.com/vllm-project/guidellm/blob/main/LICENSE) [![PyPI Release](https://img.shields.io/pypi/v/guidellm.svg?label=PyPI%20Release)](https://pypi.python.org/pypi/guidellm) [![Python Versions](https://img.shields.io/badge/Python-3.11--3.15-orange)](https://pypi.python.org/pypi/guidellm) [![Nightly Build](https://img.shields.io/github/actions/workflow/status/vllm-project/guidellm/nightly.yml?branch=main&label=Nightly%20Build)](https://github.com/vllm-project/guidellm/actions/workflows/nightly.yml)
 
 ## Overview
 
@@ -41,7 +45,7 @@ The Quick Start shows how to install GuideLLM, launch a server, and run your fir
 Before installing, ensure you have the following prerequisites:
 
 - OS: Linux or MacOS
-- Python: 3.10 - 3.13
+- Python: 3.11 - 3.15
 
 Install the latest GuideLLM release from PyPi using `pip` :
 
@@ -158,8 +162,8 @@ guidellm run \
 
 - `--data`: Data type plus config — `synthetic_text`, `huggingface`, `json_file`, `csv_file`, `text_file`, `trace_synthetic`, and others. Repeat for multiple sources.
 - `--data-column-mapper`: Column mapping preprocessor and JSON config for fields such as `text_column` or `output_tokens_count_column`
-- `--data-loader type=pytorch,samples=1000`: Limit how many rows are loaded (`-1` for all)
-- `--tokenizer huggingface_auto "model=gpt2"`: Tokenizer for synthetic data or local token counting
+- `--data-loader kind=pytorch,samples=1000`: Limit how many rows are loaded (`-1` for all)
+- `--tokenizer kind=huggingface_auto,model=gpt2`: Tokenizer for synthetic data or local token counting
 
 ### Synthetic Visual Data
 
@@ -181,17 +185,17 @@ guidellm run \
 
 ### Using Scenarios
 
-Built-in scenarios bundle schedules, dataset settings, and request formatting to standardize common testing patterns. This example uses the pre-configured chat scenario which includes appropriate defaults for chat model evaluation, with any additional CLI arguments overriding the scenario's settings.
+Built-in scenarios bundle schedules, dataset settings, and request formatting to standardize common testing patterns. This example uses the built-in `rhaiis/concurrent-1k-1k-equal` scenario, a concurrent workload with 1,000 prompt and 1,000 output tokens, with any additional CLI arguments overriding the scenario's settings.
 
 ```bash
 guidellm run \
-  --config chat \
+  --config rhaiis/concurrent-1k-1k-equal \
   --backend kind=openai_http,target=http://localhost:8000
 ```
 
 **Key parameters:**
 
-- `--config` (alias `--scenario`, `-c`): Built-in scenario name or path to a custom scenario file. CLI options override scenario defaults.
+- `--config` (alias `--scenario`, `-c`): Built-in scenario name or path to a custom scenario file. CLI options override scenario defaults. See [built-in configuration files](docs/en/getting-started/benchmark.md#built-in-configuration-files) for the available scenarios.
 
 ### Benchmark Controls
 
