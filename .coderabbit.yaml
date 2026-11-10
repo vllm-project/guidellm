@@ -29,6 +29,20 @@ reviews:
       - "mergify[bot]"
       - "dependabot[bot]"
       - "github-actions[bot]"
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+    simplify:
+      enabled: false
+    autofix:
+      enabled: false
+    fix_ci:
+      enabled: false
+    resolve_merge_conflict:
+      enabled: false
+    custom: []
   path_instructions:
     - path: "src/guidellm/**/*.py"
       instructions: |
