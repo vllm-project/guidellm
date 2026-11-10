@@ -10,13 +10,13 @@ This file provides agents and LLMs with guidance on development practices within
 
 ### Python Development
 
-> **IMPORTANT**: `tox` should be used before attempting to run individual tools.
-
 > **IMPORTANT**: For every command `uv run` must be prepended to the command.
+
+> **IMPORTANT**: Review available `tox` envs and use them in-place of individual tools.
 
 ```bash
 # Run all tests
-uv run tox -e tests
+uv run tox -e tests            # Runs pytest with correct environment
 
 # Run specific test suites
 uv run tox -e test-unit        # Unit tests only
