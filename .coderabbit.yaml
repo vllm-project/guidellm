@@ -5,6 +5,17 @@ inheritance: false
 
 reviews:
   profile: assertive
+  merge_risk_instructions: |
+    GuideLLM's own overhead can distort benchmark results, so changes to request
+    handling, scheduling, timing, and metrics deserve particular scrutiny. Higher
+    risk comes from added critical-path work, concurrency or lifecycle changes,
+    altered measurement semantics, and regressions in supported use cases beyond
+    the PR's target scenario. Consider the reach and impact of changed behavior.
+
+    Broad scope, unnecessary complexity, blurred component ownership, and weak
+    validation increase risk. Focused changes that preserve existing contracts
+    and have relevant correctness and performance evidence lower risk; purely
+    documentary or nonfunctional edits are generally low risk.
   auto_approvals:
     enabled: false
   high_level_summary: false
