@@ -5,8 +5,8 @@ Profile base class for multi-strategy benchmark execution.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Generator, MutableMapping
-from typing import Any
+from collections.abc import Generator, MutableMapping, Sequence
+from typing import Any, Generic, TypeVar
 
 from guidellm.benchmark.schemas import Benchmark
 from guidellm.logger import logger
@@ -60,14 +60,18 @@ class ProfileFactory(RegistryMixin["type[Profile]"]):
         return tuple(cls.registry.keys() if cls.registry else [])
 
 
+StrategyT = TypeVar("StrategyT", bound=SchedulingStrategy)
+"Type variable for the strategy type a profile builds"
+
+
 class Profile(ABC):
     """
     Coordinate multi-strategy benchmark execution with automatic strategy generation.
 
     Manages sequential execution of scheduling strategies with automatic strategy
     generation, constraint management, and completion tracking. Subclasses define
-    specific execution patterns like synchronous, concurrent, throughput-focused,
-    rate-based async, or adaptive sweep profiles.
+    specific execution patterns like synchronous, concurrent, users,
+    throughput-focused, rate-based async, or adaptive sweep profiles.
 
     Example:
     ::
@@ -225,3 +229,62 @@ class Profile(ABC):
             if next_strategy and self.constraints
             else None
         )
+
+
+class FixedCountProfile(Profile, Generic[StrategyT], ABC):
+    """
+    Profile that executes one strategy per requested count.
+
+    Subclasses supply the counts and build the strategy for a count. This base
+    shares the strategy-type listing and the escalation guard used by the
+    concurrent and users profiles.
+    """
+
+    @property
+    @abstractmethod
+    def _counts(self) -> Sequence[int]:
+        """
+        :return: Counts to execute, one strategy per count
+        """
+
+    @abstractmethod
+    def _build_strategy(self, count: int) -> StrategyT:
+        """
+        Build the strategy for one count.
+
+        :param count: Count to configure the strategy with
+        :return: Strategy instance for the count
+        """
+
+    @property
+    def strategy_types(self) -> list[str]:
+        """
+        :return: Strategy type for each configured count
+        """
+        return [self.kind] * len(self._counts)
+
+    def next_strategy(
+        self,
+        prev_strategy: SchedulingStrategy | None,
+        prev_benchmark: Benchmark | None,
+    ) -> StrategyT | None:
+        """
+        Generate the next strategy for the next count.
+
+        If a previous count was terminated by a constraint with
+        stopping_scope='all', remaining counts are skipped.
+
+        :param prev_strategy: Previously completed strategy (unused)
+        :param prev_benchmark: Benchmark results from previous execution
+        :return: Strategy for the next count, or None if complete or
+            escalation halted
+        """
+        _ = prev_strategy
+
+        if len(self.completed_strategies) >= len(self._counts):
+            return None
+
+        if prev_benchmark is not None and self._should_stop_escalating(prev_benchmark):
+            return None
+
+        return self._build_strategy(self._counts[len(self.completed_strategies)])

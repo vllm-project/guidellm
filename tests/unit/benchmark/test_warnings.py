@@ -22,8 +22,10 @@ from guidellm.benchmark.schemas.warnings import BenchmarkWarning
 from guidellm.benchmark.warnings import BenchmarkWarningAnalyzer
 from guidellm.scheduler.strategies import (
     AsyncConstantStrategy,
+    AsyncPoissonStrategy,
     ConcurrentStrategy,
     TraceReplayStrategy,
+    UsersStrategy,
 )
 from guidellm.schemas import (
     DistributionSummary,
@@ -156,7 +158,11 @@ def _analyze(
                 total=DistributionSummary.from_values(time_to_first_token_ms)
             )
         ),
-        root_dispatch_delay=root_dispatch_delay_distribution(requests or []),
+        root_dispatch_delay=(
+            root_dispatch_delay_distribution(requests or [])
+            if strategy.defines_arrival_schedule
+            else None
+        ),
     )
     return BenchmarkWarningAnalyzer(rules).analyze(
         scheduler_metrics=cast("SchedulerMetrics", scheduler_metrics),
@@ -502,9 +508,18 @@ def test_trace_root_lateness_uses_the_configured_statistic():
 
 
 @pytest.mark.sanity
-def test_first_turn_dispatch_delay_includes_every_profile():
+@pytest.mark.parametrize(
+    "strategy",
+    [
+        AsyncConstantStrategy(rate=1.0),
+        AsyncPoissonStrategy(rate=1.0),
+        TraceReplayStrategy(),
+    ],
+    ids=["constant", "poisson", "trace"],
+)
+def test_first_turn_dispatch_delay_includes_every_arrival_schedule(strategy):
     """
-    First-turn dispatch delay is measured for any profile, not only trace replay.
+    First-turn dispatch delay is measured for every arrival-schedule strategy.
 
     ## WRITTEN BY AI ##
     """
@@ -516,7 +531,7 @@ def test_first_turn_dispatch_delay_includes_every_profile():
                 threshold=0.1,
             )
         ],
-        ConcurrentStrategy(streams=1),
+        strategy,
         [],
         [],
         [
@@ -529,6 +544,38 @@ def test_first_turn_dispatch_delay_includes_every_profile():
     warning = warnings[0]
     assert warning.observed == pytest.approx(10.0)
     assert warning.sample_count == 1
+
+
+@pytest.mark.sanity
+@pytest.mark.parametrize(
+    "strategy",
+    [ConcurrentStrategy(streams=1), UsersStrategy(users=1)],
+    ids=["concurrent", "users"],
+)
+def test_closed_loop_profiles_have_no_root_dispatch_delay(strategy):
+    """
+    ASAP-style targets do not produce a root dispatch delay warning.
+
+    ## WRITTEN BY AI ##
+    """
+    warnings = _analyze(
+        [
+            WarningRuleArgs(
+                code="trace_root_late",
+                metric=MetricRef(name="root_dispatch_delay", statistic="max"),
+                threshold=0.1,
+            )
+        ],
+        strategy,
+        [],
+        [],
+        [
+            _request(start=10.0, targeted=0.0, preceding_nodes=0),
+            _request(start=20.0, targeted=0.0, preceding_nodes=1),
+        ],
+    )
+
+    assert warnings == []
 
 
 @pytest.mark.smoke

@@ -279,33 +279,37 @@ class TestConcurrentStrategy:
 
         reconstructed = ConcurrentStrategy.model_validate(data)
         assert isinstance(reconstructed, ConcurrentStrategy)
-
-        for key, value in constructor_args.items():
-            assert getattr(reconstructed, key) == value
+        assert reconstructed.streams == constructor_args["streams"]
+        assert reconstructed.rampup_duration == constructor_args.get(
+            "rampup_duration", 0.0
+        )
 
         # Test polymorphic reconstruction via base registry class
         base_reconstructed = SchedulingStrategy.model_validate(data)
         assert isinstance(base_reconstructed, ConcurrentStrategy)
         assert base_reconstructed.type_ == "concurrent"
-
-        for key, value in constructor_args.items():
-            assert getattr(base_reconstructed, key) == value
+        assert base_reconstructed.streams == constructor_args["streams"]
+        assert base_reconstructed.rampup_duration == constructor_args.get(
+            "rampup_duration", 0.0
+        )
 
         # Test model_validate_json pathway
         json_str = instance.model_dump_json()
         json_reconstructed = ConcurrentStrategy.model_validate_json(json_str)
         assert isinstance(json_reconstructed, ConcurrentStrategy)
-
-        for key, value in constructor_args.items():
-            assert getattr(json_reconstructed, key) == value
+        assert json_reconstructed.streams == constructor_args["streams"]
+        assert json_reconstructed.rampup_duration == constructor_args.get(
+            "rampup_duration", 0.0
+        )
 
         # Test polymorphic model_validate_json via base class
         base_json_reconstructed = SchedulingStrategy.model_validate_json(json_str)
         assert isinstance(base_json_reconstructed, ConcurrentStrategy)
         assert base_json_reconstructed.type_ == "concurrent"
-
-        for key, value in constructor_args.items():
-            assert getattr(base_json_reconstructed, key) == value
+        assert base_json_reconstructed.streams == constructor_args["streams"]
+        assert base_json_reconstructed.rampup_duration == constructor_args.get(
+            "rampup_duration", 0.0
+        )
 
     @pytest.mark.sanity
     @pytest.mark.asyncio
@@ -930,9 +934,10 @@ class TestUsersStrategy:
 
         reconstructed = UsersStrategy.model_validate(data)
         assert isinstance(reconstructed, UsersStrategy)
-
-        for key, value in constructor_args.items():
-            assert getattr(reconstructed, key) == value
+        assert reconstructed.users == constructor_args["users"]
+        assert reconstructed.rampup_duration == constructor_args.get(
+            "rampup_duration", 0.0
+        )
 
         # Test polymorphic reconstruction via base registry class
         base_reconstructed = SchedulingStrategy.model_validate(data)
@@ -943,9 +948,10 @@ class TestUsersStrategy:
         json_str = instance.model_dump_json()
         json_reconstructed = UsersStrategy.model_validate_json(json_str)
         assert isinstance(json_reconstructed, UsersStrategy)
-
-        for key, value in constructor_args.items():
-            assert getattr(json_reconstructed, key) == value
+        assert json_reconstructed.users == constructor_args["users"]
+        assert json_reconstructed.rampup_duration == constructor_args.get(
+            "rampup_duration", 0.0
+        )
 
     @pytest.mark.sanity
     @pytest.mark.asyncio

@@ -5,8 +5,8 @@ Provides abstractions for coordinating sequential execution of scheduling strate
 during benchmarking workflows. Profiles automatically generate strategies based on
 configuration parameters, manage runtime constraints, and track completion state
 across execution sequences. Each profile type implements a specific execution pattern
-(synchronous, concurrent, throughput-focused, rate-based async, or adaptive sweep)
-that determines how benchmark requests are scheduled and executed.
+(synchronous, concurrent, users, throughput-focused, rate-based async, or adaptive
+sweep) that determines how benchmark requests are scheduled and executed.
 """
 
 from __future__ import annotations

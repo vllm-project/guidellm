@@ -52,7 +52,7 @@ For `/v1/chat/completions`, the conversation history is passed as a messages arr
 
 The [users profile](../getting-started/benchmark.md#users-profile) keeps each conversation bound to one simulated user for its whole session: the user sends a turn, waits out the dataset `requeue_delay`, and sends the next turn of the same conversation, only starting a new conversation when the current one finishes. Unlike the `concurrent` profile, the user's slot is held across the delay rather than being lent to other conversations.
 
-Note that a conversation with parallel branches (sub-agent forks) can occupy more than one of the user's request slots while branches are in flight.
+A conversation with parallel branches (sub-agent forks) can occupy more than one request slot while its branches are in flight. Request slots are shared among the users on a worker and are not reserved per user, so a wide fan-out can delay another user's next turn. Each session is capped by its conversation graph (one user slot per session), not by a limit of one in-flight request per session.
 
 For more information see [Request Formatting](#request-formatting) and [Server-Side Conversation History](#server-side-conversation-history-v1responses-only).
 

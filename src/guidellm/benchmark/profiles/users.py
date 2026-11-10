@@ -2,26 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
 
-from guidellm.scheduler import (
-    ConstraintInitializer,
-    SchedulingStrategy,
-    UsersStrategy,
-)
+from guidellm.scheduler import UsersStrategy
 from guidellm.schemas.benchmark.profiles import UsersProfileArgs
 
-from .profile import Profile, ProfileFactory
+from .profile import FixedCountProfile, ProfileFactory
 
 __all__ = ["UsersProfile"]
 
-if TYPE_CHECKING:
-    from guidellm.benchmark.schemas import Benchmark
-
 
 @ProfileFactory.register("users")
-class UsersProfile(Profile):
+class UsersProfile(FixedCountProfile[UsersStrategy]):
     """
     Execute strategies with fixed numbers of simulated users.
 
@@ -34,48 +26,16 @@ class UsersProfile(Profile):
 
     args: UsersProfileArgs
 
-    def __init__(
-        self,
-        args: UsersProfileArgs,
-        random_seed: int,
-        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
-        **kwargs: Any,
-    ):
-        super().__init__(args, random_seed, constraints, **kwargs)
-        self.args = args
-
     @property
-    def strategy_types(self) -> list[str]:
+    def _counts(self) -> Sequence[int]:
         """
-        :return: Users strategy types for each configured user count
+        :return: Configured user counts to execute
         """
-        return [self.kind] * len(self.args.users)
+        return self.args.users
 
-    def next_strategy(
-        self,
-        prev_strategy: SchedulingStrategy | None,
-        prev_benchmark: Benchmark | None,
-    ) -> UsersStrategy | None:
+    def _build_strategy(self, count: int) -> UsersStrategy:
         """
-        Generate users strategy for next user count.
-
-        If a previous user count was terminated by a constraint with
-        stopping_scope='all', remaining user counts are skipped.
-
-        :param prev_strategy: Previously completed strategy
-        :param prev_benchmark: Benchmark results from previous execution
-        :return: UsersStrategy with next user count, or None if complete
-            or escalation halted
+        :param count: Number of simulated users for the next strategy
+        :return: Users strategy for the count
         """
-        _ = prev_strategy
-
-        if len(self.completed_strategies) >= len(self.args.users):
-            return None
-
-        if prev_benchmark is not None and self._should_stop_escalating(prev_benchmark):
-            return None
-
-        return UsersStrategy(
-            users=self.args.users[len(self.completed_strategies)],
-            rampup_duration=self.args.rampup_duration,
-        )
+        return UsersStrategy(users=count, rampup_duration=self.args.rampup_duration)

@@ -1090,7 +1090,8 @@ class GenerativeMetrics(StandardBaseDict):
         default=None,
         description=(
             "Dispatch delay for the first request of each conversation. "
-            "Later turns are omitted. None when no first turn has a dispatch delay"
+            "Later turns are omitted. None when the strategy does not define an "
+            "arrival schedule or no first turn has a dispatch delay"
         ),
     )
     request_streaming_iterations_count: StatusDistributionSummary = Field(
@@ -1385,6 +1386,7 @@ class GenerativeMetrics(StandardBaseDict):
         scheduled_latency: StatusDistributionSummary | None = None
         predecessor_delay: StatusDistributionSummary | None = None
         scheduling_delay: StatusDistributionSummary | None = None
+        root_dispatch_delay: DistributionSummary | None = None
         if accumulator.config.strategy.defines_arrival_schedule:
             dispatch_delay = StatusDistributionSummary.from_values_function(
                 function=lambda req: req.request_dispatch_delay,
@@ -1411,6 +1413,9 @@ class GenerativeMetrics(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+            )
+            root_dispatch_delay = root_dispatch_delay_distribution(
+                [*successful, *incomplete, *errored],
             )
 
         # First-token and inter-token latencies are windowed by when the first
@@ -1500,9 +1505,7 @@ class GenerativeMetrics(StandardBaseDict):
             request_scheduled_latency=scheduled_latency,
             turn_predecessor_delay=predecessor_delay,
             turn_scheduling_delay=scheduling_delay,
-            root_dispatch_delay=root_dispatch_delay_distribution(
-                [*successful, *incomplete, *errored],
-            ),
+            root_dispatch_delay=root_dispatch_delay,
             request_streaming_iterations_count=StatusDistributionSummary.from_values_function(
                 function=lambda req: req.info.timings.request_iterations or 0.0,
                 successful=successful,

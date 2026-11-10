@@ -95,7 +95,7 @@ These metrics provide a breakdown of the overall request statuses, helping users
 
 ### Turn Scheduling Delay
 
-- **Definition**: `turn_scheduling_delay` is Dispatch Delay minus Turn Predecessor Delay. It is the wait after the request was both due and no longer blocked by a predecessor, including time to deserialize the trace, time spent queued, and worker turnaround. Think time (`requeue_delay`) that runs past the target is included here. Trace replay does not set think time. Under the users profile, the think time (the dataset `requeue_delay`) is part of the target, so this metric stays near zero; think time itself shows up as the gap between turns rather than as scheduling delay.
+- **Definition**: `turn_scheduling_delay` is Dispatch Delay minus Turn Predecessor Delay. It is the wait after the request was both due and no longer blocked by a predecessor, including time to deserialize the trace, time spent queued, and worker turnaround. Think time (`requeue_delay`) that runs past the target is included here. Trace replay does not set think time. Under the users profile this metric is null: the strategy targets the benchmark start like `throughput` (see [Applicability of Dispatch Delay and Scheduled Latency](#applicability-of-dispatch-delay-and-scheduled-latency)), so think time shows up as the gap between a response and the next turn's dispatch rather than as scheduling delay.
 - **Use Case**: Can indicate when GuideLLM could not keep up or the machine was undersized for the benchmark.
 
 ### Scheduled Latency
@@ -229,12 +229,13 @@ Dispatch Delay, Turn Predecessor Delay, Turn Scheduling Delay, and Scheduled Lat
 - `constant` and `poisson` derive each target from the configured rate.
 - `trace` derives each target from the replayed dataset timestamps. Trace requests that carry no relative timestamp fall back to the benchmark start time and take on the `throughput` caveat below.
 
-The `synchronous`, `concurrent`, and `throughput` strategies set an ASAP-style target instead, and each is unusable for a different reason:
+The `synchronous`, `concurrent`, `users`, and `throughput` strategies set an ASAP-style target instead, and each is unusable for a different reason:
 
 - `synchronous` and `concurrent` target the previous request's completion, apart from the requests staggered across a configured rampup. The target is therefore derived from the system's own responses, so a delay measured against it is circular: it describes harness turnaround rather than lag against an arrival schedule.
+- `users` targets the benchmark start time for every turn, apart from the initial sessions staggered across a configured rampup, so it carries the same caveat as `throughput`. The user's slot is held across the dataset think time instead of being reused, and that gap appears between a response and the next turn's dispatch rather than as a delay against a target.
 - `throughput` targets the benchmark start time for every request, so the value grows with elapsed run time and is not a delay at all.
 
-For those three strategies **these metrics are reported as `null`** rather than as zero, and their columns do not appear in the CSV. Reporting zero would read as "no delay measured", which is a stronger and more misleading claim than "not applicable". This matters for the default `sweep` profile, which runs `synchronous` and `throughput` alongside its rate-based strategies.
+For those four strategies **these metrics are reported as `null`** rather than as zero, and their columns do not appear in the CSV. Reporting zero would read as "no delay measured", which is a stronger and more misleading claim than "not applicable". This matters for the default `sweep` profile, which runs `synchronous` and `throughput` alongside its rate-based strategies.
 
 For multi-turn conversation datasets, a turn's target is fixed when a scheduler slot opens rather than when the preceding turn completes, so configured think time between turns is counted as Dispatch Delay and as Turn Scheduling Delay.
 

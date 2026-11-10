@@ -143,8 +143,8 @@ guidellm run \
 
 **Key parameters:**
 
-- `--profile kind=<type>`: Defines the traffic pattern — `synchronous`, `concurrent`, `throughput`, `constant`, `poisson`, or `sweep`
-- `--profile kind=constant,rate=10`: For `constant`/`poisson`, set requests per second in the profile config; for `concurrent`, use `streams=`; for `throughput`, use `max_concurrency=`
+- `--profile kind=<type>`: Defines the traffic pattern — `synchronous`, `concurrent`, `users`, `throughput`, `constant`, `poisson`, or `sweep`
+- `--profile kind=constant,rate=10`: For `constant`/`poisson`, set requests per second in the profile config; for `concurrent`, use `streams=`; for `users`, use `users=`; for `throughput`, use `max_concurrency=`
 - `--constraint kind=max_duration,seconds=<seconds>` or `--constraint kind=max_requests,count=<count>`: Limit each strategy by time or request count
 
 ### Dataset Sources

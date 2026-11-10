@@ -592,6 +592,7 @@ class TestScheduleRelativeMetrics:
         assert metrics.request_scheduled_latency is None
         assert metrics.turn_predecessor_delay is None
         assert metrics.turn_scheduling_delay is None
+        assert metrics.root_dispatch_delay is None
         # Existing metrics are unaffected by the gating.
         assert metrics.request_latency.successful.mean == pytest.approx(0.5)
 
