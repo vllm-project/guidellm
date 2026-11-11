@@ -645,7 +645,9 @@ async def benchmark_generative_text(  # noqa: C901
         output_format_results.append((output_arg.kind, await output.finalize(report)))
 
     if console:
-        await GenerativeBenchmarkerConsole(console=console).finalize(report)
+        # An explicit `--output kind=console` already printed the tables above.
+        if not any(arg.kind == "console" for arg in benchmark_args.outputs):
+            await GenerativeBenchmarkerConsole(console=console).finalize(report)
         console.print("\n\n")
         console.print_update(
             title=(

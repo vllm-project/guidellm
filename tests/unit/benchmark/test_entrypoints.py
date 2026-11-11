@@ -314,3 +314,89 @@ async def test_entrypoint_passes_configured_objectives_to_benchmarker():
         await entrypoints_module.benchmark_generative_text(args=args)
 
     assert captured.get("slo") == slo
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("outputs", "default_console_prints"),
+    [
+        ([], 1),
+        ([{"kind": "json", "path": "report.json"}], 1),
+        ([{"kind": "console"}], 0),
+        ([{"kind": "json", "path": "report.json"}, {"kind": "console"}], 0),
+    ],
+)
+async def test_default_console_tables_not_duplicated_by_console_output(
+    tmp_path: Path, outputs: list[dict], default_console_prints: int
+):
+    """
+    Print the console tables once: the default console summary is skipped when
+    the user already requested `kind=console` as an explicit output.
+
+    ## WRITTEN BY AI ##
+    """
+
+    async def _fake_run(self, **kwargs):
+        _ = (self, kwargs)
+        return
+        yield  # pragma: no cover - makes this an async generator
+
+    for output in outputs:
+        if "path" in output:
+            output["path"] = str(tmp_path / output["path"])
+
+    args = BenchmarkScenario(
+        spec=BenchmarkArgs.model_validate(
+            {
+                "backend": {
+                    "kind": "openai_http",
+                    "target": "http://localhost:8000",
+                },
+                "data": [
+                    {"kind": "synthetic_text", "prompt_tokens": 8, "output_tokens": 8}
+                ],
+                "profile": {"kind": "synchronous"},
+                "outputs": outputs,
+            }
+        )
+    )
+    resolved_outputs = [MagicMock(finalize=AsyncMock()) for _ in outputs]
+    default_console = MagicMock(finalize=AsyncMock())
+
+    with (
+        patch.object(entrypoints_module.Benchmarker, "run", _fake_run),
+        patch.object(
+            entrypoints_module,
+            "resolve_backend",
+            AsyncMock(return_value=(MagicMock(), "model")),
+        ),
+        patch.object(
+            entrypoints_module, "resolve_tokenizer", AsyncMock(return_value=None)
+        ),
+        patch.object(
+            entrypoints_module,
+            "create_data_loader",
+            AsyncMock(return_value=MagicMock()),
+        ),
+        patch.object(
+            entrypoints_module, "resolve_profile", AsyncMock(return_value=MagicMock())
+        ),
+        patch.object(
+            entrypoints_module,
+            "resolve_output_formats",
+            AsyncMock(return_value=resolved_outputs),
+        ),
+        patch.object(
+            entrypoints_module,
+            "GenerativeBenchmarkerConsole",
+            return_value=default_console,
+        ),
+    ):
+        await entrypoints_module.benchmark_generative_text(
+            args=args, progress=False, console=MagicMock()
+        )
+
+    assert default_console.finalize.await_count == default_console_prints
+    for resolved in resolved_outputs:
+        resolved.finalize.assert_awaited_once()
