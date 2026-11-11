@@ -15,6 +15,7 @@ from typing import Literal
 
 from pydantic import Field, computed_field
 
+import guidellm.extras.numpy as np
 from guidellm.benchmark.schemas.accumulator import (
     GenerativeBenchmarkAccumulator,
 )
@@ -1014,6 +1015,57 @@ def root_dispatch_delay_distribution(
     return DistributionSummary.from_values(delays)
 
 
+def _token_timings(request: GenerativeRequestStats) -> np.ndarray:
+    """
+    The rows of ``request.total_tokens_timings`` as an ``(N, 2)`` float array.
+
+    Row 0 is ``prompt_tokens_timing``, rows ``[1:]`` are ``output_tokens_timings``
+    and rows ``[2:]`` are ``iter_tokens_timings``. Building the array directly
+    avoids creating a Python tuple for every output token.
+
+    :param request: Request to read the timings from
+    :return: Rows of (timestamp, token count)
+    """
+    first = request.first_token_iteration
+    last = request.last_token_iteration
+    iterations = request.token_iterations
+    if first is None or last is None or iterations <= 1:
+        return np.array(
+            [
+                request.prompt_tokens_timing,
+                (
+                    last if last is not None else request.request_end_time,
+                    request.output_tokens or 0.0,
+                ),
+            ],
+            dtype=float,
+        )
+
+    tokens_per_iteration = request.iter_tokens_per_iteration
+    timings = np.empty((iterations + 1 if tokens_per_iteration is not None else 2, 2))
+    timings[0] = request.prompt_tokens_timing
+    timings[1] = (first, 1.0 * bool(request.output_tokens))
+    if tokens_per_iteration is not None:
+        timings[2:, 0] = np.linspace(first, last, num=iterations)[1:]
+        timings[2:, 1] = tokens_per_iteration
+    return timings
+
+
+def _stack_rows(
+    timings: list[np.ndarray], index: slice | tuple[slice, int]
+) -> np.ndarray:
+    """
+    Concatenate ``timing[index]`` over the requests, keeping request order.
+
+    :param timings: Per-request arrays from ``_token_timings``
+    :param index: Rows, or rows and a column, to take from each array
+    :return: The concatenated rows or values, or an empty ``(0, 2)`` array
+    """
+    if not timings:
+        return np.empty((0, 2))
+    return np.concatenate([timing[index] for timing in timings])
+
+
 class SLOAttainmentSummary(StandardBaseModel):
     """Counts and attainment for one configured latency objective."""
 
@@ -1337,15 +1389,14 @@ class GenerativeMetrics(StandardBaseDict):
             end_time=end_time,
         )
 
-        token_goodput = (
-            StatusDistributionSummary.rate_distribution_from_timings_function(
-                function=lambda req: req.output_tokens_timings,
-                successful=conforming,
-                incomplete=[],
-                errored=[],
-                start_time=start_time,
-                end_time=end_time,
-            )
+        token_goodput = StatusDistributionSummary.rate_distribution_from_timings(
+            successful=_stack_rows(
+                [_token_timings(req) for req in conforming], np.s_[1:]
+            ),
+            incomplete=[],
+            errored=[],
+            start_time=start_time,
+            end_time=end_time,
         )
 
         return (
@@ -1462,6 +1513,11 @@ class GenerativeMetrics(StandardBaseDict):
             start_time=start_time,
             end_time=end_time,
         )
+
+        # Built once per request and sliced for each token metric below
+        successful_timings = [_token_timings(req) for req in successful]
+        incomplete_timings = [_token_timings(req) for req in incomplete]
+        errored_timings = [_token_timings(req) for req in errored]
 
         return GenerativeMetrics(
             slo_attainment=slo_attainment,
@@ -1624,37 +1680,29 @@ class GenerativeMetrics(StandardBaseDict):
                 start_time=start_time,
                 end_time=end_time,
             ),
-            output_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
-                function=lambda req: req.output_tokens_timings,
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+            output_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings(
+                successful=_stack_rows(successful_timings, np.s_[1:]),
+                incomplete=_stack_rows(incomplete_timings, np.s_[1:]),
+                errored=_stack_rows(errored_timings, np.s_[1:]),
                 start_time=start_time,
                 end_time=end_time,
             ),
-            tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
-                function=lambda req: req.total_tokens_timings,
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+            tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings(
+                successful=_stack_rows(successful_timings, np.s_[:]),
+                incomplete=_stack_rows(incomplete_timings, np.s_[:]),
+                errored=_stack_rows(errored_timings, np.s_[:]),
                 start_time=start_time,
                 end_time=end_time,
             ),
-            output_tokens_per_iteration=StatusDistributionSummary.from_values_function(
-                function=lambda req: [
-                    tokens for (_timing, tokens) in req.output_tokens_timings
-                ],
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+            output_tokens_per_iteration=StatusDistributionSummary.from_values(
+                successful=_stack_rows(successful_timings, np.s_[1:, 1]),
+                incomplete=_stack_rows(incomplete_timings, np.s_[1:, 1]),
+                errored=_stack_rows(errored_timings, np.s_[1:, 1]),
             ),
-            iter_tokens_per_iteration=StatusDistributionSummary.from_values_function(
-                function=lambda req: [
-                    tokens for (_timing, tokens) in req.iter_tokens_timings
-                ],
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+            iter_tokens_per_iteration=StatusDistributionSummary.from_values(
+                successful=_stack_rows(successful_timings, np.s_[2:, 1]),
+                incomplete=_stack_rows(incomplete_timings, np.s_[2:, 1]),
+                errored=_stack_rows(errored_timings, np.s_[2:, 1]),
             ),
             # Domain-specific stats
             text=GenerativeTextMetricsSummary.compile(
