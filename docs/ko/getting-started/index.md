@@ -1,6 +1,6 @@
 ---
 weight: -10
-source_sha256: !!str "7f873ef5f69db141686127994e14cc57ea749975bec748e6b9dfd60b03868d08"
+source_sha256: !!str "0014f2512cae55c2cb472d3f3dc2a612e1c1c20c73f8a802e4f61fe3d95b3bb7"
 ---
 
 # 시작하기
@@ -45,6 +45,6 @@ GuideLLM은 대규모 언어 모델의 배포 환경을 손쉽게 평가하고 �
 
   벤치마크 결과를 해석하여 처리량, 지연 시간 및 신뢰성을 파악하고, 배포 환경을 최적화합니다.
 
-  [:octicons-arrow-right-24: 분석 가이드(영문)](../../getting-started/analyze.md)
+  [:octicons-arrow-right-24: 분석 가이드](analyze.md)
 
 </div>
