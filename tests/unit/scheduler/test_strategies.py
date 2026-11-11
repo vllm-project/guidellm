@@ -18,15 +18,8 @@ from guidellm.scheduler import (
     ThroughputStrategy,
     UsersStrategy,
 )
-from guidellm.scheduler.strategies import StrategyType, TraceReplayStrategy
+from guidellm.scheduler.strategies import TraceReplayStrategy
 from guidellm.schemas import RequestInfo
-
-
-def test_strategy_type():
-    """Test that StrategyType is defined correctly as a Literal type."""
-    # StrategyType is a type alias/literal type, we can't test its runtime value
-    # but we can test that it exists and is importable
-    assert StrategyType is not None
 
 
 def test_strategy_t():

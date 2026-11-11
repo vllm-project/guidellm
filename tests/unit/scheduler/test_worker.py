@@ -414,7 +414,7 @@ class TestWorkerProcessMultiturn:
 
         ## WRITTEN BY AI ##
         """
-        return WorkerProcess(
+        worker = WorkerProcess(
             worker_index=1,
             messaging=MockMessaging(),
             backend=MockBackend(),
@@ -430,6 +430,9 @@ class TestWorkerProcessMultiturn:
             stderr_conn=None,
             parent_logger=None,
         )
+        # run_async() normally creates this; direct method calls need it too.
+        worker._turns_changed = asyncio.Event()
+        return worker
 
     @pytest.mark.smoke
     def test_turns_queue_initialization(self, worker_instance):
@@ -581,6 +584,8 @@ class TestWorkerProcessMultiturn:
             stderr_conn=None,
             parent_logger=None,
         )
+        # run_async() normally creates this; direct method calls need it too.
+        worker._turns_changed = asyncio.Event()
         graph = ConversationGraph(
             graph_id="cancel_partial",
             nodes={
@@ -868,6 +873,8 @@ class TestWorkerProcessSessionCap:
             stderr_conn=None,
             parent_logger=None,
         )
+        # run_async() normally creates this; direct method calls need it too.
+        worker._turns_changed = asyncio.Event()
         assert worker.session_limit == session_limit
         return worker
 
@@ -937,7 +944,8 @@ class TestWorkerProcessSessionCap:
         users_worker.turns_queue.append(self._gated_state("g1"))
 
         getter = asyncio.create_task(users_worker._get_next_ready_node())
-        await wait_until(lambda: users_worker._turns_changed is not None)
+        # One loop tick lets the getter reach its session-cap wait.
+        await asyncio.sleep(0)
         await asyncio.sleep(0.05)
 
         assert not getter.done()
@@ -1001,7 +1009,8 @@ class TestWorkerProcessSessionCap:
         assert users_worker._at_session_cap()
 
         getter = asyncio.create_task(users_worker._get_next_ready_node())
-        await wait_until(lambda: users_worker._turns_changed is not None)
+        # One loop tick lets the getter reach its session-cap wait.
+        await asyncio.sleep(0)
 
         # a new conversation is queued for the freed user slot
         next_graph = ConversationGraph(
@@ -1041,7 +1050,8 @@ class TestWorkerProcessSessionCap:
         await wait_until(lambda: bool(worker.messaging.get_calls))
 
         second = asyncio.create_task(worker._get_next_ready_node())
-        await wait_until(lambda: worker._turns_changed is not None)
+        # One loop tick lets the second getter reach its session-cap wait.
+        await asyncio.sleep(0)
         await asyncio.sleep(0.05)
 
         # the reservation blocks the second getter before it reads IPC
@@ -1085,7 +1095,8 @@ class TestWorkerProcessSessionCap:
         worker.turns_queue.append(gated)
 
         waiter = asyncio.create_task(worker._get_next_ready_node())
-        await wait_until(lambda: worker._turns_changed is not None)
+        # One loop tick lets the waiter reach its session-cap wait.
+        await asyncio.sleep(0)
         assert worker._at_session_cap()
 
         await worker.messaging.put(self._single_node_graph("next"))
