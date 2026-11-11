@@ -148,7 +148,7 @@ You can use the `--override` option to specify a list of stream values, to run a
 
 #### Users Profile
 
-Simulates a fixed number of users, each holding one session (conversation) from the dataset at a time. Unlike `concurrent`, which counts concurrency per turn and pulls new conversations while others wait out their delays, a user's slot stays bound to their session: they send a turn, wait out the dataset's requeue delay, send the next turn of the same conversation, and only start a new conversation when that one finishes. Use it to answer questions like "server X with model Y can support Z concurrent users".
+Simulates a fixed number of users, each holding one session (conversation) from the dataset at a time. This profile behaves much like `concurrent` with one major difference: a user's slot stays bound to their session. When a turn is made, the user slot waits out the dataset's requeue delay, sends the next turn of the same conversation, and only starts a new conversation when that one finishes. Use it to answer questions like "server X with model Y can support Z concurrent users".
 
 ```bash
 guidellm run --profile kind=users,users=10 \
@@ -164,13 +164,13 @@ Think time comes from the dataset: each turn's `requeue_delay` gates the next tu
 
 Delay only gates turns *within* a conversation: when a session ends, the user immediately starts the next conversation. Single-turn data therefore has no between-turn gap to gate — with no delay configured it chains conversations as fast as the server responds, behaving like `concurrent`.
 
-Because a user's slot stays idle for the think time instead of being lent to another conversation, `users` offers a lower request rate than `concurrent` with the same number of slots, and the conversations interleave differently.
+Because a user's slot stays idle for the think time instead of being lent to another conversation, `users` can offer a lower request rate than `concurrent` with the same number of slots, and the conversations interleave differently.
 
-Trace datasets carry request timestamps and durations but not a `requeue_delay`, so a `users` run over a trace has no between-turn gap and behaves like `concurrent`. Use synthetic `delay*` data, or the trace profile itself, when between-turn pacing matters.
+Trace datasets carry request timestamps and durations but not a `requeue_delay`, so a `users` run over a trace has no between-turn gap and behaves like `concurrent`. Use synthetic `delay*` data or the `replay` profile when between-turn pacing matters.
 
 `rampup_duration` staggers only the first turn of each new session; follow-up turns are not ramped.
 
-The next turn is due `delay` after the previous response finishes, like a person who reads the reply and then thinks. This is closed-loop pacing: as latency rises, each user slows down, so the offered request rate falls near capacity. When comparing user counts, compare the achieved request rate rather than assuming it is constant.
+The next turn is scheduled `delay` seconds after the previous response finishes, like a person who reads the reply and then thinks. This is closed-loop pacing: as latency rises, each user slows down, so the offered request rate falls near capacity. When comparing user counts, compare the achieved request rate rather than assuming it is constant.
 
 You can use the `--override` option to specify a list of user counts, to run a set of users "strategies" (sub-benchmarks) with different user counts. For example, `--profile kind=users --override profile.users 10,20,30` will run a users strategy with 10 users, a users strategy with 20 users, and a users strategy with 30 users. As with the other multi-value profiles, a constraint configured with `stopping_scope="all"` skips the remaining counts once it triggers, so specify counts in ascending order.
 

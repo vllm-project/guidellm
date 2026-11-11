@@ -84,6 +84,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         worker.run()
     """
 
+    # Wake event for waiters blocked on the session cap. Assigned in run_async
+    # rather than __init__ because asyncio primitives cannot cross between workers.
+    _turns_changed: asyncio.Event
+
     def __init__(
         self,
         worker_index: int,
@@ -153,9 +157,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         # reserved across the await so concurrent getters cannot overshoot
         # session_limit.
         self._sessions_pending = 0
-        # Wake event for waiters blocked on the session cap; created inside
-        # the worker's event loop because asyncio primitives are not pickled.
-        self._turns_changed: asyncio.Event | None = None
 
     def run(self):
         """
@@ -201,6 +202,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :raises RuntimeError: If worker tasks encounter unrecoverable errors
         :raises asyncio.CancelledError: If worker process was cancelled
         """
+        self._turns_changed = asyncio.Event()
         stop_task = asyncio.create_task(self._stop_monitor())
         request_proc_task = asyncio.create_task(self._process_requests())
         caller_cancelled = False
@@ -426,7 +428,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 # the earliest gate or for a session to finish; the scan runs
                 # again after either. No await happens between the scan above
                 # and the clear below, so a set-then-clear race cannot occur.
-                turns_changed = self._get_turns_changed()
+                turns_changed = self._turns_changed
                 turns_changed.clear()
                 if earliest is not None:
                     timeout = max(0.0, earliest - time.time())
@@ -436,15 +438,13 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     await turns_changed.wait()
                 continue
 
-            pull_timeout = (
-                max(0.0, earliest - time.time()) if earliest is not None else None
-            )
             # Reserve a session slot before awaiting IPC so concurrent getters
             # cannot all pass the cap check, then release it once the graph is
             # queued or the pull times out.
             self._sessions_pending += 1
             try:
-                if pull_timeout is not None:
+                if earliest is not None:
+                    pull_timeout = max(0.0, earliest - time.time())
                     try:
                         graph: ConversationGraph[RequestT] = await self.messaging.get(
                             timeout=pull_timeout
@@ -457,7 +457,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 self.turns_queue.append(state)
             finally:
                 self._sessions_pending -= 1
-                self._notify_turns_changed()
+                self._turns_changed.set()
 
     def _at_session_cap(self) -> bool:
         """Whether the worker already holds its maximum active sessions."""
@@ -465,17 +465,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             self.session_limit is not None
             and len(self.turns_queue) + self._sessions_pending >= self.session_limit
         )
-
-    def _get_turns_changed(self) -> asyncio.Event:
-        """Return the turn-change wake event, creating it on first use."""
-        if self._turns_changed is None:
-            self._turns_changed = asyncio.Event()
-        return self._turns_changed
-
-    def _notify_turns_changed(self) -> None:
-        """Wake waiters blocked on the session cap after a state change."""
-        if self._turns_changed is not None:
-            self._turns_changed.set()
 
     async def _process_next_graph_node(self, target_start: float) -> None:
         """Process a single graph node from queue to completion."""
@@ -587,7 +576,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             self.turns_queue.remove(state)
         # Children may have become ready (or a session slot may have freed);
         # wake waiters blocked on the session cap.
-        self._notify_turns_changed()
+        self._turns_changed.set()
 
     def _handle_node_error(  # noqa: PLR0913
         self,
@@ -641,7 +630,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         if state in self.turns_queue:
             self.turns_queue.remove(state)
             # A session slot freed; wake waiters blocked on the session cap.
-            self._notify_turns_changed()
+            self._turns_changed.set()
 
     async def _schedule_request(
         self, request: RequestT, request_info: RequestInfo, target_start: float

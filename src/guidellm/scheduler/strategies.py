@@ -23,7 +23,7 @@ from abc import abstractmethod
 from multiprocessing import synchronize
 from multiprocessing.context import BaseContext
 from multiprocessing.sharedctypes import Synchronized
-from typing import Annotated, ClassVar, Literal, TypeVar
+from typing import ClassVar, Literal, TypeVar
 
 from pydantic import (
     Field,
@@ -47,25 +47,10 @@ __all__ = [
     "ConcurrentStrategy",
     "SchedulingStrategy",
     "StrategyT",
-    "StrategyType",
     "SynchronousStrategy",
     "ThroughputStrategy",
     "TraceReplayStrategy",
     "UsersStrategy",
-]
-
-
-StrategyType = Annotated[
-    Literal[
-        "synchronous",
-        "concurrent",
-        "throughput",
-        "constant",
-        "poisson",
-        "trace",
-        "users",
-    ],
-    "Valid strategy type identifiers for scheduling request patterns",
 ]
 
 
@@ -442,7 +427,7 @@ class ConcurrentStrategy(SchedulingStrategy):
         current_index = self.next_request_index()
         start_time = await self.get_processes_start_time()
 
-        if current_index <= self.streams and self.rampup_duration > 0:
+        if current_index < self.streams and self.rampup_duration > 0:
             # linearly spread start times for first concurrent requests across rampup
             return start_time + self.rampup_duration * (current_index / self.streams)
 
@@ -468,12 +453,12 @@ class UsersStrategy(SchedulingStrategy):
     """
     Simulated users, each holding one dataset-defined session at a time.
 
-    Models ``users`` people using the server: each user owns one
-    conversation and waits out the dataset ``requeue_delay`` between
-    turns (synthetic data's ``delay`` options), starting the next
+    Models a ``users`` quantity of people using the server: each user owns
+    one conversation and waits out the dataset ``requeue_delay`` between
+    turns (for example synthetic text's ``delay`` options), starting the next
     conversation immediately after one finishes. Unlike ``concurrent``,
     the user's slot stays bound to the session across the delay instead
-    of pulling new conversations.
+    of pulling other conversations during that delay.
 
     Request slots remain shared among the sessions assigned to a worker
     and are not reserved per user, so a conversation with parallel
