@@ -31,7 +31,7 @@ Link any relevant issues that this PR addresses or relates to.
 
 <!--
 **REQUIRED**
-Checks the boxes to certify your ownership of this PR and any use-of-ai
+Check the boxes to certify your ownership of this PR and any use-of-ai
 disclaimers. DO NOT EDIT this section aside from checking boxes.
 -->
 

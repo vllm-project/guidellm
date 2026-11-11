@@ -64,7 +64,7 @@ Before submitting code, assess the likelihood and impact of regressions beyond t
 ### Performance and Measurement Integrity
 
 - Minimize overhead in request handling, streaming, scheduling, and metrics.
-- Preserve metric definitions, aggregation, missing-data behavior, and timing.
+- Preserve metric definitions, aggregation, missing-data behavior, and timing except where current definitions are measurably incorrect.
 - Validate performance and measurement accuracy with representative evidence, accounting for instrumentation overhead.
 
 ### Compatibility and Shared Behavior
