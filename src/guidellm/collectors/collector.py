@@ -89,7 +89,7 @@ class Collector(RegistryMixin[type["Collector"]], ABC):
         """
         ...
 
-    async def close(self) -> None:  # noqa: B027
+    async def close(self) -> None:
         """Release any resources held across benchmarks."""
 
 

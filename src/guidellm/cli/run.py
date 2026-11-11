@@ -32,7 +32,7 @@ __all__ = [
     ),
 )
 @common_run_options
-def run(**kwargs):  # noqa: C901, PLR0915
+def run(**kwargs):
     ctx = click.get_current_context()
     # Only set CLI args that differ from click defaults
     kwargs = cli_tools.set_if_not_default(ctx, **kwargs)

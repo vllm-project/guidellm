@@ -586,7 +586,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         """
         return True
 
-    def format(  # noqa: C901
+    def format(
         self,
         data: GenerationRequest,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
@@ -770,10 +770,16 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
 
         :param response: Complete API response containing choices and usage data
         :return: Tuple of choices list and usage dictionary
+        :raises NotImplementedError: If the response contains multiple choices.
         """
         if isinstance(metrics := response.get("metrics"), dict):
             self.response_metrics = metrics
-        return response.get("choices", []), response.get("usage", {})
+        choices = response.get("choices", [])
+        # vLLM may stream each alternative in a separate event. Check only the
+        # first index to keep this shared parsing path constant-time.
+        if choices and (len(choices) > 1 or choices[0].get("index", 0) != 0):
+            raise NotImplementedError("Multiple completion choices are not supported")
+        return choices, response.get("usage", {})
 
     def extract_metrics(
         self, usage: dict[str, int | dict[str, int]] | None, text: str | None
@@ -1071,7 +1077,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             )
         return messages
 
-    def _build_turn_messages(  # noqa: C901
+    def _build_turn_messages(
         self,
         req: GenerationRequest,
         res: GenerationResponse | None,
@@ -1144,7 +1150,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return messages
 
-    def format(  # noqa: C901, PLR0912, PLR0915
+    def format(
         self,
         data: GenerationRequest,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
@@ -1412,7 +1418,7 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
         data: GenerationRequest,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
-    ) -> GenerationRequestArguments:  # noqa: C901
+    ) -> GenerationRequestArguments:
         """
         Format the audio transcription generation request into the
         appropriate structure.
@@ -1785,7 +1791,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             )
         return items
 
-    def _build_turn_input_items(  # noqa: C901
+    def _build_turn_input_items(
         self,
         req: GenerationRequest,
         res: GenerationResponse | None,
@@ -2401,7 +2407,7 @@ class PoolingRequestHandler(ChatCompletionsRequestHandler):
     pooling-specific request structure with nested data fields.
     """
 
-    def post_validation(self, response: GenerationResponse) -> None:  # noqa: ARG002
+    def post_validation(self, response: GenerationResponse) -> None:
         """Pooling responses produce non-text output; skip validation."""
 
     def format(
@@ -2537,7 +2543,7 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
             # output_metrics defaults to UsageMetrics() with all None values
         )
 
-    def add_streaming_line(self, line: str) -> int | None:  # noqa: ARG002
+    def add_streaming_line(self, line: str) -> int | None:
         """
         Embeddings do not support streaming.
 
@@ -2547,7 +2553,7 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
         """
         raise NotImplementedError("Embeddings do not support streaming")
 
-    def compile_streaming(  # noqa: ARG002
+    def compile_streaming(
         self, request: GenerationRequest, arguments: GenerationRequestArguments
     ) -> GenerationResponse:
         """
