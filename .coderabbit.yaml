@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en
+early_access: false
+inheritance: false
+
+reviews:
+  profile: assertive
+  auto_approvals:
+    enabled: false
+  high_level_summary: false
+  high_level_summary_in_walkthrough: false
+  poem: false
+  in_progress_fortune: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  suggested_labels: false
+  suggested_reviewers: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_apply_labels: false
+  auto_assign_reviewers: false
+  auto_review:
+    enabled: false
+    auto_incremental_review: false
+    description_keyword: ""
+    labels: []
+  path_instructions:
+    - path: "src/guidellm/**/*.py"
+      instructions: |
+        Keep behavior with the component that owns it: schema serialization on
+        schema models, and variant-specific behavior behind implementation
+        interfaces. Favor simple interfaces with minimal coordination. Look for
+        existing abstractions and dependency capabilities before adding custom
+        handling. Prefer behavior consistent with analogous implementations unless
+        the change intentionally updates the shared contract. Question unnecessary
+        wrappers, special cases, and configuration choices when a simpler design
+        meets the demonstrated need. Check that new measurements represent what
+        they claim to measure. Flag unrelated behavior changes that complicate the
+        PR. Comments should explain non-obvious intent or constraints rather than
+        repeat code or record issue history. Explain the concrete consequence of
+        each finding and distinguish demonstrated defects from design questions;
+        do not demand a speculative redesign.
+    - path: "src/guidellm/{scheduler,backends}/**/*.py"
+      instructions: |
+        Examine added blocking work, polling, repeated computation, and
+        resource-management changes for effects on benchmark execution. Ask for
+        evidence when a performance claim or measurement depends on assumptions
+        the change does not establish. Evidence should isolate the claimed
+        improvement and account for instrumentation overhead. Avoid assuming
+        asynchronous ordering or timing correlation establishes causation or
+        request-level attribution.
+    - path: "tests/**"
+      instructions: |
+        Keep tests self-contained, with required services managed by the test
+        harness. Tests using actual HTTP traffic or multiple cooperating
+        components belong at the integration level. Check that timing assumptions
+        and timeouts are realistic under CI load. Use the existing tox workflow
+        and repository test conventions.
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "DEVELOPING.md"
+      - "CONTRIBUTING.md"
+
+issue_enrichment:
+  auto_enrich:
+    enabled: false
+  planning:
+    auto_planning:
+      enabled: false
+  labeling:
+    auto_apply_labels: false

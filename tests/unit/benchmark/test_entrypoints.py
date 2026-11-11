@@ -10,6 +10,7 @@ from guidellm.benchmark.benchmarker import Benchmarker
 from guidellm.benchmark.entrypoints import resolve_backend, resolve_output_formats
 from guidellm.benchmark.outputs import GenerativeBenchmarkerOutput
 from guidellm.benchmark.profiles import ProfileFactory
+from guidellm.benchmark.progress import BenchmarkerProgress
 from guidellm.schemas.backends import (
     OpenAIHTTPBackendArgs,
     VLLMPythonAsyncBackendArgs,
@@ -245,6 +246,7 @@ async def test_benchmarker_forwards_objectives_into_benchmark_config():
                 environment=_info_stub(),
                 warmup=TransientPhaseConfig(),
                 cooldown=TransientPhaseConfig(),
+                progress=MagicMock(spec=BenchmarkerProgress),
                 slo=slo,
             )
         ]

@@ -39,7 +39,7 @@ class IntegerRangeSampler:
         self.min_value = min_value
         self.max_value = max_value
         self.seed = random_seed
-        self.rng = random.Random(random_seed)  # noqa: S311
+        self.rng = random.Random(random_seed)
 
     def __iter__(self) -> Iterator[int]:
         calc_min = self.min_value
@@ -79,7 +79,7 @@ class FloatRangeSampler:
         self.min_value = min_value
         self.max_value = max_value
         self.seed = random_seed
-        self.rng = random.Random(random_seed)  # noqa: S311
+        self.rng = random.Random(random_seed)
 
     def __iter__(self) -> Iterator[float]:
         calc_min = self.min_value

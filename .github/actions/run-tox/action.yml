@@ -17,6 +17,7 @@ runs:
       uses: ./.github/actions/python-uv
       with:
         python-version: ${{ inputs.python-version }}
+        sync-args: "--only-group env"
     - name: Cache HuggingFace
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
@@ -25,13 +26,9 @@ runs:
         restore-keys: |
           huggingface-${{ runner.os }}-${{ inputs.python-version }}-
           huggingface-${{ runner.os }}-
-    - name: Install dependencies
-      run: |
-        uv pip install --system tox tox-uv
-      shell: bash
     - name: Run tox
       run: |
-        tox run --runner uv-venv-lock-runner -e "${{ inputs.tox-env }}" -- ${{ inputs.tox-args }} || ret=$?
+        uv run tox run -e "${{ inputs.tox-env }}" -- ${{ inputs.tox-args }} || ret=$?
         # errno 5 means all tests were filtered out, ignore
         [[ "${ret:=0}" -eq 5 ]] && exit 0; exit $ret
       shell: bash
