@@ -53,7 +53,7 @@ source_sha256: !!str "a6f2f3095aa6b6b3c6b30f40f988275e264ae73c50a40590bba6441583
 
   通过分步示例了解真实场景下的基准测试和优化方法。
 
-  [:octicons-arrow-right-24: 阅读英文示例](../examples/)
+  [:octicons-arrow-right-24: 阅读示例](./examples/index.md)
 
 - :material-api:{ .lg .middle } API 参考
 
