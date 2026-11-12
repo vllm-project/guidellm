@@ -256,7 +256,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
             max_concurrency=max_conc,
             mp_context=self.mp_context,
         )
-        for rank, async_limit in enumerate(async_limits):
+        for rank in range(num_processes):
             worker = WorkerProcess[RequestT, ResponseT](
                 worker_index=rank,
                 messaging=self.messaging.create_worker_copy(  # type: ignore[arg-type]
@@ -266,7 +266,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
                 ),  # The non-group worker lacks the SchedulerState type. Type err.
                 backend=self.backend,
                 strategy=self.strategy,
-                async_limit=async_limit,
+                async_limit=async_limits[rank],
                 session_limit=session_limits[rank],
                 fut_scheduling_time_limit=0.0,
                 startup_barrier=self.startup_barrier,

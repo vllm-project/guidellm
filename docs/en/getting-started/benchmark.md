@@ -164,7 +164,7 @@ Think time comes from the dataset: each turn's `requeue_delay` gates the next tu
 
 Delay only gates turns *within* a conversation: when a session ends, the user immediately starts the next conversation. Single-turn data therefore has no between-turn gap to gate — with no delay configured it chains conversations as fast as the server responds, behaving like `concurrent`.
 
-Because a user's slot stays idle for the think time instead of being lent to another conversation, `users` can offer a lower request rate than `concurrent` with the same number of slots, and the conversations interleave differently.
+Because a user's slot stays idle for the think time instead of immediately scheduling another conversation, `users` can offer a lower request rate than `concurrent` with the same number of slots, and the conversations interleave differently.
 
 Trace datasets carry request timestamps and durations but not a `requeue_delay`, so a `users` run over a trace has no between-turn gap and behaves like `concurrent`. Use synthetic `delay*` data or the `replay` profile when between-turn pacing matters.
 
