@@ -25,8 +25,8 @@ class ConcurrentProfileArgs(ProfileArgs):
     @field_validator("streams", mode="before")
     @classmethod
     def _coerce_streams_to_list(cls, value: Any) -> Any:
-        """Normalize streams to a list, leaving entry validation to Pydantic.
+        """Normalize streams to a list of integers.
 
-        Allow a single integer, list, tuple, or JSON-encoded array.
+        Allow single integer or list of integers.
         """
         return coerce_int_list(value, "streams")

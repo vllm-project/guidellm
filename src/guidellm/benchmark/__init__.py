@@ -3,9 +3,8 @@ Benchmark execution and performance analysis framework.
 
 Provides comprehensive benchmarking capabilities for LLM inference workloads,
 including profile-based execution strategies, metrics collection and aggregation,
-progress tracking, and multi-format output generation. Supports synchronous,
-asynchronous, concurrent, users, sweep, and throughput-based benchmarking profiles for
-evaluating model performance under various load conditions.
+progress tracking, and multi-format output generation. Supports various profiles
+for evaluating model performance that load the server in different ways.
 """
 
 from __future__ import annotations

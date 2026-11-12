@@ -29,8 +29,8 @@ class UsersProfileArgs(ProfileArgs):
     @field_validator("users", mode="before")
     @classmethod
     def _coerce_users_to_list(cls, value: Any) -> Any:
-        """Normalize users to a list, leaving entry validation to Pydantic.
+        """Normalize users to a list of integers.
 
-        Allow a single integer, list, tuple, or JSON-encoded array.
+        Allow single integer or list of integers.
         """
         return coerce_int_list(value, "users")
