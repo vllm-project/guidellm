@@ -25,6 +25,121 @@ from guidellm.schemas.benchmark import BenchmarkScenario
 
 __all__ = ["GenerativeBenchmarkMetadata", "GenerativeBenchmarksReport"]
 
+_MULTIPART_REQUIRED_FIELDS = 2
+_MULTIPART_CONTENT_TYPE_FIELDS = 3
+_MEDIA_FIELDS = {
+    "image",
+    "audio",
+    "video",
+    "image_url",
+    "audio_url",
+    "video_url",
+    "image_column",
+    "audio_column",
+    "video_column",
+    "input_image",
+    "input_audio",
+    "input_file",
+}
+
+
+def _media_metadata(payload: str, *, base64_encoded: bool = False) -> dict[str, Any]:
+    """Describe an omitted serialized payload without decoding or retaining it."""
+    metadata: dict[str, Any] = {
+        "omitted": True,
+        "serialized_characters": len(payload),
+    }
+    start = 0
+    if payload.startswith("data:") and (separator := payload.find(",")) >= 0:
+        header = payload[5:separator]
+        metadata["media_type"] = header.split(";", 1)[0] or "text/plain"
+        base64_encoded = "base64" in header.split(";")[1:]
+        start = separator + 1
+    if base64_encoded:
+        encoded = payload.rstrip(" \t\r\n")
+        length = len(encoded) - start
+        length -= sum(encoded.count(char, start) for char in " \t\r\n")
+        padding = 2 if encoded.endswith("==") else int(encoded.endswith("="))
+        metadata["size_bytes"] = length * 3 // 4 - padding
+    return metadata
+
+
+def _omit_request_arguments(arguments: str) -> str:
+    """Process structured request arguments while preserving opaque descriptions."""
+    try:
+        parsed = json.loads(arguments)
+    except json.JSONDecodeError:
+        return arguments
+    return json.dumps(_omit_media_payloads(parsed))
+
+
+def _omit_uploaded_files(files: dict[str, Any]) -> None:
+    """Replace multipart upload tuples with their available metadata."""
+    for name, upload in files.items():
+        if (
+            isinstance(upload, list)
+            and len(upload) >= _MULTIPART_REQUIRED_FIELDS
+            and isinstance(upload[1], str)
+        ):
+            metadata = _media_metadata(upload[1])
+            metadata["filename"] = upload[0]
+            if len(upload) >= _MULTIPART_CONTENT_TYPE_FIELDS:
+                metadata["media_type"] = upload[2]
+            files[name] = metadata
+        else:
+            files[name] = _omit_media_payloads(upload)
+
+
+def _omit_media_payloads(value: Any, *, media_context: bool = False) -> Any:
+    """Remove recognized media from a detached JSON-compatible report tree."""
+    if isinstance(value, str):
+        return (
+            _media_metadata(value)
+            if media_context and value.startswith("data:") and "," in value
+            else value
+        )
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            omitted = _omit_media_payloads(item, media_context=media_context)
+            # Scalar dataset columns must remain loadable after media omission.
+            value[index] = (
+                json.dumps(omitted)
+                if isinstance(item, str) and isinstance(omitted, dict)
+                else omitted
+            )
+    elif isinstance(value, dict):
+        media_type = value.get("type")
+        is_media = media_context or (
+            isinstance(media_type, str) and media_type in _MEDIA_FIELDS
+        )
+        column_name = value.get("column_name")
+        media_column = isinstance(column_name, str) and column_name in _MEDIA_FIELDS
+        for key, item in value.items():
+            if key == "request_args" and isinstance(item, str):
+                value[key] = _omit_request_arguments(item)
+            elif key == "files" and isinstance(item, dict):
+                _omit_uploaded_files(item)
+            elif isinstance(item, str) and (
+                key in {"file_data", "b64_json"} or (key == "data" and is_media)
+            ):
+                value[key] = _media_metadata(item, base64_encoded=True)
+            elif (
+                key == "audio"
+                and isinstance(item, str)
+                and ("mimetype" in value or "file_name" in value)
+            ):
+                value[key] = _media_metadata(item)
+            else:
+                value[key] = _omit_media_payloads(
+                    item,
+                    media_context=(
+                        key in _MEDIA_FIELDS
+                        or (is_media and key in {"url", "data"})
+                        or (media_column and key == "data")
+                    ),
+                )
+    return value
+
 
 class GenerativeBenchmarkMetadata(StandardBaseModel):
     """
@@ -90,6 +205,8 @@ class GenerativeBenchmarksReport(StandardBaseModel):
         self,
         path: str | Path | None = None,
         type_: Literal["json", "yaml"] | None = None,
+        *,
+        include_media: bool = True,
     ) -> Path:
         """
         Save report to file in JSON or YAML format.
@@ -98,6 +215,8 @@ class GenerativeBenchmarksReport(StandardBaseModel):
             with DEFAULT_FILE name
         :param type_: File format override ('json' or 'yaml'), auto-detected from
             extension if None
+        :param include_media: Preserve embedded media for replay. If False, replace
+            recognized media payloads with metadata without changing this report.
         :return: Resolved path to the saved file
         :raises ValueError: If file type is unsupported or cannot be determined
         """
@@ -107,6 +226,8 @@ class GenerativeBenchmarksReport(StandardBaseModel):
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_type = type_ or file_path.suffix.lower()[1:]
         model_dict = self.model_dump(mode="json")
+        if not include_media:
+            _omit_media_payloads(model_dict)
         if file_type == "json":
             save_str = json.dumps(model_dict)
         elif file_type in ["yaml", "yml"]:
