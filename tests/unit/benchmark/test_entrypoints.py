@@ -394,7 +394,8 @@ async def test_entrypoint_prints_console_tables_once(explicit_console):
 )
 async def test_resolve_output_formats_adds_console_once(outputs, expected_kinds):
     """
-    With a console, the console output is added last unless one is specified.
+    With a console, the console output is added last unless one is specified,
+    and every console output prints to the supplied console.
     """
     console = Console(quiet=True)
     output_args = [BenchmarkOutputArgs.model_validate(output) for output in outputs]
@@ -402,8 +403,8 @@ async def test_resolve_output_formats_adds_console_once(outputs, expected_kinds)
     resolved = await resolve_output_formats(output_args, console=console)
 
     assert [args.kind for args, _ in resolved] == expected_kinds
-    if not any(output["kind"] == "console" for output in outputs):
-        assert resolved[-1][1].console is console
+    console_outputs = [output for args, output in resolved if args.kind == "console"]
+    assert [output.console for output in console_outputs] == [console]
 
 
 @pytest.mark.sanity

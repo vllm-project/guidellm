@@ -369,7 +369,12 @@ async def resolve_output_formats(
 
     resolved: list[tuple[BenchmarkOutputArgs, GenerativeBenchmarkerOutput]] = []
     for output_arg in outputs:
-        resolved.append((output_arg, GenerativeBenchmarkerOutput.resolve(output_arg)))
+        output = (
+            GenerativeBenchmarkerConsole(console=console)
+            if console and output_arg.kind == "console"
+            else GenerativeBenchmarkerOutput.resolve(output_arg)
+        )
+        resolved.append((output_arg, output))
     if console and not any(args.kind == "console" for args, _ in resolved):
         resolved.append(
             (
