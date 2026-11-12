@@ -229,7 +229,7 @@ class CompletionsHandler:
                     "choices": [
                         {
                             "text": token,
-                            "index": index,
+                            "index": 0,
                             "finish_reason": None,
                         }
                     ],
@@ -245,7 +245,7 @@ class CompletionsHandler:
                 "choices": [
                     {
                         "text": "",
-                        "index": index,
+                        "index": 0,
                         "finish_reason": "stop",
                     }
                 ],
