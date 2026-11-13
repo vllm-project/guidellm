@@ -889,6 +889,23 @@ class TestTextCompletionsRequestHandler:
         assert usage == expected_usage
 
     @pytest.mark.smoke
+    def test_streaming_records_finish_reason(self, valid_instances):
+        """Only a chunk with a non-null finish_reason sets the finish flag.
+
+        ### WRITTEN BY AI ###
+        """
+        instance = valid_instances
+        assert instance.finish_reason_received is False
+        instance.add_streaming_line(
+            'data: {"choices": [{"index": 0, "text": "Hi", "finish_reason": null}]}'
+        )
+        assert instance.finish_reason_received is False
+        instance.add_streaming_line(
+            'data: {"choices": [{"index": 0, "text": "", "finish_reason": "stop"}]}'
+        )
+        assert instance.finish_reason_received is True
+
+    @pytest.mark.smoke
     @pytest.mark.parametrize(
         ("usage", "text", "expected_input_tokens", "expected_output_tokens"),
         [
