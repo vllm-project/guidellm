@@ -48,6 +48,7 @@ from .trace_minimal import MinimalTraceFormat
 from .trace_mooncake import MooncakeTraceFormat
 from .trace_otel import OTELTraceFormat
 from .trace_weka import WEKATraceFormat
+from .weighted_sampler import WeightedSamplerDataset, WeightedSamplerDatasetDeserializer
 
 __all__ = [
     "ArrowFileDatasetDeserializer",
@@ -79,6 +80,8 @@ __all__ = [
     "TraceFormatBase",
     "TraceFormatRegistry",
     "WEKATraceFormat",
+    "WeightedSamplerDataset",
+    "WeightedSamplerDatasetDeserializer",
     "create_distinct_token_block",
     "create_prompt_from_hash_ids",
     "decode_prompt",
