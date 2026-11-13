@@ -372,6 +372,40 @@ def test_compile_filters_token_and_ttft_events_to_measurement_window():
 
 
 @pytest.mark.regression
+def test_compile_modality_rates_use_the_measurement_window():
+    """
+    Per-modality rates span the measurement window, like the token rates.
+
+    Five back-to-back 2 second requests fill a 10 second window, each with 8
+    output text tokens, so both rates are 40 tokens over 10 seconds. Measured
+    from the first request end to the last, the span is 8 seconds.
+
+    ## WRITTEN BY AI ##
+    """
+    base = SCHEDULE_BASE_TIME
+    metrics = GenerativeMetrics.compile(
+        _make_accumulator(
+            [
+                _make_scheduled_stats(
+                    f"req-{index}",
+                    base + 2 * index,
+                    base + 2 * index,
+                    base + 2 * index + 2,
+                )
+                for index in range(5)
+            ],
+            start_time=base,
+            end_time=base + 10.0,
+        )
+    )
+
+    assert metrics.output_tokens_per_second.successful.mean == pytest.approx(4.0)
+    assert metrics.text.tokens is not None
+    assert metrics.text.tokens.output_per_second is not None
+    assert metrics.text.tokens.output_per_second.successful.mean == pytest.approx(4.0)
+
+
+@pytest.mark.regression
 def test_compile_filters_ttfot_by_first_output_token_event():
     """
     TTFOT is filtered by first_output_token_iteration, which can differ from TTFT

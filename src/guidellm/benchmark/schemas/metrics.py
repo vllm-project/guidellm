@@ -254,6 +254,8 @@ class GenerativeMetricsSummary(StandardBaseDict):
         successful: list[GenerativeRequestStats],
         incomplete: list[GenerativeRequestStats],
         errored: list[GenerativeRequestStats],
+        start_time: float | None = None,
+        end_time: float | None = None,
     ) -> GenerativeMetricsSummary | None:
         """
         Compile metrics summary from request statistics for a specific property.
@@ -262,6 +264,8 @@ class GenerativeMetricsSummary(StandardBaseDict):
         :param successful: Successfully completed request statistics
         :param incomplete: Incomplete or cancelled request statistics
         :param errored: Failed request statistics
+        :param start_time: Measurement window start for rates and concurrency
+        :param end_time: Measurement window end for rates and concurrency
         :return: Compiled metrics summary or None if no data available
         """
         successful_metrics = cls.extract_property_metrics_for_summary(
@@ -278,6 +282,8 @@ class GenerativeMetricsSummary(StandardBaseDict):
             successful=successful_metrics,
             incomplete=incomplete_metrics,
             errored=errored_metrics,
+            start_time=start_time,
+            end_time=end_time,
         )
 
     @classmethod
@@ -286,6 +292,8 @@ class GenerativeMetricsSummary(StandardBaseDict):
         successful: list[TimedMetricTypeAlias],
         incomplete: list[TimedMetricTypeAlias],
         errored: list[TimedMetricTypeAlias],
+        start_time: float | None = None,
+        end_time: float | None = None,
     ) -> GenerativeMetricsSummary | None:
         """
         Compile metrics summary from timed metric tuples.
@@ -293,6 +301,8 @@ class GenerativeMetricsSummary(StandardBaseDict):
         :param successful: Timed metrics from successful requests
         :param incomplete: Timed metrics from incomplete requests
         :param errored: Timed metrics from errored requests
+        :param start_time: Measurement window start for rates and concurrency
+        :param end_time: Measurement window end for rates and concurrency
         :return: Compiled metrics summary or None if no data available
         """
 
@@ -349,6 +359,8 @@ class GenerativeMetricsSummary(StandardBaseDict):
                 successful=rate_lists["successful"],
                 incomplete=rate_lists["incomplete"],
                 errored=rate_lists["errored"],
+                start_time=start_time,
+                end_time=end_time,
             )
 
             concurrency_lists: dict[StatusTypes, list[tuple[float, float, float]]] = {
@@ -370,6 +382,8 @@ class GenerativeMetricsSummary(StandardBaseDict):
                     successful=concurrency_lists["successful"],
                     incomplete=concurrency_lists["incomplete"],
                     errored=concurrency_lists["errored"],
+                    start_time=start_time,
+                    end_time=end_time,
                 )
             )
 
@@ -431,6 +445,8 @@ class GenerativeMetricsSummary(StandardBaseDict):
                     input_rate_lists["incomplete"] + output_rate_lists["incomplete"]
                 ),
                 errored=input_rate_lists["errored"] + output_rate_lists["errored"],
+                start_time=start_time,
+                end_time=end_time,
             )
             total_concurrency_dist = (
                 StatusDistributionSummary.concurrency_distribution_from_timings(
@@ -446,6 +462,8 @@ class GenerativeMetricsSummary(StandardBaseDict):
                         input_concurrency_lists["errored"]
                         + output_concurrency_lists["errored"]
                     ),
+                    start_time=start_time,
+                    end_time=end_time,
                 )
             )
         else:
@@ -520,6 +538,8 @@ class GenerativeTextMetricsSummary(StandardBaseDict):
         successful: list[GenerativeRequestStats],
         incomplete: list[GenerativeRequestStats],
         errored: list[GenerativeRequestStats],
+        start_time: float | None = None,
+        end_time: float | None = None,
     ) -> GenerativeTextMetricsSummary:
         """
         Compile text metrics summary from request statistics.
@@ -527,6 +547,8 @@ class GenerativeTextMetricsSummary(StandardBaseDict):
         :param successful: Successfully completed request statistics
         :param incomplete: Incomplete/cancelled request statistics
         :param errored: Failed request statistics
+        :param start_time: Measurement window start for rates and concurrency
+        :param end_time: Measurement window end for rates and concurrency
         :return: Compiled text metrics summary
         """
         return GenerativeTextMetricsSummary(
@@ -535,18 +557,24 @@ class GenerativeTextMetricsSummary(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             words=GenerativeMetricsSummary.compile(
                 property_name="text_words",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             characters=GenerativeMetricsSummary.compile(
                 property_name="text_characters",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
         )
 
@@ -578,6 +606,8 @@ class GenerativeImageMetricsSummary(StandardBaseDict):
         successful: list[GenerativeRequestStats],
         incomplete: list[GenerativeRequestStats],
         errored: list[GenerativeRequestStats],
+        start_time: float | None = None,
+        end_time: float | None = None,
     ) -> GenerativeImageMetricsSummary:
         """
         Compile image metrics summary from request statistics.
@@ -585,6 +615,8 @@ class GenerativeImageMetricsSummary(StandardBaseDict):
         :param successful: Successfully completed request statistics
         :param incomplete: Incomplete/cancelled request statistics
         :param errored: Failed request statistics
+        :param start_time: Measurement window start for rates and concurrency
+        :param end_time: Measurement window end for rates and concurrency
         :return: Compiled image metrics summary
         """
         return GenerativeImageMetricsSummary(
@@ -593,24 +625,32 @@ class GenerativeImageMetricsSummary(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             images=GenerativeMetricsSummary.compile(
                 property_name="image_count",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             pixels=GenerativeMetricsSummary.compile(
                 property_name="image_pixels",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             bytes=GenerativeMetricsSummary.compile(
                 property_name="image_bytes",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
         )
 
@@ -642,6 +682,8 @@ class GenerativeVideoMetricsSummary(StandardBaseDict):
         successful: list[GenerativeRequestStats],
         incomplete: list[GenerativeRequestStats],
         errored: list[GenerativeRequestStats],
+        start_time: float | None = None,
+        end_time: float | None = None,
     ) -> GenerativeVideoMetricsSummary:
         """
         Compile video metrics summary from request statistics.
@@ -649,6 +691,8 @@ class GenerativeVideoMetricsSummary(StandardBaseDict):
         :param successful: Successfully completed request statistics
         :param incomplete: Incomplete/cancelled request statistics
         :param errored: Failed request statistics
+        :param start_time: Measurement window start for rates and concurrency
+        :param end_time: Measurement window end for rates and concurrency
         :return: Compiled video metrics summary
         """
         return GenerativeVideoMetricsSummary(
@@ -657,24 +701,32 @@ class GenerativeVideoMetricsSummary(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             frames=GenerativeMetricsSummary.compile(
                 property_name="video_frames",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             seconds=GenerativeMetricsSummary.compile(
                 property_name="video_seconds",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             bytes=GenerativeMetricsSummary.compile(
                 property_name="video_bytes",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
         )
 
@@ -706,6 +758,8 @@ class GenerativeAudioMetricsSummary(StandardBaseDict):
         successful: list[GenerativeRequestStats],
         incomplete: list[GenerativeRequestStats],
         errored: list[GenerativeRequestStats],
+        start_time: float | None = None,
+        end_time: float | None = None,
     ) -> GenerativeAudioMetricsSummary:
         """
         Compile audio metrics summary from request statistics.
@@ -713,6 +767,8 @@ class GenerativeAudioMetricsSummary(StandardBaseDict):
         :param successful: Successfully completed request statistics
         :param incomplete: Incomplete/cancelled request statistics
         :param errored: Failed request statistics
+        :param start_time: Measurement window start for rates and concurrency
+        :param end_time: Measurement window end for rates and concurrency
         :return: Compiled audio metrics summary
         """
         return GenerativeAudioMetricsSummary(
@@ -721,24 +777,32 @@ class GenerativeAudioMetricsSummary(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             samples=GenerativeMetricsSummary.compile(
                 property_name="audio_samples",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             seconds=GenerativeMetricsSummary.compile(
                 property_name="audio_seconds",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             bytes=GenerativeMetricsSummary.compile(
                 property_name="audio_bytes",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
         )
 
@@ -774,6 +838,8 @@ class GenerativeToolCallMetricsSummary(StandardBaseDict):
         successful: list[GenerativeRequestStats],
         incomplete: list[GenerativeRequestStats],
         errored: list[GenerativeRequestStats],
+        start_time: float | None = None,
+        end_time: float | None = None,
     ) -> GenerativeToolCallMetricsSummary:
         """
         Compile tool call metrics summary from request statistics.
@@ -781,6 +847,8 @@ class GenerativeToolCallMetricsSummary(StandardBaseDict):
         :param successful: Successfully completed request statistics
         :param incomplete: Incomplete/cancelled request statistics
         :param errored: Failed request statistics
+        :param start_time: Measurement window start for rates and concurrency
+        :param end_time: Measurement window end for rates and concurrency
         :return: Compiled tool call metrics summary
         """
         return GenerativeToolCallMetricsSummary(
@@ -789,18 +857,24 @@ class GenerativeToolCallMetricsSummary(StandardBaseDict):
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             mixed_tokens=GenerativeMetricsSummary.compile(
                 property_name="mixed_content_tool_tokens",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             count=GenerativeMetricsSummary.compile(
                 property_name="tool_call_count",
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
         )
 
@@ -1666,19 +1740,39 @@ class GenerativeMetrics(StandardBaseDict):
             ),
             # Domain-specific stats
             text=GenerativeTextMetricsSummary.compile(
-                successful=successful, incomplete=incomplete, errored=errored
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             image=GenerativeImageMetricsSummary.compile(
-                successful=successful, incomplete=incomplete, errored=errored
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             video=GenerativeVideoMetricsSummary.compile(
-                successful=successful, incomplete=incomplete, errored=errored
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             audio=GenerativeAudioMetricsSummary.compile(
-                successful=successful, incomplete=incomplete, errored=errored
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             tool_call=GenerativeToolCallMetricsSummary.compile(
-                successful=successful, incomplete=incomplete, errored=errored
+                successful=successful,
+                incomplete=incomplete,
+                errored=errored,
+                start_time=start_time,
+                end_time=end_time,
             ),
             # Multi-turn stats
             turns=GenerativeTurnMetrics.compile_by_turn(
