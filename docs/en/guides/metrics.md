@@ -142,20 +142,32 @@ Dispatch Delay, Turn Predecessor Delay, Turn Scheduling Delay, and Scheduled Lat
 
 ## Measurement Window, Warmup, and Cooldown
 
-Benchmark profiles can configure `warmup` and `cooldown` periods that bracket the active measurement window. Requests sent during warmup still run to completion, but reported metrics are scoped to the interval between `measure_start` (warmup ends) and `measure_end` (cooldown begins).
+Benchmark profiles can configure `warmup` and `cooldown` periods that bracket the active measurement window, from `measure_start` (warmup ends) to `measure_end` (cooldown begins). Requests sent during warmup continue executing. Window-based metrics use this interval; final per-request summaries use the population selected by the configured duration and request-count rules below.
 
 Not every metric applies that window the same way:
 
-- **Request-level metrics**: request totals, request latency, concurrency, and per-request token counts, etc. will include any request whose lifetime overlaps the measurement window, even when the request started during warmup or finished during cooldown.
-- **Event-level metrics**: TTFT, time to first output token (TTFOT), inter-token latency (ITL), and per-token throughput rates will include only events whose timestamps fall inside the window. A request can therefore appear in request totals while some or all of its token events are excluded.
+- **Per-request distributions**: request totals, request latency, per-request token counts, and SLO attainment use the selected request population. Duration-based phases include requests whose lifetimes overlap the window. Request-count phases additionally select whole requests as described below.
+- **Window-based metrics**: request throughput/concurrency, TTFT, time to first output token (TTFOT), inter-token latency (ITL), and token throughput retain their existing event-specific time-window rules. They can include work from a request excluded from the per-request population, and exclude events from a selected request.
 
-For token latencies specifically, GuideLLM filters on when the event occurs rather than on the whole request span:
+For token latencies specifically, GuideLLM tests overlap with metric-specific timing intervals rather than clipping every token-latency event to the window:
 
 - **TTFT** is included when the interval from request start to first token partially overlaps the measurement window. A request that starts during warmup but streams its first token after warmup ends contributes a TTFT sample; a request whose first token arrives before `measure_start` does not, even if the request completes during the active phase.
 - **TTFOT** uses the first *content* token timestamp (`first_output_token_iteration`), which can differ from TTFT when reasoning or tool tokens precede visible output.
 - **ITL** is included when the span from first token through request completion partially overlaps the window.
 
 The purpose of warmup is meant to let the system reach steady state before measurement and event-level filtering keeps pre-warmup token timing from skewing latency and throughput figures while still counting long-running requests that cross the boundary.
+
+### Request-count phases under concurrency
+
+At final compilation, request-count warmup excludes the first `k` recorded attempts in start order, and request-count cooldown excludes the last `k`. Selection is global across successful, errored, and started-but-cancelled attempts, not repeated independently for each status. A cancellation before processing starts does not enter the recorded population. Equal start timestamps use request ID as a deterministic tie-break for the captured run; worker notification and completion order do not affect selection.
+
+With ten recorded attempts, `warmup={"mode": "requests", "value": 2}` leaves eight per-request samples. Adding a two-request cooldown leaves six. Overlapping exclusions form a union: if warmup and cooldown cover every attempt, the per-request population is empty and SLO attainment is unavailable. Invalid records without a start timestamp or with duplicate request IDs are rejected rather than silently discarded.
+
+Percentages use the configured request budget from the final scheduler state when available, including when execution stops early; absolute counts trim the actual recorded attempts. The `prefer_duration`, `prefer_requests`, and `both` modes retain their preference rules. Count-only summaries are not additionally intersected with the count-derived event window, which could discard extra attempts. When duration and count conditions apply together, duration-overlap filtering can further reduce the selected population.
+
+This selection does not add a scheduling barrier or change the event measurement window. A request excluded from latency statistics can still produce tokens inside that window. Request throughput therefore need not equal the selected request count divided by the window duration, and TTFT/ITL sample counts can differ from request-latency counts. Goodput rates use conforming requests from the selected population and filter their events by the window. Raw sampled request exports and scheduler totals still include transient attempts for auditing.
+
+Live progress remains an estimate over the execution so far; exact first/last request selection occurs when final results are compiled. Duration-only runs retain their existing overlap behavior. Request-count runs now report different per-request populations than releases that used only completion-derived time boundaries. The event-boundary logic, including the separate synchronous fix in [#1348](https://github.com/vllm-project/guidellm/pull/1348), is unchanged by this population selection.
 
 ## Statistical Summaries
 
