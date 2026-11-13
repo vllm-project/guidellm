@@ -82,7 +82,7 @@ def _trace_file_source(trace_path: Path) -> FileDataArgs:
 
 def _mock_processor() -> Mock:
     proc = Mock()
-    proc.encode.side_effect = lambda text: list(range(len(text.split())))
+    proc.encode.side_effect = lambda text, **_kwargs: list(range(len(text.split())))
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
         f"tok{i}" for i, _ in enumerate(tokens)
     )
