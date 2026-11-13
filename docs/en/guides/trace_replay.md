@@ -61,19 +61,19 @@ guidellm run \
 
 All trace formats can accept the following optional data arguments:
 
-| Argument                  | Default         | Description                                                                                     |
-| ------------------------- | --------------- | ----------------------------------------------------------------------------------------------- |
-| `timestamp_column`        | "timestamp"     | Column name for timestamps in the trace file                                                    |
-| `prompt_tokens_column`    | "input_length"  | Column name for prompt token counts in the trace file                                           |
-| `output_tokens_column`    | "output_length" | Column name for output token counts in the trace file                                           |
-| `duration_column`         | "duration"      | Optional column for how long each request ran, in seconds. Used by `schedule_turn=idle_gap`     |
-| `time_scale`              | 1.0             | Scale remaining relative timestamps after wait and pack caps                                    |
-| `max_wait`                | unset           | Maximum gap in original trace seconds between consecutive requests in one session               |
-| `max_session_wait`        | unset           | Maximum idle in original trace seconds from the previous session's last request to this session |
-| `min_concurrent_sessions` | unset           | Pack sessions so at least this many overlap during steady state                                 |
-| `max_concurrent_sessions` | unset           | Delay sessions so at most this many overlap; lanes run through recorded request durations       |
-| `copies`                  | 1               | Sequential full-dataset replays; pass k+1 starts at pass k's last scheduled request             |
-| `copy_offset`             | 1.0             | Where the next copy starts relative to the prior span: 0 at the start, 1 at the end, >1 a gap   |
+| Argument                  | Default                       | Description                                                                                                                                                     |
+| ------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timestamp_column`        | "timestamp"                   | Column name for timestamps in the trace file                                                                                                                    |
+| `prompt_tokens_column`    | "input_length"                | Column name for prompt token counts in the trace file                                                                                                           |
+| `output_tokens_column`    | "output_length"               | Column name for output token counts in the trace file                                                                                                           |
+| `duration_column`         | "duration" (WEKA: "api_time") | Optional column for how long each request ran, in seconds. Used by `schedule_turn=idle_gap` and concurrent-session options                                      |
+| `time_scale`              | 1.0                           | Scale remaining relative timestamps after wait and pack caps                                                                                                    |
+| `max_wait`                | unset                         | Maximum gap in original trace seconds between consecutive requests in one session                                                                               |
+| `max_session_wait`        | unset                         | Maximum idle in original trace seconds from the previous session's last request to this session                                                                 |
+| `min_concurrent_sessions` | unset                         | Pack sessions so at least this many overlap during steady state                                                                                                 |
+| `max_concurrent_sessions` | unset                         | Delay sessions so at most this many overlap; lanes run through recorded request durations. Single-request traces need a duration column for this to take effect |
+| `copies`                  | 1                             | Sequential full-dataset replays; pass k+1 starts at pass k's last scheduled request                                                                             |
+| `copy_offset`             | 1.0                           | Where the next copy starts relative to the prior span: 0 at the start, 1 at the end, >1 a gap                                                                   |
 
 These are passed through the `--data` argument like below:
 
@@ -86,11 +86,11 @@ guidellm run \
 
 `trace_synthetic` can be thought of as the format-agnostic option, only looking for the timestamp, prompt token count and output token count columns and ignoring all other features contained in a dataset. While primarily used for testing, `trace_synthetic` may be used as a fallback for trace formats not currently supported by GuideLLM.
 
-The replay profile's `schedule_turn` argument selects how those timestamps are applied. `idle_gap` (the default) keeps the idle gap after `duration_column`: a request recorded as 1 second with the next timestamp 5 seconds later starts that next request 4 seconds after this one actually finishes. `idle_gap` is more forgiving for when the server gets overloaded, since late requests all get sent as soon as the prior turns end. If `duration_column` is missing, the loader logs one warning, and each request is treated as instantaneous. This results in the actual gap being marginally longer. `timestamp` starts each request at its trace time, waiting only if the prior turn is still running.
+The replay profile's `schedule_turn` argument selects how those timestamps are applied. `idle_gap` (the default) keeps the idle gap after `duration_column`: a request recorded as 1 second with the next timestamp 5 seconds later starts that next request 4 seconds after this one actually finishes. `idle_gap` is more forgiving for when the server gets overloaded, since late requests all get sent as soon as the prior turns end. If `duration_column` is missing, the loader logs one warning, and each request is treated as instantaneous; the same warning notes that the concurrent-session options cannot spread single-request sessions without recorded durations. This results in the actual gap being marginally longer. `timestamp` starts each request at its trace time, waiting only if the prior turn is still running.
 
-`trace_synthetic` and `mooncake` replay each row as an independent, single-request conversation. Rows are sorted by timestamp and keep their offsets from the first request in the trace. Prompts are generated as rows are consumed, and Mooncake hash IDs remain shared across rows within one `copies` pass. Use `max_session_wait` to cap gaps between these independent requests; `max_wait` only caps gaps within multi-request conversations, such as WEKA sessions.
+`trace_synthetic` and `mooncake` replay each row as an independent, single-request conversation. Rows are sorted by timestamp and keep their offsets from the first request in the trace. Prompts are generated as rows are consumed, and Mooncake hash IDs remain shared across rows within one `copies` pass. Use `max_session_wait` to cap gaps between these independent requests; `max_wait` only caps gaps within multi-request conversations, such as WEKA sessions. Because each row is a single request, `min_concurrent_sessions` and `max_concurrent_sessions` cannot pull or spread these rows unless the trace includes a duration column (for example, add `duration` to a JSONL `trace_synthetic` file).
 
-Raise parallelism with `min_concurrent_sessions`, wait caps, and `time_scale` first. When many sessions start together (typical WEKA traces), cap overlap with `max_concurrent_sessions`. A lane stays busy until the session would finish on the idle-gap critical path using recorded durations. You may set both when `min_concurrent_sessions` is less than or equal to `max_concurrent_sessions`. Use `copies` only when that packed pass is too short for the benchmark (`max_duration` / `max_requests`). By default (`copy_offset=1`) `copies` replays the entire packed dataset back-to-back: the next pass starts at the previous pass's last request timestamp. `copy_offset=0` starts at the prior pass's first timestamp; values between 0 and 1 interpolate; values above 1 add a gap. Hash-id formats (`mooncake`, `weka`) use a separately salted global token-block table per pass so later passes do not reuse earlier tokens and inflate prefix-cache hits.
+Raise parallelism with `min_concurrent_sessions`, the wait and concurrency options, and `time_scale` first. When many sessions start together (typical WEKA traces), cap overlap with `max_concurrent_sessions`. Both limits use the idle-gap critical path: a lane stays busy until the session would finish given recorded durations, and `min_concurrent_sessions` also pulls sessions onto a lane at that completion time. These limits restrict scheduled session windows computed from recorded durations, not requests in flight; parallel branches or a slower server can still leave more than N sessions unfinished at a given wall-clock instant. You may set both when `min_concurrent_sessions` is less than or equal to `max_concurrent_sessions`. Use `copies` only when that re-timed pass is too short for the benchmark (`max_duration` / `max_requests`). By default (`copy_offset=1`) `copies` replays the entire re-timed dataset back-to-back: the next pass starts at the previous pass's last request timestamp. `copy_offset=0` starts at the prior pass's first timestamp; values between 0 and 1 interpolate; values above 1 add a gap. Hash-id formats (`mooncake`, `weka`) use a separately salted global token-block table per pass so later passes do not reuse earlier tokens and inflate prefix-cache hits.
 
 ## Format-Specific Data Arguments
 
@@ -148,6 +148,7 @@ Modified defaults:
 | `timestamp_column`     | "t"         |
 | `prompt_tokens_column` | "in"        |
 | `output_tokens_column` | "out"       |
+| `duration_column`      | "api_time"  |
 
 ### `otel`
 

@@ -34,9 +34,10 @@ class TraceDataArgs(DataArgs):
         default="duration",
         description=(
             "Optional column for how long each request ran, in seconds. "
-            "schedule_turn=idle_gap keeps the idle gap after this duration. "
-            "When the column is absent, idle_gap treats each request "
-            "as instantaneous."
+            "Used by schedule_turn=idle_gap and concurrent-session packing. "
+            "When the column is absent, idle_gap treats each request as "
+            "instantaneous and single-request sessions cannot be packed. "
+            "WEKA defaults to 'api_time'."
         ),
     )
     conversation_id_column: str | None = Field(
@@ -71,7 +72,9 @@ class TraceDataArgs(DataArgs):
         description=(
             "Pack sessions so at least this many overlap during steady state. "
             "The first N sessions start together; each later session starts as soon "
-            "as session i-N ends, but never later than its original start."
+            "as session i-N ends on the idle-gap critical path (recorded request "
+            "durations), but never later than its original start. Single-request "
+            "sessions without a duration column are not pulled together."
         ),
     )
     max_concurrent_sessions: int | None = Field(
@@ -81,7 +84,8 @@ class TraceDataArgs(DataArgs):
             "Delay sessions so at most this many overlap during steady state. "
             "Each session after the first N starts when session i-N finishes on "
             "the idle-gap critical path (recorded request durations), but never "
-            "earlier than its original start."
+            "earlier than its original start. Requires recorded durations; "
+            "single-request sessions without a duration column are left in place."
         ),
     )
     time_scale: float = Field(
@@ -115,7 +119,7 @@ class TraceDataArgs(DataArgs):
     )
 
     @model_validator(mode="after")
-    def validate_concurrent_session_bounds(self):
+    def validate_concurrent_session_bounds(self) -> TraceDataArgs:
         """Reject min concurrent above max when both are set."""
         min_sessions = self.min_concurrent_sessions
         max_sessions = self.max_concurrent_sessions

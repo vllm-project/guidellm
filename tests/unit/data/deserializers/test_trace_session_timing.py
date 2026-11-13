@@ -332,6 +332,57 @@ class TestTraceSessionTimingMinConcurrentSessions:
         assert _relative_timestamps(sessions[2]) == pytest.approx([60.0])
         assert _relative_timestamps(sessions[3]) == pytest.approx([60.5])
 
+    @pytest.mark.smoke
+    def test_holds_lane_until_recorded_completion(self):
+        """A lane frees when the prior session completes, not when it starts.
+
+        ## WRITTEN BY AI ##
+        """
+        first = _graph_with_timestamps_and_durations([0.0, 10.0], [5.0, 5.0])
+        second = _graph_with_timestamps_and_durations([100.0, 110.0], [5.0, 5.0])
+        timing = TraceSessionTiming(min_concurrent_sessions=1)
+        timing.apply(first)
+        timing.apply(second)
+        assert _relative_timestamps(second) == pytest.approx([15.0, 25.0])
+
+    @pytest.mark.sanity
+    def test_earlier_shift_clamped_at_zero(self):
+        """Pulling a session earlier cannot push raw timestamps below zero.
+
+        A child timestamp can precede its parent, so the occupancy start is the
+        earliest effective start. The shift is clamped at the earliest raw
+        timestamp to keep relative timestamps non-negative.
+
+        ## WRITTEN BY AI ##
+        """
+        first = _graph_with_timestamps_and_durations([0.0], [1.0])
+        graph = ConversationGraphData(
+            turns=[
+                ConversationTurnData(
+                    node_id="root",
+                    columns={
+                        "text_column": ["root"],
+                        "relative_timestamp_column": [5.0],
+                        "request_duration_column": [1.0],
+                    },
+                ),
+                ConversationTurnData(
+                    node_id="child",
+                    parents=[ConversationParentRef(parent_node_id="root")],
+                    columns={
+                        "text_column": ["child"],
+                        "relative_timestamp_column": [2.0],
+                        "request_duration_column": [1.0],
+                    },
+                ),
+            ]
+        )
+        timing = TraceSessionTiming(min_concurrent_sessions=1)
+        timing.apply(first)
+        timing.apply(graph)
+        assert _relative_timestamps(graph) == pytest.approx([3.0, 0.0])
+        assert graph_min_timestamp(graph) == pytest.approx(0.0)
+
 
 class TestTraceSessionTimingMaxConcurrentSessions:
     @pytest.mark.smoke
@@ -461,6 +512,36 @@ class TestTraceSessionTimingMaxConcurrentSessions:
         timing.apply(second)
         # root ends at 2; the longer branch ends at 10 + 8
         assert _relative_timestamps(second) == pytest.approx([18.0])
+
+    @pytest.mark.sanity
+    def test_holds_lane_for_reversed_parent_chain(self):
+        """The fixpoint converges when children are listed before parents.
+
+        ## WRITTEN BY AI ##
+        """
+        first = _graph_with_parent_chain([0.0, 0.0], [5.0, 3.0])
+        first.turns.reverse()
+        second = _graph_with_timestamps_and_durations([0.0], [1.0])
+        timing = TraceSessionTiming(max_concurrent_sessions=1)
+        timing.apply(first)
+        timing.apply(second)
+        assert _relative_timestamps(second) == pytest.approx([8.0])
+
+    @pytest.mark.sanity
+    def test_waits_for_insertion_lane_predecessor_with_unequal_durations(self):
+        """Lane order follows placement, so the third session waits for the first.
+
+        ## WRITTEN BY AI ##
+        """
+        sessions = [
+            _graph_with_timestamps_and_durations([0.0], [100.0]),
+            _graph_with_timestamps_and_durations([0.0], [1.0]),
+            _graph_with_timestamps_and_durations([0.0], [1.0]),
+        ]
+        timing = TraceSessionTiming(max_concurrent_sessions=2)
+        for session in sessions:
+            timing.apply(session)
+        assert _relative_timestamps(sessions[2]) == pytest.approx([100.0])
 
 
 class TestTraceSessionTimingMinMaxConcurrentSessions:

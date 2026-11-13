@@ -893,6 +893,66 @@ class TestTraceDatasetDeserializer:
 
         mock_logger.warning.assert_not_called()
 
+    @pytest.mark.sanity
+    def test_missing_duration_warns_about_packing(self, tmp_path: Path, deserializer):
+        """The missing-duration warning explains that packing cannot cap rows.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 1, "input_length": 10, "output_length": 1}\n',
+        )
+        with patch("guidellm.data.deserializers.trace_common.logger") as mock_logger:
+            self.deserialize(deserializer, trace, max_concurrent_sessions=4)
+
+        assert mock_logger.warning.call_count == 1
+        args = mock_logger.warning.call_args.args
+        message = str(args[0]) + "".join(str(arg) for arg in args[1:])
+        assert "max_concurrent_sessions" in message
+
+    @pytest.mark.sanity
+    def test_max_concurrent_sessions_rewrites_emitted_timestamps(
+        self, tmp_path: Path, deserializer
+    ):
+        """max_concurrent_sessions delays rows that would overlap.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 1, '
+            '"duration": 10.0}\n'
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 1, '
+            '"duration": 10.0}\n'
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 1, '
+            '"duration": 10.0}\n'
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 1, '
+            '"duration": 10.0}\n',
+        )
+        ds = self.deserialize(deserializer, trace, max_concurrent_sessions=2)
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        assert timestamps == pytest.approx([0.0, 0.0, 10.0, 10.0])
+
+    @pytest.mark.sanity
+    def test_negative_duration_column_raises(self, tmp_path: Path, deserializer):
+        """A negative recorded duration is rejected during row validation.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 1, "input_length": 10, "output_length": 1, '
+            '"duration": -0.5}\n',
+        )
+        ds = self.deserialize(deserializer, trace)
+        with pytest.raises(InvalidRowError, match="non-negative"):
+            next(iter(ds))
+
 
 class TestTraceDurationColumn:
     """Recorded request duration reaches scheduling settings.

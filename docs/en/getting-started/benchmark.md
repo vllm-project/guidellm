@@ -231,9 +231,9 @@ guidellm run --profile kind=replay,time_scale=1.0
 | `schedule_turn`   | `idle_gap` (default) keeps the idle gap after each recorded request duration. `timestamp` targets each trace timestamp | `--profile kind=replay,schedule_turn=timestamp` |
 | `prefetch`        | Requests to load before the run clock starts. Defaults to 0 (no pre-fetch)                                             | `--profile kind=replay,prefetch=all`            |
 
-Wait caps and a data-side `time_scale` are set on `--data`. The profile `time_scale` is applied by the scheduler after those dataset timestamps are built, allowing multiple runs with different time scales.
+Wait and concurrency options, along with a data-side `time_scale`, are set on `--data`. The profile `time_scale` is applied by the scheduler after those dataset timestamps are built, allowing multiple runs with different time scales.
 
-`schedule_turn=idle_gap` (the default) keeps the gap that followed the recorded duration: if a request was recorded as 1 second and the next timestamp is 5 seconds later, the next request starts 4 seconds after this one actually finishes. A late or slow request shifts everything after it. When the trace has no duration column, the loader logs one warning and each request is treated as instantaneous, so that same example starts the next request 5 seconds after this one finishes. Set the column name with `duration_column` on `--data` (default `duration`). `schedule_turn=timestamp` runs each request at its trace time and holds it only while a prior turn is still in progress.
+`schedule_turn=idle_gap` (the default) keeps the gap that followed the recorded duration: if a request was recorded as 1 second and the next timestamp is 5 seconds later, the next request starts 4 seconds after this one actually finishes. A late or slow request shifts everything after it. When the trace has no duration column, the loader logs one warning and each request is treated as instantaneous, so that same example starts the next request 5 seconds after this one finishes. Set the column name with `duration_column` on `--data` (default `duration`; WEKA defaults to `api_time`). `schedule_turn=timestamp` runs each request at its trace time and holds it only while a prior turn is still in progress.
 
 ## Data Options
 
@@ -275,9 +275,9 @@ guidellm run \
   --profile kind=replay,time_scale=0.5
 ```
 
-The data parameter `time_scale` acts as a scaling factor for the intervals between trace events after wait and pack caps: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast. Wait caps (`max_wait`, `max_session_wait`, `min_concurrent_sessions`, `max_concurrent_sessions`) are applied in original trace seconds before `time_scale`.
+The data parameter `time_scale` acts as a scaling factor for the intervals between trace events after the wait and concurrency options: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast. The wait and concurrency options (`max_wait`, `max_session_wait`, `min_concurrent_sessions`, `max_concurrent_sessions`) are applied in original trace seconds before `time_scale`.
 
-Raise parallelism with `min_concurrent_sessions`, or limit simultaneous sessions with `max_concurrent_sessions`. Use `copies` when the packed dataset is not large enough to sustain that load for the whole benchmark. By default (`copy_offset=1`) `copies` replays the full packed trace sequentially: the next pass starts at the previous pass's last scheduled request. `copy_offset` can overlay or gap copies relative to that prior span. Synthetic data traces re-salt the synthetic data to ensure cache-unique conversations for the copies.
+Raise parallelism with `min_concurrent_sessions`, or limit simultaneous sessions with `max_concurrent_sessions`. Use `copies` when the re-timed dataset is not large enough to sustain that load for the whole benchmark. By default (`copy_offset=1`) `copies` replays the full re-timed trace sequentially: the next pass starts at the previous pass's last scheduled request. `copy_offset` can overlay or gap copies relative to that prior span. Synthetic data traces re-salt the synthetic data to ensure cache-unique conversations for the copies.
 
 Strategically choose between increasing parallelism and affecting request timings for your use case. Higher parallelism increases concurrent simultaneous requests, and increases the chance of cache evictions affecting your benchmark.
 
