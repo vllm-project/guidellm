@@ -140,6 +140,9 @@ class TransientPhaseConfig(StandardBaseModel):
         )
         duration_transition_time: float | None = None
         request_transition_time: float | None = None
+        # Measure from the first request start, as max_duration does, so the
+        # phases line up with the run it ends
+        start_time = state.start_requests_time or state.start_time
 
         # Calculate transition times for the phase based on phase limits and period
         # Potential phases: start (warmup) -> active -> end (cooldown)
@@ -150,7 +153,7 @@ class TransientPhaseConfig(StandardBaseModel):
             if phase_duration is not None:
                 # Duration was set and caculating for "warmup" / start phase
                 # Phase is active for [start, start + duration]
-                duration_transition_time = state.start_time + phase_duration
+                duration_transition_time = start_time + phase_duration
             if phase_requests is not None:
                 # Requests was set and calculating for "warmup" / start phase
                 # Phase is active for requests [1, phase_requests]
@@ -170,7 +173,7 @@ class TransientPhaseConfig(StandardBaseModel):
                 # Duration was set and calculating for "cooldown" / end phase
                 # Phase is active for [end - duration, end]
                 duration_transition_time = (
-                    state.start_time + state.progress.total_duration - phase_duration
+                    start_time + state.progress.total_duration - phase_duration
                     if state.progress.total_duration is not None
                     else -1.0
                 )
