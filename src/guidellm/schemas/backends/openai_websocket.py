@@ -45,6 +45,18 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
         ge=1,
         description="PCM16 frames per input_audio_buffer.append chunk (16 kHz).",
     )
+    websocket_backend_rtf: float = Field(
+        default=0.0,
+        ge=0.0,
+        allow_inf_nan=False,
+        description=(
+            "Real-time factor for pacing input_audio_buffer.append packets. "
+            "0 sends packets as fast as possible. "
+            "1 sends one second of audio every second, "
+            "2 sends one second of audio every two seconds, and "
+            "0.5 sends one second of audio every half second."
+        ),
+    )
     api_key: SecretStr | None = Field(
         default=None, description="Bearer token if required."
     )

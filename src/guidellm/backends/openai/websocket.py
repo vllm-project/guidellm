@@ -41,6 +41,7 @@ from guidellm.schemas import (
     RequestInfo,
 )
 from guidellm.schemas.backends import OpenAIWebSocketBackendArgs
+from guidellm.utils.audio import pcm16_b64_duration_seconds
 from guidellm.utils.imports import json
 
 __all__ = [
@@ -179,13 +180,15 @@ class OpenAIWebSocketBackend(Backend):
         """
         Return a snapshot of backend configuration for logging or debugging.
 
-        :return: Dict of target, model, WebSocket path, timeouts, and validation opts.
+        :return: Dict of target, model, WebSocket path, chunking, real-time
+            factor, timeouts, and validation opts.
         """
         return {
             "target": self._args.target,
             "model": self._resolved_model or self._args.model,
             "websocket_path": self.websocket_path,
             "chunk_samples": self._args.chunk_samples,
+            "websocket_backend_rtf": self._args.websocket_backend_rtf,
             "timeout": self._args.timeout,
             "timeout_connect": self._args.timeout_connect,
             "verify": self._args.verify,
@@ -402,6 +405,9 @@ class OpenAIWebSocketBackend(Backend):
                     )
                 await ws.send(_json_text(session_update))
                 _record_request_sent(request_info)
+                rtf = self._args.websocket_backend_rtf
+                pace_start = time.monotonic() if rtf > 0 else 0.0
+                cumulative_audio_seconds = 0.0
                 for b64_chunk in chunks:
                     await ws.send(
                         _json_text(
@@ -409,6 +415,16 @@ class OpenAIWebSocketBackend(Backend):
                         )
                     )
                     _record_request_sent(request_info)
+                    if rtf > 0:
+                        cumulative_audio_seconds += pcm16_b64_duration_seconds(
+                            b64_chunk
+                        )
+                        remaining = (
+                            pace_start
+                            + cumulative_audio_seconds * rtf
+                            - time.monotonic()
+                        )
+                        await asyncio.sleep(max(0.0, remaining))
                 await ws.send(
                     _json_text({"type": "input_audio_buffer.commit", "final": False})
                 )
