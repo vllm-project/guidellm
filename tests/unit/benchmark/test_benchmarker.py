@@ -312,3 +312,49 @@ async def test_prefetching_stops_when_benchmark_task_is_cancelled(monkeypatch):
 
     assert prefetch_done.wait(timeout=2)
     assert progress.on_requests_prefetched.call_count == 1
+
+
+@pytest.mark.sanity
+@pytest.mark.asyncio
+async def test_process_response_runs_before_accumulation(monkeypatch):
+    """Apply the response hook before the accumulator records the response.
+
+    ## WRITTEN BY AI ##
+    """
+    events: list[str] = []
+    response = Mock()
+    strategy = Mock()
+    strategy.prefetch_count.return_value = 0
+
+    def strategies():
+        yield strategy, {}
+
+    profile = Mock(completed_strategies=[])
+    profile.strategies_generator.side_effect = strategies
+    monkeypatch.setattr(module.InfoMixin, "extract_from_obj", lambda _: {})
+    monkeypatch.setattr(module, "BenchmarkConfig", Mock())
+
+    async def schedule(**kwargs):
+        yield response, None, None, Mock()
+
+    monkeypatch.setattr(module, "Scheduler", Mock(return_value=Mock(run=schedule)))
+    accumulator = Mock()
+    accumulator.update_estimate.side_effect = lambda *args: events.append("update")
+    process_response = AsyncMock(side_effect=lambda _: events.append("process"))
+
+    async for _ in module.Benchmarker().run(
+        accumulator_class=Mock(return_value=accumulator),
+        benchmark_class=Mock(),
+        requests=[],
+        backend=Mock(),
+        profile=profile,
+        environment=Mock(),
+        warmup=Mock(),
+        cooldown=Mock(),
+        progress=Mock(spec=BenchmarkerProgress),
+        process_response=process_response,
+    ):
+        pass
+
+    process_response.assert_awaited_once_with(response)
+    assert events == ["process", "update"]

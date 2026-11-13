@@ -111,6 +111,8 @@ guidellm run \
 
 The `--metrics` option also accepts `prefer_response_metrics` (default `true`), which controls whether server-reported token counts are preferred over client-calculated counts when both are available. This rarely needs to be changed.
 
+When a response has no token usage, output tokens are counted from the response text (reasoning and content) with the configured `--tokenizer`, and a warning is logged. If the tokenizer cannot be loaded, output token counts fall back to the requested output length, which overstates throughput when generation stops early.
+
 ### Reloading Results
 
 JSON files can be reloaded into Python for further analysis using the `GenerativeBenchmarksReport` class. Below is a sample code snippet for reloading results:
