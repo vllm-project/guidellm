@@ -15,6 +15,7 @@ from guidellm.schemas.scheduler.constraints import (
     OverSaturationConstraintArgs,
     PositiveNum,
     PositiveNumOrList,
+    TargetMoeConstraintArgs,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "OverSaturationConstraintArgs",
     "PositiveNum",
     "PositiveNumOrList",
+    "TargetMoeConstraintArgs",
 ]
