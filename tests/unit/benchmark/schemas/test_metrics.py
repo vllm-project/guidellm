@@ -5,6 +5,7 @@ tables appear when all expected tool call requests errored.
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from guidellm.benchmark.schemas.accumulator import GenerativeBenchmarkAccumulator
@@ -14,6 +15,7 @@ from guidellm.benchmark.schemas.metrics import (
     GenerativeMetricsSummary,
     GenerativeToolCallMetricsSummary,
     SchedulerMetrics,
+    _token_timings,
 )
 from guidellm.scheduler import (
     AsyncConstantStrategy,
@@ -2066,3 +2068,152 @@ class TestSchedulerMetricsWorkerLoopLag:
         del payload["worker_loop_lag"]
 
         assert SchedulerMetrics.model_validate(payload).worker_loop_lag.count == 0
+
+
+def _make_token_timing_stats(
+    request_id: str,
+    start: float = SCHEDULE_BASE_TIME,
+    status: str = "completed",
+    first_token: float | None = 0.25,
+    last_token: float | None = 2.0,
+    token_iterations: int = 6,
+    output_tokens: int | None = 11,
+    prompt_tokens: int | None = 32,
+    request_end: float | None = 2.5,
+) -> GenerativeRequestStats:
+    """Build a request whose token timings are offsets from ``start``.
+
+    ## WRITTEN BY AI ##
+    """
+    timings = RequestTimings(
+        resolve_start=start,
+        resolve_end=start + 3.0,
+        request_start=start,
+        request_end=None if request_end is None else start + request_end,
+        first_token_iteration=None if first_token is None else start + first_token,
+        last_token_iteration=None if last_token is None else start + last_token,
+        token_iterations=token_iterations,
+    )
+    return GenerativeRequestStats(
+        request_id=request_id,
+        info=RequestInfo(request_id=request_id, status=status, timings=timings),
+        input_metrics=UsageMetrics(text_tokens=prompt_tokens),
+        output_metrics=UsageMetrics(text_tokens=output_tokens),
+    )
+
+
+class TestTokenTimingArrays:
+    """Token metrics built from arrays match the per-request list properties.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {},
+            {"token_iterations": 2},
+            {"token_iterations": 1},
+            {"token_iterations": 0},
+            {"first_token": None},
+            {"last_token": None},
+            {"output_tokens": None},
+            {"output_tokens": 0},
+            {"output_tokens": 1},
+            {"prompt_tokens": None},
+            {"request_end": None},
+        ],
+    )
+    def test_token_timings_hold_the_list_property_rows(self, overrides):
+        """Rows equal total, output and iteration timings for each request shape.
+
+        ## WRITTEN BY AI ##
+        """
+        stats = _make_token_timing_stats("request", **overrides)
+
+        timings = _token_timings(stats)
+
+        assert np.array_equal(timings, np.array(stats.total_tokens_timings))
+        assert np.array_equal(timings[1:], np.array(stats.output_tokens_timings))
+        assert np.array_equal(
+            timings[2:], np.array(stats.iter_tokens_timings).reshape(-1, 2)
+        )
+
+    @pytest.mark.regression
+    def test_compiled_token_metrics_match_list_based_summaries(self):
+        """Compile gives the summaries built from the list properties, per status.
+
+        ## WRITTEN BY AI ##
+        """
+        base = SCHEDULE_BASE_TIME
+        successful = [
+            _make_token_timing_stats(
+                f"ok-{index}",
+                start=base + 0.3 * index,
+                last_token=1.0 + 0.1 * index,
+                token_iterations=2 + 5 * index,
+                output_tokens=3 + 6 * index,
+            )
+            for index in range(6)
+        ]
+        successful.append(
+            _make_token_timing_stats("no-first-token", start=base, first_token=None)
+        )
+        successful.append(
+            _make_token_timing_stats("one-token", start=base + 1.0, output_tokens=1)
+        )
+        incomplete = [
+            _make_token_timing_stats(
+                "cancelled", start=base + 0.5, status="cancelled", output_tokens=None
+            )
+        ]
+        errored = [
+            _make_token_timing_stats(
+                "errored",
+                start=base + 0.7,
+                status="errored",
+                first_token=None,
+                last_token=None,
+                token_iterations=0,
+                output_tokens=None,
+            )
+        ]
+        accumulator = _make_accumulator(successful, base, base + 10.0)
+        accumulator.incomplete.requests_stats = incomplete
+        accumulator.errored.requests_stats = errored
+
+        metrics = GenerativeMetrics.compile(accumulator)
+
+        statuses = {
+            "successful": successful,
+            "incomplete": incomplete,
+            "errored": errored,
+        }
+        for metric, function in (
+            (metrics.output_tokens_per_second, lambda req: req.output_tokens_timings),
+            (metrics.tokens_per_second, lambda req: req.total_tokens_timings),
+        ):
+            expected = (
+                StatusDistributionSummary.rate_distribution_from_timings_function(
+                    function=function,
+                    start_time=base,
+                    end_time=base + 10.0,
+                    **statuses,
+                )
+            )
+            assert metric.model_dump() == expected.model_dump()
+        for metric, function in (
+            (
+                metrics.output_tokens_per_iteration,
+                lambda req: [tokens for _, tokens in req.output_tokens_timings],
+            ),
+            (
+                metrics.iter_tokens_per_iteration,
+                lambda req: [tokens for _, tokens in req.iter_tokens_timings],
+            ),
+        ):
+            expected = StatusDistributionSummary.from_values_function(
+                function=function, **statuses
+            )
+            assert metric.model_dump() == expected.model_dump()
