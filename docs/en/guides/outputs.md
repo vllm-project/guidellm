@@ -70,6 +70,10 @@ GuideLLM supports saving benchmark results to files in various formats, includin
 
 For PLOT, the `path` extension selects the image format: PNG, JPG/JPEG, SVG, or PDF. For example, `--output kind=plot,path=benchmarks.pdf` creates a PDF. A path without an extension defaults to `.png`; unsupported extensions raise an error. The `dpi` parameter (default `100`) controls image resolution, for example `--output kind=plot,path=benchmarks.jpg,dpi=72`.
 
+CSV preserves measured zero values in statistics and confidence intervals. Statuses with no measurements do not produce statistics columns.
+
+Round-trip latency distributions include only requests with recorded send and receive timings. Backends without those timings report no round-trip observations in JSON (`count: 0`), and CSV omits the corresponding statistics and confidence intervals.
+
 ### Configuring File Outputs
 
 Omit `path` to use the format's default filename in the directory configured by `GUIDELLM__DEFAULT_RESULTS_DIR`, or in the current directory when the variable is not set. Specify `path=` to set the filename or destination.

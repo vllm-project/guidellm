@@ -251,7 +251,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
             ):
                 # Skip the statuses the metric columns skip, so each interval
                 # column has a matching set of statistics earlier in the row.
-                if dist.total_sum == 0.0:
+                if dist.count == 0:
                     continue
                 headers.append([group, f"{status} {units}", "Mean CI"])
                 values.append(
@@ -647,10 +647,8 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         # benchmark in a run shares one objective set, so the columns stay
         # aligned across rows.
         if benchmark.config.slo is not None:
-            # Written directly rather than through _add_stats_for_metric,
-            # which drops any status whose total is 0.0. A run that conforms to
-            # nothing would otherwise lose these columns from the CSV while the
-            # console and JSON still report 0.0.
+            # Keep configured SLO columns present even when the workload
+            # cannot evaluate the objectives.
             goodput = benchmark.metrics.request_goodput
             headers.append(["Server Throughput", "Successful Goodput/Sec", "mean"])
             values.append("" if goodput is None else goodput.successful.mean)
@@ -964,7 +962,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
         if isinstance(metric, StatusDistributionSummary):
             for status in ["successful", "incomplete", "errored"]:
                 dist = getattr(metric, status, None)
-                if dist is None or dist.total_sum == 0.0:
+                if dist is None or dist.count == 0:
                     continue
                 self._add_distribution_stats(
                     headers, values, dist, group, units, status

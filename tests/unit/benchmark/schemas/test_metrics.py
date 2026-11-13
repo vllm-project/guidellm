@@ -25,7 +25,6 @@ from guidellm.schemas import (
     GenerativeRequestStats,
     RequestInfo,
     RequestTimings,
-    StatusDistributionSummary,
     UsageMetrics,
 )
 from guidellm.schemas.benchmark import GoodputSLO
@@ -237,22 +236,16 @@ def test_round_trip_metrics_compile():
     assert "time_to_last_round_trip_ms" in GenerativeMetrics.model_fields
     assert "avg_round_trip_time_ms" in GenerativeMetrics.model_fields
 
-    # The same compile expressions used in GenerativeMetrics.compile().
-    last_round_trip = StatusDistributionSummary.from_values_function(
-        function=lambda req: req.time_to_last_round_trip_ms or 0.0,
-        successful=[stats],
-        incomplete=[],
-        errored=[],
-    )
-    avg_round_trip = StatusDistributionSummary.from_values_function(
-        function=lambda req: req.avg_round_trip_time_ms or 0.0,
-        successful=[stats],
-        incomplete=[],
-        errored=[],
+    metrics = GenerativeMetrics.compile(
+        _make_accumulator([stats], start_time=0.1, end_time=2.1)
     )
 
-    assert last_round_trip.successful.mean == pytest.approx(300.0, abs=0.1)
-    assert avg_round_trip.successful.mean == pytest.approx(300.0, abs=0.1)
+    assert metrics.time_to_last_round_trip_ms.successful.mean == pytest.approx(
+        300.0, abs=0.1
+    )
+    assert metrics.avg_round_trip_time_ms.successful.mean == pytest.approx(
+        300.0, abs=0.1
+    )
 
 
 def _make_scheduled_stats(
@@ -275,6 +268,46 @@ def _make_scheduled_stats(
         input_metrics=UsageMetrics(text_tokens=8),
         output_metrics=UsageMetrics(text_tokens=8),
     )
+
+
+@pytest.mark.regression
+def test_compile_round_trip_metrics_skips_missing_but_preserves_zero():
+    """Only recorded round trips contribute to each status distribution.
+
+    ## WRITTEN BY AI ##
+    """
+    accumulator = _make_accumulator([], start_time=1.0, end_time=3.0)
+    for requests in (
+        accumulator.completed,
+        accumulator.incomplete,
+        accumulator.errored,
+    ):
+        for offset in (None, 0.0, 0.25):
+            stats = _make_scheduled_stats(str(offset), 1.0, 1.0, 2.0)
+            stats.info.timings.last_token_iteration = 1.5
+            stats.info.timings.token_received_sum = 1.5
+            stats.info.timings.token_received_count = 1
+            if offset is not None:
+                stats.info.timings.last_request_sent = 1.5 - offset
+                stats.info.timings.request_sent_sum = 1.5 - offset
+                stats.info.timings.request_sent_count = 1
+            requests.requests_stats.append(stats)
+
+    metrics = GenerativeMetrics.compile(accumulator)
+    for distribution in (
+        metrics.time_to_last_round_trip_ms,
+        metrics.avg_round_trip_time_ms,
+    ):
+        for status in (
+            distribution.successful,
+            distribution.incomplete,
+            distribution.errored,
+        ):
+            assert status.count == 2  # Missing, zero, and nonzero were supplied.
+            assert status.min == 0.0
+            assert status.max == 250.0
+            assert status.mean == pytest.approx(125.0)
+        assert distribution.total.count == 6
 
 
 # Non-zero epoch base; a measurement window starting at 0.0 reads as unset.
