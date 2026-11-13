@@ -19,6 +19,7 @@ from guidellm.collectors.prometheus import (
     parse_prometheus_text,
     summarize_snapshots,
 )
+from guidellm.collectors.vllm_server_info import VLLMServerInfoCollector
 
 __all__ = [
     "Collector",
@@ -27,6 +28,7 @@ __all__ = [
     "PeriodicCollector",
     "PrometheusCollector",
     "PrometheusSnapshot",
+    "VLLMServerInfoCollector",
     "histogram_quantile",
     "parse_prometheus_text",
     "summarize_snapshots",
