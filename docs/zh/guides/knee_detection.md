@@ -93,7 +93,7 @@ GuideLLM 会先分析初始基准测试结果，再选择自适应点。如果�
 --constraint kind=over_saturation,mode=monitor,min_seconds=30
 ```
 
-有关检测器的所有设置，请参阅[过饱和停止指南（英文）](../../guides/over_saturation_stopping.md)。
+有关检测器的所有设置，请参阅[过饱和停止指南](over_saturation_stopping.md)。
 
 ## 结果
 

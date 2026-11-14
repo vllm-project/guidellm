@@ -5,6 +5,17 @@ inheritance: false
 
 reviews:
   profile: assertive
+  merge_risk_instructions: |
+    GuideLLM's own overhead can distort benchmark results, so changes to request
+    handling, scheduling, timing, and metrics deserve particular scrutiny. Higher
+    risk comes from added critical-path work, concurrency or lifecycle changes,
+    altered measurement semantics, and regressions in supported use cases beyond
+    the PR's target scenario. Consider the reach and impact of changed behavior.
+
+    Broad scope, unnecessary complexity, blurred component ownership, and weak
+    validation increase risk. Focused changes that preserve existing contracts
+    and have relevant correctness and performance evidence lower risk; purely
+    documentary or nonfunctional edits are generally low risk.
   auto_approvals:
     enabled: false
   high_level_summary: false
@@ -15,15 +26,34 @@ reviews:
   estimate_code_review_effort: false
   suggested_labels: false
   suggested_reviewers: false
-  review_status: true
+  review_status: false
   collapse_walkthrough: true
   auto_apply_labels: false
   auto_assign_reviewers: false
   auto_review:
-    enabled: false
+    enabled: true
     auto_incremental_review: false
+    drafts: false
     description_keyword: ""
     labels: []
+    ignore_usernames:
+      - "mergify[bot]"
+      - "dependabot[bot]"
+      - "github-actions[bot]"
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+    simplify:
+      enabled: false
+    autofix:
+      enabled: false
+    fix_ci:
+      enabled: false
+    resolve_merge_conflict:
+      enabled: false
+    custom: []
   path_instructions:
     - path: "src/guidellm/**/*.py"
       instructions: |
@@ -66,6 +96,7 @@ knowledge_base:
     filePatterns:
       - "DEVELOPING.md"
       - "CONTRIBUTING.md"
+      - "AGENTS.md"
 
 issue_enrichment:
   auto_enrich:

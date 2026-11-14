@@ -2359,17 +2359,6 @@ class TestChatCompletionsRequestHandler:
         assert response.output_metrics.mixed_content_tool_tokens is None
         assert response.output_metrics.tool_call_count is None
 
-    @pytest.mark.smoke
-    def test_initialization_has_streaming_tool_calls(self, valid_instances):
-        """
-        Test ChatCompletionsRequestHandler initializes streaming_tool_calls.
-
-        ## WRITTEN BY AI ##
-        """
-        instance = valid_instances
-        assert hasattr(instance, "streaming_tool_calls")
-        assert instance.streaming_tool_calls == {}
-
     @pytest.mark.sanity
     def test_format_strips_tool_choice_without_tools(self, valid_instances):
         """
@@ -4026,6 +4015,80 @@ class TestResponsesRequestHandler:
         assert response.text == "Final answer"
         assert response.reasoning_text == "Step 1. Step 2."
 
+    @pytest.mark.regression
+    def test_streaming_reasoning_text_events_trigger_ttft_not_content(
+        self, valid_instances, generation_request
+    ):
+        """
+        Verify full reasoning deltas (response.reasoning_text.delta, as sent
+        by vLLM) count as iterations for TTFT, are not content for TTFOT, and
+        are accumulated as reasoning_text.
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        result = instance.add_streaming_line(
+            'data: {"type": "response.reasoning_text.delta", "delta": "Let me think. "}'
+        )
+        assert result == 1
+        assert instance.last_iteration_had_content is False
+
+        result = instance.add_streaming_line(
+            'data: {"type": "response.reasoning_text.delta", "delta": "Done."}'
+        )
+        assert result == 1
+        assert instance.last_iteration_had_content is False
+
+        result = instance.add_streaming_line(
+            'data: {"type": "response.output_text.delta", "delta": "Answer"}'
+        )
+        assert result == 1
+        assert instance.last_iteration_had_content is True
+
+        instance.add_streaming_line(
+            'data: {"type": "response.completed", "response": '
+            '{"id": "resp_1", "usage": {"input_tokens": 5, "output_tokens": 4}}}'
+        )
+        response = instance.compile_streaming(generation_request, arguments)
+        assert response.text == "Answer"
+        assert response.reasoning_text == "Let me think. Done."
+
+    @pytest.mark.regression
+    def test_non_streaming_captures_reasoning_text_content(
+        self, valid_instances, generation_request
+    ):
+        """
+        Verify compile_non_streaming reads full reasoning from reasoning
+        items' content parts (type 'reasoning_text') when the summary is
+        empty, as vLLM returns it.
+        """
+        instance = valid_instances
+        arguments = instance.format(generation_request)
+
+        api_response = {
+            "id": "resp_1",
+            "output": [
+                {
+                    "type": "reasoning",
+                    "summary": [],
+                    "content": [
+                        {"type": "reasoning_text", "text": "Let me think step by step."}
+                    ],
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Final answer"}],
+                },
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+        }
+        response = instance.compile_non_streaming(
+            generation_request, arguments, api_response
+        )
+        assert response.text == "Final answer"
+        assert response.reasoning_text == "Let me think step by step."
+
     @pytest.mark.sanity
     def test_format_excludes_reasoning_from_history_by_default(self, valid_instances):
         """
@@ -4864,17 +4927,6 @@ class TestResponsesRequestHandler:
         assert response.output_metrics.tool_call_tokens is None
         assert response.output_metrics.mixed_content_tool_tokens is None
         assert response.output_metrics.tool_call_count is None
-
-    @pytest.mark.smoke
-    def test_initialization_has_streaming_tool_calls(self, valid_instances):
-        """
-        Test ResponsesRequestHandler initializes streaming_tool_calls.
-
-        ## WRITTEN BY AI ##
-        """
-        instance = valid_instances
-        assert hasattr(instance, "streaming_tool_calls")
-        assert instance.streaming_tool_calls == {}
 
     @pytest.mark.sanity
     def test_format_tool_call_overrides(self, valid_instances):
@@ -6466,3 +6518,114 @@ class TestRequestPayloadRequired:
         )
 
         assert result.body["prompt"] == "from extras"
+
+
+@pytest.mark.regression
+def test_chat_stream_preserves_interleaved_partial_tool_arguments():
+    """Preserve exact per-call arguments when a stream is compiled and resumed.
+
+    ## WRITTEN BY AI ##
+    """
+    handler = ChatCompletionsRequestHandler()
+    request = GenerationRequest(columns={"text_column": ["route this"]})
+    arguments = handler.format(request)
+    deltas = [
+        {
+            "index": 3,
+            "id": "late",
+            "function": {"name": "save", "arguments": '{"city":"'},
+        },
+        {
+            "index": 1,
+            "id": "early",
+            "function": {"name": "count", "arguments": '{"n":'},
+        },
+        {"index": 3, "function": {"arguments": "Łódź"}},
+    ]
+    for delta in deltas:
+        handler.add_streaming_line(
+            "data: " + json.dumps({"choices": [{"delta": {"tool_calls": [delta]}}]})
+        )
+
+    partial = handler.compile_streaming(request, arguments)
+    assert partial.tool_calls is not None
+    assert [call.function.arguments for call in partial.tool_calls] == [
+        '{"n":',
+        '{"city":"Łódź',
+    ]
+
+    for delta in [
+        {"index": 1, "function": {"arguments": "2}"}},
+        {"index": 3, "function": {"arguments": '"}'}},
+    ]:
+        handler.add_streaming_line(
+            "data: " + json.dumps({"choices": [{"delta": {"tool_calls": [delta]}}]})
+        )
+    response = handler.compile_streaming(request, arguments)
+    assert response.tool_calls is not None
+    assert [
+        (call.id, call.function.name, call.function.arguments)
+        for call in response.tool_calls
+    ] == [
+        ("early", "count", '{"n":2}'),
+        ("late", "save", '{"city":"Łódź"}'),
+    ]
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("final_arguments", "expected"),
+    [
+        (None, '{"city":"Łódź"}'),
+        ({}, '{"city":"Łódź"}'),
+        ({"arguments": '{"city":"Warsaw"}'}, '{"city":"Warsaw"}'),
+        ({"arguments": ""}, ""),
+    ],
+)
+def test_responses_stream_final_arguments_override_fragments(final_arguments, expected):
+    """Preserve partial arguments and honor final arguments after resuming a stream.
+
+    ## WRITTEN BY AI ##
+    """
+    handler = ResponsesRequestHandler()
+    request = GenerationRequest(columns={"text_column": ["route this"]})
+    arguments = handler.format(request)
+    events = [
+        {
+            "type": "response.output_item.added",
+            "output_index": 2,
+            "item": {
+                "type": "function_call",
+                "call_id": "call_2",
+                "name": "save",
+                "arguments": '{"city":"',
+            },
+        },
+        {
+            "type": "response.function_call_arguments.delta",
+            "output_index": 2,
+            "delta": 'Łódź"}',
+        },
+    ]
+    if final_arguments is not None:
+        events.append(
+            {
+                "type": "response.function_call_arguments.done",
+                "output_index": 2,
+                **final_arguments,
+            }
+        )
+    handler.add_streaming_line("data: " + json.dumps(events[0]))
+    partial = handler.compile_streaming(request, arguments)
+    assert partial.tool_calls is not None
+    assert partial.tool_calls[0].function.arguments == '{"city":"'
+
+    for event in events[1:]:
+        handler.add_streaming_line("data: " + json.dumps(event))
+
+    response = handler.compile_streaming(request, arguments)
+    assert response.tool_calls is not None
+    assert [
+        (call.id, call.function.name, call.function.arguments)
+        for call in response.tool_calls
+    ] == [("call_2", "save", expected)]
