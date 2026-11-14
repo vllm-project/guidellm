@@ -1,6 +1,6 @@
 ---
 weight: -8
-source_sha256: !!str "4cd5aecda0fc2bd1a70721e8f14b9b95a74a79e17749fa4e9222830b7c2628ae"
+source_sha256: !!str "3b3882d78be2d04f59c7395d7bddaab14ca5a6aa0a76e84cbdc0b0662a1c810a"
 ---
 
 # 서버 실행
@@ -31,7 +31,7 @@ vllm serve "neuralmagic/Meta-Llama-3.1-8B-Instruct-quantized.w4a16"
 
 ## **다른 서버**
 
-GuideLLM은 TGI, SGLang 등 모든 OpenAI 호환 서버를 지원합니다. 지원되는 모든 백엔드에 대한 자세한 내용은 [백엔드 문서(영문)](../../guides/backends.md)를 참고하세요.
+GuideLLM은 TGI, SGLang 등 모든 OpenAI 호환 서버를 지원합니다. 지원되는 모든 백엔드에 대한 자세한 내용은 [백엔드 문서](../guides/backends.md)를 참고하세요.
 
 ## **서버 동작 확인**
 

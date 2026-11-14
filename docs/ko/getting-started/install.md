@@ -1,5 +1,5 @@
 ---
-source_sha256: !!str "2cc877926f72d888605a25f9028265e4c2627b97edd20cbcd51a1c44919f276f"
+source_sha256: !!str "1179fce5bce9d02391cea98d17e8ead9747194760a157f16327309a9fd8eff8c"
 weight: -10
 ---
 
@@ -13,7 +13,7 @@ GuideLLM을 설치하기 전에, 다음 요구 사항을 충족하는지 확인�
 
 - **운영 체제:** Linux 또는 MacOS
 
-- **Python 버전:** 3.10 – 3.13
+- **Python 버전:** 3.11 – 3.15
 
 - **Pip 버전:** 최신 버전의 pip가 설치되어 있는지 확인하세요. 다음 명령어를 사용하여 pip를 업그레이드할 수 있습니다:
 
@@ -87,8 +87,8 @@ guidellm --help
 
 이 명령어를 실행하면 설치된 GuideLLM의 도움말이 표시됩니다.
 
-vLLM Python 백엔드(프로세스 내 추론)를 사용하려면 [vLLM Python 백엔드(영문)](../../guides/vllm-python-backend.md) 문서에서 권장 설치 방법(컨테이너 또는 기존 vLLM 환경)과 pip 설치 시 참고 사항을 확인하세요.
+vLLM Python 백엔드(프로세스 내 추론)를 사용하려면 [vLLM Python 백엔드](../guides/vllm-python-backend.md) 문서에서 권장 설치 방법(컨테이너 또는 기존 vLLM 환경)과 pip 설치 시 참고 사항을 확인하세요.
 
 ## 문제 해결
 
-설치 중 문제가 발생하면 Python과 pip 버전이 사전 요구 사항을 충족하는지 확인하세요. 일반적인 실행 오류에 대한 해결 방법(디버그 logging, 토크나이저 로딩, macOS 작업 프로세스의 비정상 종료)은 [문제 해결 가이드(영문)](../../guides/troubleshooting.md)를 참고하세요. 추가 도움이 필요하면 [GitHub Issues](https://github.com/vllm-project/guidellm/issues) 페이지를 참고하세요.
+설치 중 문제가 발생하면 Python과 pip 버전이 사전 요구 사항을 충족하는지 확인하세요. 일반적인 실행 오류에 대한 해결 방법(디버그 logging, 토크나이저 로딩, macOS 작업 프로세스의 비정상 종료)은 [문제 해결 가이드](../guides/troubleshooting.md)를 참고하세요. 추가 도움이 필요하면 [GitHub Issues](https://github.com/vllm-project/guidellm/issues) 페이지를 참고하세요.
