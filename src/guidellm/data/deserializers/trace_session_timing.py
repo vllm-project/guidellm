@@ -26,9 +26,10 @@ class TraceSessionTiming:
     ``max_wait`` is applied independently inside each conversation.
     ``max_session_wait`` then clamps idle time from the previous session's
     last request to this session's first request. ``min_concurrent_sessions``
-    then shifts this session earlier if needed so at least that many
-    sessions overlap. Instantaneous sessions are left at their wait-capped
-    start. ``time_scale`` multiplies the resulting timestamps.
+    shifts this session earlier if needed so at least that many sessions
+    overlap; ``max_concurrent_sessions`` delays it so at most that many
+    overlap. Sessions with no duration and no timestamp spread are left at their
+    wait-capped start. ``time_scale`` multiplies the resulting timestamps.
 
     Caps are in unscaled trace seconds. Dataset copies apply wait caps per
     copy, place the copy, then pack with shared state, then scale. Callers
@@ -41,11 +42,13 @@ class TraceSessionTiming:
         max_wait: float | None = None,
         max_session_wait: float | None = None,
         min_concurrent_sessions: int | None = None,
+        max_concurrent_sessions: int | None = None,
         time_scale: float = 1.0,
     ) -> None:
         self.max_wait = max_wait
         self.max_session_wait = max_session_wait
         self.min_concurrent_sessions = min_concurrent_sessions
+        self.max_concurrent_sessions = max_concurrent_sessions
         self.time_scale = time_scale
         self._last_session_end: float | None = None
         self._first_session_start: float | None = None
@@ -78,13 +81,16 @@ class TraceSessionTiming:
         return graph
 
     def apply_pack(self, graph: ConversationGraphData) -> ConversationGraphData:
-        """Pack ``graph`` so at least ``min_concurrent_sessions`` overlap.
+        """Pack ``graph`` to satisfy min/max concurrent session limits.
 
-        :param graph: Conversation whose timestamps may be shifted earlier
+        :param graph: Conversation whose timestamps may be shifted
         :return: The same graph, after any packing shift
         """
-        if self.min_concurrent_sessions is not None:
-            self._pack_min_concurrent_sessions(graph)
+        if (
+            self.min_concurrent_sessions is not None
+            or self.max_concurrent_sessions is not None
+        ):
+            self._pack_concurrent_sessions(graph)
         return graph
 
     def apply_scale(self, graph: ConversationGraphData) -> ConversationGraphData:
@@ -150,20 +156,19 @@ class TraceSessionTiming:
             else max(self._last_session_end, session_end)
         )
 
-    def _pack_min_concurrent_sessions(self, graph: ConversationGraphData) -> None:
-        """Shift this session earlier so at least N sessions overlap.
+    def _pack_concurrent_sessions(self, graph: ConversationGraphData) -> None:
+        """Place this session on shared lanes for min/max concurrent limits.
 
-        The first N sessions start together. Each later session starts when
-        session ``i - N`` ends, which keeps N in flight during steady state.
-        Sessions are never delayed past their current start. Instantaneous
-        sessions (single-turn rows whose start equals end) are not shifted.
+        The first ``min`` sessions start together when min is set; each later
+        session may start when session ``i - min`` ends, but not later than
+        its current start. When max is set, session ``i`` starts no earlier
+        than session ``i - max`` ends. Min pull runs before max delay.
+        Sessions with no recorded duration and no timestamp spread are not
+        shifted.
 
-        :param graph: Session whose timestamps may be shifted earlier
+        :param graph: Session whose timestamps may be shifted
         """
-        if self.min_concurrent_sessions is None:
-            return
-
-        bounds = self._session_bounds(graph)
+        bounds = _session_occupancy_bounds(graph)
         if bounds is None:
             return
 
@@ -177,20 +182,58 @@ class TraceSessionTiming:
             placed.append(session_end)
             return
 
-        target_count = self.min_concurrent_sessions
-        if not placed:
-            target_start = session_start
-            self._first_session_start = session_start
-        elif len(placed) < target_count:
-            first_start = self._first_session_start
-            target_start = first_start if first_start is not None else session_start
-        else:
-            # Start when the session from N slots ago ends, filling that lane.
-            target_start = placed[len(placed) - target_count]
+        new_start = self._packed_session_start(session_start, placed)
+        if new_start < session_start:
+            # relative_timestamp is non-negative, so cap the pull at the
+            # session's earliest raw timestamp instead of producing negatives.
+            shift = min(
+                session_start - new_start,
+                max(graph_min_timestamp(graph), 0.0),
+            )
+            if shift > 0:
+                self._shift_session(graph, shift)
+            new_start = session_start - shift
+        elif new_start > session_start:
+            shift_graph_timestamps(graph, new_start - session_start)
 
-        new_start = min(session_start, target_start)
-        self._shift_session(graph, session_start - new_start)
-        placed.append(new_start + (session_end - session_start))
+        duration = session_end - session_start
+        placed.append(new_start + duration)
+
+    def _packed_session_start(self, session_start: float, placed: list[float]) -> float:
+        """Compute the packed start time for a non-instantaneous session."""
+        new_start = session_start
+        min_count = self.min_concurrent_sessions
+        if min_count is not None:
+            if not placed:
+                self._first_session_start = session_start
+            else:
+                min_target = self._min_concurrent_target(
+                    session_start, placed, min_count
+                )
+                new_start = min(new_start, min_target)
+
+        max_count = self.max_concurrent_sessions
+        if max_count is not None and len(placed) >= max_count:
+            # Lanes are indexed by placement order, not by earliest free end,
+            # so unequal durations can wait longer than strictly necessary.
+            max_target = placed[len(placed) - max_count]
+            new_start = max(new_start, max_target)
+        return new_start
+
+    def _min_concurrent_target(
+        self, session_start: float, placed: list[float], min_count: int
+    ) -> float:
+        """Earliest start when pulling sessions earlier for min overlap.
+
+        :param session_start: Current start, used before any session is placed
+        :param placed: End times of sessions placed so far
+        :param min_count: Minimum number of sessions that must overlap
+        :return: Target start time for the min-concurrency pull
+        """
+        if len(placed) < min_count:
+            first_start = self._first_session_start
+            return first_start if first_start is not None else session_start
+        return placed[len(placed) - min_count]
 
     def _apply_time_scale(self, graph: ConversationGraphData) -> None:
         """Multiply timestamps and recorded durations after wait and pack caps."""
@@ -266,13 +309,105 @@ def graph_max_timestamp(graph: ConversationGraphData) -> float:
     )
 
 
+def _idle_gap_turn_start(
+    turn: ConversationTurnData,
+    timestamp: float,
+    turns_by_id: dict[str, ConversationTurnData],
+    completions: dict[str, float],
+) -> float:
+    """Earliest start for ``turn`` given parent completions on the trace timeline."""
+    if not turn.parents:
+        return timestamp
+    parent_starts: list[float] = []
+    for parent in turn.parents:
+        parent_turn = turns_by_id.get(parent.parent_node_id)
+        if parent_turn is None:
+            continue
+        parent_timestamp = _turn_timestamp(parent_turn)
+        parent_completion = completions.get(parent.parent_node_id)
+        if parent_timestamp is None or parent_completion is None:
+            continue
+        parent_duration = _turn_duration(parent_turn)
+        gap = timestamp - parent_timestamp - parent_duration
+        parent_starts.append(parent_completion + max(gap, 0.0))
+    return max(parent_starts) if parent_starts else timestamp
+
+
+def _session_occupancy_bounds(
+    graph: ConversationGraphData,
+) -> tuple[float, float] | None:
+    """Return earliest effective start and idle-gap completion time.
+
+    :param graph: Conversation whose turns carry relative timestamps
+    :return: ``(min_effective_start, max_completion)`` or None when no
+        timestamps exist
+    """
+    turns_by_id = {turn.node_id: turn for turn in graph.turns}
+    completions: dict[str, float] = {}
+    starts: dict[str, float] = {}
+    # Monotone fixpoint over parent dependencies. One pass per turn covers the
+    # longest chain even when children precede parents; a malformed cycle
+    # stops silently at the bound. Topologically sorting once would make this
+    # O(n) and allow explicit cycle detection.
+    for _ in range(len(graph.turns) + 1):
+        changed = False
+        for turn in graph.turns:
+            timestamp = _turn_timestamp(turn)
+            if timestamp is None:
+                continue
+            effective_start = _idle_gap_turn_start(
+                turn, timestamp, turns_by_id, completions
+            )
+            starts[turn.node_id] = effective_start
+            completion = effective_start + _turn_duration(turn)
+            previous = completions.get(turn.node_id)
+            if previous is None or completion > previous:
+                completions[turn.node_id] = completion
+                changed = True
+        if not changed:
+            break
+
+    timestamps = [
+        timestamp
+        for timestamp in (_turn_timestamp(turn) for turn in graph.turns)
+        if timestamp is not None
+    ]
+    if not timestamps:
+        return None
+    session_start = min(starts.values()) if starts else min(timestamps)
+    if not completions:
+        return session_start, session_start
+    return session_start, max(completions.values())
+
+
 def _turn_timestamp(turn: ConversationTurnData) -> float | None:
+    """Return a turn's relative timestamp from its column or settings.
+
+    :param turn: Conversation turn to inspect
+    :return: Relative timestamp in trace seconds, or None when absent
+    """
     values = turn.columns.get("relative_timestamp_column")
     if values:
         return float(values[0])
     if turn.settings is not None:
         return turn.settings.relative_timestamp
     return None
+
+
+def _turn_duration(turn: ConversationTurnData) -> float:
+    """Return a turn's recorded request duration.
+
+    Negative durations are rejected during row validation.
+
+    :param turn: Conversation turn to inspect
+    :return: Recorded duration in trace seconds, or 0.0 when absent
+    """
+    values = turn.columns.get("request_duration_column")
+    if not values or values[0] is None:
+        if turn.settings is not None and turn.settings.trace_duration is not None:
+            return float(turn.settings.trace_duration)
+        return 0.0
+    return float(values[0])
 
 
 def _scale_turn_duration(turn: ConversationTurnData, scale: float) -> None:

@@ -406,6 +406,7 @@ class TraceExamplesIterable(_BaseExamplesIterable):
         # Shared across copies so packing sees the combined timeline.
         packer = TraceSessionTiming(
             min_concurrent_sessions=self.config.min_concurrent_sessions,
+            max_concurrent_sessions=self.config.max_concurrent_sessions,
         )
         scaler = TraceSessionTiming(time_scale=self.config.time_scale)
         for copy_index in range(self.config.copies):
@@ -524,6 +525,12 @@ def _validate_row(row: dict, config: TraceDataArgs) -> None:
             f"Trace token counts must be non-negative, got "
             f"input_length={n_in}, output_length={n_out}"
         )
+    duration = row.get(config.duration_column)
+    if duration is not None and float(duration) < 0:
+        raise InvalidRowError(
+            f"Trace duration column '{config.duration_column}' must be "
+            f"non-negative, got {duration}"
+        )
 
 
 def _handle_column_search(config: TraceDataArgs, trace_format: TraceFormatBase) -> None:
@@ -539,10 +546,21 @@ def _handle_column_search(config: TraceDataArgs, trace_format: TraceFormatBase) 
     if missing:
         raise DataNotSupportedError(f"Trace missing required columns: {missing}")
     if not trace_format.has_duration_column():
+        packing_suffix = ""
+        if (
+            config.min_concurrent_sessions is not None
+            or config.max_concurrent_sessions is not None
+        ):
+            packing_suffix = (
+                " Concurrent-session packing cannot spread single-request "
+                "sessions without recorded durations; add a duration column "
+                "to enable min_concurrent_sessions/max_concurrent_sessions."
+            )
         logger.warning(
             "Trace duration column '{}' is missing; schedule_turn=idle_gap "
-            "will treat each request as instantaneous.",
+            "will treat each request as instantaneous.{}",
             trace_format.config.duration_column,
+            packing_suffix,
         )
 
 

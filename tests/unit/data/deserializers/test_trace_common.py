@@ -111,11 +111,13 @@ class TestTraceDataArgsSessionDuration:
             max_wait=30.0,
             max_session_wait=60.0,
             min_concurrent_sessions=8,
+            max_concurrent_sessions=16,
             time_scale=2.0,
         )
         assert args.max_wait == 30.0
         assert args.max_session_wait == 60.0
         assert args.min_concurrent_sessions == 8
+        assert args.max_concurrent_sessions == 16
         assert args.time_scale == 2.0
 
     @pytest.mark.smoke
@@ -132,6 +134,7 @@ class TestTraceDataArgsSessionDuration:
         assert args.max_wait is None
         assert args.max_session_wait is None
         assert args.min_concurrent_sessions is None
+        assert args.max_concurrent_sessions is None
         assert args.time_scale == 1.0
         assert args.copies == 1
         assert args.copy_offset == 1.0
@@ -188,6 +191,58 @@ class TestTraceDataArgsSessionDuration:
         with pytest.raises(ValidationError):
             MinimalTraceFormatArgs(source=trace_file_source(path), copy_offset=-0.1)
 
+    @pytest.mark.smoke
+    def test_rejects_max_concurrent_sessions_below_one(self, tmp_path: Path):
+        """max_concurrent_sessions must be at least 1.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        with pytest.raises(ValidationError):
+            MinimalTraceFormatArgs(
+                source=trace_file_source(path), max_concurrent_sessions=0
+            )
+
+    @pytest.mark.smoke
+    def test_rejects_min_greater_than_max_concurrent_sessions(self, tmp_path: Path):
+        """min_concurrent_sessions cannot exceed max_concurrent_sessions.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        with pytest.raises(ValidationError):
+            MinimalTraceFormatArgs(
+                source=trace_file_source(path),
+                min_concurrent_sessions=4,
+                max_concurrent_sessions=2,
+            )
+
+    @pytest.mark.smoke
+    def test_accepts_min_less_than_or_equal_max_concurrent_sessions(
+        self, tmp_path: Path
+    ):
+        """min and max concurrent bounds may be set together when min <= max.
+
+        ## WRITTEN BY AI ##
+        """
+        path = write_trace(
+            tmp_path,
+            '{"timestamp": 0, "input_length": 1, "output_length": 1}\n',
+        )
+        args = MinimalTraceFormatArgs(
+            source=trace_file_source(path),
+            min_concurrent_sessions=2,
+            max_concurrent_sessions=4,
+        )
+        assert args.min_concurrent_sessions == 2
+        assert args.max_concurrent_sessions == 4
+
 
 @dataclasses.dataclass
 class TraceColumnGenerator:
@@ -240,6 +295,7 @@ class TestTraceDatasetDeserializer:
                 "max_wait",
                 "max_session_wait",
                 "min_concurrent_sessions",
+                "max_concurrent_sessions",
                 "time_scale",
                 "copies",
                 "copy_offset",
@@ -836,6 +892,66 @@ class TestTraceDatasetDeserializer:
             self.deserialize(deserializer, trace)
 
         mock_logger.warning.assert_not_called()
+
+    @pytest.mark.sanity
+    def test_missing_duration_warns_about_packing(self, tmp_path: Path, deserializer):
+        """The missing-duration warning explains that packing cannot cap rows.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 1, "input_length": 10, "output_length": 1}\n',
+        )
+        with patch("guidellm.data.deserializers.trace_common.logger") as mock_logger:
+            self.deserialize(deserializer, trace, max_concurrent_sessions=4)
+
+        assert mock_logger.warning.call_count == 1
+        args = mock_logger.warning.call_args.args
+        message = str(args[0]) + "".join(str(arg) for arg in args[1:])
+        assert "max_concurrent_sessions" in message
+
+    @pytest.mark.sanity
+    def test_max_concurrent_sessions_rewrites_emitted_timestamps(
+        self, tmp_path: Path, deserializer
+    ):
+        """max_concurrent_sessions delays rows that would overlap.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 1, '
+            '"duration": 10.0}\n'
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 1, '
+            '"duration": 10.0}\n'
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 1, '
+            '"duration": 10.0}\n'
+            '{"timestamp": 0.0, "input_length": 10, "output_length": 1, '
+            '"duration": 10.0}\n',
+        )
+        ds = self.deserialize(deserializer, trace, max_concurrent_sessions=2)
+        timestamps = [
+            turn.columns["relative_timestamp_column"][0]
+            for row in ds
+            for turn in load_graph_turns(row)
+        ]
+        assert timestamps == pytest.approx([0.0, 0.0, 10.0, 10.0])
+
+    @pytest.mark.sanity
+    def test_negative_duration_column_raises(self, tmp_path: Path, deserializer):
+        """A negative recorded duration is rejected during row validation.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 1, "input_length": 10, "output_length": 1, '
+            '"duration": -0.5}\n',
+        )
+        ds = self.deserialize(deserializer, trace)
+        with pytest.raises(InvalidRowError, match="non-negative"):
+            next(iter(ds))
 
 
 class TestTraceDurationColumn:
