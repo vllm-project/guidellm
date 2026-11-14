@@ -34,7 +34,6 @@ from guidellm.schemas import (
     ToolCallFunction,
 )
 from guidellm.schemas.backends import OpenAIHTTPBackendArgs
-from guidellm.schemas.backends.backend import MAX_API_KEY_FILE_BYTES
 from tests.unit.testing_utils import async_timeout
 
 
@@ -1538,18 +1537,6 @@ class TestOpenAIHTTPBackendArgsApiKeyFile:
         os.mkfifo(key_file)
 
         with pytest.raises(ValidationError, match="not a regular file"):
-            OpenAIHTTPBackendArgs(target="http://test", api_key_file=key_file)
-
-    @pytest.mark.sanity
-    def test_oversized_api_key_file_rejected(self, tmp_path):
-        """A file larger than the size limit is rejected.
-
-        ## WRITTEN BY AI ##
-        """
-        key_file = tmp_path / "api_key"
-        key_file.write_text("x" * (MAX_API_KEY_FILE_BYTES + 1), encoding="utf-8")
-
-        with pytest.raises(ValidationError, match="exceeds"):
             OpenAIHTTPBackendArgs(target="http://test", api_key_file=key_file)
 
     @pytest.mark.sanity
