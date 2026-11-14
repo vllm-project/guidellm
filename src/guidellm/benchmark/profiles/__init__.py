@@ -4,8 +4,8 @@ Orchestrate multi-strategy benchmark execution through configurable profiles.
 Provides abstractions for coordinating sequential execution of scheduling strategies
 during benchmarking workflows. Profiles automatically generate strategies based on
 configuration parameters, manage runtime constraints, and track completion state
-across execution sequences. Each profile type implements a specific execution pattern
-that determines how benchmark requests are scheduled and executed.
+across execution sequences. Each profile type implements a specific pattern of
+benchmark request scheduling and execution.
 """
 
 from __future__ import annotations

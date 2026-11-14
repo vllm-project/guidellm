@@ -453,7 +453,7 @@ class UsersStrategy(SchedulingStrategy):
     """
     Simulated users, each holding one dataset-defined session at a time.
 
-    Models multiple people (defined by users) sharing the server: each user
+    Models multiple people (defined by ``users``) sharing the server: each user
     owns one conversation and waits out the dataset ``requeue_delay`` between
     turns (for example synthetic text's ``delay`` options), starting the next
     conversation immediately after one finishes. Unlike ``concurrent``,
