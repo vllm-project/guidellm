@@ -159,13 +159,21 @@ def _absolute_warning(
         message=(
             _boolean_message(rule.metric, observed.value)
             if observed.boolean
+            else _count_message(rule.metric, observed.value, rule.threshold)
+            if observed.integer
             else _absolute_message(
                 rule.metric, observed.value, observed.count, rule.threshold
             )
         ),
         observed=observed.value,
         threshold=rule.threshold,
-        unit="boolean" if observed.boolean else "seconds",
+        unit=(
+            "boolean"
+            if observed.boolean
+            else "count"
+            if observed.integer
+            else "seconds"
+        ),
         sample_count=observed.count,
         note=rule.note,
     )
@@ -208,12 +216,7 @@ def _ratio_warning(
     return BenchmarkWarning(
         code=rule.code,
         message=_ratio_message(
-            rule.metric,
-            observed.value,
-            rule.relative_to,
-            baseline.value,
-            ratio,
-            rule.threshold,
+            rule.metric, observed, rule.relative_to, baseline, ratio, rule.threshold
         ),
         observed=ratio,
         threshold=rule.threshold,
@@ -260,10 +263,18 @@ def _log_unknown_metric(
 class _MetricValue:
     """A resolved metric statistic and how many samples it summarizes."""
 
-    def __init__(self, value: float, count: int, *, boolean: bool = False):
+    def __init__(
+        self,
+        value: float,
+        count: int,
+        *,
+        boolean: bool = False,
+        integer: bool = False,
+    ):
         self.value = value
         self.count = count
         self.boolean = boolean
+        self.integer = integer
 
 
 def _resolve_metric(
@@ -443,14 +454,18 @@ def _read_statistic(node: Any, statistic: WarningStatistic) -> _MetricValue | No
 
     :param node: Value at the end of a metric path
     :param statistic: Summary to read when ``node`` is a distribution
-    :return: The value and sample count, or None when the node has no samples
+    :return: The value and sample count, or None when the node has no samples.
+        An integer leaf, such as a request count, is marked as an integer and
+        counts as that many samples.
     """
     if node is None:
         return None
     if isinstance(node, bool):
         return _MetricValue(float(node), 1, boolean=True)
-    if isinstance(node, (int, float)):
-        return _MetricValue(float(node), 1)
+    if isinstance(node, int):
+        return _MetricValue(float(node), node, integer=True)
+    if isinstance(node, float):
+        return _MetricValue(node, 1)
     if not isinstance(node, dict) or "count" not in node:
         return None
     return _distribution_statistic(node, statistic)
@@ -500,25 +515,27 @@ def _distribution_value(
 
 def _ratio_message(
     metric: MetricRef,
-    metric_value: float,
+    metric_value: _MetricValue,
     relative_to: MetricRef,
-    baseline_value: float,
+    baseline_value: _MetricValue,
     ratio: float,
     threshold: float,
 ) -> str:
     """
     :param metric: Numerator metric
-    :param metric_value: Numerator in seconds
+    :param metric_value: Resolved numerator
     :param relative_to: Denominator metric
-    :param baseline_value: Denominator in seconds
+    :param baseline_value: Resolved denominator
     :param ratio: metric_value / baseline_value
     :param threshold: Configured ratio
     :return: User-facing sentence for a ratio rule
     """
     return (
-        f"{_metric_label(metric)} was {_format_ratio(ratio)} of "
-        f"{_metric_label(relative_to)} "
-        f"({_format_seconds(metric_value)} / {_format_seconds(baseline_value)}; "
+        f"{_metric_label(metric, integer=metric_value.integer)} was "
+        f"{_format_ratio(ratio)} of "
+        f"{_metric_label(relative_to, integer=baseline_value.integer)} "
+        f"({_format_value(metric_value.value, metric_value.integer)} / "
+        f"{_format_value(baseline_value.value, baseline_value.integer)}; "
         f"threshold {_format_ratio(threshold)})."
     )
 
@@ -531,6 +548,19 @@ def _boolean_message(metric: MetricRef, observed: float) -> str:
     """
     value = "true" if observed else "false"
     return f"{_metric_label(metric)} was {value}."
+
+
+def _count_message(metric: MetricRef, observed: float, threshold: float) -> str:
+    """
+    :param metric: Count that exceeded the threshold
+    :param observed: Observed count
+    :param threshold: Configured count
+    :return: User-facing sentence for a rule on a count
+    """
+    return (
+        f"{_metric_label(metric, integer=True)} was {_format_count(observed)} "
+        f"(threshold {_format_count(threshold)})."
+    )
 
 
 def _absolute_message(
@@ -553,12 +583,14 @@ def _absolute_message(
     )
 
 
-def _metric_label(metric: MetricRef) -> str:
+def _metric_label(metric: MetricRef, *, integer: bool = False) -> str:
     """
     :param metric: Metric reference
+    :param integer: Whether the path ends on a count, which has no statistic
     :return: Statistic and metric name, with underscores written as spaces
     """
-    return f"{metric.statistic} {metric.name.replace('_', ' ')}"
+    name = metric.name.replace("_", " ")
+    return name if integer else f"{metric.statistic} {name}"
 
 
 def _decimal_places(value: float, minimum: int, limit: int) -> int:
@@ -582,6 +614,23 @@ def _format_ratio(ratio: float) -> str:
     percent = ratio * 100
     decimals = _decimal_places(percent, minimum=0, limit=4)
     return f"{percent:.{decimals}f}%"
+
+
+def _format_value(value: float, integer: bool) -> str:
+    """
+    :param value: Resolved value
+    :param integer: Whether the value was read from a count
+    :return: The count, otherwise a duration in seconds
+    """
+    return _format_count(value) if integer else _format_seconds(value)
+
+
+def _format_count(value: float) -> str:
+    """
+    :param value: Count, or a threshold or scaled value compared with one
+    :return: A whole number without decimals, otherwise the value as given
+    """
+    return f"{value:.0f}" if value.is_integer() else str(value)
 
 
 def _format_seconds(value: float) -> str:
