@@ -29,7 +29,7 @@ GuideLLM 让评估和优化大语言模型部署变得简单，帮助你在性�
 
   使用 vLLM 或其他受支持的后端设置 OpenAI 兼容服务器，以对大语言模型部署进行基准测试。
 
-  [:octicons-arrow-right-24: 服务器设置指南（英文）](../../getting-started/server.md)
+  [:octicons-arrow-right-24: 服务器设置指南](server.md)
 
 - :material-speedometer:{ .lg .middle } 运行基准测试
 
@@ -37,7 +37,7 @@ GuideLLM 让评估和优化大语言模型部署变得简单，帮助你在性�
 
   了解如何配置基准测试，并在不同负载条件下测试 LLM 服务器的性能。
 
-  [:octicons-arrow-right-24: 基准测试指南（英文）](../../getting-started/benchmark.md)
+  [:octicons-arrow-right-24: 基准测试指南](benchmark.md)
 
 - :material-chart-bar:{ .lg .middle } 分析结果
 
@@ -45,6 +45,6 @@ GuideLLM 让评估和优化大语言模型部署变得简单，帮助你在性�
 
   解读基准测试结果，了解吞吐量、延迟和可靠性，并据此优化部署。
 
-  [:octicons-arrow-right-24: 结果分析指南（英文）](../../getting-started/analyze.md)
+  [:octicons-arrow-right-24: 结果分析指南](analyze.md)
 
 </div>

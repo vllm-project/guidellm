@@ -153,12 +153,15 @@ class TransientPhaseConfig(StandardBaseModel):
                 duration_transition_time = state.start_time + phase_duration
             if phase_requests is not None:
                 # Requests was set and calculating for "warmup" / start phase
-                # Phase is active for requests [0, phase_requests]
+                # Phase is active for requests [1, phase_requests]
                 # Grab start time of the next request as transition time
                 # (all requests up to and including phase_requests are in warmup)
+                # Only the terminal update for that request may trigger this;
+                # later in-progress updates see the same processed count
                 request_transition_time = (
                     info.started_at
                     if info.started_at is not None
+                    and info.completed_at is not None
                     and state.processed_requests == phase_requests + 1
                     else -1.0
                 )
@@ -173,14 +176,14 @@ class TransientPhaseConfig(StandardBaseModel):
                 )
             if phase_requests is not None:
                 # Requests was set and calculating for "cooldown" / end phase
-                # Phase is active for requests [total - phase_requests, total]
+                # Phase is active for requests (total - phase_requests, total]
                 # Grab completion time of the request right before cooldown starts
-                # (all requests from that point onward are in cooldown)
+                # (the phase_requests requests remaining after it are in cooldown)
                 request_transition_time = (
                     info.completed_at
                     if info.completed_at is not None
                     and state.progress.remaining_requests is not None
-                    and state.progress.remaining_requests == phase_requests + 1
+                    and state.progress.remaining_requests == phase_requests
                     else -1.0
                 )
 

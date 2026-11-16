@@ -260,6 +260,7 @@ select = [
     "TCH",    # flake8-type-checking: enforces type checking practices and standards
     "TID",    # flake8-tidy-imports: enforces tidy and well-organized imports
     "RUF022", # flake8-ruff: enforce sorting of __all__ in modules
+    "RUF100", # ruff: drop unused noqa
 
     # Code Structure / Complexity
     "C4",  # flake8-comprehensions: improves readability and performance of list, set, and dict comprehensions

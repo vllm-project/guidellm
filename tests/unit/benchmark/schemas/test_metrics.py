@@ -25,7 +25,6 @@ from guidellm.schemas import (
     GenerativeRequestStats,
     RequestInfo,
     RequestTimings,
-    StatusDistributionSummary,
     UsageMetrics,
 )
 from guidellm.schemas.benchmark import GoodputSLO
@@ -237,22 +236,16 @@ def test_round_trip_metrics_compile():
     assert "time_to_last_round_trip_ms" in GenerativeMetrics.model_fields
     assert "avg_round_trip_time_ms" in GenerativeMetrics.model_fields
 
-    # The same compile expressions used in GenerativeMetrics.compile().
-    last_round_trip = StatusDistributionSummary.from_values_function(
-        function=lambda req: req.time_to_last_round_trip_ms or 0.0,
-        successful=[stats],
-        incomplete=[],
-        errored=[],
-    )
-    avg_round_trip = StatusDistributionSummary.from_values_function(
-        function=lambda req: req.avg_round_trip_time_ms or 0.0,
-        successful=[stats],
-        incomplete=[],
-        errored=[],
+    metrics = GenerativeMetrics.compile(
+        _make_accumulator([stats], start_time=0.1, end_time=2.1)
     )
 
-    assert last_round_trip.successful.mean == pytest.approx(300.0, abs=0.1)
-    assert avg_round_trip.successful.mean == pytest.approx(300.0, abs=0.1)
+    assert metrics.time_to_last_round_trip_ms.successful.mean == pytest.approx(
+        300.0, abs=0.1
+    )
+    assert metrics.avg_round_trip_time_ms.successful.mean == pytest.approx(
+        300.0, abs=0.1
+    )
 
 
 def _make_scheduled_stats(
@@ -275,6 +268,46 @@ def _make_scheduled_stats(
         input_metrics=UsageMetrics(text_tokens=8),
         output_metrics=UsageMetrics(text_tokens=8),
     )
+
+
+@pytest.mark.regression
+def test_compile_round_trip_metrics_skips_missing_but_preserves_zero():
+    """Only recorded round trips contribute to each status distribution.
+
+    ## WRITTEN BY AI ##
+    """
+    accumulator = _make_accumulator([], start_time=1.0, end_time=3.0)
+    for requests in (
+        accumulator.completed,
+        accumulator.incomplete,
+        accumulator.errored,
+    ):
+        for offset in (None, 0.0, 0.25):
+            stats = _make_scheduled_stats(str(offset), 1.0, 1.0, 2.0)
+            stats.info.timings.last_token_iteration = 1.5
+            stats.info.timings.token_received_sum = 1.5
+            stats.info.timings.token_received_count = 1
+            if offset is not None:
+                stats.info.timings.last_request_sent = 1.5 - offset
+                stats.info.timings.request_sent_sum = 1.5 - offset
+                stats.info.timings.request_sent_count = 1
+            requests.requests_stats.append(stats)
+
+    metrics = GenerativeMetrics.compile(accumulator)
+    for distribution in (
+        metrics.time_to_last_round_trip_ms,
+        metrics.avg_round_trip_time_ms,
+    ):
+        for status in (
+            distribution.successful,
+            distribution.incomplete,
+            distribution.errored,
+        ):
+            assert status.count == 2  # Missing, zero, and nonzero were supplied.
+            assert status.min == 0.0
+            assert status.max == 250.0
+            assert status.mean == pytest.approx(125.0)
+        assert distribution.total.count == 6
 
 
 # Non-zero epoch base; a measurement window starting at 0.0 reads as unset.
@@ -1598,7 +1631,7 @@ class TestSchedulerMetricsGenerationDelayCompile:
             assert summary.cached_token_count.count == 0
 
 
-def _make_streamed_request(  # noqa: PLR0913
+def _make_streamed_request(
     request_id: str,
     start: float,
     ttft: float,
@@ -1630,6 +1663,130 @@ def _make_streamed_request(  # noqa: PLR0913
         input_metrics=UsageMetrics(text_tokens=prompt_tokens),
         output_metrics=UsageMetrics(text_tokens=output_tokens),
     )
+
+
+def _make_non_streamed_request(
+    request_id: str, start: float, duration: float, output_tokens: int
+) -> GenerativeRequestStats:
+    """Build a completed non-streaming request: usage counts, no token timings.
+
+    ## WRITTEN BY AI ##
+    """
+    timings = RequestTimings(
+        resolve_start=start,
+        resolve_end=start + duration,
+        request_start=start,
+        request_end=start + duration,
+    )
+    return GenerativeRequestStats(
+        request_id=request_id,
+        info=RequestInfo(request_id=request_id, status="completed", timings=timings),
+        input_metrics=UsageMetrics(text_tokens=32),
+        output_metrics=UsageMetrics(text_tokens=output_tokens),
+    )
+
+
+class TestInterTokenLatencyWithoutTokenTimings:
+    """
+    Requests without streamed token timings are left out of the ITL distribution.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.regression
+    def test_non_streaming_requests_report_no_inter_token_latency(self):
+        """
+        A non-streaming run reports no ITL samples, as it reports no TTFT.
+
+        Each request still has output tokens from usage, so it used to add
+        ``output_tokens - 1`` zero-valued ITL samples.
+
+        ## WRITTEN BY AI ##
+        """
+        requests = [
+            _make_non_streamed_request(
+                f"request-{index}", SCHEDULE_BASE_TIME + index, 0.5, 16
+            )
+            for index in range(4)
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(requests, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10.0)
+        )
+
+        assert metrics.time_to_first_token_ms.successful.count == 0
+        assert metrics.inter_token_latency_ms.successful.count == 0
+        assert metrics.inter_token_latency_ms.successful.mean == 0.0
+        # Time per output token needs no token timings and is still reported.
+        assert metrics.time_per_output_token_ms.successful.count == 4 * 16
+        assert metrics.time_per_output_token_ms.successful.mean == pytest.approx(
+            500.0 / 16
+        )
+
+    @pytest.mark.regression
+    def test_mixed_run_inter_token_latency_uses_streamed_requests_only(self):
+        """
+        Non-streaming requests do not pull a mixed run's ITL toward zero.
+
+        ## WRITTEN BY AI ##
+        """
+        # Each streamed request has 10 ms between its first and its 11th token.
+        streamed = [
+            _make_streamed_request(
+                f"streamed-{index}", SCHEDULE_BASE_TIME + index, 0.05, 0.15, 8, 11
+            )
+            for index in range(3)
+        ]
+        non_streamed = [
+            _make_non_streamed_request(
+                f"non-streamed-{index}", SCHEDULE_BASE_TIME + index + 0.5, 0.2, 16
+            )
+            for index in range(3)
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                [*streamed, *non_streamed],
+                SCHEDULE_BASE_TIME,
+                SCHEDULE_BASE_TIME + 10.0,
+            )
+        )
+
+        itl = metrics.inter_token_latency_ms.successful
+        assert itl.count == 3 * 10
+        assert itl.mean == pytest.approx(10.0)
+        assert itl.min == pytest.approx(10.0)
+
+    @pytest.mark.regression
+    def test_turn_inter_token_latency_skips_non_streaming_requests(self):
+        """
+        Per-turn ITL skips non-streaming requests and still partitions the run.
+
+        ## WRITTEN BY AI ##
+        """
+        non_streamed = _make_non_streamed_request(
+            "non-streamed", SCHEDULE_BASE_TIME + 50.0, 1.0, 9
+        )
+        non_streamed.info.conversation_id = "c0"
+        non_streamed.info.turn_index = 2
+        successful = [
+            *_make_conversations(n_conversations=3, n_turns=2),
+            non_streamed,
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                successful, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 100.0
+            )
+        )
+
+        assert metrics.turns is not None
+        assert [turn.turn_index for turn in metrics.turns] == [0, 1, 2]
+        assert metrics.turns[2].request_totals.successful == 1
+        assert metrics.turns[2].inter_token_latency_ms.successful.count == 0
+        # Six streamed requests, each with 9 output tokens and so 8 gaps.
+        aggregate_count = metrics.inter_token_latency_ms.successful.count
+        assert aggregate_count == 6 * 8
+        assert aggregate_count == sum(
+            turn.inter_token_latency_ms.successful.count for turn in metrics.turns
+        )
 
 
 def _compile_with_confidence(
@@ -1904,3 +2061,41 @@ class TestTurnMetrics:
 
         assert metrics.generation_delay.count == 0
         assert metrics.generation_delay.mean == 0.0
+
+
+class TestSchedulerMetricsWorkerLoopLag:
+    """Compile worker event-loop lag histograms into a distribution summary."""
+
+    @pytest.mark.sanity
+    def test_compile_weights_lag_by_count(self):
+        """Weight each lag by how many samples fell in its bucket.
+
+        ## WRITTEN BY AI ##
+        """
+        accumulator = _make_accumulator([], SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10)
+
+        metrics = SchedulerMetrics.compile(
+            accumulator,
+            SchedulerState(
+                start_time=SCHEDULE_BASE_TIME,
+                worker_loop_lag_samples=[(0.001, 3.0), (0.01, 1.0)],
+            ),
+        )
+
+        assert metrics.worker_loop_lag.count == 4
+        assert metrics.worker_loop_lag.mean == pytest.approx(0.00325)
+        assert metrics.worker_loop_lag.max == pytest.approx(0.01)
+
+    @pytest.mark.smoke
+    def test_worker_loop_lag_is_optional_for_existing_reports(self):
+        """Validate scheduler metrics written before loop lag was recorded.
+
+        ## WRITTEN BY AI ##
+        """
+        accumulator = _make_accumulator([], SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10)
+        payload = SchedulerMetrics.compile(
+            accumulator, SchedulerState(start_time=SCHEDULE_BASE_TIME)
+        ).model_dump()
+        del payload["worker_loop_lag"]
+
+        assert SchedulerMetrics.model_validate(payload).worker_loop_lag.count == 0

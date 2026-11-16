@@ -249,3 +249,11 @@ class SchedulerState(StandardBaseModel):
         exclude=True,  # Avoid including this potentially large list in output
         description="Delays in yielding conversations from the data generator",
     )
+    worker_loop_lag_samples: list[tuple[float, float]] = Field(
+        default_factory=list,
+        exclude=True,
+        description=(
+            "Event-loop lag of the worker processes as (seconds, count) pairs, "
+            "added once the workers exit"
+        ),
+    )

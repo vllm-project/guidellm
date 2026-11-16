@@ -7,7 +7,11 @@ from pydantic import Field
 
 from guidellm.schemas import PydanticClassRegistryMixin, standard_model_config
 
-__all__ = ["BenchmarkOutputArgs"]
+__all__ = ["BenchmarkOutputArgs", "OutputFileError"]
+
+
+class OutputFileError(Exception):
+    """Error writing one or more benchmark report files."""
 
 
 class BenchmarkOutputArgs(PydanticClassRegistryMixin["BenchmarkOutputArgs"], ABC):

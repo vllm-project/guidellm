@@ -16,9 +16,9 @@ source_sha256: !!str "dcfa8707805f8b2a1243b9198a86ef98e3d2ed078495082f0eb23839f2
 > [!NOTE]\
 > 本指南中的内容适用于这两种后端，后端专属输入除外。
 >
-> 本指南以 OpenAI HTTP 后端和 OpenAI 兼容 LLM 服务器为前提。有关 vLLM Python 后端的信息，请参阅英文版 [vLLM Python 后端](../../guides/vllm-python-backend.md)文档。
+> 本指南以 OpenAI HTTP 后端和 OpenAI 兼容 LLM 服务器为前提。有关 vLLM Python 后端的信息，请参阅 [vLLM Python 后端](../guides/vllm-python-backend.md)文档。
 
-在[启动服务器（英文）](../../getting-started/server.md)后，你就可以运行基准测试来评估 LLM 部署的性能。
+在[启动服务器](server.md)后，你就可以运行基准测试来评估 LLM 部署的性能。
 
 ## CLI 选项格式
 
@@ -98,13 +98,13 @@ GuideLLM 提供多种选项来定制基准测试。以下是最重要的一些�
 
 例如，在 `--profile kind=sweep` 下使用 `--constraint kind=max_requests,count=1000`，会让扫描中的每种策略（同步、吞吐量，以及每个插值速率）最多运行 1000 个请求。`--constraint kind=min_requests,count=1000` 与 `max_requests` 类似，但会继续排队，直到处理完 1000 个请求；这样可以避免基于速率的基准测试在结束时吞吐量下降。使用 `--profile '{"kind":"concurrent","streams":[10,20]}'` 配合 `--constraint kind=max_duration,seconds=30`，则会先以 10 个并发流运行 30 秒，再以 20 个并发流运行 30 秒。
 
-有关过饱和约束的详细信息，请参阅英文版[过饱和停止策略](../../guides/over_saturation_stopping.md)。
+有关过饱和约束的详细信息，请参阅[过饱和停止策略](../guides/over_saturation_stopping.md)。
 
 ### 子基准测试（每种策略）约束
 
 使用 `sweep` 配置、在 `async`/`constant`/`poisson` 配置中指定多个 `rate` 值，或在 `concurrent` 配置中指定多个 `streams` 值时，配置中会运行多个“基准测试策略”。GuideLLM 允许使用 `--override` 选项为约束指定不同的控制参数。例如，`--profile kind=sweep,sweep_size=5 --constraint kind=max_duration,seconds=30` 会运行 5 种策略（同步、吞吐量，以及 3 个插值后的 constant 速率），每种运行 30 秒。你可以使用 `--override constraint[0].seconds 10,20,10,15,20`，让同步策略运行 10 秒、吞吐量策略运行 20 秒，并让 3 个插值后的 constant 策略分别运行 10 秒、15 秒和 20 秒。若指定的值较少（例如 `--override constraint[0].seconds 10,20,10`），最后一个值 10 秒会应用于其余所有 constant 策略。
 
-### 基准测试配置（`--profile`）
+### 基准测试配置（`--profile`） {#benchmark-profiles-profile}
 
 GuideLLM 支持多种基准测试配置，下面将逐一介绍。配置专属参数与 `kind=<type>` 放在同一个配置字符串中。
 
@@ -158,7 +158,7 @@ guidellm run \
   --profile '{"kind":"knee","initial_streams":[1,5,10,20,40,80,160],"adaptive":true,"points_each_side":5,"max_step":3}'
 ```
 
-该配置的两个阶段都使用并发策略，并将初始分析、自适应计划和最终分析写入报告的 `conclusions` 列表。有关配置和计算细节，请参阅英文版 [Knee Profile 指南](../../guides/knee_detection.md)。
+该配置的两个阶段都使用并发策略，并将初始分析、自适应计划和最终分析写入报告的 `conclusions` 列表。有关配置和计算细节，请参阅[膝点配置指南](../guides/knee_detection.md)。
 
 如需使用均匀间隔的起始点，请运行 `--profile '{"kind":"knee","min_streams":1,"max_streams":9,"count":5}'`。需要自行选择每个并发点时，请使用 `initial_streams`。
 
@@ -259,7 +259,7 @@ guidellm run \
 
 ### Trace 回放基准测试 {#trace-replay-benchmarking}
 
-如需进行更贴近实际的负载测试，可以按 trace 每行的时间戳和 token 长度重放事件。trace 数据通过 `--data` 中嵌套的 `source` 配置，从本地文件或 HuggingFace 数据集加载，支持的格式见英文版[Trace 文件格式文档](../../guides/trace_replay.md#supported-formats)。时间戳可以是绝对值或单调值；GuideLLM 会先排序，再转换为相对于首个事件的偏移量：
+如需进行更贴近实际的负载测试，可以按 trace 每行的时间戳和 token 长度重放事件。trace 数据通过 `--data` 中嵌套的 `source` 配置，从本地文件或 HuggingFace 数据集加载，支持的格式见 [Trace 文件格式文档](../guides/trace_replay.md#supported-formats)。时间戳可以是绝对值或单调值；GuideLLM 会先排序，再转换为相对于首个事件的偏移量：
 
 ```json
 {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
@@ -296,7 +296,7 @@ guidellm run \
   --profile kind=replay
 ```
 
-此功能也适用于特定格式所需的其他列。有关这些额外列及格式专属参数的说明，请参阅英文版 [Trace 文件格式文档](../../guides/trace_replay.md)。
+此功能也适用于特定格式所需的其他列。有关这些额外列及格式专属参数的说明，请参阅 [Trace 文件格式文档](../guides/trace_replay.md)。
 
 ### 使用真实数据
 
@@ -320,7 +320,7 @@ guidellm run \
 
 ## 输出选项
 
-默认情况下，基准测试结果会保存到 `benchmarks.json` 和 `benchmarks.csv`。指定 `--output` 会替换这两个默认输出。有关如何选择输出格式，请参阅英文版[输出配置](../../guides/outputs.md#cli-output-configuration)；有关默认目录和自定义路径，请参阅英文版[文件输出配置](../../guides/outputs.md#configuring-file-outputs)。
+默认情况下，基准测试结果会保存到 `benchmarks.json` 和 `benchmarks.csv`。指定 `--output` 会替换这两个默认输出。有关如何选择输出格式，请参阅[输出配置](../guides/outputs.md#cli-output-configuration)；有关默认目录和自定义路径，请参阅[文件输出配置](../guides/outputs.md#configuring-file-outputs)。
 
 ### 进度日志
 
@@ -332,6 +332,85 @@ Rich 进度显示可以与日志同时使用。`--disable-console` 和 `--disabl
 
 对需要身份验证的服务器（例如 OpenAI API）运行基准测试时，请在后端配置中提供 API key。详细信息请参阅[后端指南中的“配置 API Key”章节](../guides/backends.md#api-key-configuration)。
 
+## 使用配置（场景）文件
+
+你可以使用 `--config`（别名为 `--scenario`、`-c`）加载已保存的场景文件（YAML 或 JSON），以便重复使用 GuideLLM 测试配置。
+
+配置文件遵循 GuideLLM `BenchmarkScenario` 对象的内部格式，例如：
+
+```yaml
+---
+metadata:
+  labels:
+    key1: value1
+    key2: value2
+spec:
+  backend:
+    kind: openai_http
+    target: http://localhost:8000
+  profile:
+    kind: concurrent
+  constraints:
+    kind: max_duration
+  tokenizer:
+    kind: huggingface_auto
+  data:
+    kind: synthetic_text
+  data_column_mapper:
+    kind: generative_column_mapper
+  data_preprocessors:
+  - kind: encode_media
+  data_finalizer:
+    kind: generative
+  data_loader:
+    kind: pytorch
+  seed:
+    kind: static
+    value: 42
+  output:
+  - kind: json
+    path: output.json
+  - kind: csv
+    path: output.csv
+  metrics:
+    kind: generative
+benchmarks:
+- profile.streams: 1
+```
+
+命令行中指定的选项会覆盖场景中的值。
+
+### 合并配置文件
+
+每个后续配置都会替换前一个配置中的选项。列表（例如多个 `--output` 选项）通常会被替换，而不是合并。不过，当带类型选项的 `kind=` 值相同时，可以覆盖其中的参数。例如，基础配置可能指定了 `openai_http` 后端、`request_format=/v1/chat/completions` 和其他选项；你可以再叠加一个配置文件，添加或覆盖目标 URL 和 API key 等单个参数：
+
+```yaml
+---
+spec:
+  backend:
+    kind: openai_http
+    target: http://localhost:8000
+    api_key: "your-api-key"
+```
+
+你可以组合多个配置文件和 CLI 选项。例如，使用一个基础工作负载配置、第二个配置文件指定目标，以及第三个配置文件指定约束。
+
+### 内置配置文件
+
+#### Red Hat AI Inference Server 配置
+
+这组配置指定了企业推理中常见的测试场景。你可以将它们作为起点，并通过其他配置文件或 CLI 选项覆盖参数。
+
+这些名称已内置于 GuideLLM 中。请使用下列完整名称，例如 `rhaiis/concurrent-1k-1k-equal`。
+
+- `rhaiis/concurrent-1k-1k-equal`：预填充和解码均衡的场景。并发工作负载，提示词和输出各为 1,000 个 token。
+- `rhaiis/concurrent-1k-1k-multiturn`：启用前缀缓存的多轮对话场景。输入和输出各为 1,000 个 token，另有 512 个前缀 token，共 5 轮对话。
+- `rhaiis/concurrent-2ki-128-equal`：预填充密集型场景。输入为 2k 个 token，输出为 128 个 token。
+- `rhaiis/concurrent-8k-1k-equal`：长上下文场景。输入为 8,000 个 token，输出为 1,000 个 token。
+- `rhaiis/concurrent-8k-800-norm`：序列长度有变化的长上下文场景。输入平均为 8,000 个 token，输出平均为 800 个 token，但统计方差较大。
+- `rhaiis/concurrent-100k-1k-equal`：超长上下文场景。提示词为 100,000 个 token，输出为 1,000 个 token。
+- `rhaiis/concurrent-512-2ki-norm`：序列长度有变化的生成密集型场景。提示词平均为 512 个 token，输出为 1k 个 token，但统计方差非常大。
+
 ## 故障排除
 
-常见问题请参阅英文版[故障排除指南](../../guides/troubleshooting.md)。
+常见问题请参阅[故障排除指南](../guides/troubleshooting.md)。

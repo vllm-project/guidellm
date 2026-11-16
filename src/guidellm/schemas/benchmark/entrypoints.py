@@ -444,6 +444,7 @@ class BenchmarkMetadata(StandardBaseModel):
 
     labels: dict[str, str] = Field(
         default_factory=dict,
+        exclude_if=lambda labels: len(labels) == 0,
         description=(
             "Key-value pairs of metadata labels which will be written to the "
             "output reports."
@@ -544,7 +545,11 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
             "to the output file but not otherwise used by GuideLLM)."
         ),
         examples=[
-            {"labels": {"name": "benchmark", "description": "Benchmark description"}}
+            {
+                "name": "benchmark",
+                "description": "Benchmark description",
+                "labels": {"label1": "value1", "label2": "value2"},
+            }
         ],
     )
     spec: BenchmarkArgs = Field(
@@ -562,6 +567,7 @@ class BenchmarkScenario(ReloadableBaseModel, BaseSettings):
     )
     benchmarks: list[dict[str, Any] | None] = Field(
         default_factory=lambda: [None],  # type: ignore[arg-type]
+        exclude_if=lambda v: v is None or v == [None],
         description=(
             "Individual benchmark parameter overrides. This allows overriding "
             "parameters and constraints for each benchmark run by a profile."

@@ -304,6 +304,29 @@ class TestOpenAIHTTPBackend:
         backend3 = _make_backend(target="http://localhost:8000/v1/")
         assert backend3._args.target == "http://localhost:8000"
 
+    @pytest.mark.regression
+    def test_api_routes_leading_slash_normalization(self):
+        """Test api_routes values with a leading slash are joined without ``//``.
+
+        ### WRITTEN BY AI ###
+        """
+        backend = _make_backend(
+            target="http://localhost:8000",
+            api_routes={
+                "/v1/chat/completions": "/v1/chat/completions",
+                "/health": "/custom/health",
+            },
+        )
+
+        routes = backend._args.api_routes
+        assert routes["/v1/chat/completions"] == "v1/chat/completions"
+        assert routes["/health"] == "custom/health"
+        assert routes["/v1/models"] == "v1/models"
+        assert (
+            f"{backend._args.target}/{routes['/v1/chat/completions']}"
+            == "http://localhost:8000/v1/chat/completions"
+        )
+
     @pytest.mark.smoke
     @pytest.mark.asyncio
     @async_timeout(10.0)
@@ -1277,3 +1300,164 @@ async def test_stream_read_to_end_only_over_http11(
         await backend.process_shutdown()
 
     assert chunks.read == expected_read
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@async_timeout(10.0)
+@pytest.mark.parametrize("stream", [True, False])
+async def test_resolve_error_status_keeps_response_body(
+    httpx2_mock: respx.Router, stream: bool
+):
+    """Keep the server's error body in the raised error, streaming or not."""
+    message = "This model's maximum context length is 4096 tokens."
+    httpx2_mock.route(url="http://test/v1/chat/completions").respond(
+        status_code=400,
+        json={"error": {"message": message, "type": "BadRequestError"}},
+    )
+    backend = _make_backend(target="http://test", model="test-model", stream=stream)
+    request = GenerationRequest(columns={"text_column": ["Hello"]})
+    await backend.process_startup()
+    try:
+        with pytest.raises(httpx2.HTTPStatusError) as exc_info:
+            async for _ in backend.resolve(request, RequestInfo(request_id="test-id")):
+                pass
+    finally:
+        await backend.process_shutdown()
+
+    assert "400 Bad Request" in str(exc_info.value)
+    assert message in str(exc_info.value)
+    assert exc_info.value.response.status_code == 400
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@async_timeout(10.0)
+async def test_resolve_error_status_truncates_long_body(httpx2_mock: respx.Router):
+    """Cap the error body kept in the raised error."""
+    httpx2_mock.route(url="http://test/v1/chat/completions").respond(
+        status_code=502, text="x" * 5000
+    )
+    backend = _make_backend(target="http://test", model="test-model", stream=False)
+    request = GenerationRequest(columns={"text_column": ["Hello"]})
+    await backend.process_startup()
+    try:
+        with pytest.raises(httpx2.HTTPStatusError) as exc_info:
+            async for _ in backend.resolve(request, RequestInfo(request_id="test-id")):
+                pass
+    finally:
+        await backend.process_shutdown()
+
+    assert "x" * 1000 in str(exc_info.value)
+    assert "x" * 1001 not in str(exc_info.value)
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@async_timeout(10.0)
+async def test_validate_and_models_error_status_keep_response_body(
+    httpx2_mock: respx.Router,
+):
+    """Keep the server's error body for the health check and the models list."""
+    message = "Invalid API key provided."
+    httpx2_mock.route(url="http://test/health").respond(
+        status_code=401, json={"error": {"message": message}}
+    )
+    httpx2_mock.route(url="http://test/v1/models").respond(
+        status_code=401, json={"error": {"message": message}}
+    )
+    backend = _make_backend(target="http://test", model="test-model")
+    await backend.process_startup()
+    try:
+        with pytest.raises(RuntimeError) as validate_info:
+            await backend.validate()
+        with pytest.raises(httpx2.HTTPStatusError) as models_info:
+            await backend.available_models()
+    finally:
+        await backend.process_shutdown()
+
+    assert message in str(validate_info.value.__cause__)
+    assert message in str(models_info.value)
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@async_timeout(10.0)
+async def test_raise_for_status_reads_capped_error_body():
+    """Stop reading a streamed error body once enough of it is kept."""
+    chunks_read = 0
+
+    async def body():
+        nonlocal chunks_read
+        for _ in range(1000):
+            chunks_read += 1
+            yield b"y" * 1000
+
+    response = httpx2.Response(
+        502,
+        content=body(),
+        request=httpx2.Request("POST", "http://test/v1/chat/completions"),
+    )
+    with pytest.raises(httpx2.HTTPStatusError) as exc_info:
+        await OpenAIHTTPBackend._raise_for_status(response)
+
+    assert "y" * 1000 in str(exc_info.value)
+    assert chunks_read < 10
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@async_timeout(10.0)
+@pytest.mark.parametrize(
+    ("content", "expected", "unexpected"),
+    [
+        # 400 three-byte characters; the limit cuts the 334th one
+        ("€" * 400, "€" * 333, ("€" * 334, "\\x")),
+        (b"bad \xff byte", "bad \\xff byte", ("\ufffd",)),
+    ],
+)
+async def test_raise_for_status_decodes_error_body(
+    content: str | bytes, expected: str, unexpected: tuple[str, ...]
+):
+    """Escape invalid bytes and drop a character cut off at the limit."""
+    response = httpx2.Response(
+        502,
+        content=content.encode() if isinstance(content, str) else content,
+        request=httpx2.Request("POST", "http://test/v1/chat/completions"),
+    )
+    with pytest.raises(httpx2.HTTPStatusError) as exc_info:
+        await OpenAIHTTPBackend._raise_for_status(response)
+
+    assert expected in str(exc_info.value)
+    for text in unexpected:
+        assert text not in str(exc_info.value)
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@async_timeout(10.0)
+async def test_validate_and_models_send_extras_headers_and_params(
+    httpx2_mock: respx.Router,
+):
+    """Send the configured extra headers and params on the health check and models."""
+    health = httpx2_mock.route(url__startswith="http://test/health").respond(200)
+    models = httpx2_mock.route(url__startswith="http://test/v1/models").respond(
+        json={"data": [{"id": "test-model"}]}
+    )
+    backend = _make_backend(
+        target="http://test",
+        extras=GenerationRequestArguments(
+            headers={"X-Api-Key": "secret"}, params={"api-version": "2024-10-21"}
+        ),
+    )
+    await backend.process_startup()
+    try:
+        await backend.validate()
+        assert await backend.available_models() == ["test-model"]
+    finally:
+        await backend.process_shutdown()
+
+    for route in (health, models):
+        sent = route.calls.last.request
+        assert sent.headers["X-Api-Key"] == "secret"
+        assert sent.url.params["api-version"] == "2024-10-21"

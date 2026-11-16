@@ -52,7 +52,7 @@ async def wait_for_sync_event(
             while not stop.is_set():
                 if event.wait(timeout=poll_interval):
                     return
-        except Exception as err:  # noqa: BLE001
+        except Exception as err:
             if stop.is_set():
                 return  # Ignore error if we should have stopped
             raise err

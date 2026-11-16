@@ -15,7 +15,7 @@ from guidellm.data.deserializers.deserializer import (
     DatasetDeserializerFactory,
 )
 from guidellm.schemas.data.deserializers import SyntheticImageDataArgs
-from guidellm.utils.random import IntegerRangeSampler
+from guidellm.utils.random import IntegerRangeSampler, derive_seed
 from guidellm.utils.vision import synthesize_image
 
 __all__ = [
@@ -23,6 +23,9 @@ __all__ = [
     "SyntheticImageDatasetDeserializer",
 ]
 
+
+# Stream id for derive_seed. Keep it fixed so the generated lengths stay stable.
+_OUTPUT_TOKENS_STREAM = 0
 
 _DESERIALIZER_TYPE = "synthetic_image"
 
@@ -41,7 +44,7 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
         self.iteration_count = 0
 
     def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:
-        iter_seed = self.random_seed + self.iteration_count
+        epoch = self.iteration_count
         self.iteration_count += 1
 
         output_tokens_sampler = (
@@ -51,7 +54,9 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
                     variance=self.config.output_tokens_stdev,
                     min_value=self.config.output_tokens_min,
                     max_value=self.config.output_tokens_max,
-                    random_seed=iter_seed + 1,
+                    random_seed=derive_seed(
+                        self.random_seed, epoch, _OUTPUT_TOKENS_STREAM
+                    ),
                 )
             )
             if self.config.output_tokens is not None
@@ -84,6 +89,7 @@ class _SyntheticImageExamplesIterable(_BaseExamplesIterable):
                     jpeg_quality=self.config.jpeg_quality,
                     seed=self.config.seed,
                     row_index=row_index * self.config.images_per_request + img_idx,
+                    epoch=epoch,
                 )
                 if self.config.images_per_request == 1:
                     row["image"] = encoded

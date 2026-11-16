@@ -23,7 +23,7 @@ vllm:num_requests_running{model_name="m"} 2
 
 
 class _MetricsHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         body = EXPOSITION.encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/plain; version=0.0.4")

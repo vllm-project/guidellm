@@ -28,13 +28,11 @@ jobs:
         uses: ./.github/actions/python-uv
         with:
           python-version: ${{ matrix.python }}
-      - name: Install dependencies
-        run: |
-          uv pip install --system tox tox-pdm
+          sync-args: "--only-group env"
       - name: Build the package
         run: |
           export GUIDELLM_BUILD_TYPE=release
-          tox -e build
+          uv run tox -e build
       - name: Upload build artifacts
         id: artifact-upload
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

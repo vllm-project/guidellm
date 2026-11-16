@@ -238,7 +238,7 @@ class OverSaturationConstraint(Constraint):
         eps: float = 1e-12,
         mode: Literal["enforce", "monitor"] = "enforce",
         stopping_scope: Literal["current", "all"] = "current",
-    ) -> None:  # noqa: PLR0913
+    ) -> None:
         """
         Initialize the over-saturation constraint.
 

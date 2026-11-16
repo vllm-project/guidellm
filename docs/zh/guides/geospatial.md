@@ -143,6 +143,6 @@ guidellm run \
 
 ## 另请参阅
 
-- [数据集指南（英文）](../../guides/datasets.md)：了解数据集准备方法和格式
-- [指标指南（英文）](../../guides/metrics.md)：了解基准测试指标
-- [多模态指南（英文）](../../guides/multimodal/index.md)：了解如何使用多模态数据
+- [数据集指南](datasets.md)：了解数据集准备方法和格式
+- [指标指南](metrics.md)：了解基准测试指标
+- [多模态指南](multimodal/index.md)：了解如何使用多模态数据

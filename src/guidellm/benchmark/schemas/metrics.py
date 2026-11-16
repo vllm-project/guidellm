@@ -101,6 +101,13 @@ class SchedulerMetrics(StandardBaseDict):
             "from the request generator and actually yielding it (seconds)"
         ),
     )
+    worker_loop_lag: DistributionSummary = Field(
+        default_factory=lambda: DistributionSummary.from_values([]),
+        description=(
+            "Distribution of how late a timer fired on the worker event loops "
+            "while they processed requests (seconds)"
+        ),
+    )
     queued_time_avg: float = Field(
         description="Avg time requests spent in the queue (seconds)"
     )
@@ -167,6 +174,9 @@ class SchedulerMetrics(StandardBaseDict):
             # Scheduler internal performance timings
             generation_delay=DistributionSummary.from_values(
                 scheduler_state.generation_delay_samples
+            ),
+            worker_loop_lag=DistributionSummary.from_values(
+                scheduler_state.worker_loop_lag_samples
             ),
             queued_time_avg=accumulator.scheduler_metrics.queued_time.mean or -1.0,
             resolve_start_delay_avg=(
@@ -953,8 +963,12 @@ class GenerativeTurnMetrics(StandardBaseDict):
                     ),
                     inter_token_latency_ms=StatusDistributionSummary.from_values_function(
                         function=lambda req: (
-                            req.inter_token_latency_ms or 0.0,
-                            (req.output_tokens or 1.0) - 1.0,
+                            None
+                            if req.inter_token_latency_ms is None
+                            else (
+                                req.inter_token_latency_ms,
+                                (req.output_tokens or 1.0) - 1.0,
+                            )
                         ),
                         successful=itl_successful,
                         incomplete=itl_incomplete,
@@ -1556,14 +1570,14 @@ class GenerativeMetrics(StandardBaseDict):
                 uncertainty=uncertainty,
             ),
             time_to_last_round_trip_ms=StatusDistributionSummary.from_values_function(
-                function=lambda req: req.time_to_last_round_trip_ms or 0.0,
+                function=lambda req: req.time_to_last_round_trip_ms,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
                 uncertainty=uncertainty,
             ),
             avg_round_trip_time_ms=StatusDistributionSummary.from_values_function(
-                function=lambda req: req.avg_round_trip_time_ms or 0.0,
+                function=lambda req: req.avg_round_trip_time_ms,
                 successful=successful,
                 incomplete=incomplete,
                 errored=errored,
@@ -1597,10 +1611,14 @@ class GenerativeMetrics(StandardBaseDict):
                 incomplete=incomplete,
                 errored=errored,
             ),
+            # A request without streamed token timings, such as a non-streaming
+            # one, has no ITL. It is skipped rather than recorded as zero-length
+            # gaps weighted by its output tokens.
             inter_token_latency_ms=StatusDistributionSummary.from_values_function(
                 function=lambda req: (
-                    req.inter_token_latency_ms or 0.0,
-                    (req.output_tokens or 1.0) - 1.0,
+                    None
+                    if req.inter_token_latency_ms is None
+                    else (req.inter_token_latency_ms, (req.output_tokens or 1.0) - 1.0)
                 ),
                 successful=after_first_token_requests[0],
                 incomplete=after_first_token_requests[1],

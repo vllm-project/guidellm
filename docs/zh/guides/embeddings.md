@@ -42,6 +42,6 @@ guidellm run \
 
 ## 另请参阅
 
-- [基准测试配置（英文）](../../getting-started/benchmark.md#benchmark-profiles-profile)：详细介绍各种配置类型
-- [数据集指南（英文）](../../guides/datasets.md)：创建和使用自定义数据集
-- [指标指南（英文）](../../guides/metrics.md)：了解性能指标
+- [基准测试配置](../getting-started/benchmark.md#benchmark-profiles-profile)：详细介绍各种配置类型
+- [数据集指南](datasets.md)：创建和使用自定义数据集
+- [指标指南](metrics.md)：了解性能指标

@@ -90,7 +90,7 @@ Worker process <pid> died unexpectedly (signal 11)
 
 ### Fix
 
-GuideLLM defaults to `fork` multiprocessing, which can segfault on macOS. Use `spawn` instead:
+GuideLLM 0.8.0 and later default to `spawn` multiprocessing on every platform and no longer accept `fork`, so this crash is not expected with the default settings. Releases before 0.8.0 default to `fork`, which can segfault on macOS; on those releases, select `spawn` explicitly:
 
 ```bash
 GUIDELLM__MP_CONTEXT_TYPE=spawn guidellm run ...

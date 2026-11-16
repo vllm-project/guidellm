@@ -30,6 +30,7 @@ from guidellm.schemas.benchmark.outputs import (
     CSVBenchmarkOutputArgs,
     HTMLBenchmarkOutputArgs,
     JSONBenchmarkOutputArgs,
+    OutputFileError,
     PlotBenchmarkOutputArgs,
     YAMLBenchmarkOutputArgs,
 )
@@ -73,6 +74,7 @@ __all__ = [
     "KneeProfileArgs",
     "MetricRef",
     "MetricsArgs",
+    "OutputFileError",
     "PlotBenchmarkOutputArgs",
     "ProfileArgs",
     "PrometheusCollectorArgs",

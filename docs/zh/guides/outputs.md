@@ -7,6 +7,8 @@ source_sha256: !!str "a92596617cad147aa021099b7ce2be22fc83304a85246db2e031f478dd
 
 GuideLLM 提供灵活的基准测试结果输出方式，既支持在控制台查看摘要，也支持将详细报告保存到文件。本文介绍支持的输出类型及其配置方法，并说明如何有效使用这些输出。
 
+<a id="cli-output-configuration"></a>
+
 ## CLI 输出配置
 
 如果没有指定任何 `--output` 选项，`guidellm run` 会在[默认结果目录](#configuring-file-outputs)中写入 `benchmarks.json` 和 `benchmarks.csv`。
@@ -23,6 +25,8 @@ guidellm run \
 ```
 
 请从[支持的文件格式](#supported-file-formats)中选择格式，并参阅[配置文件输出](#configuring-file-outputs)设置路径。控制台输出单独控制，具体说明见下文。
+
+<a id="console-output"></a>
 
 ## 控制台输出
 
@@ -63,7 +67,9 @@ guidellm run \
 
 GuideLLM 支持将基准测试结果保存为多种文件格式，包括 JSON、YAML 和 CSV。这些文件可用于后续分析和报告，也可以重新载入 Python 进行详细探索。
 
-### 支持的文件格式 {#supported-file-formats}
+<a id="supported-file-formats"></a>
+
+### 支持的文件格式
 
 | 格式（`kind`） | 默认文件名        | 内容                                                                                         |
 | -------------- | ----------------- | -------------------------------------------------------------------------------------------- |
@@ -75,7 +81,9 @@ GuideLLM 支持将基准测试结果保存为多种文件格式，包括 JSON、
 
 对于 `plot`，`path` 的扩展名决定图像格式：PNG、JPG/JPEG、SVG 或 PDF。例如，`--output kind=plot,path=benchmarks.pdf` 会生成 PDF。未指定扩展名的路径默认使用 `.png`；不支持的扩展名会导致错误。`dpi` 参数（默认值为 `100`）控制图像分辨率，例如 `--output kind=plot,path=benchmarks.jpg,dpi=72`。
 
-### 配置文件输出 {#configuring-file-outputs}
+<a id="configuring-file-outputs"></a>
+
+### 配置文件输出
 
 省略 `path` 时，文件将使用对应格式的默认文件名，并保存到 `GUIDELLM__DEFAULT_RESULTS_DIR` 配置的目录中；如果未设置该环境变量，则保存到当前目录。指定 `path=` 可以设置文件名或目标路径。
 

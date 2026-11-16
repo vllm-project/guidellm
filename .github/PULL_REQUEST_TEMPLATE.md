@@ -1,33 +1,39 @@
 ## Summary
-
 <!--
+**REQUIRED**
 Include a short paragraph of the changes introduced in this PR.
 If this PR requires additional context or rationale, explain why
 the changes are necessary.
 -->
 
 ## Details
-
 <!--
-Provide a detailed list of all changes introduced in this pull request.
+**OPTIONAL**
+Provide a detailed description of all changes introduced in this pull request.
 -->
-- [ ]
 
 ## Test Plan
-
 <!--
-List the steps needed to test this PR.
+**OPTIONAL**
+List the steps needed to test this PR. Only include if extra testing is
+needed outside of automated tests.
 -->
 -
 
 ## Related Issues
-
 <!--
-Link any relevant issues that this PR addresses.
+**OPTIONAL**
+Link any relevant issues that this PR addresses or relates to.
 -->
 - Resolves #
 
 ---
+
+<!--
+**REQUIRED**
+Check the boxes to certify your ownership of this PR and any use-of-ai
+disclaimers. DO NOT EDIT this section aside from checking boxes.
+-->
 
 - [ ] "I certify that all code in this PR is my own, except as noted below."
 
@@ -35,6 +41,7 @@ Link any relevant issues that this PR addresses.
 
 - [ ] Includes code generated or substantially modified by an AI agent
 - [ ] Includes tests generated or substantially modified by an AI agent
+- [ ] AI was used to create this description or communicate with maintainers
 
 > NOTE: the `Generated-by` or `Assisted-by` trailers should be used in git commit messages when code or tests were generated or substantially modified by an AI agent, as described in the project's [`DEVELOPING.md`](https://github.com/vllm-project/guidellm/blob/main/DEVELOPING.md) file.
 

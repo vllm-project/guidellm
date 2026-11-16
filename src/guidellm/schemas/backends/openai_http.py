@@ -72,10 +72,10 @@ class OpenAIHTTPBackendArgs(BackendArgs):
         ),
         examples=[
             {
-                "/v1/chat/completions": "/v1/chat/completions",
-                "/v1/embeddings": "/v1/embeddings",
-                "/v1/responses": "/v1/responses",
-                "/v1/audio/translations": "/v1/audio/translations",
+                "/v1/chat/completions": "v1/chat/completions",
+                "/v1/embeddings": "v1/embeddings",
+                "/v1/responses": "v1/responses",
+                "/v1/audio/translations": "v1/audio/translations",
             }
         ],
     )
@@ -168,8 +168,16 @@ class OpenAIHTTPBackendArgs(BackendArgs):
     @field_validator("api_routes", mode="after")
     @classmethod
     def merge_api_routes(cls, value: dict[str, str]) -> dict[str, str]:
-        """Merge user-provided API routes with default routes."""
-        return DEFAULT_API_PATHS | value
+        """
+        Merge user-provided API routes with default routes.
+
+        Route values are joined to the target as ``{target}/{path}``, so a
+        single leading slash is removed from each user-provided path to avoid
+        producing ``//`` in request URLs.
+        """
+        return DEFAULT_API_PATHS | {
+            route: path.removeprefix("/") for route, path in value.items()
+        }
 
     @model_validator(mode="after")
     def validate_server_history(self):

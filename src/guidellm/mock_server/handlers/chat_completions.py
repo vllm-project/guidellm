@@ -168,6 +168,25 @@ class ChatCompletionsHandler:
             }
         ]
 
+    def _flatten_content(self, req: ChatCompletionsRequest) -> list[ChatMessage]:
+        """Flatten list content to its text parts for the chat template.
+
+        Text-only templates concatenate message content as a string; the other
+        content parts are charged by accumulate_multimodal_content.
+        """
+        messages: list[ChatMessage] = []
+        for message in req.messages:
+            if isinstance(message.content, list):
+                text = " ".join(
+                    part["text"]
+                    for part in message.content
+                    if part.get("type") == "text"
+                )
+                messages.append(message.model_copy(update={"content": text}))
+            else:
+                messages.append(message)
+        return messages
+
     async def _handle_non_stream(
         self, req: ChatCompletionsRequest, multimodal_stats: MultimodalPromptStats
     ) -> HTTPResponse:
@@ -190,7 +209,7 @@ class ChatCompletionsHandler:
 
         # Token counts
         prompt_text = self.tokenizer.apply_chat_template(
-            req.messages,  # type: ignore[arg-type]
+            self._flatten_content(req),  # type: ignore[arg-type]
             tokenize=False,
         )
         text_tokens = len(self.tokenizer.encode(prompt_text))  # type: ignore[arg-type]
@@ -274,7 +293,7 @@ class ChatCompletionsHandler:
 
             # Token counts
             prompt_text = self.tokenizer.apply_chat_template(
-                req.messages,  # type: ignore[arg-type]
+                self._flatten_content(req),  # type: ignore[arg-type]
                 tokenize=False,
             )
             text_tokens = len(

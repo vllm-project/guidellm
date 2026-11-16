@@ -18,8 +18,10 @@ from guidellm.data.deserializers.trace_common import (
     TraceDatasetDeserializer,
     TraceFormatBase,
     TraceFormatRegistry,
+    create_prompt_from_hash_ids,
     decode_prompt,
     generate_token_ids,
+    tokenizer_supports_block_concat,
 )
 from guidellm.data.deserializers.trace_minimal import MinimalTraceFormat
 from guidellm.data.deserializers.trace_session_timing import TraceSessionTiming
@@ -885,3 +887,102 @@ class TestTraceDurationColumn:
         assert finalized.nodes["main_1"].settings.relative_timestamp == pytest.approx(
             10.0
         )
+
+
+def concat_processor() -> Mock:
+    """Tokenizer whose decode concatenates per-token pieces with no separator.
+
+    For such a tokenizer ``decode(a + b) == decode(a) + decode(b)``, so the
+    per-block decoded-text cache produces byte-identical prompts to decoding the
+    full token list (the invariant real byte-level BPE tokenizers also satisfy).
+    """
+    proc = Mock()
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: "".join(
+        f"<{t}>" for t in tokens
+    )
+    return proc
+
+
+@pytest.mark.smoke
+def test_create_prompt_from_hash_ids_uncached_decodes_full_list():
+    """Without a text cache, the full concatenated token list is decoded once.
+
+    ## WRITTEN BY AI ##
+    """
+    proc = concat_processor()
+    table = {1: (10, 11), 2: (20,), 3: (30, 31)}
+    result = create_prompt_from_hash_ids([1, 2, 3], table, proc)
+    assert result == "<10><11><20><30><31>"
+    proc.decode.assert_called_once_with([10, 11, 20, 30, 31], skip_special_tokens=True)
+
+
+@pytest.mark.sanity
+def test_create_prompt_from_hash_ids_cached_matches_uncached():
+    """The cached path yields the same prompt as the uncached full-list decode.
+
+    ## WRITTEN BY AI ##
+    """
+    table = {1: (10, 11), 2: (20,), 3: (30, 31), 4: (40,)}
+    requests = [[1, 2], [1, 2, 3], [1, 2, 3, 4], [1, 4]]
+    cache: dict[int, str] = {}
+    for ids in requests:
+        uncached = create_prompt_from_hash_ids(ids, table, concat_processor())
+        cached = create_prompt_from_hash_ids(ids, table, concat_processor(), cache)
+        assert cached == uncached
+
+
+@pytest.mark.sanity
+def test_create_prompt_from_hash_ids_cache_decodes_each_block_once():
+    """Each unique block is decoded at most once; reused blocks hit the cache.
+
+    ## WRITTEN BY AI ##
+    """
+    proc = concat_processor()
+    table = {1: (10,), 2: (20,), 3: (30,)}
+    cache: dict[int, str] = {}
+    create_prompt_from_hash_ids([1, 2], table, proc, cache)
+    create_prompt_from_hash_ids([1, 2, 3], table, proc, cache)
+    create_prompt_from_hash_ids([1, 2, 3], table, proc, cache)
+    # 6 blocks referenced across requests, but only 3 distinct -> 3 decodes.
+    assert proc.decode.call_count == 3
+    assert set(cache) == {1, 2, 3}
+
+
+@pytest.mark.sanity
+def test_tokenizer_supports_block_concat_true_for_concatenating_decode():
+    """A byte-level-BPE-like tokenizer (self-delimiting, no separator) probes True.
+
+    ## WRITTEN BY AI ##
+    """
+    proc = Mock()
+    proc.encode.side_effect = lambda text: list(range(len(text.split())))
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: "".join(
+        f"<{t}>" for t in tokens
+    )
+    assert tokenizer_supports_block_concat(proc) is True
+
+
+@pytest.mark.sanity
+def test_tokenizer_supports_block_concat_false_for_space_joining_decode():
+    """A tokenizer that re-inserts separators at boundaries probes False.
+
+    ## WRITTEN BY AI ##
+    """
+    proc = Mock()
+    proc.encode.side_effect = lambda text: list(range(len(text.split())))
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
+        f"tok{i}" for i, _ in enumerate(tokens)
+    )
+    assert tokenizer_supports_block_concat(proc) is False
+
+
+@pytest.mark.smoke
+def test_tokenizer_supports_block_concat_false_when_too_few_tokens():
+    """A probe that yields fewer than two tokens cannot be verified, so it is False.
+
+    ## WRITTEN BY AI ##
+    """
+    proc = Mock()
+    proc.encode.side_effect = lambda text: [0]
+    proc.decode.side_effect = lambda tokens, skip_special_tokens=False: ""
+    assert tokenizer_supports_block_concat(proc) is False

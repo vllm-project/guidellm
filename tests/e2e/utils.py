@@ -45,17 +45,19 @@ class GuidellmClient:
 
     @staticmethod
     def _build_profile_config(
-        profile: str, rate: int, max_concurrency: int | None
+        profile: str, rate: int | None, max_concurrency: int | None
     ) -> str:
         """
         Build the ``--profile`` value, including an optional concurrency cap.
 
         :param profile: Type of rate control (constant, etc.)
-        :param rate: Request rate
+        :param rate: Request rate, or None for profiles without a rate
         :param max_concurrency: Cap on concurrent requests, or None for no cap
         :return: Comma-separated profile configuration string
         """
-        config = f"kind={profile},rate={rate}"
+        config = f"kind={profile}"
+        if rate is not None:
+            config += f",rate={rate}"
         if max_concurrency is not None:
             config += f",max_concurrency={max_concurrency}"
 
@@ -64,35 +66,39 @@ class GuidellmClient:
     def start_benchmark(
         self,
         profile: str = "constant",
-        rate: int = 10,
+        rate: int | None = 10,
         max_concurrency: int | None = None,
         max_seconds: int | None = None,
         max_requests: int | None = None,
         max_error_rate: float | None = None,
         over_saturation: dict[str, Any] | None = None,
-        data: str = "kind=synthetic_text,prompt_tokens=256,output_tokens=128",
+        data: str
+        | list[str] = "kind=synthetic_text,prompt_tokens=256,output_tokens=128",
         processor: str | None = None,
         backend: str | None = None,
         additional_args: str = "",
         extra_env: dict[str, str] | None = None,
+        disable_console: bool = True,
     ) -> None:
         """
         Start a guidellm benchmark command.
 
         :param profile: Type of rate control (constant, etc.)
-        :param rate: Request rate
+        :param rate: Request rate, or None for profiles without a rate
         :param max_concurrency: Cap on concurrent requests the scheduler dispatches
         :param max_seconds: Maximum duration in seconds
         :param max_requests: Maximum number of requests
         :param max_error_rate: Maximum error rate before stopping
         :param over_saturation: Over-saturation detection configuration (dict).
-        :param data: Data configuration string (kind=<type>,key=val,...)
+        :param data: Data configuration string or list of strings, one per source
         :param processor: Processor/tokenizer to use (defaults to vendored minimal path)
         :param backend: Full ``--backend`` config string. Defaults to openai_http
             targeting ``self.target``. Pass this to set request_format or other
             backend fields without emitting a second ``--backend`` flag.
         :param additional_args: Additional command line arguments
         :param extra_env: Additional environment variables to set
+        :param disable_console: Disable all console output; when False, retain
+            summary tables while disabling interactive progress
         """
         guidellm_exe = get_guidellm_executable()
         output_path = self.output_dir / self.outputs
@@ -146,11 +152,17 @@ class GuidellmClient:
                 cmd_parts.append(f'--constraint "kind=over_saturation,{config_str}"')
 
         cmd_parts.extend(
+            f'--data "{data_config}"'
+            for data_config in ([data] if isinstance(data, str) else data)
+        )
+
+        cmd_parts.extend(
             [
-                f'--data "{data}"',
                 f'--tokenizer "kind=huggingface_auto,model={tokenizer_model}"',
                 f'--output "kind=json,path={output_path}"',
-                "--disable-console",
+                "--disable-console"
+                if disable_console
+                else "--disable-console-interactive",
             ]
         )
 

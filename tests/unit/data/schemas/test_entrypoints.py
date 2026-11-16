@@ -10,9 +10,9 @@ import pytest
 from pydantic import ValidationError
 
 # Import subclasses to ensure registry is populated
-import guidellm.data.deserializers  # noqa: F401
-import guidellm.data.finalizers  # noqa: F401
-import guidellm.data.loaders  # noqa: F401
+import guidellm.data.deserializers
+import guidellm.data.finalizers
+import guidellm.data.loaders
 import guidellm.data.preprocessors  # noqa: F401
 from guidellm.data.deserializers.synthetic import SyntheticTextDataset
 from guidellm.data.deserializers.synthetic_image import SyntheticImageDataset

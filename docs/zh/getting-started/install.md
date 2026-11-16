@@ -13,7 +13,7 @@ GuideLLM 提供多种安装方式，你可以根据自身需求进行选择。�
 
 - **操作系统：** Linux 或 macOS
 
-- **Python 版本：** 3.10–3.13
+- **Python 版本：** 3.11–3.15
 
 - **Pip 版本：** 请确保安装了最新版本的 pip。可以使用以下命令升级 pip：
 
@@ -87,8 +87,8 @@ guidellm --help
 
 该命令应显示 GuideLLM 的帮助信息。
 
-如需使用 vLLM Python 后端（进程内推理），请参阅英文版 [vLLM Python 后端](../../guides/vllm-python-backend.md)文档，了解推荐的安装方式，包括使用容器、现有 vLLM 环境或 pip。
+如需使用 vLLM Python 后端（进程内推理），请参阅 [vLLM Python 后端](../guides/vllm-python-backend.md)文档，了解推荐的安装方式，包括使用容器、现有 vLLM 环境或 pip。
 
 ## 故障排除
 
-如果安装时遇到问题，请确认操作系统和 Python 版本满足前置条件。常见问题的处理方式，包括调试日志、tokenizer 加载和 macOS 工作进程崩溃，请参阅英文版[故障排除指南](../../guides/troubleshooting.md)。如需进一步协助，请前往 [GitHub Issues](https://github.com/vllm-project/guidellm/issues)。
+如果安装时遇到问题，请确认操作系统和 Python 版本满足前置条件。常见问题的处理方式，包括调试日志、tokenizer 加载和 macOS 工作进程崩溃，请参阅[故障排除指南](../guides/troubleshooting.md)。如需进一步协助，请前往 [GitHub Issues](https://github.com/vllm-project/guidellm/issues)。

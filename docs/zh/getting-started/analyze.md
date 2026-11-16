@@ -5,7 +5,7 @@ source_sha256: !!str "1a3dd094af8e280879f426978ac60dd8d91556a397e9fdd08f08235d8e
 
 # 分析结果
 
-完成[基准测试](../../getting-started/benchmark.md)后，GuideLLM 会提供全面的结果，帮助你了解大语言模型部署的性能。本指南介绍如何解读控制台输出和保存到文件的结果。
+完成[基准测试](benchmark.md)后，GuideLLM 会提供全面的结果，帮助你了解大语言模型部署的性能。本指南介绍如何解读控制台输出和保存到文件的结果。
 
 ## 了解控制台输出
 
@@ -70,11 +70,11 @@ p99（第 99 百分位数）对服务级别目标（SLO）分析尤为重要：9
 - `benchmarks.json`：JSON 格式的完整基准测试数据
 - `benchmarks.csv`：CSV 格式的关键指标汇总
 
-文件会写入 `GUIDELLM__DEFAULT_RESULTS_DIR` 指定的目录；如果未设置该变量，则写入当前目录。若要指定文件名和保存位置，请参阅英文版[配置文件输出](../../guides/outputs.md#configuring-file-outputs)。
+文件会写入 `GUIDELLM__DEFAULT_RESULTS_DIR` 指定的目录；如果未设置该变量，则写入当前目录。若要指定文件名和保存位置，请参阅[配置文件输出](../guides/outputs.md#configuring-file-outputs)。
 
 ### 文件格式
 
-可用的报告格式请参阅英文版[支持的文件格式](../../guides/outputs.md#supported-file-formats)；指定格式的示例请参阅英文版[输出配置](../../guides/outputs.md#cli-output-configuration)。显式指定 `--output` 选项后，默认的 JSON 和 CSV 输出配置将被替换。控制台显示选项请参阅英文版[控制台输出](../../guides/outputs.md#console-output)。
+可用的报告格式请参阅[支持的文件格式](../guides/outputs.md#supported-file-formats)；指定格式的示例请参阅[输出配置](../guides/outputs.md#cli-output-configuration)。显式指定 `--output` 选项后，默认的 JSON 和 CSV 输出配置将被替换。控制台显示选项请参阅[控制台输出](../guides/outputs.md#console-output)。
 
 ### 通过程序分析
 
