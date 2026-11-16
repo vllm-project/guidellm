@@ -58,16 +58,9 @@ If you are combining multiple datasets (e.g., for prompts and audio), prepend th
 
 ### Request Formatting
 
-Across the supported audio endpoints, a request formatter encodes audio data and formats the request payload. This uses reasonable defaults out of the box, but can be customized as needed. The following options are available for audio request formatting via the `--request-formatter-kwargs` argument, provided as a JSON string.
+The `encode_media` data preprocessor encodes audio before the backend formats requests. Configure it with `--data-preprocessor`, putting encoding options in `audio_kwargs`. The same `audio_kwargs` structure applies to transcription, translation, and chat requests.
 
-#### "encode_kwargs"
-
-A dictionary of arguments passed to the audio encoder that controls how audio data is preprocessed before being included in the request.
-
-**Note on Nesting:**
-
-- For **Chat Completions** (`chat_completions`), audio arguments must be nested under an `audio` key within `encode_kwargs`.
-- For **Transcription/Translation** (`audio_transcriptions`, `audio_translations`), arguments are provided at the top level of `encode_kwargs`.
+#### `audio_kwargs`
 
 Supported arguments include:
 
@@ -77,33 +70,32 @@ Supported arguments include:
 - "bitrate": Bitrate for lossy formats like mp3 (default: "64k").
 - "max_duration": If specified, audio longer than this duration (in seconds) will be truncated.
 - "mono": Whether to convert audio to mono (default: True).
-- "file_name": Optional file name to include in the request metadata (useful for endpoints that rely on filename extensions). Default is "audio.wav".
+- "file_name": Optional file name to include in the request metadata (useful for endpoints that rely on filename extensions). Defaults to the source filename when available, otherwise "audio.<format>".
 
-**Examples:**
-
-For **Audio Transcription** (flat structure), converting to 16kHz WAV:
+To encode audio as 16 kHz WAV:
 
 ```bash
---request-formatter-kwargs '{"encode_kwargs": {"audio_format": "wav", "encode_sample_rate": 16000}}'
+--data-preprocessor '{"kind":"encode_media","audio_kwargs":{"audio_format":"wav","encode_sample_rate":16000}}'
 ```
 
-For **Audio Chat** (nested structure), truncating to 30 seconds:
+To truncate audio to 30 seconds:
 
 ```bash
---request-formatter-kwargs '{"encode_kwargs": {"audio": {"max_duration": 30.0}}}'
+--data-preprocessor '{"kind":"encode_media","audio_kwargs":{"max_duration":30.0}}'
 ```
 
-#### "extras"
+#### `extras`
 
-A dictionary of extra arguments to include directly in the request, enabling direct control over endpoint-specific parameters, such as language for Whisper models. Within extras, you can specify where to include the extra arguments:
+Add `extras` to your existing `--backend` configuration to pass request options:
 
-- "headers": Include in request headers
-- "params" / "body": Include in request parameters or body (auto-detected based on endpoint)
+- `body`: Fields in the request body
+- `headers`: HTTP request headers
+- `params`: URL query parameters
 
-For example, to specify French as the target language for an audio translation request:
+To set the decoding temperature for transcription requests:
 
 ```bash
---request-formatter-kwargs '{"extras": {"body": {"language": "fr"}}}'
+--backend '{"kind":"openai_http","target":"http://localhost:8000","request_format":"/v1/audio/transcriptions","extras":{"body":{"temperature":0.0}}}'
 ```
 
 #### "stream"

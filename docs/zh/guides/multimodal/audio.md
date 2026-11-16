@@ -1,5 +1,5 @@
 ---
-source_sha256: !!str "c382ca56157aa6282b1d058da8d03719753ac3341355d86e8cbea4b6d5bde496"
+source_sha256: !!str "c707b8444e3cfaaf2f469bed0e575284c69aad39e9779bd2b465cde3661c63d7"
 ---
 
 # 音频基准测试
@@ -62,16 +62,9 @@ GuideLLM 支持多种音频数据加载方式。首先，数据源整体必须�
 
 ### 请求格式
 
-对于所有受支持的音频端点，请求格式化器都会对音频数据进行编码并设置请求负载格式。系统提供了合理的默认值，也可以按需自定义。以下选项通过 `--request-formatter-kwargs` 参数配置，并以 JSON 字符串形式传入。
+`encode_media` 数据预处理器会在后端构造请求前编码音频。使用 `--data-preprocessor` 配置预处理器，并将编码选项放在 `audio_kwargs` 中。转录、翻译和聊天请求均使用相同的 `audio_kwargs` 结构。
 
-#### `"encode_kwargs"`
-
-传递给音频编码器的参数字典，用于控制将音频数据加入请求前的预处理方式。
-
-**关于嵌套结构的说明：**
-
-- 对于 **Chat Completions**（`chat_completions`），音频参数必须嵌套在 `encode_kwargs` 中的 `audio` 键下。
-- 对于 **Transcription/Translation**（`audio_transcriptions`、`audio_translations`），参数直接放在 `encode_kwargs` 顶层。
+#### `audio_kwargs`
 
 支持的参数包括：
 
@@ -81,33 +74,32 @@ GuideLLM 支持多种音频数据加载方式。首先，数据源整体必须�
 - `"bitrate"`：有损格式（如 mp3）的比特率（默认值：`"64k"`）。
 - `"max_duration"`：指定后，超过此时长（秒）的音频会被截断。
 - `"mono"`：是否将音频转换为单声道（默认值：True）。
-- `"file_name"`：可选的文件名，会包含在请求元数据中（对依赖文件扩展名的端点很有用）。默认值为 `"audio.wav"`。
+- `"file_name"`：可选的文件名，会包含在请求元数据中（对依赖文件扩展名的端点很有用）。默认使用可用的源文件名，否则使用 `"audio.<format>"`。
 
-**示例：**
-
-对于 **Audio Transcription**（扁平结构），将音频转换为 16kHz WAV：
+将音频编码为 16 kHz WAV：
 
 ```bash
---request-formatter-kwargs '{"encode_kwargs": {"audio_format": "wav", "encode_sample_rate": 16000}}'
+--data-preprocessor '{"kind":"encode_media","audio_kwargs":{"audio_format":"wav","encode_sample_rate":16000}}'
 ```
 
-对于 **Audio Chat**（嵌套结构），将音频截断至 30 秒：
+将音频截断到 30 秒：
 
 ```bash
---request-formatter-kwargs '{"encode_kwargs": {"audio": {"max_duration": 30.0}}}'
+--data-preprocessor '{"kind":"encode_media","audio_kwargs":{"max_duration":30.0}}'
 ```
 
-#### `"extras"`
+#### `extras`
 
-可直接加入请求的额外参数字典，可用于设置端点专属参数（例如 Whisper 模型的语言）。在 `extras` 中，可以指定额外参数的放置位置：
+在现有的 `--backend` 配置中加入 `extras`，以传递请求选项：
 
-- `"headers"`：加入请求头
-- `"params"` / `"body"`：加入请求参数或请求体（根据端点自动检测）
+- `body`：请求体中的字段
+- `headers`：HTTP 请求头
+- `params`：URL 查询参数
 
-例如，为音频翻译请求指定法语作为目标语言：
+设置转录请求的解码温度：
 
 ```bash
---request-formatter-kwargs '{"extras": {"body": {"language": "fr"}}}'
+--backend '{"kind":"openai_http","target":"http://localhost:8000","request_format":"/v1/audio/transcriptions","extras":{"body":{"temperature":0.0}}}'
 ```
 
 #### `"stream"`

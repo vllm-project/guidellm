@@ -53,15 +53,9 @@ If you are combining multiple datasets (e.g., for prompts and video), prepend th
 
 ### Request Formatting
 
-Across the supported endpoints, a request formatter encodes video data and formats the request payload. This uses reasonable defaults out of the box, but can be customized as needed. The following options are available for video request formatting via the `--request-formatter-kwargs` argument, provided as a JSON string.
+The `encode_media` data preprocessor encodes videos before the backend formats requests. Configure it with `--data-preprocessor`, putting encoding options in `video_kwargs`.
 
-#### "encode_kwargs"
-
-A dictionary of arguments passed to the video encoder that controls how video data is preprocessed before being included in the request.
-
-**Note on Nesting:**
-
-- For **Chat Completions** (`chat_completions`), video arguments must be nested under a `video` key within `encode_kwargs`.
+#### `video_kwargs`
 
 Supported arguments include:
 
@@ -69,25 +63,24 @@ Supported arguments include:
   - "base64" (default): Downloads (if URL) or reads the video and encodes it as a base64 string.
   - "url": Sends the video URL directly in the request. This requires the inference server to have network access to the video URL.
 
-**Examples:**
-
-For **Chat Completions**, sending video URLs directly:
+To send video URLs directly:
 
 ```bash
---request-formatter-kwargs '{"encode_kwargs": {"video": {"encode_type": "url"}}}'
+--data-preprocessor '{"kind":"encode_media","video_kwargs":{"encode_type":"url"}}'
 ```
 
-#### "extras"
+#### `extras`
 
-A dictionary of extra arguments to include directly in the request. Within extras, you can specify where to include the extra arguments:
+Add `extras` to your existing `--backend` configuration to pass request options:
 
-- "headers": Include in request headers
-- "params" / "body": Include in request parameters or body
+- `body`: Fields in the request body
+- `headers`: HTTP request headers
+- `params`: URL query parameters
 
-For example, to specify a specific system prompt or other body parameter:
+To set the sampling temperature:
 
 ```bash
---request-formatter-kwargs '{"extras": {"body": {"temperature": 0.7}}}'
+--backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"temperature":0.7}}}'
 ```
 
 #### "stream"
