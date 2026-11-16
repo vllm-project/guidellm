@@ -41,6 +41,7 @@ def _sensitive_config_key(key: str) -> bool:
         "pat",
         "auth",
         "authorization",
+        "auth_config",
         "passphrase",
         "pwd",
         "ssh_key",
@@ -109,6 +110,25 @@ def _redact_url(match: re.Match[str], redact_hosts: bool) -> str:
     return f"{scheme}://{authority}{suffix}"
 
 
+def _redact_config_list(value: list[Any], redact_hosts: bool) -> list[Any]:
+    """Filter every value after a credential flag until the next flag."""
+    items = []
+    redact_values = False
+    for item in value:
+        flag = _CONFIG_FLAG_RE.match(item) if isinstance(item, str) else None
+        if flag:
+            redact_values = _sensitive_config_key(flag["key"])
+            if redact_values and _CONFIG_FLAG_RE.fullmatch(item):
+                items.append(item)
+            else:
+                items.append(_redact_server_config(item, redact_hosts))
+        elif redact_values:
+            items.append("[REDACTED]")
+        else:
+            items.append(_redact_server_config(item, redact_hosts))
+    return items
+
+
 def _redact_server_config(value: Any, redact_hosts: bool = True) -> Any:
     """Filter recognizable credentials and host fields without mutating input."""
     if isinstance(value, dict):
@@ -127,7 +147,14 @@ def _redact_server_config(value: Any, redact_hosts: bool = True) -> Any:
             elif (
                 redact_hosts
                 and (
-                    normalized in ("host", "hostname", "node_ip", "master_addr")
+                    normalized
+                    in (
+                        "host",
+                        "hostname",
+                        "node_ip",
+                        "master_addr",
+                        "data_parallel_master_ip",
+                    )
                     or normalized.endswith("_host")
                 )
                 and item not in _LOCAL_CONFIG_HOSTS
@@ -137,22 +164,7 @@ def _redact_server_config(value: Any, redact_hosts: bool = True) -> Any:
                 result[key] = _redact_server_config(item, redact_hosts)
         return result
     if isinstance(value, list):
-        items = []
-        redact_next = False
-        for item in value:
-            if redact_next:
-                items.append("[REDACTED]")
-                redact_next = False
-            elif (
-                isinstance(item, str)
-                and (flag := _CONFIG_FLAG_RE.fullmatch(item))
-                and _sensitive_config_key(flag["key"])
-            ):
-                items.append(item)
-                redact_next = True
-            else:
-                items.append(_redact_server_config(item, redact_hosts))
-        return items
+        return _redact_config_list(value, redact_hosts)
     if isinstance(value, str):
         return _redact_config_text(value, redact_hosts)
     return value

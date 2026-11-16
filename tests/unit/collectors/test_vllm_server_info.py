@@ -199,6 +199,7 @@ def test_host_filtering_is_independent_of_credentials(redact_hosts):
     """
     payload = {
         "host": "worker.internal",
+        "parallel_config": {"data_parallel_master_ip": "10.0.0.7"},
         "endpoint": "https://user:password@worker.internal:8443/path?max_tokens=32",
         "api_key": "private-value",
         "max_tokens": 4096,
@@ -207,6 +208,9 @@ def test_host_filtering_is_independent_of_credentials(redact_hosts):
     assert result["api_key"] == "[REDACTED]"
     assert result["max_tokens"] == 4096
     assert result["host"] == ("[REDACTED]" if redact_hosts else "worker.internal")
+    assert result["parallel_config"]["data_parallel_master_ip"] == (
+        "[REDACTED]" if redact_hosts else "10.0.0.7"
+    )
     assert result["endpoint"] == (
         "https://[REDACTED]/path?max_tokens=32"
         if redact_hosts
@@ -256,6 +260,16 @@ class TestServerConfigRedaction:
         payload = {"plugins": [{key: "private-value"}]}
         assert _redact_server_config(payload) == {"plugins": [{key: "[REDACTED]"}]}
         assert payload == {"plugins": [{key: "private-value"}]}
+
+    @pytest.mark.parametrize("key", ["auth_config", "DOCKER_AUTH_CONFIG"])
+    def test_nested_auth_config(self, key):
+        """Replace an opaque authentication configuration as a whole.
+
+        ## WRITTEN BY AI ##
+        """
+        payload = {"plugin": {key: {"registry": {"auth": "opaque-value"}}}}
+        assert _redact_server_config(payload) == {"plugin": {key: "[REDACTED]"}}
+        assert payload["plugin"][key]["registry"]["auth"] == "opaque-value"
 
     @pytest.mark.parametrize("value", [None, False, True])
     def test_unset_credentials_and_boolean_switches(self, value):
@@ -390,6 +404,33 @@ class TestServerConfigRedaction:
         ]
         assert payload[1] == "two word secret"
         assert _redact_server_config(result) == result
+
+    def test_argument_lists_redact_values_until_next_flag(self):
+        """Keep filtering a sensitive flag's values until a new flag begins.
+
+        ## WRITTEN BY AI ##
+        """
+        payload = [
+            "--api-key",
+            "first secret",
+            "second secret",
+            "--max-tokens=32",
+            "--password=inline-secret",
+            "another secret",
+            "--tokenizer",
+            "test-model",
+        ]
+        assert _redact_server_config(payload) == [
+            "--api-key",
+            "[REDACTED]",
+            "[REDACTED]",
+            "--max-tokens=32",
+            "[REDACTED]",
+            "[REDACTED]",
+            "--tokenizer",
+            "test-model",
+        ]
+        assert payload[1] == "first secret"
 
     def test_environment_records(self):
         """Use an environment record's name to filter its value without mutation.
