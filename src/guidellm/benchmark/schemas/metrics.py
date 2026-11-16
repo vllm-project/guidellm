@@ -1655,7 +1655,10 @@ class GenerativeMetrics(StandardBaseDict):
                 function=lambda req: (
                     None
                     if req.inter_token_latency_ms is None
-                    else (req.inter_token_latency_ms, (req.output_text_tokens or 1.0) - 1.0)
+                    else (
+                        req.inter_token_latency_ms,
+                        (req.output_text_tokens or 1.0) - 1.0,
+                    )
                 ),
                 successful=after_first_token_requests[0],
                 incomplete=after_first_token_requests[1],

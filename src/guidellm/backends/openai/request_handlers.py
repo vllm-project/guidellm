@@ -1598,7 +1598,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return self._format_prompts(columns, "audio_column")
 
-    def _build_turn_messages(
+    def _build_turn_messages(  # noqa: C901
         self,
         req: GenerationRequest,
         res: GenerationResponse | None,
@@ -1719,7 +1719,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             content.insert(0, {"type": "text", "text": existing_content})
         assistant["content"] = content
 
-    def format(
+    def format(  # noqa: C901
         self,
         data: GenerationRequest,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,

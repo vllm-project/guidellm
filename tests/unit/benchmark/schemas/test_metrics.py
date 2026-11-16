@@ -1643,7 +1643,7 @@ class TestSchedulerMetricsGenerationDelayCompile:
             assert summary.cached_token_count.count == 0
 
 
-def _make_streamed_request(  # noqa: PLR0913, PLR0917
+def _make_streamed_request(
     request_id: str,
     start: float,
     ttft: float,
@@ -1937,7 +1937,7 @@ class TestReportedUncertainty:
         assert long_run.successful.percentile_cis.p99 is not None
 
 
-def _make_turn_stats(  # noqa: PLR0917
+def _make_turn_stats(
     request_id: str,
     conversation_id: str,
     turn_index: int,

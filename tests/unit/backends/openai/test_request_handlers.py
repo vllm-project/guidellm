@@ -712,7 +712,7 @@ class TestTextCompletionsRequestHandler:
             ),
         ],
     )
-    def test_non_streaming(  # noqa: PLR0917
+    def test_non_streaming(
         self,
         valid_instances,
         generation_request,
@@ -772,7 +772,7 @@ class TestTextCompletionsRequestHandler:
             ),
         ],
     )
-    def test_streaming(  # noqa: PLR0917
+    def test_streaming(
         self,
         valid_instances,
         generation_request,
@@ -1424,7 +1424,7 @@ class TestChatCompletionsRequestHandler:
             ),
         ],
     )
-    def test_non_streaming(  # noqa: PLR0917
+    def test_non_streaming(
         self,
         valid_instances,
         generation_request,
@@ -1477,7 +1477,7 @@ class TestChatCompletionsRequestHandler:
             ),
         ],
     )
-    def test_streaming(  # noqa: PLR0917
+    def test_streaming(
         self,
         valid_instances,
         generation_request,
@@ -3578,7 +3578,7 @@ class TestResponsesRequestHandler:
             ),
         ],
     )
-    def test_non_streaming(  # noqa: PLR0917
+    def test_non_streaming(
         self,
         valid_instances,
         generation_request,
@@ -3671,7 +3671,7 @@ class TestResponsesRequestHandler:
             ),
         ],
     )
-    def test_streaming(  # noqa: PLR0917
+    def test_streaming(
         self,
         valid_instances,
         generation_request,
@@ -3854,7 +3854,7 @@ class TestResponsesRequestHandler:
             ),
         ],
     )
-    def test_streaming_terminal_events(  # noqa: PLR0917
+    def test_streaming_terminal_events(
         self,
         valid_instances,
         generation_request,
