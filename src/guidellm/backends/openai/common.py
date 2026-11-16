@@ -15,7 +15,7 @@ __all__ = [
     "resolve_validate_kwargs",
 ]
 
-# NOTE: This value is taken from httpx's default
+# NOTE: This value is taken from httpx2's default
 FALLBACK_TIMEOUT = 5.0
 
 
@@ -49,14 +49,14 @@ def resolve_validate_kwargs(
     api_routes: dict[str, str],
 ) -> dict[str, Any] | None:
     """
-    Build ``httpx`` request keyword arguments from backend validation settings.
+    Build ``httpx2`` request keyword arguments from backend validation settings.
 
     ``validate_backend`` may be ``False``/equivalent (skip validation), ``True``
     (default ``GET`` against the ``/health`` route key), a route key present in
     ``api_routes`` (resolved to ``{target}/{path}``), a full URL string, or a
     ``dict`` that includes ``url`` and optionally ``method`` (default ``GET``).
 
-    :return: Keyword arguments suitable for ``httpx.AsyncClient.request``, or
+    :return: Keyword arguments suitable for ``httpx2.AsyncClient.request``, or
         ``None`` when validation is turned off.
     """
     raw = validate_backend

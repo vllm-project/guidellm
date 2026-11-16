@@ -66,6 +66,31 @@ class TestPreprocessStrategyArgsRegistry:
         assert isinstance(result, PadPreprocessStrategyArgs)
         assert result.pad == " "
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            ("é", "é"),
+            ("中", "中"),
+            ("\U0001f600", "\U0001f600"),
+            ("é\\n中\\t\U0001f600", "é\n中\t\U0001f600"),
+            ("\\u4e2d\\U0001f600", "中\U0001f600"),
+            ("\\\\n", "\\n"),
+        ],
+    )
+    def test_preprocessing_strings_preserve_unicode(self, value, expected):
+        """Preserve literal Unicode while decoding preprocessing escapes.
+
+        ## WRITTEN BY AI ##
+        """
+        concatenate = ConcatenatePreprocessStrategyArgs(
+            prompt_tokens=10, output_tokens=5, delimiter=value
+        )
+        pad = PadPreprocessStrategyArgs(prompt_tokens=10, output_tokens=5, pad=value)
+
+        assert concatenate.delimiter == expected
+        assert pad.pad == expected
+
     @pytest.mark.smoke
     def test_error_dispatch(self):
         """Kind error dispatches to ErrorPreprocessStrategyArgs.

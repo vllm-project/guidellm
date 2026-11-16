@@ -36,6 +36,7 @@ except ImportError:
 
 from guidellm.logger import logger, reinstall_inherited_logger
 from guidellm.scheduler.dag import DAGExecutionState
+from guidellm.scheduler.loop_lag import LoopLagHistograms
 from guidellm.scheduler.schemas import (
     BackendInterface,
     ConversationGraph,
@@ -103,6 +104,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         stdout_conn: Connection | None,
         stderr_conn: Connection | None,
         parent_logger: Logger | None,
+        loop_lag: LoopLagHistograms | None = None,
     ):
         """
         Initialize worker process instance.
@@ -122,6 +124,8 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :param stdout_conn: Write-end pipe connection for stdout redirect
         :param stderr_conn: Write-end pipe connection for stderr redirect
         :param parent_logger: Logger instance inherited from the parent process
+        :param loop_lag: Shared histograms to record this worker's event-loop lag
+            in while it processes requests, or None to skip recording
         """
         self.worker_index = worker_index
         self.messaging = messaging
@@ -139,6 +143,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         self.stdout_conn = stdout_conn
         self.stderr_conn = stderr_conn
         self.parent_logger = parent_logger
+        self.loop_lag = loop_lag
 
         # Internal states
         self.startup_completed = False
@@ -257,12 +262,17 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         Coordinates startup synchronization, processes requests until constraints are
         reached, then cancels pending requests until shutdown or error occurs.
         """
+        loop_lag_task: asyncio.Task | None = None
         try:
             # 1. Start up synchronization (backend, messaging, and other processes)
             # 2. Messaging startup, receive requests until requests_generated event
             await self._processing_startup()
 
             # 3. Run process requests loop until constraint_reached event
+            if self.loop_lag is not None:
+                loop_lag_task = asyncio.create_task(
+                    self.loop_lag.monitor(self.worker_index)
+                )
             processing_task = asyncio.create_task(self._process_requests_loop())
             await wait_for_sync_event(
                 self.constraint_reached_event,
@@ -273,10 +283,14 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
             # before the sweep below, so a node is never reported twice.
             with contextlib.suppress(asyncio.CancelledError):
                 await processing_task
+            if loop_lag_task is not None:
+                loop_lag_task.cancel()
 
             # 4. Cancel pending requests until proc canceled (manual, shutdown, error)
             await self._cancel_requests_loop()
         finally:
+            if loop_lag_task is not None:
+                loop_lag_task.cancel()
             # 5. On cancel, shut down event, error event, or internal error:
             #    attempt to shut down this worker cleanly (stop backend and messaging)
             await self._processing_shutdown()
@@ -375,7 +389,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                 graph: ConversationGraph[RequestT] = await self.messaging.get(
                     timeout=self.messaging.poll_interval
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             for node_id, node in graph.nodes.items():
                 request_info = graph.request_infos.get(node_id)
@@ -414,7 +428,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                     graph: ConversationGraph[RequestT] = await self.messaging.get(
                         timeout=timeout
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
             else:
                 graph = await self.messaging.get()
@@ -531,11 +545,11 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         if state.is_complete:
             self.turns_queue.remove(state)
 
-    def _handle_node_error(  # noqa: PLR0913
+    def _handle_node_error(
         self,
         exc: Exception,
         state: DAGExecutionState[RequestT, ResponseT] | None,
-        node_id: str | None,  # noqa: ARG002
+        node_id: str | None,
         request: RequestT | None,
         request_info: RequestInfo | None,
         response: ResponseT | None,

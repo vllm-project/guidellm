@@ -24,9 +24,16 @@ from multiprocessing.context import BaseContext
 from multiprocessing.sharedctypes import Synchronized
 from typing import Annotated, ClassVar, Literal, TypeVar
 
-from pydantic import Field, NonNegativeFloat, NonNegativeInt, PositiveInt, PrivateAttr
+from pydantic import (
+    Field,
+    NonNegativeFloat,
+    NonNegativeInt,
+    PositiveInt,
+    PrivateAttr,
+)
 
 from guidellm.schemas import PydanticClassRegistryMixin, RequestInfo, RequestSettings
+from guidellm.schemas.scheduler.prefetch import PrefetchType
 from guidellm.utils.mixins import InfoMixin
 
 __all__ = [
@@ -80,6 +87,15 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         default=None,
         description="Maximum number of concurrent requests to allow",
     )
+    prefetch: PrefetchType | None = Field(
+        default=None,
+        description=(
+            "Number of requests to load before the run starts. "
+            "'start' matches this strategy's startup concurrency when it is known. "
+            "'all' loads every request from a finite dataset. "
+            "None uses the Profile's prefetch value."
+        ),
+    )
 
     _processes_init_event: synchronize.Event | None = PrivateAttr(None)
     _processes_request_index: Synchronized[int] | None = PrivateAttr(None)
@@ -103,6 +119,27 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         :return: Maximum number of concurrent requests, None if unlimited
         """
         return None
+
+    def prefetch_count(self) -> NonNegativeInt | Literal["all"]:
+        """
+        Resolve how many requests to load before the run starts.
+
+        ``"start"`` uses :attr:`requests_limit` when this strategy defines a
+        startup concurrency, and ``0`` when that limit is unset. ``"all"``
+        stays ``"all"``, meaning every request from a finite dataset. ``None``
+        means the profile has not filled this in yet, so nothing is prefetched.
+
+        :return: Number of request nodes to prefetch, or ``"all"`` to load every
+            request from a finite dataset
+        """
+        if self.prefetch == "all":
+            return "all"
+        if self.prefetch == "start":
+            return self.requests_limit or 0
+        if self.prefetch is None:
+            return 0
+
+        return self.prefetch
 
     @property
     def defines_arrival_schedule(self) -> bool:
@@ -684,14 +721,16 @@ class AsyncPoissonStrategy(SchedulingStrategy):
         Generates inter-arrival times following exponential distribution,
         accumulating delays to produce Poisson-distributed request arrivals.
 
-        :param worker_index: Unused for Poisson strategy
+        :param worker_index: Worker process index, used to seed this worker's
+            random generator so workers draw independent delays
         :return: Next arrival time based on Poisson process
         """
-        _ = worker_index  # unused
         _ = await self.get_processes_start_time()  # ensure offset is initialized
 
         if self._random is None:
-            self._random = random.Random(self.random_seed)
+            # Each worker process has its own copy of this strategy; a shared seed
+            # would make every worker draw the same sequence of delays.
+            self._random = random.Random(self.random_seed + worker_index)
 
         next_delay = self._random.expovariate(self.rate)
 

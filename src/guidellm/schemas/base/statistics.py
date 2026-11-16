@@ -112,10 +112,17 @@ class Percentiles(StandardBaseModel):
                 raise ValueError(f"Probabilities must sum to 1, got {prob_sum}.")
 
         cdf_probs = np.cumsum(probabilities)
+        # The running sum can land just below an exact step (ten 0.1s add up to
+        # 0.9999999999999999), which would move a percentile to the next value.
+        # Allow for that rounding; the bound stays far below any single probability.
+        rounding_tolerance = len(cdf_probs) * np.finfo(float).eps
 
         return Percentiles(
             **{
-                key: pdf[np.searchsorted(cdf_probs, value, side="left"), 0].item()
+                key: pdf[
+                    np.searchsorted(cdf_probs, value - rounding_tolerance, side="left"),
+                    0,
+                ].item()
                 for key, value in PERCENTILE_PROBABILITIES.items()
             }
         )
@@ -309,7 +316,7 @@ class DistributionSummary(StandardBaseModel):
     )
 
     @classmethod
-    def from_pdf(  # noqa: PLR0913
+    def from_pdf(
         cls,
         pdf: np.ndarray,
         count: int | None = None,
@@ -850,7 +857,7 @@ class StatusDistributionSummary(
         return self.total.total_sum
 
     @classmethod
-    def from_values(  # noqa: PLR0913
+    def from_values(
         cls,
         successful: Sequence[float | tuple[float, float]] | np.ndarray,
         incomplete: Sequence[float | tuple[float, float]] | np.ndarray,
@@ -903,7 +910,7 @@ class StatusDistributionSummary(
         )
 
     @classmethod
-    def from_values_function(  # noqa: PLR0913
+    def from_values_function(
         cls,
         function: Callable[
             [FunctionObjT],

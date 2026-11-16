@@ -199,7 +199,7 @@ class VLLMPythonAsyncBackend(Backend):
         if history is not None:
             raise NotImplementedError("Multi-turn requests not yet supported")
 
-    def _build_multi_modal_data_from_columns(  # noqa: C901, PLR0912
+    def _build_multi_modal_data_from_columns(
         self, columns: dict[str, Any]
     ) -> dict[str, Any] | None:
         """

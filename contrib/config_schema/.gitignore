@@ -1,0 +1,8 @@
+# Default out directory
+schema/
+
+# Outputs
+*.json
+*.js
+*.css
+*.html

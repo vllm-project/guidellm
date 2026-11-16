@@ -93,8 +93,12 @@ for benchmark in report.benchmarks:
 
     # Access metrics
     print(f"Avg RPS: {benchmark.metrics.requests_per_second.successful.mean}")
-    print(f"p99 latency: {benchmark.metrics.request_latency.successful.percentiles.p99}")
-    print(f"TTFT (p99): {benchmark.metrics.time_to_first_token_ms.successful.percentiles.p99}")
+    print(
+        f"p99 latency: {benchmark.metrics.request_latency.successful.percentiles.p99}"
+    )
+    print(
+        f"TTFT (p99): {benchmark.metrics.time_to_first_token_ms.successful.percentiles.p99}"
+    )
 ```
 
 ## Key Performance Indicators

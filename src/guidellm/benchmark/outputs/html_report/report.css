@@ -12,6 +12,8 @@
   --accent-soft: #fef0f0; /* red-05 */
   --accent-2: #0066cc; /* interaction-blue-50 */
   --warn: #f5921b; /* orange-40 */
+  --fill-warn: #fff6e8;
+  --line-warn: #f6c88a;
   --danger: #f0561d; /* danger-orange-50 — not brand red */
   --good: #63993d; /* success-green-50 */
   --teal: #37a3a3; /* teal-50 */
@@ -77,6 +79,57 @@ h1 {
 }
 
 .meta strong { color: var(--ink); font-weight: 600; }
+
+.warnings {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 0;
+}
+
+.warning-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--line-warn);
+  border-left: 4px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--fill-warn);
+  color: var(--ink);
+}
+
+.warning-card-icon {
+  flex: 0 0 auto;
+  color: var(--warn);
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.warning-card-body {
+  min-width: 0;
+}
+
+.warning-card-context {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #8a4b08;
+}
+
+.warning-card-message,
+.warning-card-note {
+  margin: 0;
+}
+
+.warning-card-message {
+  font-size: 14px;
+}
+
+.warning-card-note {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
 
 .kpis {
   display: flex;

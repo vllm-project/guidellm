@@ -24,6 +24,7 @@ import yaml
 __all__ = [
     "ArgStringParseError",
     "ArgStringParser",
+    "ArgStringValueError",
     "loads",
 ]
 
@@ -32,6 +33,10 @@ _ListValuePaths = set[tuple[tuple[str, int | None], ...]]
 
 class ArgStringParseError(Exception):
     """Exception raised for errors during argument string parsing."""
+
+
+class ArgStringValueError(ArgStringParseError):
+    """Exception raised when a value in a key=value pair cannot be parsed."""
 
 
 class ArgStringParser:
@@ -145,7 +150,15 @@ class ArgStringParser:
             segments = self._parse_key(key)
 
             # Convert value to appropriate type
-            parsed_value = yaml.safe_load(value)
+            try:
+                parsed_value = yaml.safe_load(value)
+            except yaml.YAMLError as err:
+                if self.skip_invalid:
+                    continue
+                raise ArgStringValueError(
+                    f"key '{key}' was assigned a value that cannot be parsed in "
+                    f"'{s}' (read as '{pair}')"
+                ) from err
 
             # Set the value in the nested structure
             self._value_set_nested(

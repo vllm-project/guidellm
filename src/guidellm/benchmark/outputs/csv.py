@@ -138,6 +138,9 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 self._add_server_throughput_metrics(
                     benchmark, benchmark_headers, benchmark_values
                 )
+                self._add_slo_attainment_metrics(
+                    benchmark, benchmark_headers, benchmark_values
+                )
                 for modality_name in MODALITY_METRICS:
                     self._add_modality_metrics(
                         benchmark,
@@ -147,6 +150,7 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                     )
                 self._add_scheduler_info(benchmark, benchmark_headers, benchmark_values)
                 self._add_runtime_info(report, benchmark_headers, benchmark_values)
+                self._add_warnings(benchmark, benchmark_headers, benchmark_values)
                 self._add_interval_columns(
                     benchmark, benchmark_headers, benchmark_values
                 )
@@ -161,6 +165,32 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
                 writer.writerow(row)
 
         return output_path
+
+    def _add_warnings(
+        self,
+        benchmark: GenerativeBenchmark,
+        headers: list[list[str]],
+        values: list[str | int | float],
+    ) -> None:
+        """
+        Add the post-benchmark warnings for this run as one JSON list.
+
+        Written before the interval columns so those stay at the end of the
+        row. The list uses the same fields as the JSON report. A run with no
+        warnings stores an empty list.
+
+        :param benchmark: Benchmark data to extract warnings from
+        :param headers: List of header hierarchies to append to
+        :param values: List of values to append to
+        """
+        records = [warning.model_dump() for warning in benchmark.warnings]
+        self._add_field(
+            headers,
+            values,
+            "Warnings",
+            "Warnings",
+            json.dumps(records),
+        )
 
     def _add_interval_columns(
         self,
@@ -627,6 +657,11 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
             headers.append(["Server Throughput", "SLO Attainment", ""])
             attainment = benchmark.metrics.slo_attainment
             values.append("" if attainment is None else attainment)
+            token_goodput = benchmark.metrics.output_token_goodput
+            headers.append(["Server Throughput", "Output Token Goodput/Sec", "mean"])
+            values.append(
+                "" if token_goodput is None else token_goodput.successful.mean
+            )
         self._add_stats_for_metric(
             headers,
             values,
@@ -683,6 +718,36 @@ class GenerativeBenchmarkerCSV(GenerativeBenchmarkerOutput):
             "Token Streaming",
             "Iter Tokens/Iter",
         )
+
+    def _add_slo_attainment_metrics(
+        self,
+        benchmark: GenerativeBenchmark,
+        headers: list[list[str]],
+        values: list[str | int | float],
+    ):
+        if benchmark.config.slo is None:
+            return
+        by_metric = benchmark.metrics.slo_attainment_by_metric or {}
+        for name, threshold in benchmark.config.slo.model_dump(
+            exclude_none=True
+        ).items():
+            summary = by_metric.get(name)
+            units = "ms/token" if name == "tpot_ms" else "ms"
+            fields = (
+                (f"Threshold ({units})", threshold),
+                (
+                    "Conforming Requests",
+                    None if summary is None else summary.conforming_requests,
+                ),
+                (
+                    "Determined Requests",
+                    None if summary is None else summary.determined_requests,
+                ),
+                ("Attainment", None if summary is None else summary.attainment),
+            )
+            for label, value in fields:
+                headers.append(["SLO Attainment", name, label])
+                values.append("" if value is None else value)
 
     def _add_modality_metrics(
         self,

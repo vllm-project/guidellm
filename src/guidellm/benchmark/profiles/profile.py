@@ -178,6 +178,8 @@ class Profile(ABC):
         while (
             strategy := self.next_strategy(prev_strategy, prev_benchmark)
         ) is not None:
+            if strategy.prefetch is None:
+                strategy.prefetch = self.args.prefetch
             constraints = self.next_strategy_constraints(
                 strategy, prev_strategy, prev_benchmark
             )

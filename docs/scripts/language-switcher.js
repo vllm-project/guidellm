@@ -43,7 +43,17 @@
     );
 
     if (candidatePaths.length > 1) {
-      cachedSiteRoot.pathname = sharedPath(candidatePaths);
+      const sharedRoot = sharedPath(candidatePaths);
+      const rootSegments = cachedSiteRoot.pathname.split("/").filter(Boolean);
+      if (
+        Object.hasOwn(window.GUIDELLM_TRANSLATION_ROUTES || {}, rootSegments.at(-1))
+      ) {
+        rootSegments.pop();
+      }
+      const logoRoot = rootSegments.length ? `/${rootSegments.join("/")}/` : "/";
+      cachedSiteRoot.pathname = logoRoot.startsWith(sharedRoot)
+        ? logoRoot
+        : sharedRoot;
     } else if (localeCandidates.length === 1) {
       const { language, url } = localeCandidates[0];
       const rootSegments = cachedSiteRoot.pathname.split("/").filter(Boolean);
@@ -85,7 +95,7 @@
     document.getElementById(warningId)?.remove();
   }
 
-  function addStaleWarning(root, englishRoute) {
+  function addStaleWarning(root, englishRoute, language) {
     if (document.getElementById(warningId)) {
       return;
     }
@@ -95,16 +105,41 @@
       return;
     }
 
+    const messages = {
+      zh: {
+        title: "翻译可能已过期",
+        description: "英文源文档自本页翻译后已有更新。请参阅",
+        link: "最新英文页面",
+      },
+      ko: {
+        title: "번역이 오래되었을 수 있습니다",
+        description: "이 페이지를 번역한 이후 영어 원문이 변경되었습니다. ",
+        link: "최신 영어 문서를 확인하세요.",
+      },
+    };
+
+    const message = messages[language];
+    if (!message) {
+      return;
+    }
+
     const warning = document.createElement("div");
     warning.id = warningId;
     warning.className = "admonition warning";
-    warning.innerHTML = `
-      <p class="admonition-title">翻译可能已过期</p>
-      <p>英文源文档自本页翻译后已有更新。请以<a href="${new URL(
-        englishRoute,
-        root,
-      ).href}">最新英文页面</a>为准。</p>
-    `;
+
+    const title = document.createElement("p");
+    title.className = "admonition-title";
+    title.textContent = message.title;
+
+    const paragraph = document.createElement("p");
+    paragraph.textContent = message.description;
+
+    const link = document.createElement("a");
+    link.href = new URL(englishRoute, root).href;
+    link.textContent = message.link;
+
+    paragraph.append(link);
+    warning.append(title, paragraph);
     content.prepend(warning);
   }
 
@@ -113,31 +148,35 @@
     const root = siteRoot();
     const route = currentRoute(root);
     let englishRoute = route;
-    let chineseRoute = "zh/";
+    let activeLanguage = "en";
     let translatedPage = null;
-
-    Object.entries(routes).some(([sourceRoute, details]) => {
-      if (details.translation === route) {
-        englishRoute = sourceRoute;
-        chineseRoute = details.translation;
-        translatedPage = details;
-        return true;
+    for (const [language, pages] of Object.entries(routes)) {
+      const match = Object.entries(pages).find(
+        ([, details]) => details.translation === route,
+      );
+      if (match) {
+        englishRoute = match[0];
+        activeLanguage = language;
+        translatedPage = match[1];
+        break;
       }
-      if (sourceRoute === route) {
-        englishRoute = sourceRoute;
-        chineseRoute = details.translation;
-        return true;
-      }
-      return false;
-    });
-
+    }
     setLanguageLink("en", root, englishRoute);
-    setLanguageLink("zh", root, chineseRoute);
-    document.documentElement.lang = translatedPage ? "zh-CN" : "en";
-
+    for (const [language, pages] of Object.entries(routes)) {
+      const page = pages[englishRoute];
+      const target = page?.translation ?? `${language}/`;
+      setLanguageLink(language, root, target);
+    }
+    const htmlLanguages = {
+      en: "en",
+      zh: "zh-CN",
+      ko: "ko",
+    };
+    document.documentElement.lang =
+      htmlLanguages[activeLanguage] ?? "en";
     removeStaleWarning();
     if (translatedPage && !translatedPage.current) {
-      addStaleWarning(root, englishRoute);
+      addStaleWarning(root, englishRoute, activeLanguage);
     }
   }
 

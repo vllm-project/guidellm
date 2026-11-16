@@ -104,16 +104,31 @@ class GoodputSLO(StandardBaseModel):
         :param e2el_ms: Measured end-to-end latency in milliseconds
         :return: True if conforming, False if violating, None if undetermined
         """
-        measured = (ttft_ms, tpot_ms, e2el_ms)
-        objectives = (self.ttft_ms, self.tpot_ms, self.e2el_ms)
+        verdicts = self.evaluate_objectives(ttft_ms, tpot_ms, e2el_ms).values()
+        return None if None in verdicts else all(verdicts)
 
-        conforming = True
-        for value, objective in zip(measured, objectives, strict=True):
-            if objective is None:
-                continue
-            if value is None:
-                return None
-            if value > objective:
-                conforming = False
+    def evaluate_objectives(
+        self,
+        ttft_ms: float | None,
+        tpot_ms: float | None,
+        e2el_ms: float | None,
+    ) -> dict[str, bool | None]:
+        """
+        Evaluate each configured objective independently.
 
-        return conforming
+        :param ttft_ms: Measured time to first token in milliseconds
+        :param tpot_ms: Measured inter-token latency in milliseconds
+        :param e2el_ms: Measured end-to-end latency in milliseconds
+        :return: Verdicts keyed by configured objective name. A missing
+            measurement produces None for that objective only
+        """
+        objectives = (
+            ("ttft_ms", ttft_ms, self.ttft_ms),
+            ("tpot_ms", tpot_ms, self.tpot_ms),
+            ("e2el_ms", e2el_ms, self.e2el_ms),
+        )
+        return {
+            name: None if value is None else not (value > objective)
+            for name, value, objective in objectives
+            if objective is not None
+        }

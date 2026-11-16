@@ -6,12 +6,18 @@ response in a human-readable format, with tool calls rendered as YAML.
 
 Usage::
 
-    python scripts/extract_conversation.py [path/to/benchmarks.json]
-    python scripts/extract_conversation.py benchmarks.json --limit 5
-    python scripts/extract_conversation.py benchmarks.json -n 30
-    python scripts/extract_conversation.py benchmarks.json --turn 3
-    python scripts/extract_conversation.py benchmarks.json --detail request
-    python scripts/extract_conversation.py benchmarks.json -d roles
+    uv run python contrib/extract_conversation/extract_conversation.py \\
+        [path/to/benchmarks.json]
+    uv run python contrib/extract_conversation/extract_conversation.py \\
+        benchmarks.json --limit 5
+    uv run python contrib/extract_conversation/extract_conversation.py \\
+        benchmarks.json -n 30
+    uv run python contrib/extract_conversation/extract_conversation.py \\
+        benchmarks.json --turn 3
+    uv run python contrib/extract_conversation/extract_conversation.py \\
+        benchmarks.json --detail request
+    uv run python contrib/extract_conversation/extract_conversation.py \\
+        benchmarks.json -d roles
 
 If no path is given, defaults to ``benchmarks.json`` in the current directory.
 The ``--limit`` / ``-n`` flag caps the number of requests printed (default: 15).

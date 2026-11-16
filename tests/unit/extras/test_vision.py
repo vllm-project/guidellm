@@ -98,11 +98,11 @@ def test_encode_video_with_fixture(sample_video_file):
 
 
 def test_encode_video_with_url_base64():
-    """Test encoding a video URL with base64 encoding"""
+    """Test encoding a video URL with base64 encoding. ## WRITTEN BY AI ##"""
     test_url = "https://example.com/video.mp4"
     mock_video_content = b"fake video content"
 
-    with patch("httpx.get") as mock_get:
+    with patch("httpx2.get") as mock_get:
         mock_response = MagicMock()
         mock_response.content = mock_video_content
         mock_response.raise_for_status = MagicMock()
@@ -110,7 +110,7 @@ def test_encode_video_with_url_base64():
 
         result = _vision_mod.encode_video(video=test_url, encode_type="base64")
 
-        mock_get.assert_called_once_with(test_url)
+        mock_get.assert_called_once_with(test_url, follow_redirects=True)
         assert result["type"] == "video_base64"
         assert result["video"].startswith("data:video/unknown;base64,")
         assert result["video_bytes"] == len(mock_video_content)
@@ -203,7 +203,7 @@ def test_encode_video_url_with_http_error():
     """Test URL encoding when HTTP request fails"""
     test_url = "https://example.com/video.mp4"
 
-    with patch("httpx.get") as mock_get:
+    with patch("httpx2.get") as mock_get:
         mock_response = MagicMock()
         mock_response.raise_for_status.side_effect = Exception("HTTP Error")
         mock_get.return_value = mock_response

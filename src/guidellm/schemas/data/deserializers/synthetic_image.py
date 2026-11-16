@@ -32,7 +32,7 @@ def parse_aspect_ratio(aspect: str) -> float:
     try:
         w, h = aspect.split(sep)
         return float(w) / float(h)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise ValueError(
             f"Invalid aspect_ratio '{aspect}', expected 'W:H' or 'W/H'"
         ) from exc

@@ -177,6 +177,14 @@ class Benchmark(StandardBaseDict, ABC, Generic[BenchmarkAccumulatorT]):
     results with statistical summaries.
     """
 
+    collectors: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "One result per configured collector, in configuration order, or "
+            "None when no collectors were configured"
+        ),
+    )
+
     @property
     @abstractmethod
     def start_time(self) -> float:

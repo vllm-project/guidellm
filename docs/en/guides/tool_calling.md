@@ -13,7 +13,7 @@ Tool calling is supported with both `/v1/chat/completions` and `/v1/responses`. 
 
 When a response includes both text and tool calls, client-side history preserves both for follow-up requests. If `multiturn_reasoning` is enabled in the backend configuration, client-side history also includes reasoning text that GuideLLM has captured from the response.
 
-For `/v1/responses`, vLLM's `reasoning_text` content parts and `response.reasoning_text.delta` streaming events are not currently captured; support is tracked in [#1307](https://github.com/vllm-project/guidellm/issues/1307).
+Streamed tool-call arguments are buffered as fragments and assembled when a response is compiled, including when a stream ends with partial arguments. For `/v1/responses`, a complete argument payload in `response.function_call_arguments.done` replaces the preceding fragments; if the payload is absent, the fragments are retained.
 
 For the full wire format of tool-call messages, see the [OpenAI function calling guide](https://developers.openai.com/api/docs/guides/function-calling).
 

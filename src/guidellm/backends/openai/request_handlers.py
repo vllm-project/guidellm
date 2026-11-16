@@ -387,6 +387,7 @@ def _compile_streaming_response(
     arguments: GenerationRequestArguments,
     streaming_texts: list[str],
     streaming_tool_calls: dict[int, ToolCall],
+    streaming_tool_call_arguments: dict[int, list[str]],
     streaming_usage: dict[str, int | dict[str, int]] | None,
     streaming_response_id: str | None,
     extract_metrics: Callable[
@@ -406,6 +407,7 @@ def _compile_streaming_response(
     :param arguments: The request arguments that were sent.
     :param streaming_texts: Text chunks accumulated during streaming.
     :param streaming_tool_calls: Tool calls keyed by stream index.
+    :param streaming_tool_call_arguments: Argument fragments keyed by stream index.
     :param streaming_usage: Usage dict from the final streaming event.
     :param streaming_response_id: Server-assigned response ID, if any.
     :param extract_metrics: Handler-specific metric extraction callable.
@@ -417,6 +419,8 @@ def _compile_streaming_response(
     reasoning_text = (
         "".join(streaming_reasoning_texts) if streaming_reasoning_texts else None
     ) or None
+    for index, fragments in streaming_tool_call_arguments.items():
+        streaming_tool_calls[index].function.arguments = "".join(fragments)
     tool_calls: list[ToolCall] | None = (
         [streaming_tool_calls[i] for i in sorted(streaming_tool_calls)]
         if streaming_tool_calls
@@ -586,7 +590,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         """
         return True
 
-    def format(  # noqa: C901
+    def format(
         self,
         data: GenerationRequest,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
@@ -770,10 +774,16 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
 
         :param response: Complete API response containing choices and usage data
         :return: Tuple of choices list and usage dictionary
+        :raises NotImplementedError: If the response contains multiple choices.
         """
         if isinstance(metrics := response.get("metrics"), dict):
             self.response_metrics = metrics
-        return response.get("choices", []), response.get("usage", {})
+        choices = response.get("choices", [])
+        # vLLM may stream each alternative in a separate event. Check only the
+        # first index to keep this shared parsing path constant-time.
+        if choices and (len(choices) > 1 or choices[0].get("index", 0) != 0):
+            raise NotImplementedError("Multiple completion choices are not supported")
+        return choices, response.get("usage", {})
 
     def extract_metrics(
         self, usage: dict[str, int | dict[str, int]] | None, text: str | None
@@ -848,10 +858,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
     def __init__(self):
         super().__init__()
-        # Full tool call payloads accumulated across streaming deltas,
-        # keyed by the delta ``index`` field.  Needed for multi-turn tool
-        # calling so the response carries the id/name/arguments of each call.
+        # Tool call metadata and argument fragments keyed by the delta index.
         self.streaming_tool_calls: dict[int, ToolCall] = {}
+        self.streaming_tool_call_arguments: dict[int, list[str]] = {}
         self.streaming_reasoning_texts: list[str] = []
         self._last_iteration_had_content: bool = False
 
@@ -1071,7 +1080,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             )
         return messages
 
-    def _build_turn_messages(  # noqa: C901
+    def _build_turn_messages(
         self,
         req: GenerationRequest,
         res: GenerationResponse | None,
@@ -1144,7 +1153,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         return messages
 
-    def format(  # noqa: C901, PLR0912, PLR0915
+    def format(
         self,
         data: GenerationRequest,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
@@ -1347,6 +1356,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 id=tc_delta.get("id", ""),
                 type=tc_delta.get("type", "function"),
             )
+            self.streaming_tool_call_arguments[idx] = []
 
         tc = self.streaming_tool_calls[idx]
         fn_delta = tc_delta.get("function", {})
@@ -1356,7 +1366,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         if fn_name := fn_delta.get("name"):
             tc.function.name += fn_name
         if fn_args := fn_delta.get("arguments"):
-            tc.function.arguments += fn_args
+            self.streaming_tool_call_arguments[idx].append(fn_args)
 
     def compile_streaming(
         self, request: GenerationRequest, arguments: GenerationRequestArguments
@@ -1372,6 +1382,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
             arguments,
             self.streaming_texts,
             self.streaming_tool_calls,
+            self.streaming_tool_call_arguments,
             self.streaming_usage,
             self.streaming_response_id,
             self.extract_metrics,
@@ -1412,7 +1423,7 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
         data: GenerationRequest,
         history: HistoryT[GenerationRequest, GenerationResponse] | None = None,
         **kwargs,
-    ) -> GenerationRequestArguments:  # noqa: C901
+    ) -> GenerationRequestArguments:
         """
         Format the audio transcription generation request into the
         appropriate structure.
@@ -1700,6 +1711,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         # Accumulated function_call items keyed by output_index, used to
         # reconstruct tool_calls on GenerationResponse after streaming.
         self.streaming_tool_calls: dict[int, ToolCall] = {}
+        self.streaming_tool_call_arguments: dict[int, list[str]] = {}
         self.streaming_reasoning_texts: list[str] = []
         self._last_iteration_had_content: bool = False
 
@@ -1785,7 +1797,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             )
         return items
 
-    def _build_turn_input_items(  # noqa: C901
+    def _build_turn_input_items(
         self,
         req: GenerationRequest,
         res: GenerationResponse | None,
@@ -2025,22 +2037,31 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
     @staticmethod
     def _extract_reasoning_text(response: dict) -> str | None:
-        """Extract reasoning summary text from Responses API output items.
+        """Extract reasoning text from Responses API output items.
 
-        Reasoning items have ``type: "reasoning"`` with a list of ``summary``
-        objects, each containing a ``text`` field.
+        Reasoning items have ``type: "reasoning"``. Servers that return the
+        full reasoning (such as vLLM) put it in ``content`` items of type
+        ``reasoning_text`` and leave ``summary`` empty; others return only
+        ``summary`` objects. The full reasoning is used when present, otherwise
+        the summary text.
 
         :param response: Full Responses API response dict.
         :return: Concatenated reasoning text, or None if absent.
         """
-        parts: list[str] = []
+        content_parts: list[str] = []
+        summary_parts: list[str] = []
         for item in response.get("output", []):
             if item.get("type") != "reasoning":
                 continue
-            for summary in item.get("summary", []):
+            for content in item.get("content") or []:
+                if content.get("type") == "reasoning_text" and (
+                    txt := content.get("text")
+                ):
+                    content_parts.append(txt)
+            for summary in item.get("summary") or []:
                 if txt := summary.get("text"):
-                    parts.append(txt)
-        return "".join(parts) or None
+                    summary_parts.append(txt)
+        return "".join(content_parts or summary_parts) or None
 
     def compile_non_streaming(
         self,
@@ -2087,6 +2108,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             arguments,
             self.streaming_texts,
             self.streaming_tool_calls,
+            self.streaming_tool_call_arguments,
             self.streaming_usage,
             self.streaming_response_id,
             self.extract_metrics,
@@ -2220,6 +2242,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                     arguments=item.get("arguments", ""),
                 ),
             )
+            self.streaming_tool_call_arguments[idx] = [item.get("arguments", "")]
             return 1
 
         # Incremental argument chunk: append the JSON fragment to the
@@ -2227,9 +2250,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         if event_type == "response.function_call_arguments.delta":
             idx = data.get("output_index", -1)
             if idx in self.streaming_tool_calls:
-                self.streaming_tool_calls[idx].function.arguments += data.get(
-                    "delta", ""
-                )
+                self.streaming_tool_call_arguments[idx].append(data.get("delta", ""))
             return 1
 
         # Final arguments payload: the server sends the complete argument
@@ -2237,11 +2258,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         # accumulated from deltas to guarantee consistency.
         if event_type == "response.function_call_arguments.done":
             idx = data.get("output_index", -1)
-            if idx in self.streaming_tool_calls:
-                self.streaming_tool_calls[idx].function.arguments = data.get(
-                    "arguments",
-                    self.streaming_tool_calls[idx].function.arguments,
-                )
+            if idx in self.streaming_tool_calls and "arguments" in data:
+                self.streaming_tool_call_arguments[idx] = [data["arguments"]]
             return 1
 
         # Not a function-call event; let the caller handle it.
@@ -2256,7 +2274,10 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
 
         :return: 0 or 1 if handled, None if not a text delta event.
         """
-        if event_type == "response.reasoning_summary_text.delta":
+        if event_type in (
+            "response.reasoning_summary_text.delta",
+            "response.reasoning_text.delta",
+        ):
             delta = data.get("delta", "")
             if delta:
                 self.streaming_reasoning_texts.append(delta)
@@ -2400,7 +2421,7 @@ class PoolingRequestHandler(ChatCompletionsRequestHandler):
     pooling-specific request structure with nested data fields.
     """
 
-    def post_validation(self, response: GenerationResponse) -> None:  # noqa: ARG002
+    def post_validation(self, response: GenerationResponse) -> None:
         """Pooling responses produce non-text output; skip validation."""
 
     def format(
@@ -2536,7 +2557,7 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
             # output_metrics defaults to UsageMetrics() with all None values
         )
 
-    def add_streaming_line(self, line: str) -> int | None:  # noqa: ARG002
+    def add_streaming_line(self, line: str) -> int | None:
         """
         Embeddings do not support streaming.
 
@@ -2546,7 +2567,7 @@ class EmbeddingsRequestHandler(OpenAIRequestHandler):
         """
         raise NotImplementedError("Embeddings do not support streaming")
 
-    def compile_streaming(  # noqa: ARG002
+    def compile_streaming(
         self, request: GenerationRequest, arguments: GenerationRequestArguments
     ) -> GenerationResponse:
         """

@@ -54,6 +54,27 @@ def tokenizer_mock():
 
 
 @pytest.fixture
+def bos_tokenizer_mock():
+    """Fixture to provide a mocked word-level tokenizer that prepends a BOS token."""
+    tokenizer = MagicMock(spec=PreTrainedTokenizerBase)
+    vocab = {"<s>": 0}
+
+    # Like Hugging Face tokenizers, "<s>" in the text is encoded as the BOS id
+    def encode_side_effect(text):
+        return [0] + [vocab.setdefault(word, len(vocab)) for word in text.split()]
+
+    def decode_side_effect(tokens, skip_special_tokens=False):
+        words = {index: word for word, index in vocab.items()}
+        return " ".join(
+            words[token] for token in tokens if not (skip_special_tokens and token == 0)
+        )
+
+    tokenizer.encode.side_effect = encode_side_effect
+    tokenizer.decode.side_effect = decode_side_effect
+    return tokenizer
+
+
+@pytest.fixture
 def sample_dataset_default_columns():
     """Sample dataset with default column names."""
     return Dataset.from_dict(
@@ -2270,3 +2291,88 @@ class TestProcessDatasetStrategyHandlerIntegration:
             mock_deserializer_factory_class.deserialize.assert_called_once()
             mock_tokenizer_registry.create.assert_called_once()
             assert mock_handler.called
+
+
+class TestProcessDatasetSpecialTokens:
+    """Test cases for trimming with a tokenizer that adds special tokens."""
+
+    @pytest.mark.regression
+    @patch("guidellm.data.builders.save_dataset_to_file")
+    @patch("guidellm.data.builders.DatasetDeserializerFactory")
+    @patch("guidellm.data.builders.TokenizerRegistry")
+    def test_trimmed_text_has_no_special_tokens(
+        self,
+        mock_tokenizer_registry,
+        mock_deserializer_factory_class,
+        mock_save_to_file,
+        bos_tokenizer_mock,
+        sample_dataset_with_prefix,
+        sample_data_column_mapper,
+        temp_output_path,
+    ):
+        """
+        Test that trimmed prompts and prefixes are saved without the BOS token text.
+        """
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=bos_tokenizer_mock
+        )
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_with_prefix
+        )
+
+        process_dataset(
+            data={"kind": "huggingface", "source": "test_data"},
+            output_path=temp_output_path,
+            tokenizer={"kind": "huggingface_auto", "model": "test"},
+            strategy={
+                "kind": "ignore",
+                "prompt_tokens": 20,
+                "output_tokens": 5,
+                "prefix_tokens_max": 3,
+            },
+            data_column_mapper=sample_data_column_mapper,
+        )
+
+        saved_dataset = mock_save_to_file.call_args[0][0]
+        assert len(saved_dataset) == 3
+        for row in saved_dataset:
+            assert "<s>" not in row["prompt"]
+            assert "<s>" not in row["system_prompt"]
+
+    @pytest.mark.regression
+    @patch("guidellm.data.builders.save_dataset_to_file")
+    @patch("guidellm.data.builders.DatasetDeserializerFactory")
+    @patch("guidellm.data.builders.TokenizerRegistry")
+    def test_trimmed_prompt_count_matches_target(
+        self,
+        mock_tokenizer_registry,
+        mock_deserializer_factory_class,
+        mock_save_to_file,
+        bos_tokenizer_mock,
+        sample_dataset_with_prefix,
+        sample_data_column_mapper,
+        temp_output_path,
+    ):
+        """
+        Test that a trimmed prompt's token count equals the target and its encoding.
+        """
+        mock_tokenizer_registry.create.return_value = MagicMock(
+            return_value=bos_tokenizer_mock
+        )
+        mock_deserializer_factory_class.deserialize.return_value = (
+            sample_dataset_with_prefix
+        )
+
+        process_dataset(
+            data={"kind": "huggingface", "source": "test_data"},
+            output_path=temp_output_path,
+            tokenizer={"kind": "huggingface_auto", "model": "test"},
+            strategy={"kind": "ignore", "prompt_tokens": 20, "output_tokens": 5},
+            data_column_mapper=sample_data_column_mapper,
+        )
+
+        saved_dataset = mock_save_to_file.call_args[0][0]
+        assert len(saved_dataset) == 3
+        for row in saved_dataset:
+            assert row["prompt_tokens_count"] == 20
+            assert len(bos_tokenizer_mock.encode(row["prompt"])) == 20

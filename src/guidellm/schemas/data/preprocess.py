@@ -185,7 +185,10 @@ class ConcatenatePreprocessStrategyArgs(PreprocessStrategyArgs):
     )
     delimiter: str = Field(
         default="",
-        description="Delimiter inserted between concatenated prompts.",
+        description=(
+            "Delimiter inserted between concatenated prompts. Supports Unicode "
+            "text and backslash escape sequences."
+        ),
         examples=["\\n\\n", " "],
     )
 
@@ -194,7 +197,7 @@ class ConcatenatePreprocessStrategyArgs(PreprocessStrategyArgs):
     def _decode_delimiter_escapes(cls, value: Any) -> Any:
         if not isinstance(value, str):
             return value
-        return codecs.decode(value, "unicode_escape")
+        return codecs.decode(value.encode("raw_unicode_escape"), "unicode_escape")
 
     def handle_short_prompt(
         self,
@@ -234,8 +237,11 @@ class PadPreprocessStrategyArgs(PreprocessStrategyArgs):
         description="Pad short prompts with a character until the target length.",
     )
     pad: str = Field(
-        default="",
-        description="Character or string used to pad short prompts.",
+        min_length=1,
+        description=(
+            "Required nonempty string used to pad short prompts. Supports Unicode "
+            "text and backslash escape sequences."
+        ),
         examples=[" ", "X"],
     )
 
@@ -244,7 +250,7 @@ class PadPreprocessStrategyArgs(PreprocessStrategyArgs):
     def _decode_pad_escapes(cls, value: Any) -> Any:
         if not isinstance(value, str):
             return value
-        return codecs.decode(value, "unicode_escape")
+        return codecs.decode(value.encode("raw_unicode_escape"), "unicode_escape")
 
     def handle_short_prompt(
         self,

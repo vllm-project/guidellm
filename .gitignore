@@ -171,6 +171,11 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+## Editors
+
+# Emacs
+.dir-locals.el
+
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
@@ -178,44 +183,42 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 
+# VSCode
+.vscode/
+
+## Misc
 
 # MacOS files
 .DS_Store
 
+# Direnv
+.direnv/
+.envrc.local
 
 # Project specific files
-*.json
-*.yaml
-
-# But not scenarios
-!src/guidellm/schemas/benchmark/scenarios/*.json
-!src/guidellm/schemas/benchmark/scenarios/**/*.json
-
-# HTML report Node smoke-test manifests (needed by tox -e test-html-js)
-!tests/js/package.json
-!tests/js/package-lock.json
-
-# Vendored offline tokenizer fixtures for tests (no Hub downloads)
-!tests/fixtures/tokenizers/**/*.json
-!tests/fixtures/tokenizers/**/*.yaml
+/*.json
+/*.yaml
 
 ## AI
 # Ignore any AI memory files except for AGENTS.md and shared agent skills
 
-# Shared Agent Skills (agentskills.io) — track these
-# Canonical location: .agents/skills/
+# Shared Agent Skills
+# .agents/skills/
 
 # Claude code
-# .claude is linked to .agents
-# CLAUDE.md is linked to AGENTS.md
+# CLAUDE.md
+CLAUDE.*.md
+.claude/
 
 # Cursor
-# Use AGENTS.md & .agents/skills/ to manage Cursor skills & rules
 .cursor/
 .cursorrules/
 
 # Gemini CLI
 .gemini/
+
+# CodeRabbit
+!/.coderabbit.yaml
 
 # Optional local Node tooling leftovers
 /node_modules/

@@ -15,6 +15,7 @@ Validates that:
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from guidellm.benchmark.profiles import (
     AsyncProfile,
@@ -39,6 +40,7 @@ from guidellm.schemas.benchmark import (
     ProfileArgs,
     SweepProfileArgs,
 )
+from guidellm.schemas.benchmark.profiles import SynchronousProfileArgs
 
 MULTI_PROFILE_FACTORIES = (
     "_make_async_profile",
@@ -568,3 +570,45 @@ class TestReportConclusions:
         report = self._collect([{"a": 1}, None, {"b": 2}])
 
         assert report.conclusions == [{"a": 1}, {"b": 2}]
+
+
+class _ExplicitPrefetchProfile(Profile):
+    """Yield one strategy that already chose its own prefetch."""
+
+    def next_strategy(self, prev_strategy, prev_benchmark):
+        _ = prev_benchmark
+        if prev_strategy is not None:
+            return None
+        return SynchronousStrategy(prefetch=4)
+
+
+@pytest.mark.smoke
+def test_strategies_generator_copies_prefetch():
+    """
+    An unset strategy prefetch inherits the profile value. An explicit strategy
+    prefetch is left alone.
+
+    ## WRITTEN BY AI ##
+    """
+    profile = ProfileFactory.create(
+        SynchronousProfileArgs(prefetch="start"),
+        random_seed=0,
+    )
+    strategy, _constraints = next(profile.strategies_generator())
+
+    assert strategy.prefetch == "start"
+    assert strategy.prefetch_count() == 1
+    with pytest.raises(ValidationError):
+        SynchronousProfileArgs(prefetch=-1)
+    with pytest.raises(ValidationError):
+        SynchronousProfileArgs(prefetch="-1")
+    assert SynchronousProfileArgs(prefetch="all").prefetch == "all"
+
+    explicit = _ExplicitPrefetchProfile(
+        SynchronousProfileArgs(prefetch="all"),
+        random_seed=0,
+        constraints=None,
+    )
+    kept, _constraints = next(explicit.strategies_generator())
+    assert kept.prefetch == 4
+    assert kept.prefetch_count() == 4

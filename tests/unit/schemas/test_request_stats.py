@@ -754,6 +754,43 @@ class TestGenerativeRequestStats:
         )
         assert stats_input_none.total_tokens == 10
 
+    @pytest.mark.sanity
+    @pytest.mark.parametrize(
+        ("prompt_tokens", "cached_tokens", "expected"),
+        [
+            (8, 6, 0.75),
+            (8, 0, 0.0),
+            (8, None, None),
+            (None, 6, None),
+            (0, 0, None),
+        ],
+    )
+    def test_prefix_cache_hit_rate(
+        self,
+        prompt_tokens: int | None,
+        cached_tokens: int | None,
+        expected: float | None,
+    ):
+        """
+        Report cached prompt tokens over prompt tokens, or None without both.
+
+        ## WRITTEN BY AI ##
+        """
+        info = RequestInfo(request_id="cache", status="completed")
+        info.timings.resolve_end = 10.0
+        stats = GenerativeRequestStats(
+            request_id="cache",
+            info=info,
+            input_metrics=UsageMetrics(
+                text_tokens=prompt_tokens, cached_tokens=cached_tokens
+            ),
+            output_metrics=UsageMetrics(text_tokens=4),
+        )
+
+        assert stats.prefix_cache_hit_rate == (
+            expected if expected is None else pytest.approx(expected)
+        )
+
     @pytest.mark.regression
     def test_output_tokens_per_second_with_none_output(self):
         """Test output_tokens_per_second when output_tokens is None."""

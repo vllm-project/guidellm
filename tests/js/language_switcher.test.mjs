@@ -34,10 +34,19 @@ function runLanguageSwitcher({ pagePath, logoPath, locales, routes }) {
 }
 
 const routes = {
-  "": { translation: "zh/", current: true },
-  "getting-started/install/": {
-    translation: "zh/getting-started/install/",
-    current: true,
+  zh: {
+    "": { translation: "zh/", current: true },
+    "getting-started/install/": {
+      translation: "zh/getting-started/install/",
+      current: true,
+    },
+  },
+  ko: {
+    "": { translation: "ko/", current: true },
+    "getting-started/install/": {
+      translation: "ko/getting-started/install/",
+      current: true,
+    },
   },
 };
 
@@ -85,17 +94,20 @@ test("language switcher resolves a zh home page and translated subpage", () => {
 /** Confirms a future locale uses its language candidate to resolve the shared root. ## WRITTEN BY AI ## */
 test("language switcher resolves a non-zh locale root", () => {
   const dom = runLanguageSwitcher({
-    pagePath: "/guidellm/ja/guides/page/",
-    logoPath: "/guidellm/ja/",
-    locales: [{ language: "ja", path: "/guidellm/ja/guides/page/" }],
+    pagePath: "/guidellm/ko/guides/page/",
+    logoPath: "/guidellm/ko/",
+    locales: [{ language: "ko", path: "/guidellm/ko/guides/page/" }],
     routes: {
-      "guides/page/": {
-        translation: "ja/guides/page/",
-        current: false,
+      ko: {
+        "guides/page/": {
+          translation: "ko/guides/page/",
+          current: false,
+        },
       },
     },
   });
 
+  assert.equal(dom.window.document.documentElement.lang, "ko");
   assert.equal(
     dom.window.document.querySelector(
       "#guidellm-stale-translation a",
@@ -146,4 +158,37 @@ test("language switcher preserves unprefixed English home and subpage URLs", () 
 
   home.window.close();
   englishPage.window.close();
+});
+
+/** Keeps Mike version paths with the configured unversioned language links. ## WRITTEN BY AI ## */
+test("language switcher preserves Mike version paths across all locales", () => {
+  const locales = [
+    { language: "en", path: "/guidellm/" },
+    { language: "zh", path: "/guidellm/zh/" },
+    { language: "ko", path: "/guidellm/ko/" },
+  ];
+  for (const language of ["en", "zh", "ko"]) {
+    const prefix = language === "en" ? "" : `${language}/`;
+    for (const route of ["", "getting-started/install/"]) {
+      const dom = runLanguageSwitcher({
+        pagePath: `/guidellm/stable/${prefix}${route}`,
+        logoPath: `/guidellm/stable/${prefix}`,
+        locales,
+        routes,
+      });
+      const { document } = dom.window;
+      assert.equal(
+        document.documentElement.lang,
+        { en: "en", zh: "zh-CN", ko: "ko" }[language],
+      );
+      for (const targetLanguage of ["en", "zh", "ko"]) {
+        const targetPrefix = targetLanguage === "en" ? "" : `${targetLanguage}/`;
+        assert.equal(
+          document.querySelector(`[hreflang="${targetLanguage}"]`).href,
+          `https://example.test/guidellm/stable/${targetPrefix}${route}`,
+        );
+      }
+      dom.window.close();
+    }
+  }
 });

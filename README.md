@@ -9,7 +9,11 @@
 SLO-aware Benchmarking and Evaluation Platform for Optimizing Real-World LLM Inference
 </h3>
 
-[![GitHub Release](https://img.shields.io/github/release/vllm-project/guidellm.svg?label=Version)](https://github.com/vllm-project/guidellm/releases) [![Documentation](https://img.shields.io/badge/Documentation-8A2BE2?logo=read-the-docs&logoColor=%23ffffff&color=%231BC070)](https://github.com/vllm-project/guidellm/tree/main/docs) [![License](https://img.shields.io/github/license/vllm-project/guidellm.svg)](https://github.com/vllm-project/guidellm/blob/main/LICENSE) [![PyPI Release](https://img.shields.io/pypi/v/guidellm.svg?label=PyPI%20Release)](https://pypi.python.org/pypi/guidellm) [![Python Versions](https://img.shields.io/badge/Python-3.10--3.13-orange)](https://pypi.python.org/pypi/guidellm) [![Nightly Build](https://img.shields.io/github/actions/workflow/status/vllm-project/guidellm/nightly.yml?branch=main&label=Nightly%20Build)](https://github.com/vllm-project/guidellm/actions/workflows/nightly.yml)
+<p align="center">
+  <b>English</b> | <a href="https://github.com/vllm-project/guidellm/blob/main/README.zh.md">简体中文</a>
+</p>
+
+[![GitHub Release](https://img.shields.io/github/release/vllm-project/guidellm.svg?label=Version)](https://github.com/vllm-project/guidellm/releases) [![Documentation](https://img.shields.io/badge/Documentation-8A2BE2?logo=read-the-docs&logoColor=%23ffffff&color=%231BC070)](https://github.com/vllm-project/guidellm/tree/main/docs) [![License](https://img.shields.io/github/license/vllm-project/guidellm.svg)](https://github.com/vllm-project/guidellm/blob/main/LICENSE) [![PyPI Release](https://img.shields.io/pypi/v/guidellm.svg?label=PyPI%20Release)](https://pypi.python.org/pypi/guidellm) [![Python Versions](https://img.shields.io/badge/Python-3.11--3.15-orange)](https://pypi.python.org/pypi/guidellm) [![Nightly Build](https://img.shields.io/github/actions/workflow/status/vllm-project/guidellm/nightly.yml?branch=main&label=Nightly%20Build)](https://github.com/vllm-project/guidellm/actions/workflows/nightly.yml)
 
 ## Overview
 
@@ -32,40 +36,6 @@ GuideLLM gives teams a clear picture of performance, efficiency, and reliability
 - **Produces standardized, exportable reports for dashboards, analysis, and regression tracking**, ensuring consistency across teams and workflows.
 - **Delivers high-throughput, extensible benchmarking** with multiprocessing, threading, async execution, and a flexible CLI/API for customization or quickstarts.
 
-### Comparisons
-
-Many tools benchmark endpoints, not models, and miss the details that matter for LLMs. GuideLLM focuses exclusively on LLM-specific workloads, measuring TTFT, ITL, output distributions, and dataset-driven variation. It fits into everyday engineering tasks by using standard Python interfaces and HuggingFace datasets instead of custom formats or research-only pipelines. It is also built for performance, supporting high-rate load generation and accurate scheduling far beyond simple scripts or example benchmarks. The table below highlights how this approach compares to other options.
-
-| Tool                                                                         | CLI | API | High Perf | Full Metrics | Data Modalities                | Data Sources                          | Profiles                                                      | Backends                        | Endpoints                                                                 | Output Types             |
-| ---------------------------------------------------------------------------- | --- | --- | --------- | ------------ | ------------------------------ | ------------------------------------- | ------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------- | ------------------------ |
-| GuideLLM                                                                     | ✅  | ✅  | ✅        | ✅           | Text, Image, Audio, Video      | HuggingFace, Files, Synthetic, Custom | Synchronous, Concurrent, Throughput, Constant, Poisson, Sweep | OpenAI-compatible               | /completions, /chat/completions, /audio/translation, /audio/transcription | console, json, csv, html |
-| [inference-perf](https://github.com/kubernetes-sigs/inference-perf)          | ✅  | ❌  | ✅        | ❌           | Text                           | Synthetic, Specific Datasets          | Concurrent, Constant, Poisson, Sweep                          | OpenAI-compatible               | /completions, /chat/completions                                           | json, png                |
-| [genai-bench](https://github.com/sgl-project/genai-bench)                    | ✅  | ❌  | ❌        | ❌           | Text, Image, Embedding, ReRank | Synthetic, File                       | Concurrent                                                    | OpenAI-compatible, Hosted Cloud | /chat/completions, /embeddings                                            | console, xlsx, png       |
-| [llm-perf](https://github.com/ray-project/llmperf)                           | ❌  | ❌  | ✅        | ❌           | Text                           | Synthetic                             | Concurrent                                                    | OpenAI-compatible, Hosted Cloud | /chat/completions                                                         | json                     |
-| [ollama-benchmark](https://github.com/aidatatools/ollama-benchmark)          | ✅  | ❌  | ❌        | ❌           | Text                           | Synthetic                             | Synchronous                                                   | Ollama                          | /completions                                                              | console, json            |
-| [vllm/benchmarks](https://github.com/vllm-project/vllm/tree/main/benchmarks) | ✅  | ❌  | ❌        | ❌           | Text                           | Synthetic, Specific Datasets          | Synchronous, Throughput, Constant, Sweep                      | OpenAI-compatible, vLLM API     | /completions, /chat/completions                                           | console, png             |
-
-## What's New
-
-This section summarizes the newest capabilities available to users and outlines the current areas of development. It helps readers understand how the platform is evolving and what to expect next.
-
-**Recent Additions**
-
-- New CLI interface with improved configuration and validation.
-- New backends for in-process vLLM Python API and websocket audio transcription.
-- Multi-turn conversation capabilities for benchmarking chat agents and dialogue systems.
-- Full tool calling support (client and server side) in chat completions and responses APIs.
-- Synthetic video and image datasets for controlled experimentation.
-- Replay of Mooncake, WEKA, and OTEL trace files for realistic load testing.
-- Support for benchmarking Geospatial LLMs.
-
-**Active Development**
-
-- Improved scenarios for benchmarking standard workflows.
-- Ability to stack scenario files for complex benchmarking workflows.
-- Ability to override constraints for individual benchmarks in a profile.
-- gRPC backend for benchmarking vLLM-native servers.
-
 ## Quick Start
 
 The Quick Start shows how to install GuideLLM, launch a server, and run your first benchmark in a few minutes.
@@ -75,7 +45,7 @@ The Quick Start shows how to install GuideLLM, launch a server, and run your fir
 Before installing, ensure you have the following prerequisites:
 
 - OS: Linux or MacOS
-- Python: 3.10 - 3.13
+- Python: 3.11 - 3.15
 
 Install the latest GuideLLM release from PyPi using `pip` :
 
@@ -192,8 +162,8 @@ guidellm run \
 
 - `--data`: Data type plus config — `synthetic_text`, `huggingface`, `json_file`, `csv_file`, `text_file`, `trace_synthetic`, and others. Repeat for multiple sources.
 - `--data-column-mapper`: Column mapping preprocessor and JSON config for fields such as `text_column` or `output_tokens_count_column`
-- `--data-loader type=pytorch,samples=1000`: Limit how many rows are loaded (`-1` for all)
-- `--tokenizer huggingface_auto "model=gpt2"`: Tokenizer for synthetic data or local token counting
+- `--data-loader kind=pytorch,samples=1000`: Limit how many rows are loaded (`-1` for all)
+- `--tokenizer kind=huggingface_auto,model=gpt2`: Tokenizer for synthetic data or local token counting
 
 ### Synthetic Visual Data
 
@@ -215,17 +185,17 @@ guidellm run \
 
 ### Using Scenarios
 
-Built-in scenarios bundle schedules, dataset settings, and request formatting to standardize common testing patterns. This example uses the pre-configured chat scenario which includes appropriate defaults for chat model evaluation, with any additional CLI arguments overriding the scenario's settings.
+Built-in scenarios bundle schedules, dataset settings, and request formatting to standardize common testing patterns. This example uses the built-in `rhaiis/concurrent-1k-1k-equal` scenario, a concurrent workload with 1,000 prompt and 1,000 output tokens, with any additional CLI arguments overriding the scenario's settings.
 
 ```bash
 guidellm run \
-  --config chat \
+  --config rhaiis/concurrent-1k-1k-equal \
   --backend kind=openai_http,target=http://localhost:8000
 ```
 
 **Key parameters:**
 
-- `--config` (alias `--scenario`, `-c`): Built-in scenario name or path to a custom scenario file. CLI options override scenario defaults.
+- `--config` (alias `--scenario`, `-c`): Built-in scenario name or path to a custom scenario file. CLI options override scenario defaults. See [built-in configuration files](docs/en/getting-started/benchmark.md#built-in-configuration-files) for the available scenarios.
 
 ### Benchmark Controls
 

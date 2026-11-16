@@ -255,7 +255,8 @@ def _process_single_row(
             prefix_tokens_list = tokenizer.encode(prefix_text)
             if len(prefix_tokens_list) > strategy.prefix_tokens_max:
                 prefix_text = tokenizer.decode(  # type: ignore[assignment]
-                    prefix_tokens_list[: strategy.prefix_tokens_max]
+                    prefix_tokens_list[: strategy.prefix_tokens_max],
+                    skip_special_tokens=True,
                 )
 
         # Count prefix tokens toward prompt if enabled
@@ -291,7 +292,9 @@ def _process_single_row(
     # Trim long prompts
     tokens = tokenizer.encode(prompt_text)
     if len(tokens) > target_prompt_len:
-        prompt_text = tokenizer.decode(tokens[:target_prompt_len])  # type: ignore[assignment]
+        prompt_text = tokenizer.decode(  # type: ignore[assignment]
+            tokens[:target_prompt_len], skip_special_tokens=True
+        )
         tokens = tokenizer.encode(prompt_text)
 
     # Sample output token count

@@ -134,7 +134,9 @@ class SweepProfile(Profile):
 
         if self.args.strategy_type == "constant":
             return AsyncConstantStrategy(
-                rate=next_rate, max_concurrency=self.args.max_concurrency
+                rate=next_rate,
+                max_concurrency=self.args.max_concurrency,
+                rampup_duration=self.args.rampup_duration,
             )
         if self.args.strategy_type == "poisson":
             return AsyncPoissonStrategy(

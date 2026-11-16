@@ -55,6 +55,7 @@ __all__ = [
     "fill_hash_id_table",
     "generate_token_ids",
     "get_missing_columns",
+    "tokenizer_supports_block_concat",
 ]
 
 
@@ -114,14 +115,76 @@ def create_prompt_from_hash_ids(
     hash_ids: list[int],
     hash_id_table: dict[int, tuple[int, ...]],
     processor: PreTrainedTokenizerBase,
+    hash_id_text: dict[int, str] | None = None,
 ) -> str:
     """Returns a synthetic prompt from `hash_ids` using pre-generated token blocks.
 
-    Precondition: All ids in `hash_ids` appear in `hash_id_table`."""
-    prompt_token_ids = [
-        token for hash_id in hash_ids for token in hash_id_table[hash_id]
-    ]
-    return decode_prompt(processor, prompt_token_ids)
+    When ``hash_id_text`` is provided, each block is decoded to text at most once
+    (cached by hash ID) and the prompt is composed by concatenating the cached
+    block strings. This avoids re-decoding the full token list on every request,
+    which dominates DAG construction on multi-turn traces with heavy prefix reuse.
+    When ``hash_id_text`` is ``None`` the full concatenated token list is decoded
+    in a single call (the original, byte-exact behavior).
+
+    Precondition: All ids in ``hash_ids`` appear in ``hash_id_table``.
+
+    :param hash_ids: Ordered hash IDs for one prompt.
+    :param hash_id_table: Token blocks keyed by hash ID.
+    :param processor: Tokenizer used to decode token blocks to text.
+    :param hash_id_text: Optional decoded-text cache keyed by hash ID, with the
+        same lifetime/scope as ``hash_id_table``. When given, enables per-block
+        decode caching; when ``None``, the full token list is decoded at once.
+    :return: The composed prompt string.
+    """
+    if hash_id_text is None:
+        prompt_token_ids = [
+            token for hash_id in hash_ids for token in hash_id_table[hash_id]
+        ]
+        return decode_prompt(processor, prompt_token_ids)
+
+    parts: list[str] = []
+    for hash_id in hash_ids:
+        text = hash_id_text.get(hash_id)
+        if text is None:
+            text = decode_prompt(processor, list(hash_id_table[hash_id]))
+            hash_id_text[hash_id] = text
+        parts.append(text)
+    return "".join(parts)
+
+
+def tokenizer_supports_block_concat(processor: PreTrainedTokenizerBase) -> bool:
+    """Returns True if composing a prompt from separately decoded token blocks is
+    byte-identical to decoding the full token list at once.
+
+    The decoded-block cache composes each prompt by concatenating the decoded text
+    of individual hash-id blocks. That is exact only when
+    ``decode(a) + decode(b) == decode(a + b)`` holds for the tokenizer, which is the
+    case for byte-level BPE tokenizers (e.g. Qwen, Llama 3, GPT-2) but not for
+    tokenizers that normalize or insert separators at token boundaries (e.g.
+    SentencePiece). Callers reuse decoded blocks only when this returns True and
+    otherwise decode the full token list per request, so prompts stay byte-exact for
+    every tokenizer. Probed with ASCII text (every token boundary is single-byte) so
+    the result reflects the tokenizer's concatenation behavior, not UTF-8 splitting.
+
+    :param processor: Tokenizer to probe.
+    :return: True if per-block decode composition is byte-identical to full-list
+        decoding.
+    """
+    probe = (
+        "The quick brown fox jumps over the lazy dog. "
+        "Pack my box with five dozen liquor jugs 1234567890."
+    )
+    token_ids = list(processor.encode(probe))
+    full = decode_prompt(processor, token_ids)
+    tested_any_boundary = False
+    for split in range(1, len(token_ids)):
+        tested_any_boundary = True
+        first = decode_prompt(processor, token_ids[:split])
+        second = decode_prompt(processor, token_ids[split:])
+        if first + second != full:
+            return False
+    # With fewer than two tokens there is no boundary to verify; treat as unsafe.
+    return tested_any_boundary
 
 
 def create_distinct_token_block(

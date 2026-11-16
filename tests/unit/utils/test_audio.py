@@ -1,3 +1,5 @@
+import base64
+import io
 import tempfile
 import wave
 from pathlib import Path
@@ -7,6 +9,8 @@ import numpy as np
 import pytest
 import torch
 
+from guidellm.data.preprocessors.encoders import MediaEncoder
+from guidellm.schemas.data.preprocessors import MediaEncoderArgs
 from guidellm.utils import audio as _audio_mod
 
 
@@ -66,6 +70,119 @@ def test_encode_audio_with_tensor_input(sample_audio_tensor):
     assert result["audio_seconds"] == 1.0
     assert isinstance(result["audio_bytes"], int)
     assert result["audio_bytes"] > 0
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("as_numpy", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("max_duration", [None, 0.25])
+def test_encode_audio_with_mono_waveform(
+    sample_audio_tensor: torch.Tensor,
+    as_numpy: bool,
+    dtype: torch.dtype,
+    max_duration: float | None,
+) -> None:
+    """One-dimensional float samples encode as mono and honor truncation.
+
+    ## WRITTEN BY AI ##
+    """
+    waveform = sample_audio_tensor.squeeze(0).to(dtype)
+    audio = waveform.numpy() if as_numpy else waveform
+    result = _audio_mod.encode_audio(
+        audio=audio, sample_rate=16000, max_duration=max_duration, audio_format="wav"
+    )
+    expected_frames = 16000 if max_duration is None else 4000
+
+    assert result["audio_samples"] == expected_frames
+    assert result["audio_seconds"] == expected_frames / 16000
+    with wave.open(io.BytesIO(result["audio"]), "rb") as encoded:
+        assert encoded.getnchannels() == 1
+        assert encoded.getframerate() == 16000
+        assert encoded.getnframes() == expected_frames
+    assert audio.ndim == 1
+    assert audio.dtype == (waveform.numpy().dtype if as_numpy else dtype)
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("as_numpy", [False, True])
+def test_pcm16_append_b64_chunks_with_mono_waveform(
+    sample_audio_tensor: torch.Tensor, as_numpy: bool
+) -> None:
+    """Raw mono data matches the existing channel-first PCM conversion.
+
+    ## WRITTEN BY AI ##
+    """
+    waveform = sample_audio_tensor.squeeze(0)
+    audio = waveform.numpy() if as_numpy else waveform
+    chunks = _audio_mod.pcm16_append_b64_chunks({"data": audio, "sample_rate": 16000})
+    expected = _audio_mod.pcm16_append_b64_chunks(
+        {"data": sample_audio_tensor, "sample_rate": 16000}
+    )
+
+    assert chunks == expected
+    assert sum(len(base64.b64decode(chunk)) for chunk in chunks) == 32000
+
+
+@pytest.mark.regression
+def test_encode_audio_with_encoded_uint8_vector(
+    sample_audio_tensor: torch.Tensor,
+) -> None:
+    """A one-dimensional uint8 vector remains encoded audio bytes.
+
+    ## WRITTEN BY AI ##
+    """
+    encoded = _audio_mod.encode_audio(
+        audio=sample_audio_tensor, sample_rate=16000, audio_format="wav"
+    )
+    byte_vector = torch.tensor(list(encoded["audio"]), dtype=torch.uint8)
+    result = _audio_mod.encode_audio(audio=byte_vector)
+
+    assert result["audio_samples"] == 16000
+    assert result["audio_seconds"] == 1.0
+    assert result["format"] == "wav"
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("as_numpy", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_encode_audio_preserves_multiple_channels(
+    sample_audio_tensor: torch.Tensor, as_numpy: bool, dtype: torch.dtype
+) -> None:
+    """Channel-first float waveforms keep both channels when mono is disabled.
+
+    ## WRITTEN BY AI ##
+    """
+    stereo = torch.cat((sample_audio_tensor, -sample_audio_tensor), dim=0).to(dtype)
+    audio = stereo.numpy() if as_numpy else stereo
+    result = _audio_mod.encode_audio(
+        audio=audio, sample_rate=16000, audio_format="wav", mono=False
+    )
+
+    assert result["audio_samples"] == 16000
+    with wave.open(io.BytesIO(result["audio"]), "rb") as encoded:
+        assert encoded.getnchannels() == 2
+        assert encoded.getnframes() == 16000
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("as_numpy", [False, True])
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_media_encoder_with_mono_waveform(
+    sample_audio_tensor: torch.Tensor, as_numpy: bool, dtype: torch.dtype
+) -> None:
+    """Dataset audio dictionaries encode one-dimensional float samples.
+
+    ## WRITTEN BY AI ##
+    """
+    waveform = sample_audio_tensor.squeeze(0).to(dtype)
+    audio = waveform.numpy() if as_numpy else waveform
+    encoder = MediaEncoder(MediaEncoderArgs())
+    result = encoder.encode_turn(
+        {"audio_column": [{"data": audio, "sample_rate": 16000}]}
+    )
+
+    assert result["audio_column"][0]["audio_samples"] == 16000
+    assert result["audio_column"][0]["audio_seconds"] == 1.0
 
 
 def test_encode_audio_with_numpy_array(sample_audio_tensor):
@@ -530,3 +647,29 @@ def test_pcm16_append_b64_chunks_invalid_decoder_sample_rate_raises(mock_decode)
 
     with pytest.raises(ValueError, match="invalid sample_rate"):
         _audio_mod.pcm16_append_b64_chunks({"audio": b"x"})
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("status_code", [301, 302, 303, 307, 308])
+def test_encode_audio_follows_redirects(httpx2_mock, status_code):
+    """Decode the final audio payload after a relative redirect. ## WRITTEN BY AI ##"""
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(16000)
+        audio.writeframes(b"\x00\x00" * 1600)
+    url = "https://media.example/audio"
+    httpx2_mock.route(url=url).respond(
+        status_code=status_code, headers={"Location": "/asset"}
+    )
+    httpx2_mock.route(url="https://media.example/asset").respond(
+        content=buffer.getvalue()
+    )
+
+    result = _audio_mod.encode_audio(url)
+
+    assert result["audio_samples"] == 1600
+    assert result["audio_seconds"] == pytest.approx(0.1)
+    assert result["format"] == "wav"
+    assert len(httpx2_mock.calls) == 2

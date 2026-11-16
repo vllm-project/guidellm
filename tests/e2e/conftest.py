@@ -8,7 +8,7 @@ import time
 from collections.abc import Iterator
 from typing import Any, Protocol
 
-import httpx
+import httpx2
 import pytest
 
 from guidellm.mock_server.server import MockServer
@@ -104,10 +104,10 @@ def start_mock_server(
             process.join(timeout=5)
             pytest.fail(f"MockServer exited before ready (exitcode={process.exitcode})")
         try:
-            resp = httpx.get(f"{base_url}/health", timeout=1.0)
+            resp = httpx2.get(f"{base_url}/health", timeout=1.0)
             if resp.status_code == 200:
                 return _MockServerHandle(base_url, process)
-        except (httpx.RequestError, httpx.TimeoutException):
+        except (httpx2.RequestError, httpx2.TimeoutException):
             pass
         time.sleep(0.2)
 

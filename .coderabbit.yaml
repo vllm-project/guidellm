@@ -1,0 +1,108 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en
+early_access: false
+inheritance: false
+
+reviews:
+  profile: assertive
+  merge_risk_instructions: |
+    GuideLLM's own overhead can distort benchmark results, so changes to request
+    handling, scheduling, timing, and metrics deserve particular scrutiny. Higher
+    risk comes from added critical-path work, concurrency or lifecycle changes,
+    altered measurement semantics, and regressions in supported use cases beyond
+    the PR's target scenario. Consider the reach and impact of changed behavior.
+
+    Broad scope, unnecessary complexity, blurred component ownership, and weak
+    validation increase risk. Focused changes that preserve existing contracts
+    and have relevant correctness and performance evidence lower risk; purely
+    documentary or nonfunctional edits are generally low risk.
+  auto_approvals:
+    enabled: false
+  high_level_summary: false
+  high_level_summary_in_walkthrough: false
+  poem: false
+  in_progress_fortune: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  suggested_labels: false
+  suggested_reviewers: false
+  review_status: false
+  collapse_walkthrough: true
+  auto_apply_labels: false
+  auto_assign_reviewers: false
+  auto_review:
+    enabled: true
+    auto_incremental_review: false
+    drafts: false
+    description_keyword: ""
+    labels: []
+    ignore_usernames:
+      - "mergify[bot]"
+      - "dependabot[bot]"
+      - "github-actions[bot]"
+  finishing_touches:
+    docstrings:
+      enabled: false
+    unit_tests:
+      enabled: false
+    simplify:
+      enabled: false
+    autofix:
+      enabled: false
+    fix_ci:
+      enabled: false
+    resolve_merge_conflict:
+      enabled: false
+    custom: []
+  path_instructions:
+    - path: "src/guidellm/**/*.py"
+      instructions: |
+        Keep behavior with the component that owns it: schema serialization on
+        schema models, and variant-specific behavior behind implementation
+        interfaces. Favor simple interfaces with minimal coordination. Look for
+        existing abstractions and dependency capabilities before adding custom
+        handling. Prefer behavior consistent with analogous implementations unless
+        the change intentionally updates the shared contract. Question unnecessary
+        wrappers, special cases, and configuration choices when a simpler design
+        meets the demonstrated need. Check that new measurements represent what
+        they claim to measure. Flag unrelated behavior changes that complicate the
+        PR. Comments should explain non-obvious intent or constraints rather than
+        repeat code or record issue history. Explain the concrete consequence of
+        each finding and distinguish demonstrated defects from design questions;
+        do not demand a speculative redesign.
+    - path: "src/guidellm/{scheduler,backends}/**/*.py"
+      instructions: |
+        Examine added blocking work, polling, repeated computation, and
+        resource-management changes for effects on benchmark execution. Ask for
+        evidence when a performance claim or measurement depends on assumptions
+        the change does not establish. Evidence should isolate the claimed
+        improvement and account for instrumentation overhead. Avoid assuming
+        asynchronous ordering or timing correlation establishes causation or
+        request-level attribution.
+    - path: "tests/**"
+      instructions: |
+        Keep tests self-contained, with required services managed by the test
+        harness. Tests using actual HTTP traffic or multiple cooperating
+        components belong at the integration level. Check that timing assumptions
+        and timeouts are realistic under CI load. Use the existing tox workflow
+        and repository test conventions.
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "DEVELOPING.md"
+      - "CONTRIBUTING.md"
+      - "AGENTS.md"
+
+issue_enrichment:
+  auto_enrich:
+    enabled: false
+  planning:
+    auto_planning:
+      enabled: false
+  labeling:
+    auto_apply_labels: false

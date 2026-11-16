@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import glob
 import sqlite3
 from collections.abc import Callable
 from contextlib import closing
@@ -33,18 +34,16 @@ __all__ = [
 
 def _load_file_dataset(loader: str, path: Path, **load_kwargs: Any) -> DatasetDictType:
     """
-    Load a local data file and return a single dataset split.
+    Load one local file through a Hugging Face dataset loader.
 
-    ``load_dataset`` returns a ``DatasetDict`` keyed by split for file-based
-    loaders, which downstream preprocessing does not expect. This resolves the
-    result to a single ``Dataset`` (or ``IterableDataset``) split.
+    Escape glob characters so a concrete file path cannot select other files.
 
     :param loader: The ``datasets`` loader name (e.g. ``"json"``, ``"csv"``).
-    :param path: Path to the local data file.
+    :param path: Literal path to the local data file.
     :param load_kwargs: Additional keyword arguments forwarded to ``load_dataset``.
-    :return: The resolved dataset.
+    :return: The loaded dataset or dictionary of dataset splits.
     """
-    return load_dataset(loader, data_files=str(path), **load_kwargs)
+    return load_dataset(loader, data_files=glob.escape(str(path)), **load_kwargs)
 
 
 @DatasetDeserializerFactory.register("text_file")

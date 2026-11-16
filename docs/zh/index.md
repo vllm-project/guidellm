@@ -1,6 +1,7 @@
 ---
 title: 首页
 weight: 100
+source_sha256: !!str "a6f2f3095aa6b6b3c6b30f40f988275e264ae73c50a40590bba6441583ed9b36"
 ---
 
 # 首页
@@ -44,7 +45,7 @@ weight: 100
 
   深入了解后端、数据集、指标和服务级别目标等 GuideLLM 基准测试主题。
 
-  [:octicons-arrow-right-24: 阅读英文使用指南](../guides/)
+  [:octicons-arrow-right-24: 阅读使用指南](./guides/index.md)
 
 - :material-code-tags:{ .lg .middle } 示例
 
@@ -52,7 +53,7 @@ weight: 100
 
   通过分步示例了解真实场景下的基准测试和优化方法。
 
-  [:octicons-arrow-right-24: 阅读英文示例](../examples/)
+  [:octicons-arrow-right-24: 阅读示例](./examples/index.md)
 
 - :material-api:{ .lg .middle } API 参考
 

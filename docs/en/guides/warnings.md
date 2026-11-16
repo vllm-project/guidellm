@@ -6,17 +6,20 @@ Rules live on the generative metrics configuration, under `metrics.warnings`. Se
 
 ## Built-in rules
 
-These three rules run when `metrics.warnings` is omitted:
+These rules run when `metrics.warnings` is omitted:
 
 - `generation_delay_ttft`:
   - Warn when the mean `generation_delay` is more than 1% of mean \`time_to_first_token_ms.total
-  - Means that the data generation is lagging by a great enough fraction of the server's TTFT that it's likely slowing down the benchmark.
+  - Means that the data generation is lagging by a great enough fraction of the server's TTFT that it's likely slowing down the benchmark. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
+- `worker_loop_lag_ttft`:
+  - Warn when the 95th percentile of `worker_loop_lag` is more than 10% of mean `time_to_first_token_ms.total`.
+  - This means that GuideLLM's worker event loops ran late, which may overstate time to first token. Run GuideLLM with more CPU, or raise `GUIDELLM__MAX_WORKER_PROCESSES` (default 10). Short bursts, such as every stream of a fixed-length concurrent run receiving its first token at once, can overstate time to first token without raising the 95th percentile.
 - `root_late`:
-  - Warn when the 95th percentile of `root_dispatch_delay` is greater than 0.2 seconds.
-  - This means that the first turn of conversations arrived later than the scheduler scheduled them. Often due to data lag.
+  - Warn when the 95th percentile of `root_dispatch_delay` is greater than 0.75 seconds, or when the mean is greater than 0.25 seconds.
+  - This means that the first turn of conversations arrived later than the scheduler scheduled them. Often due to data lag. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
 - `dataset_incomplete`:
   - Warn when `dataset_incomplete` is true during trace strategies.
-  - This means that the trace dataset was not fully loaded, which can result in late and missing arrivals of trace conversations, as many trace conversations have turns that are supposed to start at the beginning of the benchmark.
+  - This means that the trace dataset was not fully loaded, which can result in late and missing arrivals of trace conversations, as many trace conversations have turns that are supposed to start at the beginning of the benchmark. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
 
 See `default_warning_rules()` in `src/guidellm/schemas/benchmark/warnings.py` for where the defaults are set.
 
@@ -50,6 +53,7 @@ A path that is not on the compiled schemas is logged and printed with the other 
 - `inter_token_latency_ms.total`: inter-token latency, in milliseconds.
 - `request_dispatch_delay.total`: lateness against the scheduled start, in seconds. Null when the profile does not define an arrival schedule.
 - `root_dispatch_delay`: lateness of the first request of each conversation, in seconds. Later turns are omitted. Null when no first turn has a dispatch delay.
+- `worker_loop_lag`: how late a timer fired on the worker event loops while they ran requests, in seconds. Scheduler metric.
 - `dataset_incomplete`: `true` when the scheduler stops queueing before the request iterator is exhausted. The scheduler records that the iterator finished only after the loader has yielded every conversation. A `max_requests` or `max_duration` stop therefore marks the dataset incomplete, and the built-in trace rule can fire on a run that was meant to stop early. `data_loader.samples` caps the iterator itself, so a run that consumes every yielded sample looks complete and does not fire.
 - `strategy_type`: strategy type identifier, such as `trace` or `concurrent`.
 
@@ -140,3 +144,7 @@ Warnings (constant@2.00)
 ```
 
 The JSON report stores the same record on each benchmark under `warnings`, including `code`, `message`, `observed`, `threshold`, `unit`, `sample_count`, and `note`.
+
+The HTML report shows each warning as a card under the header. The card shows the message, and the note when one is set. A report with more than one run labels the card with that run's strategy.
+
+The CSV report stores that list in a single `Warnings` column. The cell is a JSON list of the same records, or `[]` when the run has none.

@@ -6,11 +6,12 @@ weight: 15
 
 Find your symptom below, then follow the linked fix. For CLI syntax, see [Run a Benchmark](../getting-started/benchmark.md#cli-option-format).
 
-| Symptom                                                     | Section                                                      |
-| ----------------------------------------------------------- | ------------------------------------------------------------ |
-| Requests fail or results look wrong                         | [Debug logging](#debug-logging)                              |
-| Custom code error when loading a model's tokenizer.         | [Tokenizer: trust_remote_code](#tokenizer-trust_remote_code) |
-| `Worker process ... died unexpectedly (signal 11)` on macOS | [macOS worker crash](#macos-worker-crash-signal-11)          |
+| Symptom                                                              | Section                                                               |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Requests fail or results look wrong                                  | [Debug logging](#debug-logging)                                       |
+| Requests arrive after they were due, or a trace was not fully loaded | [Requests load after they are due](#requests-load-after-they-are-due) |
+| Custom code error when loading a model's tokenizer.                  | [Tokenizer: trust_remote_code](#tokenizer-trust_remote_code)          |
+| `Worker process ... died unexpectedly (signal 11)` on macOS          | [macOS worker crash](#macos-worker-crash-signal-11)                   |
 
 ## Debug logging
 
@@ -49,6 +50,29 @@ Do not use this if you do not trust the model, as this allows code execution on 
 
 See [Datasets: Tokenizer](datasets.md#tokenizer) for other tokenizer options.
 
+## Requests load after they are due
+
+### Symptom
+
+A benchmark warns that data generation is slowing the run, that conversations were loaded late, or that a trace dataset was not fully loaded.
+
+### Fix
+
+Load request graphs before the run clock starts with `prefetch` on `--profile`:
+
+- `0` (the default) loads graphs as the run consumes them.
+- A count loads that many request nodes first.
+- `start` matches the strategy's startup concurrency when it defines one.
+- `all` loads every request from a finite dataset. An infinite data source will fail unless `--data-loader kind=pytorch,samples=<n>` caps it.
+
+All profiles accept the `prefetch` parameter. Here is an example of how to use it with a `concurrent` profile:
+
+```bash
+--profile kind=concurrent,prefetch=all
+```
+
+WEKA traces should use `prefetch=all`. Every session has requests that start at or near 0, so loading them during the run results in the data falling behind, causing conversations to start late.
+
 ## macOS worker crash (signal 11)
 
 ### Symptom
@@ -66,7 +90,7 @@ Worker process <pid> died unexpectedly (signal 11)
 
 ### Fix
 
-GuideLLM defaults to `fork` multiprocessing, which can segfault on macOS. Use `spawn` instead:
+GuideLLM 0.8.0 and later default to `spawn` multiprocessing on every platform and no longer accept `fork`, so this crash is not expected with the default settings. Releases before 0.8.0 default to `fork`, which can segfault on macOS; on those releases, select `spawn` explicitly:
 
 ```bash
 GUIDELLM__MP_CONTEXT_TYPE=spawn guidellm run ...

@@ -30,32 +30,35 @@ def test_section_titles_are_localized_without_treating_routes_as_titles():
 
 
 @pytest.mark.parametrize(
-    ("source_uri", "expected_chinese"),
+    ("source_uri", "expected_language"),
     [
-        ("zh/index.md", True),
-        ("zh/getting-started/install.md", True),
-        ("reference/api.md", False),
+        ("zh/index.md", "zh"),
+        ("zh/getting-started/install.md", "zh"),
+        ("ko/index.md", "ko"),
+        ("ko/getting-started/install.md", "ko"),
+        ("index.md", "en"),
+        ("reference/api.md", "en"),
     ],
 )
 @pytest.mark.regression
 def test_navigation_language_comes_from_page_route(
     source_uri: str,
-    expected_chinese: bool,
+    expected_language: str,
     monkeypatch: pytest.MonkeyPatch,
 ):
     """
-    Select Chinese navigation only for pages under the zh route.
+    Select navigation from registered locale routes and default to English.
 
     ## WRITTEN BY AI ##
     """
     page = SimpleNamespace(file=SimpleNamespace(src_uri=source_uri))
     nav = object()
     localized = SimpleNamespace(pages=[])
-    selected: list[bool] = []
+    selected: list[str] = []
 
-    def navigation_for_page(current_nav, chinese: bool):
+    def navigation_for_page(current_nav, language: str):
         assert current_nav is nav
-        selected.append(chinese)
+        selected.append(language)
         return localized
 
     monkeypatch.setattr(localized_nav, "_navigation_for_page", navigation_for_page)
@@ -66,7 +69,7 @@ def test_navigation_language_comes_from_page_route(
 
     assert result is context
     assert context["nav"] is localized
-    assert selected == [expected_chinese]
+    assert selected == [expected_language]
 
 
 def _mkdocs_navigation_case():

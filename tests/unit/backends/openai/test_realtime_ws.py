@@ -11,6 +11,7 @@ import json
 from typing import Any
 
 import pytest
+import respx
 from pydantic import ValidationError
 from websockets.asyncio.server import serve
 from websockets.exceptions import ConnectionClosed
@@ -522,10 +523,9 @@ async def test_excessive_ignored_events_raises(
 
 
 @pytest.mark.asyncio
-async def test_available_models_parses_response(httpx_mock: object) -> None:
-    httpx_mock.add_response(
-        url="http://127.0.0.1:9/v1/models",
-        json={"data": [{"id": "a"}, {"id": "b"}]},
+async def test_available_models_parses_response(httpx2_mock: respx.Router) -> None:
+    httpx2_mock.route(url="http://127.0.0.1:9/v1/models").respond(
+        json={"data": [{"id": "a"}, {"id": "b"}]}
     )
     be = _make_ws_backend(
         target="http://127.0.0.1:9",
@@ -538,12 +538,9 @@ async def test_available_models_parses_response(httpx_mock: object) -> None:
 
 @pytest.mark.asyncio
 async def test_resolve_raises_when_no_model_and_empty_catalog(
-    httpx_mock: object,
+    httpx2_mock: respx.Router,
 ) -> None:
-    httpx_mock.add_response(
-        url="http://127.0.0.1:9/v1/models",
-        json={"data": []},
-    )
+    httpx2_mock.route(url="http://127.0.0.1:9/v1/models").respond(json={"data": []})
     be = _make_ws_backend(
         target="http://127.0.0.1:9",
         model="",

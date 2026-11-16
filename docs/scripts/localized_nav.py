@@ -1,11 +1,11 @@
 """Build a navigation tree for the language of each rendered documentation page.
 
 MkDocs shares one navigation tree across the site, so this hook makes a fresh tree
-for each page using its source route. Pages under ``zh/`` use available Chinese
-translations and show untranslated pages as links labeled ``(English)``. Following
-one of those links renders an English page, which uses the standard English
-navigation until the reader returns to a Chinese page. Section titles are translated
-only when they match the labels in :data:`ZH_SECTION_TITLES`.
+for each page using its source route. Pages under registered locale routes use
+available translations and show untranslated pages as links labeled ``(English)``.
+Following one of those links renders an English page, which uses the standard
+English navigation until the reader returns to a translated page. Section titles
+are translated only when they match the labels in :data:`SECTION_TITLES`.
 """
 
 from __future__ import annotations
@@ -20,15 +20,20 @@ from typing import Any, cast
 from mkdocs.structure.nav import Link, Navigation, Section
 from mkdocs.structure.pages import Page
 
-translation_routes = runpy.run_path(
+translation_module = runpy.run_path(
     str(Path(__file__).resolve().parent / "check_translations.py")
-)["translation_routes"]
-
-ZH_SECTION_TITLES = json.loads(
-    (Path(__file__).resolve().parents[1] / "zh" / "title_map.json").read_text(
-        encoding="utf-8"
-    )
 )
+translation_routes = translation_module["translation_routes"]
+TRANSLATION_ROOTS = translation_module["TRANSLATION_ROOTS"]
+
+SECTION_TITLES = {
+    language: json.loads(
+        (Path(__file__).resolve().parents[1] / language / "title_map.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    for language in TRANSLATION_ROOTS
+}
 
 
 def _route(page: Page) -> str:
@@ -76,8 +81,9 @@ def _page_title(page: Page) -> str:
     return PurePosixPath(page.file.src_uri).stem.replace("-", " ").title()
 
 
-def _localized_title(title: str) -> str:
-    return ZH_SECTION_TITLES.get(" ".join(title.casefold().split()), title)
+def _localized_title(title: str, language: str = "zh") -> str:
+    titles = SECTION_TITLES.get(language, {})
+    return titles.get(" ".join(title.casefold().split()), title)
 
 
 def _copy_page(page: Page) -> Page:
@@ -97,15 +103,15 @@ def _copy_page(page: Page) -> Page:
 def _clone_page(
     page: Page,
     *,
-    chinese: bool,
+    language: str,
     routes: dict[str, dict[str, str | bool]],
     pages_by_route: dict[str, Page],
 ) -> Any | None:
     """Choose a translated page, English fallback link, or English source page."""
     route = _route(page)
-    if route.startswith("zh/"):
+    if route.split("/", 1)[0] in TRANSLATION_ROOTS:
         return None
-    if not chinese:
+    if language == "en":
         return _copy_page(page)
 
     details = routes.get(route)
@@ -122,7 +128,7 @@ def _clone_page(
 def _clone_section(
     item: Section,
     *,
-    chinese: bool,
+    language: str,
     routes: dict[str, dict[str, str | bool]],
     pages_by_route: dict[str, Page],
 ) -> Section | None:
@@ -133,7 +139,7 @@ def _clone_section(
         if (
             child := _clone_item(
                 source_child,
-                chinese=chinese,
+                language=language,
                 routes=routes,
                 pages_by_route=pages_by_route,
             )
@@ -143,7 +149,7 @@ def _clone_section(
     if not children:
         return None
 
-    title = _localized_title(item.title) if chinese else item.title
+    title = _localized_title(item.title, language)
     section = Section(title, children)
     for child in children:
         child.parent = section
@@ -156,21 +162,21 @@ def _clone_section(
 def _clone_item(
     item: Any,
     *,
-    chinese: bool,
+    language: str,
     routes: dict[str, dict[str, str | bool]],
     pages_by_route: dict[str, Page],
 ) -> Any | None:
     if isinstance(item, Page):
         return _clone_page(
             item,
-            chinese=chinese,
+            language=language,
             routes=routes,
             pages_by_route=pages_by_route,
         )
     if isinstance(item, Section):
         return _clone_section(
             item,
-            chinese=chinese,
+            language=language,
             routes=routes,
             pages_by_route=pages_by_route,
         )
@@ -179,9 +185,13 @@ def _clone_item(
     return item
 
 
-def _navigation_for_page(nav: Navigation, chinese: bool) -> Navigation:
-    """Build the page's navigation, replacing mapped English pages in Chinese mode."""
-    routes = translation_routes()
+def _navigation_for_page(nav: Navigation, language: str) -> Navigation:
+    """Build the page's navigation using translations for its language."""
+    routes = (
+        translation_routes(translations_root=TRANSLATION_ROOTS[language])
+        if language != "en"
+        else {}
+    )
     source_pages_by_route = {_route(candidate): candidate for candidate in nav.pages}
     items = [
         item
@@ -189,7 +199,7 @@ def _navigation_for_page(nav: Navigation, chinese: bool) -> Navigation:
         if (
             item := _clone_item(
                 source_item,
-                chinese=chinese,
+                language=language,
                 routes=routes,
                 pages_by_route=source_pages_by_route,
             )
@@ -199,14 +209,10 @@ def _navigation_for_page(nav: Navigation, chinese: bool) -> Navigation:
     pages = [candidate for item in items for candidate in _pages(item)]
     localized_nav = Navigation(items, pages)
 
-    if chinese:
-        localized_nav.homepage = next(
-            (candidate for candidate in pages if _route(candidate) == "zh/"), None
-        )
-    else:
-        localized_nav.homepage = next(
-            (candidate for candidate in pages if _route(candidate) == ""), None
-        )
+    homepage_route = "" if language == "en" else f"{language}/"
+    localized_nav.homepage = next(
+        (candidate for candidate in pages if _route(candidate) == homepage_route), None
+    )
 
     return localized_nav
 
@@ -241,13 +247,15 @@ def _set_adjacent_pages(page: Page, nav: Navigation) -> None:
 def on_page_context(context: dict, page: Page, config, nav: Navigation):
     """Use a navigation tree selected from the rendered page's source route.
 
-    Only routes under ``zh/`` select Chinese navigation. A reader following an
-    English fallback link therefore sees the English navigation on that page.
+    Routes under a registered locale select that language's navigation. A reader
+    following an English fallback link sees the English navigation on that page.
     """
     _ = config
     page_route = _route(page)
-    chinese = page_route.startswith("zh/")
-    localized_nav = _navigation_for_page(nav, chinese)
+    language = page_route.split("/", 1)[0]
+    if language not in TRANSLATION_ROOTS:
+        language = "en"
+    localized_nav = _navigation_for_page(nav, language)
     context["nav"] = localized_nav
     localized_page = next(
         (

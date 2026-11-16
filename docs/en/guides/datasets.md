@@ -23,6 +23,8 @@ The following arguments configure datasets and their processing:
   - `db_file` — loads rows from a database using `load_kwargs.sql`. Required field: `uri`, using a SQLAlchemy-style URI. GuideLLM currently supports only SQLite URIs, such as `sqlite:///prompts.db`.
   - `trace_synthetic`, `mooncake`, `weka`, `otel` — replay traces with `--profile kind=replay`. Required field: nested `source` pointing at another dataset kind, for example `source.kind=json_file,source.path=trace.jsonl` or `source.kind=huggingface,source.source=org/dataset`. Optional: `timestamp_column`, `prompt_tokens_column`, `output_tokens_column`, `time_scale`, `copies`, and other format-specific options. See [Trace File Formats](./trace_replay.md).
 
+For the `*_file` dataset kinds that take a local `path`, the path identifies one exact file. Glob characters in file or directory names are treated literally.
+
 In addition, you can specify additional arguments to the dataset loading with the data argument `load_kwargs`:
 
 - load_kwargs: Additional arguments to the dataset loading. For example, dataset splits can be specified with `--data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}'`. Trace kinds accept `load_kwargs` the same way and forward them to the source loader.
@@ -41,7 +43,7 @@ You can specify the tokenizer with `--tokenizer` and a configuration string. The
 
 - `--tokenizer '{"kind":"huggingface_auto","model":"path/to/processor","load_kwargs":{"use_fast":false}}'`
 
-If a HuggingFace model requires custom code to load, pass `trust_remote_code` in `load_kwargs`. See [Troubleshooting: trust_remote_code](troubleshooting.md#trust_remote_code-required-by-tokenizer).
+If a HuggingFace model requires custom code to load, pass `trust_remote_code` in `load_kwargs`. See [Troubleshooting: trust_remote_code](troubleshooting.md#tokenizer-trust_remote_code).
 
 If your dataset uses non-standard column names, you can use `--data-column-mapper` to map your columns to GuideLLM's expected column names. This is particularly useful when:
 
@@ -74,7 +76,7 @@ Use `--seed` with a configuration string to control how sequences (in scheduling
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data '{"kind":"huggingface","source":"my/dataset","load_kwargs":{"split":"test"}}' \
   --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}' \
@@ -97,7 +99,7 @@ GuideLLM supports both synthetic *text* — described below — and synthetic *v
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
 ```
@@ -107,7 +109,7 @@ Or using a JSON config string:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data '{"kind":"synthetic_text","prompt_tokens":256,"output_tokens":128}'
 ```
@@ -116,14 +118,27 @@ guidellm run \
 
 - `prompt_tokens`: Average number of tokens in prompts. If nothing else is specified, all requests will have this number of tokens.
 - `prompt_tokens_stdev`: Standard deviation for prompt tokens. If not supplied and min/max are not specified, no deviation is applied. If not supplied and min/max are specified, a uniform distribution is used.
-- `prompt_tokens_min`: Minimum number of tokens in prompts. If unset and `prompt_tokens_stdev` is set, the minimum is 1.
-- `prompt_tokens_max`: Maximum number of tokens in prompts. If unset and `prompt_tokens_stdev` is set, the maximum is 5 times the standard deviation.
+- `prompt_tokens_min`: Minimum number of tokens in prompts. If unset, defaults to `max(1, prompt_tokens - 5 * prompt_tokens_stdev)` when a standard deviation is set, or `prompt_tokens` otherwise.
+- `prompt_tokens_max`: Maximum number of tokens in prompts. If unset, defaults to `prompt_tokens + 5 * prompt_tokens_stdev` when a standard deviation is set, or `prompt_tokens` otherwise.
 - `output_tokens`: Average number of tokens in outputs. Optional; omit when benchmarking endpoints that do not produce output tokens (for example embeddings).
 - `output_tokens_stdev`: Standard deviation for output tokens. If not supplied and min/max are not specified, no deviation is applied. If not supplied and min/max are specified, a uniform distribution is used.
-- `output_tokens_min`: Minimum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the minimum is 1.
-- `output_tokens_max`: Maximum number of tokens in outputs. If unset and `output_tokens_stdev` is set, the maximum is 5 times the standard deviation.
-- `samples`: Number of samples to generate (default: 1000). More samples will increase the time taken to generate the dataset before benchmarking, but will also decrease the likelihood of caching requests.
-- `source`: Source text for generation (default: `data:prideandprejudice.txt.gz`). This can be any text file, URL containing a text file, or a compressed text file. The text is used to sample from at a word and punctuation granularity and then combined into a single string of the desired lengths.
+- `output_tokens_min`: Minimum number of tokens in outputs. If unset, defaults to `max(1, output_tokens - 5 * output_tokens_stdev)` when a standard deviation is set, or `output_tokens` otherwise.
+- `output_tokens_max`: Maximum number of tokens in outputs. If unset, defaults to `output_tokens + 5 * output_tokens_stdev` when a standard deviation is set, or `output_tokens` otherwise.
+
+With a standard deviation, token counts follow a normal distribution clipped to the configured bounds. Without one, differing bounds produce a uniform integer distribution. For example, `prompt_tokens=256,prompt_tokens_stdev=16` has default bounds of 176 and 336 tokens.
+
+Synthetic text is generated on demand. Use runtime constraints such as `--constraint kind=max_requests,count=1000` to stop the benchmark. To pre-generate a fixed pool of rows and reuse it across dataset iterations, set `samples` on the data loader:
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=concurrent,streams=10 \
+  --constraint kind=max_requests,count=1000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --data-loader kind=pytorch,samples=100
+```
+
+The default `samples=-1` streams rows instead of pre-generating a fixed pool. To benchmark prompts from an existing text file, use `--data kind=text_file,path=prompts.txt`; see [File-Based Datasets](#file-based-datasets).
 
 #### Notes
 
@@ -138,7 +153,7 @@ GuideLLM supports datasets from the Hugging Face Hub or local directories that f
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data kind=huggingface,source=garage-bAInd/Open-Platypus
 ```
@@ -148,7 +163,7 @@ Or using a local dataset directory:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data kind=huggingface,source=path/to/dataset
 ```
@@ -257,7 +272,7 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=throughput \
+  --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=1000 \
   --data kind=json_file,path=path/to/dataset.json \
   --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"text_column":"prompt"}}'
@@ -279,26 +294,15 @@ In-memory datasets allow you to directly pass data as Python objects, making the
 
 - **Dictionary of columns and values**: Where each key is a column name and the values are lists of data points. The keys should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional columns can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
   ```python
-  {
-      "column1": ["value1", "value2"],
-      "column2": ["value3", "value4"]
-  }
+  {"column1": ["value1", "value2"], "column2": ["value3", "value4"]}
   ```
 - **List of dictionaries**: Where each dictionary represents a single data point with key-value pairs. The dictionaries should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
   ```python
-  [
-      {"column1": "value1", "column2": "value3"},
-      {"column1": "value2", "column2": "value4"}
-  ]
+  [{"column1": "value1", "column2": "value3"}, {"column1": "value2", "column2": "value4"}]
   ```
 - **List of items**: Where each item is a single data point. The items should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
   ```python
-  [
-      "value1",
-      "value2",
-      "value3"
-  ]
-
+  ["value1", "value2", "value3"]
   ```
 
 #### Example Usage
@@ -386,7 +390,7 @@ The `--strategy` option uses the same registry form as other GuideLLM options (`
 | ------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------- |
 | `ignore`      | Drop prompts that are shorter than the target length                           | —                                                         |
 | `concatenate` | Concatenate multiple short prompts together until the target length is reached | `delimiter` (string between joined prompts; default `""`) |
-| `pad`         | Pad short prompts with a character/string until the target length is reached   | `pad` (padding string; default `""`)                      |
+| `pad`         | Pad short prompts with a character/string until the target length is reached   | `pad` (required nonempty padding string)                  |
 | `error`       | Raise an error if a prompt is shorter than the target length                   | —                                                         |
 
 **Example strategies:**

@@ -4,6 +4,10 @@ inputs:
   python-version:
     type: string
     required: true
+  sync-args:
+    type: string
+    required: false
+    default: ""
 runs:
   using: "composite"
   steps:
@@ -15,3 +19,10 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
         enable-cache: "true"
+    - name: Setup Python environment
+      run: |
+        uv venv --python "${{ inputs.python-version }}" .venv
+        uv sync --frozen ${{ inputs.sync-args }}
+        # Prevents future run commands from resyncing the enviroment
+        echo "UV_NO_SYNC=1" >> "$GITHUB_ENV"
+      shell: bash

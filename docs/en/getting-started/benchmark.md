@@ -29,8 +29,6 @@ guidellm run --<option> kind=<TYPE>,key=value,...
 
 Use comma-separated key=value pairs for flat settings (for example, `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`). Use serialized JSON or YAML when any value is nested (for example, `--data '{"kind":"huggingface","source":"org/dataset","loader_kwargs":{"split":"test"}}'`). Do not mix inline key=value and JSON/YAML in the same option. Some options can be repeated to supply multiple values (for example, multiple `--data` or `--constraint` entries).
 
-You can load a saved scenario (YAML or JSON file) with `--config` (alias `--scenario`, `-c`). CLI options override scenario values.
-
 ### Basic Example
 
 To run a benchmark against your local vLLM server with default settings:
@@ -231,6 +229,7 @@ guidellm run --profile kind=replay,time_scale=1.0
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
 | `time_scale`      | Time scale for intervals between trace events                                                                          | `--profile kind=replay,time_scale=2.0`          |
 | `schedule_turn`   | `idle_gap` (default) keeps the idle gap after each recorded request duration. `timestamp` targets each trace timestamp | `--profile kind=replay,schedule_turn=timestamp` |
+| `prefetch`        | Requests to load before the run clock starts. Defaults to 0 (no pre-fetch)                                             | `--profile kind=replay,prefetch=all`            |
 
 Wait caps and a data-side `time_scale` are set on `--data`. The profile `time_scale` is applied by the scheduler after those dataset timestamps are built, allowing multiple runs with different time scales.
 
@@ -286,6 +285,8 @@ Strategically choose between increasing parallelism and affecting request timing
 
 GuideLLM schedules trace rows in timestamp order. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. `--constraint kind=max_requests,count=1000` remains a runtime completion constraint; it does not truncate the trace dataset.
 
+Set `prefetch` on the replay profile when requests are due before their graphs are built. `0` (default) does not pre-load requests, and instead loads them as the run consumes them. A positive integer input loads that many request nodes. `start` matches startup concurrency when the strategy defines one. `all` loads every request from a finite dataset. WEKA traces should typically use `prefetch=all`.
+
 Every format by default looks for the columns "timestamp", "input_length", and "output_length". If your trace uses different column names, include `timestamp_column`, `prompt_tokens_column`, and `output_tokens_column` in the data config:
 
 ```bash
@@ -330,6 +331,85 @@ Rich progress continues to work alongside logging. `--disable-console` and `--di
 ## Authentication
 
 When benchmarking against servers that require authentication (such as OpenAI's API), provide an API key in the backend configuration. See the [API Key Configuration](../guides/backends.md#api-key-configuration) section in the Backends documentation for details.
+
+## Using configuration ("scenario") files
+
+You can load a saved scenario (YAML or JSON file) with `--config` (alias `--scenario`, `-c`) to preserve a repeatable GuideLLM test configuration.
+
+Configuration files follow the internal format of the GuideLLM `BenchmarkScenario` object, with the following format:
+
+```yaml
+---
+metadata:
+  labels:
+    key1: value1
+    key2: value2
+spec:
+  backend:
+    kind: openai_http
+    target: http://localhost:8000
+  profile:
+    kind: concurrent
+  constraints:
+    kind: max_duration
+  tokenizer:
+    kind: huggingface_auto
+  data:
+    kind: synthetic_text
+  data_column_mapper:
+    kind: generative_column_mapper
+  data_preprocessors:
+  - kind: encode_media
+  data_finalizer:
+    kind: generative
+  data_loader:
+    kind: pytorch
+  seed:
+    kind: static
+    value: 42
+  output:
+  - kind: json
+    path: output.json
+  - kind: csv
+    path: output.csv
+  metrics:
+    kind: generative
+benchmarks:
+- profile.streams: 1
+```
+
+Options specified on the command line override scenario values.
+
+### Merging configuration files
+
+Each successive configuration replaces options from the previous. Lists (for example, multiple `--output` options) are generally replaced rather than merged. However you can override parameters from a typed option where the `kind=` value matches. For example, a base configuration might specify the `openai_http` backend with `request_format=/v1/chat/completions` and other options, but you can layer another configuration file which adds or overrides individual parameters such as the target URL and an API key:
+
+```yaml
+---
+spec:
+  backend:
+    kind: openai_http
+    target: http://localhost:8000
+    api_key: "your-api-key"
+```
+
+You can combine multiple configuration files and CLI options. For example, a base workload configuration, with a second configuration file to specify the target, and a third to specify constraints.
+
+### Built-in configuration files
+
+#### Red Hat AI Inference Server configurations
+
+This is a set of configurations that specify common testing scenarios for enterprise inference. You can use these as starting points, overriding parameters with other configuration files or with CLI options.
+
+These names are builtin to GuideLLM. Specify the full name as shown below, like `rhaiis/concurrent-1k-1k-equal`.
+
+- `rhaiis/concurrent-1k-1k-equal`: Prefill/Decode balanced scenario. Concurrent workload with 1,000 prompt and output tokens.
+- `rhaiis/concurrent-1k-1k-multiturn`: Multi-turn conversation scenario with prefix caching. 1,000 input and output tokens, plus 512 prefix tokens, with a 5 turn conversation.
+- `rhaiis/concurrent-2ki-128-equal`: Prefill heavy scenario. 2k input tokens and 128 output tokens.
+- `rhaiis/concurrent-8k-1k-equal`: Large context scenario. 8,000 input tokens, 1,000 output tokens.
+- `rhaiis/concurrent-8k-800-norm`: Large context scenario with sequence length variance. Mean 8,000 input tokens and 800 output tokens, but with large statistical variance.
+- `rhaiis/concurrent-100k-1k-equal`: Very large context scenario. 100,000 prompt tokens with 1,000 output tokens.
+- `rhaiis/concurrent-512-2ki-norm`: Generation heavy scenario with sequence length variance. Mean 512 prompt tokens with 1k output tokens, but with very large statistical variance.
 
 ## Troubleshooting
 

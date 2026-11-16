@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Iterable
-from typing import Generic, Literal
+from typing import Generic, Literal, Self
 
 from pydantic import Field, computed_field, model_validator
-from typing_extensions import Self, TypeAliasType
+from typing_extensions import TypeAliasType
 
 from guidellm.schemas import RequestInfo, RequestSettings, StandardBaseModel
 

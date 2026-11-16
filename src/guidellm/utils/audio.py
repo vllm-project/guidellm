@@ -4,7 +4,7 @@ import base64
 from pathlib import Path
 from typing import Any, Literal
 
-import httpx
+import httpx2
 
 # CRITICAL: Use 'import ... as libs' pattern to preserve lazy loading
 # This defers errors until attributes are actually accessed
@@ -201,6 +201,11 @@ def _decode_audio(  # noqa: C901, PLR0912, PLR0915
             if sample_rate is None:
                 raise ValueError("Sample rate must be set for decoded audio")
 
+            if audio.ndim == 1:
+                audio = audio.unsqueeze(0)
+            # Match torchcodec's decoded samples and encoder dtype requirement.
+            audio = audio.float()
+
             full_duration = audio.shape[1] / sample_rate
             # If max_duration is set, trim the audio to that duration
             if max_duration is not None:
@@ -241,7 +246,7 @@ def _decode_audio(  # noqa: C901, PLR0912, PLR0915
     # If str or Path, assume file path or URL to encoded audio
     elif isinstance(audio, str | Path):
         if isinstance(audio, str) and is_url(audio):
-            response = httpx.get(audio)
+            response = httpx2.get(audio, follow_redirects=True)
             response.raise_for_status()
             data = response.content
         else:

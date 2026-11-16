@@ -17,7 +17,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 from urllib.parse import ParseResult, urlparse
 
-import httpx
+import httpx2
 from websockets.asyncio.client import connect as ws_connect
 
 if TYPE_CHECKING:
@@ -163,7 +163,7 @@ class OpenAIWebSocketBackend(Backend):
             _WS_API_ROUTES,
         )
         self._in_process = False
-        self._async_client: httpx.AsyncClient | None = None
+        self._async_client: httpx2.AsyncClient | None = None
 
     @property
     def websocket_path(self) -> str:
@@ -230,20 +230,21 @@ class OpenAIWebSocketBackend(Backend):
 
     async def process_startup(self) -> None:
         """
-        Create the shared :class:`httpx.AsyncClient` used for health and ``/v1/models``.
+        Create the shared :class:`httpx2.AsyncClient` used for health and
+        ``/v1/models``.
 
         :raises RuntimeError: If the backend was already started in this process.
         """
         if self._in_process:
             raise RuntimeError("Backend already started up for process.")
-        self._async_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(
+        self._async_client = httpx2.AsyncClient(
+            timeout=httpx2.Timeout(
                 FALLBACK_TIMEOUT,
                 read=self._args.timeout,
                 connect=self._args.timeout_connect,
             ),
             verify=self._args.verify,
-            limits=httpx.Limits(
+            limits=httpx2.Limits(
                 max_connections=None,
                 max_keepalive_connections=None,
                 keepalive_expiry=5.0,

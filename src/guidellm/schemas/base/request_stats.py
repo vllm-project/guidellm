@@ -234,6 +234,18 @@ class GenerativeRequestStats(StandardBaseDict):
 
     @computed_field  # type: ignore[misc]
     @property
+    def prefix_cache_hit_rate(self) -> float | None:
+        """
+        :return: Share of the prompt tokens served from the prefix cache, or None
+            if the server reported no cached count or the prompt is empty
+        """
+        if self.cached_tokens is None or not self.prompt_tokens:
+            return None
+
+        return self.cached_tokens / self.prompt_tokens
+
+    @computed_field  # type: ignore[misc]
+    @property
     def output_tokens(self) -> int | None:
         """
         :return: Number of tokens in the generated output, or None if unavailable

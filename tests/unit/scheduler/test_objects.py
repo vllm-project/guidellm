@@ -151,7 +151,7 @@ class TestBackendInterface:
 
     @pytest.mark.smoke
     @pytest.mark.asyncio
-    async def test_implementation_async_methods(self):  # noqa: C901
+    async def test_implementation_async_methods(self):
         """Test that async methods work correctly in concrete implementation."""
 
         class AsyncBackend(BackendInterface[dict, dict]):

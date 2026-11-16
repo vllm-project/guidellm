@@ -6,22 +6,70 @@ import json
 import logging
 import math
 import multiprocessing
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
 from pydantic import ValidationError
 from sanic import Sanic
+from transformers import AutoTokenizer
 
 from guidellm.mock_server.server import MockServer
 from guidellm.schemas.mock_server.config import MockServerConfig
+from tests.fixtures.tokenizers import MINIMAL_TOKENIZER_DIR
 
 
 # Start server in a separate process
-def _start_server_process(config: MockServerConfig):
+def _start_server_process(
+    config: MockServerConfig,
+    chat_template: str | None = None,
+):
     server = MockServer(config)
+    if chat_template is not None:
+        server.chat_handler.tokenizer.chat_template = chat_template
     # Disable Sanic access logs / MOTD so ANSI formatters do not clobber pytest's TTY.
     server.run(access_log=False)
+
+
+@asynccontextmanager
+async def _run_mock_server(
+    config: MockServerConfig,
+    chat_template: str | None = None,
+) -> AsyncGenerator[str, None]:
+    base_url = f"http://{config.host}:{config.port}"
+    server_process = multiprocessing.Process(
+        target=_start_server_process,
+        args=(config, chat_template),
+    )
+    server_process.start()
+
+    async def wait_for_startup() -> None:
+        poll_frequency = 1.0
+        async with httpx2.AsyncClient() as client:
+            while True:
+                try:
+                    response = await client.get(f"{base_url}/health", timeout=1.0)
+                    if response.status_code == 200:
+                        return
+                except (httpx2.RequestError, httpx2.TimeoutException):
+                    pass
+                await asyncio.sleep(poll_frequency)
+                poll_frequency = min(poll_frequency * 1.5, 2.0)
+
+    try:
+        try:
+            await asyncio.wait_for(wait_for_startup(), timeout=30.0)
+        except TimeoutError:
+            pytest.fail(f"MockServer on port {config.port} failed to start")
+        yield base_url
+    finally:
+        server_process.terminate()
+        server_process.join(timeout=5)
+        if server_process.is_alive():
+            server_process.kill()
+            server_process.join(timeout=5)
 
 
 @pytest_asyncio.fixture(scope="class")
@@ -36,44 +84,8 @@ async def mock_server_instance():
         itl_ms=1.0,
         request_latency=0.1,
     )
-    base_url = f"http://{config.host}:{config.port}"
-    server_process = multiprocessing.Process(
-        target=_start_server_process, args=(config,)
-    )
-    server_process.start()
-
-    # Wait for server to start up and be ready
-    async def wait_for_startup():
-        poll_frequency = 1.0
-        async with httpx.AsyncClient() as client:
-            while True:
-                try:
-                    response = await client.get(f"{base_url}/health", timeout=1.0)
-                    if response.status_code == 200:
-                        break
-                except (httpx.RequestError, httpx.TimeoutException):
-                    pass
-                await asyncio.sleep(poll_frequency)
-                poll_frequency = min(poll_frequency * 1.5, 2.0)
-
-    timeout = 30.0
-    try:
-        await asyncio.wait_for(wait_for_startup(), timeout)
-    except TimeoutError:
-        server_process.terminate()
-        server_process.join(timeout=5)
-        if server_process.is_alive():
-            server_process.kill()
-            server_process.join(timeout=5)
-        pytest.fail(f"Server failed to start within {timeout} seconds")
-
-    yield base_url, config
-
-    server_process.terminate()
-    server_process.join(timeout=5)
-    if server_process.is_alive():
-        server_process.kill()
-        server_process.join(timeout=5)
+    async with _run_mock_server(config) as base_url:
+        yield base_url, config
 
 
 class TestMockServerConfig:
@@ -166,15 +178,15 @@ class TestMockServer:
         """
         config = MockServerConfig(log_request_received=enabled)
         server = MockServer(config)
-        # httpx does not send an ASGI lifespan. Mark the app as ASGI and run
+        # httpx2 does not send an ASGI lifespan. Mark the app as ASGI and run
         # startup so Sanic finalizes routing before the in-process request.
         # Touchup rewrites Sanic methods in place, so leave it off here.
         server.app.asgi = True
         server.app.config.TOUCHUP = False
         try:
             await server.app._startup()
-            transport = httpx.ASGITransport(app=server.app)
-            async with httpx.AsyncClient(
+            transport = httpx2.ASGITransport(app=server.app)
+            async with httpx2.AsyncClient(
                 transport=transport, base_url="http://test"
             ) as client:
                 with caplog.at_level(logging.INFO, logger="sanic.root"):
@@ -202,7 +214,7 @@ class TestMockServerEndpoints:
         """Test the health check endpoint."""
         server_url, _ = mock_server_instance
 
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.get(f"{server_url}/health", timeout=5.0)
             assert response.status_code == 200
 
@@ -218,7 +230,7 @@ class TestMockServerEndpoints:
         """Test the models listing endpoint."""
         server_url, _ = mock_server_instance
 
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.get(f"{server_url}/v1/models", timeout=5.0)
             assert response.status_code == 200
 
@@ -249,7 +261,7 @@ class TestMockServerEndpoints:
         """
         server_url, config = mock_server_instance
 
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.post(
                 f"{server_url}/v1/audio/translations",
                 files={"file": ("audio.wav", b"mock audio", "audio/wav")},
@@ -307,7 +319,7 @@ class TestMockServerEndpoints:
         """Test the chat completions endpoint."""
         server_url, _ = mock_server_instance
 
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.post(
                 f"{server_url}/v1/chat/completions", json=payload, timeout=10.0
             )
@@ -348,7 +360,7 @@ class TestMockServerEndpoints:
         }
 
         async with (
-            httpx.AsyncClient() as client,
+            httpx2.AsyncClient() as client,
             client.stream(
                 "POST",
                 f"{server_url}/v1/chat/completions",
@@ -401,7 +413,7 @@ class TestMockServerEndpoints:
         }
 
         async with (
-            httpx.AsyncClient() as client,
+            httpx2.AsyncClient() as client,
             client.stream(
                 "POST",
                 f"{server_url}/v1/chat/completions",
@@ -460,7 +472,7 @@ class TestMockServerEndpoints:
         """Test the legacy completions endpoint."""
         server_url, _ = mock_server_instance
 
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.post(
                 f"{server_url}/v1/completions", json=payload, timeout=10.0
             )
@@ -494,7 +506,7 @@ class TestMockServerEndpoints:
         }
 
         async with (
-            httpx.AsyncClient() as client,
+            httpx2.AsyncClient() as client,
             client.stream(
                 "POST",
                 f"{server_url}/v1/completions",
@@ -543,7 +555,7 @@ class TestMockServerEndpoints:
     ):
         """Test the tokenize endpoint."""
         server_url, _ = mock_server_instance
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.post(
                 f"{server_url}/tokenize", json=payload, timeout=5.0
             )
@@ -578,7 +590,7 @@ class TestMockServerEndpoints:
     ):
         """Test the detokenize endpoint."""
         server_url, _ = mock_server_instance
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.post(
                 f"{server_url}/detokenize", json=payload, timeout=5.0
             )
@@ -596,7 +608,7 @@ class TestMockServerEndpoints:
     async def test_options_endpoint(self, mock_server_instance):
         """Test the OPTIONS endpoint for CORS support."""
         server_url, _ = mock_server_instance
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.options(
                 f"{server_url}/v1/chat/completions", timeout=5.0
             )
@@ -608,7 +620,7 @@ class TestMockServerEndpoints:
     async def test_cors_headers(self, mock_server_instance):
         """Test CORS headers are properly set."""
         server_url, _ = mock_server_instance
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.get(f"{server_url}/health", timeout=5.0)
             assert response.status_code == 200
 
@@ -662,7 +674,7 @@ class TestMockServerEndpoints:
         """
         server_url, _ = mock_server_instance
 
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             resp = await client.post(
                 f"{server_url}/v1/responses", json=payload, timeout=10.0
             )
@@ -710,7 +722,7 @@ class TestMockServerEndpoints:
         }
 
         async with (
-            httpx.AsyncClient() as client,
+            httpx2.AsyncClient() as client,
             client.stream(
                 "POST",
                 f"{server_url}/v1/responses",
@@ -799,7 +811,7 @@ class TestMockServerEndpoints:
             "max_tokens": 5,
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.post(
                 f"{server_url}/v1/chat/completions", json=payload, timeout=10.0
             )
@@ -836,7 +848,7 @@ class TestMockServerEndpoints:
             "messages": [{"role": "user", "content": "Hello!"}],
             "max_tokens": 5,
         }
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.post(
                 f"{server_url}/v1/chat/completions", json=payload, timeout=10.0
             )
@@ -874,7 +886,7 @@ class TestMockServerEndpoints:
         }
 
         async with (
-            httpx.AsyncClient() as client,
+            httpx2.AsyncClient() as client,
             client.stream(
                 "POST",
                 f"{server_url}/v1/chat/completions",
@@ -928,7 +940,7 @@ class TestMockServerEndpoints:
             "messages": [{"role": "user", "content": [content_part]}],
             "max_tokens": 5,
         }
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.post(
                 f"{server_url}/v1/chat/completions", json=payload, timeout=10.0
             )
@@ -945,7 +957,7 @@ class TestMockServerEndpoints:
         server_url, config = mock_server_instance
 
         wav_seconds = 2.0
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.post(
                 f"{server_url}/v1/audio/transcriptions",
                 files={"file": ("speech.wav", b"\x00" * 64000, "audio/wav")},
@@ -979,7 +991,7 @@ class TestMockServerEndpoints:
         server_url, config = mock_server_instance
 
         mp3_seconds = 1.0
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.post(
                 f"{server_url}/v1/audio/translations",
                 files={"file": ("speech.mp3", b"\x00" * 8000, "audio/mpeg")},
@@ -1019,7 +1031,7 @@ class TestMockServerEndpoints:
     ):
         """Test handling of invalid requests."""
         server_url, _ = mock_server_instance
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             if method == "POST":
                 response = await client.post(
                     f"{server_url}{endpoint}", json=payload, timeout=5.0
@@ -1035,7 +1047,7 @@ class TestMockServerEndpoints:
     async def test_nonexistent_endpoint(self, mock_server_instance):
         """Test handling of requests to nonexistent endpoints."""
         server_url, _ = mock_server_instance
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             response = await client.get(f"{server_url}/nonexistent", timeout=5.0)
             assert response.status_code == 404
 
@@ -1056,37 +1068,8 @@ async def fail_after_mock_server():
         output_tokens=4,
         fail_after_requests=2,
     )
-    base_url = f"http://{config.host}:{config.port}"
-    server_process = multiprocessing.Process(
-        target=_start_server_process, args=(config,)
-    )
-    server_process.start()
-
-    async def wait_for_startup():
-        async with httpx.AsyncClient() as client:
-            while True:
-                try:
-                    response = await client.get(f"{base_url}/health", timeout=1.0)
-                    if response.status_code == 200:
-                        return
-                except (httpx.RequestError, httpx.TimeoutException):
-                    pass
-                await asyncio.sleep(0.2)
-
-    try:
-        await asyncio.wait_for(wait_for_startup(), timeout=30.0)
-    except TimeoutError:
-        server_process.terminate()
-        server_process.join(timeout=5)
-        pytest.fail("fail_after MockServer failed to start")
-
-    yield base_url
-
-    server_process.terminate()
-    server_process.join(timeout=5)
-    if server_process.is_alive():
-        server_process.kill()
-        server_process.join(timeout=5)
+    async with _run_mock_server(config) as base_url:
+        yield base_url
 
 
 @pytest_asyncio.fixture
@@ -1105,37 +1088,8 @@ async def concurrent_limit_mock_server():
         output_tokens=4,
         max_concurrent_requests=1,
     )
-    base_url = f"http://{config.host}:{config.port}"
-    server_process = multiprocessing.Process(
-        target=_start_server_process, args=(config,)
-    )
-    server_process.start()
-
-    async def wait_for_startup():
-        async with httpx.AsyncClient() as client:
-            while True:
-                try:
-                    response = await client.get(f"{base_url}/health", timeout=1.0)
-                    if response.status_code == 200:
-                        return
-                except (httpx.RequestError, httpx.TimeoutException):
-                    pass
-                await asyncio.sleep(0.2)
-
-    try:
-        await asyncio.wait_for(wait_for_startup(), timeout=30.0)
-    except TimeoutError:
-        server_process.terminate()
-        server_process.join(timeout=5)
-        pytest.fail("concurrency MockServer failed to start")
-
-    yield base_url
-
-    server_process.terminate()
-    server_process.join(timeout=5)
-    if server_process.is_alive():
-        server_process.kill()
-        server_process.join(timeout=5)
+    async with _run_mock_server(config) as base_url:
+        yield base_url
 
 
 class TestMockServerFailAfterAndConcurrency:
@@ -1157,7 +1111,7 @@ class TestMockServerFailAfterAndConcurrency:
             "max_tokens": 4,
             "stream": False,
         }
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             first = await client.post(
                 f"{fail_after_mock_server}/v1/chat/completions",
                 json=payload,
@@ -1195,7 +1149,7 @@ class TestMockServerFailAfterAndConcurrency:
             "stream": False,
         }
 
-        async def one_request(client: httpx.AsyncClient) -> float:
+        async def one_request(client: httpx2.AsyncClient) -> float:
             started = asyncio.get_running_loop().time()
             response = await client.post(
                 f"{concurrent_limit_mock_server}/v1/chat/completions",
@@ -1205,7 +1159,7 @@ class TestMockServerFailAfterAndConcurrency:
             assert response.status_code == 200
             return asyncio.get_running_loop().time() - started
 
-        async with httpx.AsyncClient() as client:
+        async with httpx2.AsyncClient() as client:
             durations = await asyncio.gather(
                 one_request(client),
                 one_request(client),
@@ -1214,3 +1168,226 @@ class TestMockServerFailAfterAndConcurrency:
         # Two non-stream requests each sleep ~ttft (0.2s); serialized => slower
         # request should take at least ~0.3s when they contend for one slot.
         assert max(durations) >= 0.3
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_max_concurrent_requests_serializes_streaming(
+        self, concurrent_limit_mock_server
+    ):
+        """With max_concurrent_requests=1, overlapping streams complete serially.
+
+        ## WRITTEN BY AI ##
+        """
+        payload = {
+            "model": "concurrency-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 4,
+            "stream": True,
+        }
+
+        async def one_stream(client: httpx2.AsyncClient) -> float:
+            async with client.stream(
+                "POST",
+                f"{concurrent_limit_mock_server}/v1/chat/completions",
+                json=payload,
+                timeout=30.0,
+            ) as response:
+                assert response.status_code == 200
+                async for _ in response.aiter_lines():
+                    pass
+            return asyncio.get_running_loop().time()
+
+        async with httpx2.AsyncClient() as client:
+            finished = await asyncio.gather(
+                one_stream(client),
+                one_stream(client),
+            )
+
+        assert max(finished) - min(finished) >= 0.15
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_max_concurrent_requests_releases_slot_on_disconnect(
+        self, concurrent_limit_mock_server
+    ):
+        """A stream the client abandons still frees its slot for the next request.
+
+        ## WRITTEN BY AI ##
+        """
+        payload = {
+            "model": "concurrency-model",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 4,
+            "stream": True,
+        }
+        url = f"{concurrent_limit_mock_server}/v1/chat/completions"
+
+        async with httpx2.AsyncClient() as client:
+            async with client.stream(
+                "POST", url, json=payload, timeout=30.0
+            ) as response:
+                assert response.status_code == 200
+                # Leave before reading any tokens.
+
+            # A leaked slot would block this request until the timeout.
+            follow_up = await asyncio.wait_for(
+                client.post(url, json={**payload, "stream": False}, timeout=30.0),
+                timeout=5.0,
+            )
+
+        assert follow_up.status_code == 200
+
+
+@pytest_asyncio.fixture(scope="module")
+async def huggingface_mock_server():
+    """MockServer configured with the vendored Hugging Face tokenizer.
+
+    ## WRITTEN BY AI ##
+    """
+    # Concatenate like real templates, so list content raises instead of rendering.
+    chat_template = (
+        "{% for message in messages %}"
+        "{{ message['role'] + ': ' + message['content'] + ' ' }}"
+        "{% endfor %}"
+    )
+    config = MockServerConfig(
+        host="127.0.0.1",
+        port=8015,
+        model="huggingface-model",
+        processor=str(MINIMAL_TOKENIZER_DIR),
+        output_tokens=1,
+        ttft_ms=0,
+        itl_ms=0,
+    )
+    async with _run_mock_server(config, chat_template) as base_url:
+        tokenizer = AutoTokenizer.from_pretrained(MINIMAL_TOKENIZER_DIR)
+        tokenizer.chat_template = chat_template
+        yield base_url, config, tokenizer
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+async def test_initializes_with_huggingface_processor(huggingface_mock_server):
+    """Test the server becomes healthy with a Hugging Face tokenizer.
+
+    ## WRITTEN BY AI ##
+    """
+    server_url, _, _ = huggingface_mock_server
+
+    async with httpx2.AsyncClient() as client:
+        response = await client.get(f"{server_url}/health", timeout=5.0)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "healthy"
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("endpoint", "input_field", "max_tokens_field", "usage_field"),
+    [
+        (
+            "/v1/chat/completions",
+            "messages",
+            "max_tokens",
+            "prompt_tokens",
+        ),
+        ("/v1/completions", "prompt", "max_tokens", "prompt_tokens"),
+        ("/v1/responses", "input", "max_output_tokens", "input_tokens"),
+    ],
+    ids=("chat_completions", "completions", "responses"),
+)
+async def test_handles_requests_with_huggingface_processor(
+    huggingface_mock_server,
+    endpoint,
+    input_field,
+    max_tokens_field,
+    usage_field,
+):
+    """Test Hugging Face tokenizers handle and count endpoint prompts.
+
+    ## WRITTEN BY AI ##
+    """
+    server_url, config, tokenizer = huggingface_mock_server
+    prompt = "Hello world " * 20
+    messages = [{"role": "user", "content": prompt}]
+    is_chat = input_field == "messages"
+    input_value = messages if is_chat else prompt
+    prompt_text = (
+        tokenizer.apply_chat_template(messages, tokenize=False) if is_chat else prompt
+    )
+    payload = {
+        "model": config.model,
+        input_field: input_value,
+        max_tokens_field: 1,
+    }
+
+    async with httpx2.AsyncClient() as client:
+        response = await client.post(
+            f"{server_url}{endpoint}",
+            json=payload,
+            timeout=10.0,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["usage"][usage_field] == len(tokenizer.encode(prompt_text))
+
+
+@pytest.mark.regression
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stream", [False, True], ids=("non_stream", "stream"))
+async def test_handles_list_content_with_huggingface_processor(
+    huggingface_mock_server, stream
+):
+    """Test list-content chat messages are counted by a Hugging Face tokenizer.
+
+    ## WRITTEN BY AI ##
+    """
+    server_url, config, tokenizer = huggingface_mock_server
+    texts = ["Hello world " * 10, "Second text part"]
+    expected_text = tokenizer.apply_chat_template(
+        [{"role": "user", "content": " ".join(texts)}], tokenize=False
+    )
+    expected_tokens = len(tokenizer.encode(expected_text))
+    payload = {
+        "model": config.model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": text} for text in texts],
+            }
+        ],
+        "max_tokens": 1,
+        "stream": stream,
+    }
+    if stream:
+        payload["stream_options"] = {"include_usage": True}
+
+    async with httpx2.AsyncClient() as client:
+        if not stream:
+            response = await client.post(
+                f"{server_url}/v1/chat/completions", json=payload, timeout=10.0
+            )
+            assert response.status_code == 200
+            usage = response.json()["usage"]
+        else:
+            async with client.stream(
+                "POST",
+                f"{server_url}/v1/chat/completions",
+                json=payload,
+                timeout=10.0,
+            ) as response:
+                assert response.status_code == 200
+                usage = None
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:]
+                    if data_str.strip() == "[DONE]":
+                        break
+                    chunk = json.loads(data_str)
+                    if chunk.get("usage"):
+                        usage = chunk["usage"]
+
+    assert usage is not None
+    assert usage["prompt_tokens"] == expected_tokens

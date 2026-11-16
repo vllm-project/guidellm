@@ -131,6 +131,30 @@ class TestSchedulingStrategy:
         strategy = TestStrategy()
         assert isinstance(strategy, SchedulingStrategy)
 
+    @pytest.mark.smoke
+    def test_prefetch_count(self):
+        """
+        prefetch resolves an integer or the known startup concurrency.
+        ``-1`` is not an alias for loading every request.
+
+        ## WRITTEN BY AI ##
+        """
+        assert SynchronousStrategy().prefetch is None
+        assert SynchronousStrategy().prefetch_count() == 0
+        assert SynchronousStrategy(prefetch=3).prefetch_count() == 3
+        assert SynchronousStrategy(prefetch="start").prefetch_count() == 1
+        assert SynchronousStrategy(prefetch="all").prefetch == "all"
+        assert SynchronousStrategy(prefetch="all").prefetch_count() == "all"
+        with pytest.raises(ValidationError):
+            SynchronousStrategy(prefetch=-1)
+        with pytest.raises(ValidationError):
+            SynchronousStrategy(prefetch="-1")
+        assert ThroughputStrategy(prefetch="start").prefetch_count() == 0
+        assert (
+            ThroughputStrategy(max_concurrency=4, prefetch="start").prefetch_count()
+            == 4
+        )
+
 
 class TestSynchronousStrategy:
     @pytest.mark.smoke
@@ -744,6 +768,58 @@ class TestAsyncPoissonStrategy:
 
         for key, value in constructor_args.items():
             assert getattr(base_json_reconstructed, key) == value
+
+    @staticmethod
+    async def _worker_delays(
+        strategy: AsyncPoissonStrategy, worker_count: int, calls_per_worker: int
+    ) -> list[list[float]]:
+        """Draw arrivals in turn from per-worker copies sharing one offset.
+
+        Each worker process holds its own copy of the strategy, so the copies here
+        share the offset but not the random generator, as in a real run.
+        """
+        strategy.init_processes_timings(
+            worker_count=worker_count, max_concurrency=100, mp_context=get_context()
+        )
+        start_time = 1000.0
+        strategy.init_processes_start(start_time)
+        workers = [strategy.model_copy() for _ in range(worker_count)]
+        delays: list[list[float]] = [[] for _ in range(worker_count)]
+        previous = start_time
+        for _ in range(calls_per_worker):
+            for index, worker in enumerate(workers):
+                arrival = await worker.next_request_time(index)
+                delays[index].append(arrival - previous)
+                previous = arrival
+        return delays
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_workers_draw_independent_delays(self):
+        """Worker processes must not draw the same sequence of delays."""
+        delays = await self._worker_delays(
+            AsyncPoissonStrategy(rate=10.0, random_seed=42),
+            worker_count=4,
+            calls_per_worker=25,
+        )
+        all_delays = [delay for worker in delays for delay in worker]
+        assert len(set(all_delays)) == len(all_delays)
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_worker_delays_reproducible_with_seed(self):
+        """The same seed gives each worker the same delays across runs."""
+        first = await self._worker_delays(
+            AsyncPoissonStrategy(rate=10.0, random_seed=7),
+            worker_count=3,
+            calls_per_worker=10,
+        )
+        second = await self._worker_delays(
+            AsyncPoissonStrategy(rate=10.0, random_seed=7),
+            worker_count=3,
+            calls_per_worker=10,
+        )
+        assert first == second
 
 
 class TestDefinesArrivalSchedule:

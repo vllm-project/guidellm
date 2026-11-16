@@ -32,7 +32,7 @@ guidellm run \
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
-  --profile kind=replay \
+  --profile kind=replay,prefetch=all \
   --data kind=weka,source.kind=huggingface,source.source=semianalysisai/cc-traces-weka-no-subagents-051226 \
   --constraint kind=max_requests,count=30
 ```
@@ -112,10 +112,14 @@ Similar to Mooncake, WEKA uses prefix-based cache hash IDs. The original [specif
 
 GuideLLM will generate prompts starting from the first conversation. When the conversation ends, the next conversation will be used. Relative timestamps are offsets from the earliest request in the dataset, so later conversations can start later than the first.
 
+In general, it is safer to use `prefetch=all` when using WEKA traces. The only situation where you do not need to is when the sessions in a trace are in the correct order without overlap. Otherwise, the data deserializer may fall behind, resulting in sessions being scheduled after their relative trace time. The problem is exacerbated when most or all sessions have requests that start at or near the start of the benchmark. All requests must be pre-fetched to ensure all sessions start when they need to. Use `--profile kind=replay,prefetch=all` so those graphs finish loading before the run clock starts. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
+
 Hash IDs follow the per-row `hash_id_scope` field:
 
 - `"global"` or omitted: hash IDs share one token-block table across conversations, matching Mooncake. The same hash ID in a later conversation reuses the earlier token block so prefix-cache hit rate stays close to the original trace. Each `copies` pass uses a separately salted global table.
 - `"local"`: hash IDs apply only within that conversation. The table is discarded after the conversation is emitted. Local isolation also applies independently on each `copies` pass.
+
+To speed up prompt generation, each hash-id token block can be decoded to text once and the decoded string reused wherever that block recurs (the cache shares the token table's lifetime and scope). On multi-turn agentic traces, where successive turns re-send almost the same context, this decodes only unique blocks instead of every request's full token list. This reuse is enabled automatically, but only for tokenizers where composing a prompt from separately decoded blocks is byte-identical to decoding the full token list at once — true for byte-level BPE tokenizers (e.g. Qwen, Llama 3, GPT-2). For other tokenizers (e.g. SentencePiece) the deserializer transparently falls back to decoding the full token list per request, so generated prompts are byte-exact for every tokenizer. Token counts and prefix-cache reuse are unchanged in both cases.
 
 Declared `type: "subagent"` entries become isolated child chains. Each child spawns from the preceding parent API turn with a fresh history (`history_context="new"`) and the following parent turn waits for every sibling spawned since that turn (`history_context="last"`). Multiple subagents listed between the same parent turns therefore run in parallel; the parent resumes only after all of them complete. Request-list order is preserved at every nesting level (it is the spawn/join topology) and is not sorted by timestamp.
 

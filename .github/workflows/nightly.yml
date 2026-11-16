@@ -9,7 +9,7 @@ jobs:
   tests:
     strategy:
       matrix:
-        python: ["3.13"]
+        python: ["3.15"]
     uses: ./.github/workflows/testing.yml
     with:
       python: ${{ matrix.python }}
@@ -17,7 +17,7 @@ jobs:
   quality:
     strategy:
       matrix:
-        python: ["3.13"]
+        python: ["3.15"]
     uses: ./.github/workflows/quality.yml
     with:
       python: ${{ matrix.python }}
@@ -48,6 +48,6 @@ jobs:
       - name: Build & Deploy Docs
         uses: ./.github/actions/run-tox
         with:
-          python-version: "3.13"
+          python-version: "3.15"
           tox-env: docs-build
           tox-args: "mike deploy main --push --update-aliases"

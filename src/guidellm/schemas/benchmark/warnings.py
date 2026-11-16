@@ -116,7 +116,7 @@ class WarningRuleArgs(StandardBaseModel):
 
 def default_warning_rules() -> list[WarningRuleArgs]:
     """
-    :return: Generation delay as a fraction of request latency and of time to
+    :return: Generation delay and worker loop lag as fractions of time to
         first token, late first turns measured in seconds, and an incomplete
         dataset for trace replay
     """
@@ -132,14 +132,40 @@ def default_warning_rules() -> list[WarningRuleArgs]:
             threshold=0.01,
             note=(
                 "This means that the benchmark was likely bottlenecked by the "
-                "data generation."
+                "data generation. See the troubleshooting guide for more information."
             ),
         ),
         WarningRuleArgs(
-            code="root_late",
+            code="worker_loop_lag_ttft",
+            metric=MetricRef(name="worker_loop_lag", statistic="p95"),
+            relative_to=MetricRef(
+                name="time_to_first_token_ms.total",
+                statistic="mean",
+                scale=0.001,
+            ),
+            threshold=0.1,
+            note=(
+                "This means that GuideLLM's worker event loops ran late, which "
+                "may overstate time to first token."
+            ),
+        ),
+        WarningRuleArgs(
+            code="root_late_p95",
             metric=MetricRef(name="root_dispatch_delay", statistic="p95"),
-            threshold=0.2,
-            note="This means that conversations were loaded late.",
+            threshold=0.75,
+            note=(
+                "This means that some conversations were loaded late. See "
+                "the troubleshooting guide for more information."
+            ),
+        ),
+        WarningRuleArgs(
+            code="root_late_mean",
+            metric=MetricRef(name="root_dispatch_delay", statistic="mean"),
+            threshold=0.25,
+            note=(
+                "This means that conversations were loaded late. See the "
+                "troubleshooting guide for more information."
+            ),
         ),
         WarningRuleArgs(
             code="dataset_incomplete",
@@ -148,7 +174,8 @@ def default_warning_rules() -> list[WarningRuleArgs]:
             when=WarningCondition(name="strategy_type", equals="trace"),
             note=(
                 "The trace dataset was not fully loaded. This could result in "
-                "late arrivals of trace conversations."
+                "late arrivals of trace conversations. See the troubleshooting "
+                "guide for more information."
             ),
         ),
     ]

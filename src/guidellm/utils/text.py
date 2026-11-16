@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import ftfy
-import httpx
+import httpx2
 from loguru import logger
 
 from guidellm.utils.console import Colors
@@ -222,7 +222,7 @@ def load_text(data: str | Path, encoding: str | None = None) -> str:
     :param encoding: Character encoding for file reading operations
     :return: Loaded text content as string
     :raises FileNotFoundError: If local file path does not exist
-    :raises httpx.HTTPStatusError: If URL request fails
+    :raises httpx2.HTTPStatusError: If URL request fails
     """
     logger.debug("Loading text: {}", data)
 
@@ -231,7 +231,7 @@ def load_text(data: str | Path, encoding: str | None = None) -> str:
 
     # check URLs
     if isinstance(data, str) and data.strip().startswith(("http", "ftp")):
-        with httpx.Client() as client:
+        with httpx2.Client() as client:
             response = client.get(data.strip())
             response.raise_for_status()
             return response.text

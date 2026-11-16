@@ -9,7 +9,7 @@ GuideLLM publishes a small, community-maintained set of Simplified Chinese pages
 
 ## Policy
 
-- English documentation under `docs/en/` is the source of truth.
+- English documentation under `docs/en/` is the source of truth, except for the developer pages generated from `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, and `DEVELOPING.md` in the repository root.
 - Simplified Chinese pages live under `docs/zh/` and mirror the English paths.
 - English documentation changes do not require a matching translation update and are not blocked by translation drift.
 - A translated page that is behind its English source displays a warning and links readers to the current English page.
@@ -18,7 +18,7 @@ GuideLLM publishes a small, community-maintained set of Simplified Chinese pages
 
 ## Source tracking
 
-Every translated page is registered in `docs/zh/.translation-sources.json`. The manifest maps it to its canonical English page and records a SHA-256 digest of the English source used for the translation.
+Each translated page records the SHA-256 digest of its English source in the page's YAML front matter as `source_sha256`. Write it as `source_sha256: !!str "<digest>"` so numeric-looking hashes remain strings and the Markdown formatter preserves the quotes. Chinese and Korean page paths mirror their English source: `docs/zh/<path>.md` and `docs/ko/<path>.md` correspond to `docs/en/<path>.md`. The three generated developer pages instead track their repository-root source files.
 
 Run the non-blocking validation used by CI:
 
@@ -26,15 +26,15 @@ Run the non-blocking validation used by CI:
 uv run python docs/scripts/check_translations.py
 ```
 
-This command reports outdated pages as warnings. Structural problems, missing pages, unregistered translations, and changed fenced code examples are errors.
+This command checks both Chinese and Korean translations and reports outdated pages as warnings. Structural problems, missing pages, and changed fenced code examples are errors. Add `--strict` to make outdated translations errors, or `--language zh` or `--language ko` to check one language.
 
-After reviewing a translation against the latest English page, refresh its recorded source revision and require every translation to be current:
+After reviewing a translation against the latest English page, refresh only that page's recorded source revision:
 
 ```bash
-uv run python docs/scripts/check_translations.py --update --strict
+uv run python docs/scripts/check_translations.py --update docs/zh/getting-started/install.md
 ```
 
-Commit the updated manifest with the translated page.
+Commit the updated `source_sha256` in the translated page's front matter with the translation.
 
 ## Navigation behavior
 

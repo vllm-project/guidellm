@@ -57,6 +57,23 @@ class TestGoodputSLOValidation:
 
 
 class TestGoodputSLOConformance:
+    @pytest.mark.regression
+    def test_independent_verdicts_keep_other_measurable_objectives(self):
+        """Evaluate inclusive limits, breaches and missing values independently.
+
+        ## WRITTEN BY AI ##
+        """
+        slo = GoodputSLO(ttft_ms=100, tpot_ms=10, e2el_ms=500)
+        assert slo.evaluate_objectives(100.0, None, 501.0) == {
+            "ttft_ms": True,
+            "tpot_ms": None,
+            "e2el_ms": False,
+        }
+        assert slo.is_conforming(100.0, None, 501.0) is None
+        assert GoodputSLO(e2el_ms=500).evaluate_objectives(None, None, 500.0) == {
+            "e2el_ms": True
+        }
+
     @pytest.mark.smoke
     def test_all_objectives_met_conforms(self):
         """

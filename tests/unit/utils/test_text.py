@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import httpx
+import httpx2
 import pytest
 
 from guidellm.utils.text import (
@@ -303,7 +303,7 @@ class TestLoadText:
             Path(tmp.name).unlink()
 
     @pytest.mark.smoke
-    @patch("httpx.Client")
+    @patch("httpx2.Client")
     def test_url_loading(self, mock_client):
         """Test load_text with HTTP URL."""
         mock_response = Mock()
@@ -313,24 +313,6 @@ class TestLoadText:
         result = load_text("http://example.com/test.txt")
         assert result == "url content"
 
-    @pytest.mark.xfail(reason="old and broken", run=False)
-    @pytest.mark.smoke
-    @patch("guidellm.utils.text.files")
-    @patch("guidellm.utils.text.as_file")
-    def test_package_data_loading(self, mock_as_file, mock_files):
-        """Test load_text with package data."""
-        mock_resource = Mock()
-        mock_files.return_value.joinpath.return_value = mock_resource
-
-        mock_file = Mock()
-        mock_file.read.return_value = "package data content"
-        mock_as_file.return_value.__enter__.return_value = mock_file
-
-        with patch("gzip.open") as mock_gzip:
-            mock_gzip.return_value.__enter__.return_value = mock_file
-            result = load_text("data:test.txt")
-            assert result == "package data content"
-
     @pytest.mark.sanity
     def test_nonexistent_file(self):
         """Test load_text with nonexistent file returns the path as raw text."""
@@ -338,14 +320,14 @@ class TestLoadText:
         assert result == "/nonexistent/path/file.txt"
 
     @pytest.mark.sanity
-    @patch("httpx.Client")
+    @patch("httpx2.Client")
     def test_url_error(self, mock_client):
         """Test load_text with HTTP error."""
         mock_client.return_value.__enter__.return_value.get.side_effect = (
-            httpx.HTTPStatusError("HTTP error", request=None, response=None)
+            httpx2.HTTPStatusError("HTTP error", request=None, response=None)
         )
 
-        with pytest.raises(httpx.HTTPStatusError):
+        with pytest.raises(httpx2.HTTPStatusError):
             load_text("http://example.com/error.txt")
 
 

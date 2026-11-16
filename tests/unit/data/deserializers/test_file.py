@@ -6,6 +6,7 @@ Unit tests for guidellm.data.deserializers.file module.
 
 import csv
 import io
+import json
 import sqlite3
 import tarfile
 from pathlib import Path
@@ -18,7 +19,10 @@ import pytest
 from datasets import Dataset
 from pyarrow import ipc
 
-from guidellm.data.deserializers.deserializer import DataNotSupportedError
+from guidellm.data.deserializers.deserializer import (
+    DataNotSupportedError,
+    DatasetDeserializerFactory,
+)
 from guidellm.data.deserializers.file import (
     ArrowFileDatasetDeserializer,
     CSVFileDatasetDeserializer,
@@ -273,6 +277,63 @@ def test_file_deserializers_return_dataset_with_info(tmp_path, kind, suffix, con
     assert isinstance(dataset, Dataset)
     # The column mapper accesses dataset.info.dataset_name; DatasetDict lacks .info.
     assert dataset.info is not None
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
+    ("kind", "suffix"),
+    [
+        ("csv_file", ".csv"),
+        ("json_file", ".jsonl"),
+        ("parquet_file", ".parquet"),
+        ("arrow_file", ".arrow"),
+        ("tar_file", ".tar"),
+    ],
+)
+@pytest.mark.parametrize("special_component", ["filename", "directory"])
+def test_file_deserializers_read_literal_paths(
+    tmp_path, kind, suffix, special_component
+):
+    """Read the requested file when its path also matches another file as a glob.
+
+    ## WRITTEN BY AI ##
+    """
+    if special_component == "filename":
+        requested_path = tmp_path / f"samples[1]{suffix}"
+        other_path = tmp_path / f"samples1{suffix}"
+    else:
+        requested_path = tmp_path / "shard[1]" / f"samples{suffix}"
+        other_path = tmp_path / "shard1" / f"samples{suffix}"
+
+    for path, text in [(requested_path, "requested"), (other_path, "other")]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if kind == "csv_file":
+            path.write_text(f"text\n{text}\n")
+        elif kind == "json_file":
+            path.write_text(json.dumps({"text": text}) + "\n")
+        elif kind == "parquet_file":
+            pq.write_table(pa.Table.from_pydict({"text": [text]}), path)
+        elif kind == "arrow_file":
+            table = pa.Table.from_pydict({"text": [text]})
+            with (
+                pa.OSFile(str(path), "wb") as sink,
+                ipc.RecordBatchFileWriter(sink, table.schema) as writer,
+            ):
+                writer.write_table(table)
+        else:
+            content = text.encode()
+            with tarfile.open(path, "w") as tar:
+                info = tarfile.TarInfo(name="sample.txt")
+                info.size = len(content)
+                tar.addfile(info, io.BytesIO(content))
+
+    dataset = DatasetDeserializerFactory.deserialize(
+        FileDataArgs(kind=kind, path=requested_path),
+        processor_factory=processor_factory,
+        random_seed=0,
+    )
+
+    assert list(dataset["txt" if kind == "tar_file" else "text"]) == ["requested"]
 
 
 ###################
