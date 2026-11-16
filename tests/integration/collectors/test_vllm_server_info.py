@@ -29,7 +29,7 @@ async def test_sub_benchmark_snapshots_survive_process_and_report_round_trip(
     requests = []
 
     class Handler(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):  # noqa: N802
+        def do_GET(self):
             requests.append(self.path)
             status = 200 if len(requests) == 1 else second_status
             body = json.dumps(
@@ -102,7 +102,7 @@ async def test_sub_benchmark_snapshots_survive_process_and_report_round_trip(
         benchmarks=benchmarks,
     )
     for extension in ("json", "yaml"):
-        path = report.save_file(tmp_path / f"benchmarks.{extension}")
+        path = report.save_file(tmp_path / f"benchmarks.{extension}", type_=extension)
         assert "private-value" not in path.read_text()
         restored = GenerativeBenchmarksReport.load_file(path)
         assert [item.collectors for item in restored.benchmarks] == [[first], [second]]
