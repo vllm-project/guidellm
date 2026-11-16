@@ -20,6 +20,9 @@ These rules run when `metrics.warnings` is omitted:
 - `dataset_incomplete`:
   - Warn when `dataset_incomplete` is true during trace strategies.
   - This means that the trace dataset was not fully loaded, which can result in late and missing arrivals of trace conversations, as many trace conversations have turns that are supposed to start at the beginning of the benchmark. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
+- `error_rate`:
+  - Warn when `request_totals.errored` is more than 5% of `request_totals.total`.
+  - The latency and token tables cover only the requests that succeeded, while the throughput table counts errored requests too. When every request errored, the latency tables have nothing to summarize and the run still finishes normally, so this warning is the signal to check the backend.
 
 See `default_warning_rules()` in `src/guidellm/schemas/benchmark/warnings.py` for where the defaults are set.
 
@@ -37,7 +40,7 @@ Each entry in `metrics.warnings` has:
 - `note`: extra context printed under the measured sentence. Use it for what to change, or for a link.
 - `when`: optional path and value. The rule runs only when that path equals the value. The comparison uses the value itself, so it can match text such as a strategy type.
 
-A boolean metric compares as true or false. `True` is greater than a threshold of `0`, and `False` is not. The warning unit is `boolean`.
+A boolean metric compares as true or false. `True` is greater than a threshold of `0`, and `False` is not. The warning unit is `boolean`. A path that ends on a count, such as `request_totals.errored`, is used as that number: the statistic does not apply, the count prints as a whole number, and the warning unit is `count`.
 
 A status breakdown is not one distribution. `time_to_first_token_ms` has a separate summary for `successful`, `incomplete`, `errored`, and `total`. The path segment `.total` selects the summary that includes every status. `statistic: mean` then selects the mean of that summary. The two are independent, so the mean of time to first token is `time_to_first_token_ms.total` with `statistic: mean`. `request_latency.total` has the same shape. `generation_delay` is already one distribution, so its path has no status segment.
 
@@ -47,6 +50,7 @@ A path that is not on the compiled schemas is logged and printed with the other 
 
 - `generation_delay`: seconds spent waiting for the dataset to yield the next conversation. Scheduler metric.
 - `request_latency.total`: request duration in seconds, across every status.
+- `request_totals.total`, `request_totals.successful`, `request_totals.incomplete`, `request_totals.errored`: request counts by status.
 - `time_to_first_token_ms.total`: time to first token, in milliseconds.
 - `time_to_first_output_token_ms.total`: time to the first content token, in milliseconds.
 - `time_per_output_token_ms.total`: average time per output token, in milliseconds.
