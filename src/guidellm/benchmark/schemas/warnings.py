@@ -10,7 +10,7 @@ from guidellm.schemas.base.base import StandardBaseModel
 
 __all__ = ["BenchmarkWarning"]
 
-WarningUnit = Literal["ratio", "seconds", "boolean"]
+WarningUnit = Literal["ratio", "seconds", "boolean", "count"]
 
 
 class BenchmarkWarning(StandardBaseModel):
@@ -31,7 +31,7 @@ class BenchmarkWarning(StandardBaseModel):
     unit: WarningUnit = Field(
         description=(
             "ratio when the rule divides two metrics, boolean when the metric "
-            "is true or false, otherwise seconds"
+            "is true or false, count when it is a count, otherwise seconds"
         ),
     )
     sample_count: int = Field(
