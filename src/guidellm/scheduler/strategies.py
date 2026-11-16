@@ -457,8 +457,8 @@ class UsersStrategy(SchedulingStrategy):
     owns one conversation and waits out the dataset ``requeue_delay`` between
     turns (for example synthetic text's ``delay`` options), starting the next
     conversation immediately after one finishes. Unlike ``concurrent``,
-    the user's slot stays bound to the session across the delay instead
-    of pulling other conversations during that delay.
+    the user's slot stays bound to the session across the delay. It does
+    not pull another conversation while the modeled user waits.
 
     Request slots remain shared among the sessions assigned to a worker
     and are not reserved per user, so a conversation with parallel

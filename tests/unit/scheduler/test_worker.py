@@ -966,7 +966,9 @@ class TestWorkerProcessSessionCap:
         near = self._gated_state("g0", delay=0.05)
         users_worker.turns_queue.append(near)
         users_worker.turns_queue.append(self._gated_state("g1"))
-        deadline = near.next_node_ready_at()[1]
+        near_ready = near.next_node_ready_at()
+        assert near_ready is not None
+        deadline = near_ready[1]
 
         state, node_id = await asyncio.wait_for(
             users_worker._get_next_ready_node(), timeout=2.0
