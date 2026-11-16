@@ -38,7 +38,9 @@ class GenerativeRequestFinalizer(DatasetFinalizer[GenerativeConversationGraph | 
     def __call__(
         self, items: list[dict[str, Any]]
     ) -> GenerativeConversationGraph | list:
-        graph_data = turns_from_mapped_items(items)
+        graph_data = turns_from_mapped_items(
+            items, trim_text_padding=self.config.trim_text_padding
+        )
         if not graph_data.turns:
             return []
 
