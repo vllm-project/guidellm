@@ -196,6 +196,135 @@ guidellm run \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
 ```
 
+## Custom Backends and Plugins
+
+You can add custom backends without modifying GuideLLM itself by registering a `BackendArgs` schema and a `Backend` subclass and exposing them as a plugin.
+
+GuideLLM discovers and imports plugins automatically when the `guidellm` package is imported, before Click parses `--backend` options and whenever `spawn` or `forkserver` worker processes start.
+
+### 1. Define and Register the Backend
+
+Create a module (for example `my_guidellm_plugin/__init__.py`) that registers both a `BackendArgs` subclass and a `Backend` subclass under the same `kind` name:
+
+```python
+from __future__ import annotations
+
+import json
+import time
+from collections.abc import AsyncIterator
+from typing import Literal
+
+import httpx2
+from pydantic import Field
+
+from guidellm.backends import Backend
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationResponse,
+    RequestInfo,
+    UsageMetrics,
+)
+from guidellm.schemas.backends import BackendArgs
+
+
+@BackendArgs.register("my_custom_backend")
+class MyCustomBackendArgs(BackendArgs):
+    kind: Literal["my_custom_backend"] = Field(default="my_custom_backend")
+    target: str = Field(description="Base URL of the inference server.")
+    model: str = Field(default="default-model")
+
+
+@Backend.register("my_custom_backend")
+class MyCustomBackend(Backend):
+    _args: MyCustomBackendArgs
+
+    def __init__(self, arguments: MyCustomBackendArgs) -> None:
+        super().__init__(arguments)
+        self._client: httpx2.AsyncClient | None = None
+
+    async def process_startup(self) -> None:
+        self._client = httpx2.AsyncClient()
+
+    async def process_shutdown(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    async def validate(self) -> None:
+        assert self._client is not None
+        response = await self._client.get(f"{self._args.target.rstrip('/')}/health")
+        response.raise_for_status()
+
+    async def default_model(self) -> str:
+        return self._args.model
+
+    async def resolve(
+        self,
+        request: GenerationRequest,
+        request_info: RequestInfo,
+        history: list[tuple[GenerationRequest, GenerationResponse | None]] | None = None,
+    ) -> AsyncIterator[tuple[GenerationResponse | None, RequestInfo]]:
+        assert self._client is not None
+        prompt = " ".join(request.columns.get("text_column", [])) or "hello"
+        body = {
+            "model": self._args.model,
+            "prompt": prompt,
+            "max_tokens": request.output_metrics.text_tokens or 16,
+            "stream": False,
+        }
+        request_info.timings.request_start = time.time()
+        response = await self._client.post(
+            f"{self._args.target.rstrip('/')}/v1/completions",
+            json=body,
+        )
+        request_info.timings.request_end = time.time()
+        response.raise_for_status()
+        payload = response.json()
+        text = payload["choices"][0]["text"]
+        usage = payload.get("usage", {})
+        yield (
+            GenerationResponse(
+                request_id=request.request_id,
+                request_args=json.dumps(body),
+                text=text,
+                input_metrics=UsageMetrics(text_tokens=usage.get("prompt_tokens")),
+                output_metrics=UsageMetrics(text_tokens=usage.get("completion_tokens")),
+            ),
+            request_info,
+        )
+```
+
+> [!NOTE]\
+> Your `Backend` and `BackendArgs` classes must be pickleable because GuideLLM's scheduler runs them inside `spawn` or `forkserver` worker processes. Avoid registering classes inside `__main__` scripts without an importable plugin module.
+
+### 2. Expose the Plugin
+
+You can load plugins via Python package entry points or the `GUIDELLM__PLUGINS` environment variable:
+
+#### Option A: Package Entry Point (`guidellm.plugins`)
+
+In your plugin package's `pyproject.toml`, register an entry point under the `guidellm.plugins` group pointing either to a module whose import registers the classes, or to a zero-argument `module:callable` registration function:
+
+```toml
+[project.entry-points."guidellm.plugins"]
+my_custom_backend = "my_guidellm_plugin"
+```
+
+After installing your package (`pip install -e .`), `guidellm run --help` will list `my_custom_backend` under `--backend`.
+
+#### Option B: `GUIDELLM__PLUGINS` Environment Variable
+
+For local development or uninstalled modules on `PYTHONPATH`, set `GUIDELLM__PLUGINS` to a comma-separated list (or JSON array) of module paths or `module:callable` targets:
+
+```bash
+GUIDELLM__PLUGINS=my_guidellm_plugin \
+guidellm run \
+  --backend kind=my_custom_backend,target=http://localhost:8000 \
+  --profile kind=synchronous \
+  --data kind=synthetic_text,prompt_tokens=16,output_tokens=8 \
+  --constraint kind=max_requests,count=5
+```
+
 ## Expanding Backend Support
 
 GuideLLM is an open platform, and we encourage contributions to extend its backend support. Whether it's adding new server implementations, integrating with Python-based backends, or enhancing existing capabilities, your contributions are welcome. For more details on how to contribute, see the [CONTRIBUTING.md](https://github.com/vllm-project/guidellm/blob/main/CONTRIBUTING.md) file.

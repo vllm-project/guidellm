@@ -24,9 +24,13 @@ from .settings import (
     reload_settings,
     settings,
 )
+from .utils.plugins import load_plugins
+
+load_plugins()
 
 __all__ = [
     "configure_logger",
+    "load_plugins",
     "logger",
     "reinstall_inherited_logger",
     "reload_settings",

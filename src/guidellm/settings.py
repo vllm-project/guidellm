@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 __all__ = [
     "DatasetSettings",
@@ -83,6 +83,37 @@ class Settings(BaseSettings):
     default_async_loop_sleep: float = 10e-5
     logging: LoggingSettings = LoggingSettings()
     default_sweep_number: int = 10
+    plugins: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        description=(
+            "Comma-separated or JSON-encoded list of plugin module paths "
+            "(or 'module:callable' targets) to load on startup."
+        ),
+    )
+
+    @field_validator("plugins", mode="before")
+    @classmethod
+    def _parse_plugins(cls, value: Any) -> list[str]:
+        """Parse comma-separated, JSON-encoded, or sequence plugin specifications."""
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return []
+            if stripped.startswith("["):
+                parsed = json.loads(stripped)
+                if not isinstance(parsed, list):
+                    raise ValueError("plugins JSON value must be a list of strings")
+                items: Sequence[Any] = parsed
+            else:
+                items = stripped.split(",")
+            return [str(item).strip() for item in items if str(item).strip()]
+        if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+            return [str(item).strip() for item in value if str(item).strip()]
+        raise ValueError(
+            "plugins must be a list of module names or a comma-separated string"
+        )
 
     # Scheduler settings
     # NOTE: We do not support "fork" because it causes issues
