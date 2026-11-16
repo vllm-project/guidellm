@@ -53,15 +53,9 @@ If you are combining multiple datasets (e.g., for prompts and images), prepend t
 
 ### Request Formatting
 
-Across the supported endpoints, a request formatter encodes image data and formats the request payload. This uses reasonable defaults out of the box, but can be customized as needed. The following options are available for image request formatting via the `--request-formatter-kwargs` argument, provided as a JSON string.
+The `encode_media` data preprocessor encodes images before the backend formats requests. Configure it with `--data-preprocessor`, putting encoding options in `image_kwargs`.
 
-#### "encode_kwargs"
-
-A dictionary of arguments passed to the image encoder that controls how image data is preprocessed before being included in the request.
-
-**Note on Nesting:**
-
-- For **Chat Completions** (`chat_completions`), image arguments must be nested under an `image` key within `encode_kwargs`.
+#### `image_kwargs`
 
 Supported arguments include:
 
@@ -74,25 +68,24 @@ Supported arguments include:
   - "base64" (default): Downloads (if URL) or reads the image, processes it (resize), and encodes it as a base64 string.
   - "url": Sends the image URL directly in the request. This requires the inference server to have network access to the image URL. Resizing options cannot be used with this type.
 
-**Examples:**
-
-For **Chat Completions**, resizing images to a maximum of 512 pixels:
+To resize images to a maximum of 512 pixels:
 
 ```bash
---request-formatter-kwargs '{"encode_kwargs": {"image": {"max_size": 512}}}'
+--data-preprocessor '{"kind":"encode_media","image_kwargs":{"max_size":512}}'
 ```
 
-#### "extras"
+#### `extras`
 
-A dictionary of extra arguments to include directly in the request. Within extras, you can specify where to include the extra arguments:
+Add `extras` to your existing `--backend` configuration to pass request options:
 
-- "headers": Include in request headers
-- "params" / "body": Include in request parameters or body
+- `body`: Fields in the request body
+- `headers`: HTTP request headers
+- `params`: URL query parameters
 
-For example, to specify a specific system prompt or other body parameter:
+To set the sampling temperature:
 
 ```bash
---request-formatter-kwargs '{"extras": {"body": {"temperature": 0.7}}}'
+--backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"temperature":0.7}}}'
 ```
 
 #### "stream"

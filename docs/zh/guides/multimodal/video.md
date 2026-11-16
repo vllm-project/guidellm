@@ -1,5 +1,5 @@
 ---
-source_sha256: !!str "a5896cccd6d8e20aa2b550c2c4f39e2410839985285faa7aa6faea2fa92626ab"
+source_sha256: !!str "50678255554905d3f85e09e3eff0ddf029a87ed6950d8594c81520d2b0fbc04a"
 ---
 
 # 视频基准测试
@@ -57,15 +57,9 @@ GuideLLM 支持多种视频数据加载方式。首先，数据源整体必须�
 
 ### 请求格式
 
-对于所有受支持的端点，请求格式化器都会对视频数据进行编码并设置请求负载格式。系统提供了合理的默认值，也可以按需自定义。以下视频请求格式选项通过 `--request-formatter-kwargs` 参数配置，并以 JSON 字符串形式传入。
+`encode_media` 数据预处理器会在后端构造请求前编码视频。使用 `--data-preprocessor` 配置预处理器，并将编码选项放在 `video_kwargs` 中。
 
-#### `"encode_kwargs"`
-
-传递给视频编码器的参数字典，用于控制将视频数据加入请求前的预处理方式。
-
-**关于嵌套结构的说明：**
-
-- 对于 **Chat Completions**（`chat_completions`），视频参数必须嵌套在 `encode_kwargs` 中的 `video` 键下。
+#### `video_kwargs`
 
 支持的参数包括：
 
@@ -73,25 +67,24 @@ GuideLLM 支持多种视频数据加载方式。首先，数据源整体必须�
   - `"base64"`（默认值）：下载视频（如果来源是 URL）或读取视频，然后将其编码为 Base64 字符串。
   - `"url"`：在请求中直接发送视频 URL。推理服务器必须能够访问该视频 URL。
 
-**示例：**
-
-对于 **Chat Completions**，直接发送视频 URL：
+直接发送视频 URL：
 
 ```bash
---request-formatter-kwargs '{"encode_kwargs": {"video": {"encode_type": "url"}}}'
+--data-preprocessor '{"kind":"encode_media","video_kwargs":{"encode_type":"url"}}'
 ```
 
-#### `"extras"`
+#### `extras`
 
-可直接加入请求的额外参数字典。在 `extras` 中，可以指定额外参数的放置位置：
+在现有的 `--backend` 配置中加入 `extras`，以传递请求选项：
 
-- `"headers"`：加入请求头
-- `"params"` / `"body"`：加入请求参数或请求体
+- `body`：请求体中的字段
+- `headers`：HTTP 请求头
+- `params`：URL 查询参数
 
-例如，指定系统提示词或其他请求体参数：
+设置采样温度：
 
 ```bash
---request-formatter-kwargs '{"extras": {"body": {"temperature": 0.7}}}'
+--backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"temperature":0.7}}}'
 ```
 
 #### `"stream"`
