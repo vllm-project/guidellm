@@ -30,6 +30,7 @@ __all__ = [
     "PrometheusGaugeSeries",
     "PrometheusHistogramSeries",
     "PrometheusSummary",
+    "VLLMServerInfoCollectorArgs",
 ]
 
 # Older vLLM releases expose gpu_cache_usage_perc and time_per_output_token_seconds
@@ -127,6 +128,44 @@ class PrometheusCollectorArgs(CollectorArgs):
             raise ValueError(
                 f"Prometheus collector url must be an http or https URL, got {url!r}"
             )
+        return url
+
+
+@CollectorArgs.register("vllm_server_info")
+class VLLMServerInfoCollectorArgs(CollectorArgs):
+    """Capture structured vLLM configuration after each benchmark."""
+
+    kind: Literal["vllm_server_info"] = "vllm_server_info"
+    url: str = Field(
+        description="Explicit URL of the vLLM server-info endpoint.",
+        examples=["http://localhost:8000/server_info"],
+    )
+    redact_hosts: bool = Field(
+        default=True,
+        description=(
+            "Redact remote host fields and URL authorities in collected data. "
+            "Credential filtering remains enabled regardless of this setting."
+        ),
+    )
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, url: str) -> str:
+        parsed = urlparse(url)
+        if (
+            parsed.scheme not in ("http", "https")
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError(
+                "Server-info url must be HTTP(S) without credentials, query "
+                "parameters or a fragment"
+            )
+        # Accessing port also rejects malformed ports before starting a process.
+        _ = parsed.port
         return url
 
 
