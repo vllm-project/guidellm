@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+import warnings
 import zipfile
 from pathlib import Path
 from types import ModuleType
@@ -166,6 +167,120 @@ def test_load_plugins_callable_and_idempotent(monkeypatch: pytest.MonkeyPatch) -
     assert first == [f"callable_test={mod_name}:register"]
     assert second == []
     assert calls == 1
+
+
+def _reset_plugin_loader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear loader memory so a test sees one fresh ``load_plugins`` pass."""
+    monkeypatch.setattr(plugin_utils, "_loaded_entry_points", set())
+    monkeypatch.setattr(plugin_utils, "_loaded_plugin_targets", set())
+
+
+def _unregister_backend(kind: str) -> None:
+    """Drop a test backend kind so later tests see the real registry."""
+    if Backend.registry is not None and kind in Backend.registry:
+        del Backend.registry[kind]
+
+
+@pytest.mark.regression
+def test_callable_registers_once_for_entry_point_and_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    One ``module:callable`` discovered both ways registers its backend once.
+
+    ## WRITTEN BY AI ##
+    """
+    calls = 0
+    kind = "_guidellm_test_plugin_once"
+    mod_name = "_guidellm_test_plugin_once_mod"
+    fake_mod = ModuleType(mod_name)
+
+    class _DummyBackend:
+        pass
+
+    def register() -> None:
+        nonlocal calls
+        calls += 1
+        Backend.register(kind)(_DummyBackend)
+
+    fake_mod.register = register  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, mod_name, fake_mod)
+    monkeypatch.setattr(
+        importlib.metadata,
+        "entry_points",
+        lambda group: [
+            importlib.metadata.EntryPoint(
+                name="once_test",
+                value=f"{mod_name}:register",
+                group=group,
+            )
+        ],
+    )
+    _reset_plugin_loader(monkeypatch)
+    monkeypatch.setattr(settings, "plugins", [f"{mod_name}:register"])
+
+    try:
+        loaded = plugin_utils.load_plugins()
+        assert Backend.is_registered(kind)
+    finally:
+        _unregister_backend(kind)
+
+    assert loaded == [f"once_test={mod_name}:register"]
+    assert calls == 1
+
+
+@pytest.mark.regression
+def test_import_time_registration_is_not_reported_as_entry_point_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    A hook that already registered during import is still a loaded entry point.
+
+    ## WRITTEN BY AI ##
+    """
+    calls = 0
+    kind = "_guidellm_test_plugin_import_time"
+    mod_name = "_guidellm_test_plugin_import_time_mod"
+    fake_mod = ModuleType(mod_name)
+
+    class _DummyBackend:
+        pass
+
+    def register() -> None:
+        nonlocal calls
+        calls += 1
+        Backend.register(kind)(_DummyBackend)
+
+    fake_mod.register = register  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, mod_name, fake_mod)
+    register()
+    monkeypatch.setattr(
+        importlib.metadata,
+        "entry_points",
+        lambda group: [
+            importlib.metadata.EntryPoint(
+                name="import_time_test",
+                value=f"{mod_name}:register",
+                group=group,
+            )
+        ],
+    )
+    _reset_plugin_loader(monkeypatch)
+    monkeypatch.setattr(settings, "plugins", [])
+
+    try:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            loaded = plugin_utils.load_plugins()
+        assert Backend.is_registered(kind)
+    finally:
+        _unregister_backend(kind)
+
+    failure_warnings = [
+        item for item in caught if "Failed to load GuideLLM plugin" in str(item.message)
+    ]
+    assert failure_warnings == []
+    assert loaded == [f"import_time_test={mod_name}:register"]
 
 
 @pytest.mark.regression

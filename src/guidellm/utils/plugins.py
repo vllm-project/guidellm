@@ -25,7 +25,13 @@ __all__ = [
 PLUGIN_ENTRY_POINT_GROUP = "guidellm.plugins"
 
 _loaded_entry_points: set[tuple[str, str]] = set()
+# Entry-point values and settings targets share this set so one string loads once.
 _loaded_plugin_targets: set[str] = set()
+
+
+def _is_duplicate_registration(err: BaseException) -> bool:
+    """Return whether ``err`` means the plugin kind is already registered."""
+    return isinstance(err, ValueError) and "already registered" in str(err)
 
 
 def _invoke_plugin_object(loaded: Any) -> None:
@@ -51,13 +57,16 @@ def load_plugins() -> list[str]:
 
     Loads plugins registered under the ``guidellm.plugins`` entry-point group
     first, followed by any module targets configured in ``settings.plugins``
-    (typically via ``GUIDELLM__PLUGINS``). Already-loaded plugins are skipped
-    so repeated calls are idempotent.
+    (typically via ``GUIDELLM__PLUGINS``). A target string that was already
+    loaded, including an entry-point value repeated in ``settings.plugins``,
+    is skipped so that hook runs once.
 
-    Entry-point load failures emit a warning so an unrelated broken package in
-    the environment does not break all CLI invocations. Explicit
-    ``settings.plugins`` load failures raise ``RuntimeError`` with the failing
-    target name and cause.
+    An entry-point hook that raises because its kind is already registered is
+    counted as loaded. A kind registered while the module was imported stays
+    in place, and a colliding entry point does not replace it or warn. Other
+    entry-point failures emit a warning so an unrelated broken package does
+    not break all CLI invocations. Explicit ``settings.plugins`` load failures
+    raise ``RuntimeError`` with the failing target name and cause.
 
     :return: List of newly loaded plugin identifiers
     :raises RuntimeError: If an explicitly configured plugin in
@@ -71,21 +80,23 @@ def load_plugins() -> list[str]:
     )
     for ep in discovered:
         key = (ep.name, ep.value)
-        if key in _loaded_entry_points:
+        if key in _loaded_entry_points or ep.value in _loaded_plugin_targets:
             continue
         try:
             loaded = ep.load()
             _invoke_plugin_object(loaded)
         except Exception as err:  # noqa: BLE001
-            msg = (
-                f"Failed to load GuideLLM plugin entry point "
-                f"'{ep.name}' ({ep.value}): {err}"
-            )
-            logger.warning(msg)
-            warnings.warn(msg, category=UserWarning, stacklevel=2)
-            continue
+            if not _is_duplicate_registration(err):
+                msg = (
+                    f"Failed to load GuideLLM plugin entry point "
+                    f"'{ep.name}' ({ep.value}): {err}"
+                )
+                logger.warning(msg)
+                warnings.warn(msg, category=UserWarning, stacklevel=2)
+                continue
 
         _loaded_entry_points.add(key)
+        _loaded_plugin_targets.add(ep.value)
         newly_loaded.append(f"{ep.name}={ep.value}")
 
     for target in settings.plugins:

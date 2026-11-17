@@ -231,7 +231,10 @@ from guidellm.schemas.backends import BackendArgs
 class MyCustomBackendArgs(BackendArgs):
     kind: Literal["my_custom_backend"] = Field(default="my_custom_backend")
     target: str = Field(description="Base URL of the inference server.")
-    model: str = Field(default="default-model")
+    model: str = Field(
+        default="",
+        description="Served or Hugging Face model id. Empty queries /v1/models.",
+    )
 
 
 @Backend.register("my_custom_backend")
@@ -256,6 +259,13 @@ class MyCustomBackend(Backend):
         response.raise_for_status()
 
     async def default_model(self) -> str:
+        if self._args.model:
+            return self._args.model
+        assert self._client is not None
+        response = await self._client.get(f"{self._args.target.rstrip('/')}/v1/models")
+        response.raise_for_status()
+        models = response.json().get("data", [])
+        self._args.model = models[0]["id"] if models else ""
         return self._args.model
 
     async def resolve(
@@ -267,7 +277,7 @@ class MyCustomBackend(Backend):
         assert self._client is not None
         prompt = " ".join(request.columns.get("text_column", [])) or "hello"
         body = {
-            "model": self._args.model,
+            "model": await self.default_model(),
             "prompt": prompt,
             "max_tokens": request.output_metrics.text_tokens or 16,
             "stream": False,
@@ -314,12 +324,15 @@ After installing your package (`pip install -e .`), `guidellm run --help` will l
 
 #### Option B: `GUIDELLM__PLUGINS` Environment Variable
 
-For local development or uninstalled modules on `PYTHONPATH`, set `GUIDELLM__PLUGINS` to a comma-separated list (or JSON array) of module paths or `module:callable` targets:
+For local development or uninstalled modules on `PYTHONPATH`, set `GUIDELLM__PLUGINS` to a comma-separated list (or JSON array) of module paths or `module:callable` targets.
+
+`model` defaults to empty. `default_model` then uses the first id from `GET /v1/models`, and the completion body sends that id. Set `model=<served-or-hf-id>` to choose one. GuideLLM copies that id into the tokenizer when `--tokenizer` is omitted and loads it with `AutoTokenizer.from_pretrained`. Pass `--tokenizer` when the id is not an existing local path or a Hugging Face repo:
 
 ```bash
 GUIDELLM__PLUGINS=my_guidellm_plugin \
 guidellm run \
-  --backend kind=my_custom_backend,target=http://localhost:8000 \
+  --backend kind=my_custom_backend,target=http://localhost:8000,model=<served-or-hf-id> \
+  --tokenizer kind=huggingface_auto,model=<local-path-or-hf-repo> \
   --profile kind=synchronous \
   --data kind=synthetic_text,prompt_tokens=16,output_tokens=8 \
   --constraint kind=max_requests,count=5
