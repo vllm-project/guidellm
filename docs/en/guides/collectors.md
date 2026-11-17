@@ -101,3 +101,40 @@ The result looks like this (shortened):
 - A measurement window shorter than two scrape intervals only has a few scrapes in it, so GuideLLM logs a warning. Lower `interval` for short runs.
 - The server's metrics count every request it handled, not only GuideLLM's, so they only line up with the client-side results when nothing else is using the server.
 - The endpoint has to serve the Prometheus text format, which vLLM does by default.
+
+## vLLM Server Info Collector
+
+Use `vllm_server_info` to record the structured configuration of a specific vLLM server:
+
+```bash
+--collector kind=vllm_server_info,url=http://localhost:8000/server_info
+```
+
+The collector requests `config_format=json` once after each sub-benchmark's requests finish, in the shared collector process. It does not make a startup snapshot or sample configuration changes during the run. Each result is stored in that sub-benchmark's `collectors` list:
+
+```json
+{
+  "kind": "vllm_server_info",
+  "source": "http://localhost:8000/server_info",
+  "collected_at": 1760000000.5,
+  "vllm_config": {
+    "model_config": {"model": "example/model", "max_model_len": 4096},
+    "parallel_config": {"tensor_parallel_size": 2}
+  }
+}
+```
+
+`collected_at` is the Unix timestamp when the capture request begins. Only the structured `vllm_config` object is retained. `vllm_env`, `system_env` and legacy string configurations are not captured.
+
+| Option         | Default  | Description                                                                                                                 |
+| -------------- | -------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `url`          | required | Full HTTP(S) server-info endpoint, independent of the backend target.                                                       |
+| `redact_hosts` | `true`   | Filter remote host fields and URL authorities in captured data, including `source`. Credential filtering is always enabled. |
+
+Pass one collector per server, pointing directly at each replica. Results retain collector order even when hostnames are filtered. To retain hosts for comparison, use `redact_hosts=false`. Canonical local hosts (`localhost`, `127.0.0.1`, `::1`) are preserved either way.
+
+The collector filters recognized credential fields, URL user information and sensitive assignments or flags. Free-form text containing a recognized credential is omitted as a whole. This is best-effort filtering, not a guarantee that arbitrary configuration strings contain no secrets. The host option affects collected data, not the endpoint URL in the report's run arguments. Review the report before sharing it.
+
+Each capture has a five-second total timeout and a 1 MiB decoded response limit. Redirects are not followed. An unavailable, unauthorized or unsupported endpoint produces an `error` instead of `vllm_config`; subsequent benchmarks still run and retry the capture. Errors contain only the exception type, never the response body or exception message.
+
+The endpoint must allow this metadata request without authentication. Backend credentials are not inherited, and collector URLs cannot contain user information, query parameters or fragments. The collector adds the required `config_format=json` parameter itself. Protected endpoints report an error; support for explicit collector authentication can be added separately.
