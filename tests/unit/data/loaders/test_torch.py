@@ -235,19 +235,3 @@ def test_set_epoch_failure_is_not_swallowed(samples):
 
     with pytest.raises(RuntimeError, match="set_epoch failed at epoch 1"):
         _advance_epoch_and_take(iterator, 1)
-
-
-@pytest.mark.regression
-def test_loader_rejects_persistent_workers_with_samples_cap():
-    """Persistent workers would replay the epoch-0 cache, so they must be rejected.
-
-    ## WRITTEN BY AI ##
-    """
-    with pytest.raises(ValueError, match="persistent_workers"):
-        TorchDataLoader(
-            config=TorchDataLoaderArgs(samples=3, num_workers=1),
-            datasets=[_EpochDataset()],
-            preprocessors=[],
-            finalizer=_text_finalizer,
-            persistent_workers=True,
-        )

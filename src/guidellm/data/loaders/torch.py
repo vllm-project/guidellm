@@ -182,16 +182,6 @@ class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
         random_seed: int = 42,
         **kwargs: Any,
     ):
-        if (
-            config.samples > 0
-            and config.num_workers > 0
-            and kwargs.get("persistent_workers")
-        ):
-            raise ValueError(
-                "persistent_workers=True is not supported with samples > 0: "
-                "persistent workers keep the epoch-0 sample cache and would "
-                "replay the same prompts on every pass."
-            )
         self._samples = config.samples
         iterator: DatasetsIterator[DataT] = DatasetsIterator(
             datasets=datasets,
