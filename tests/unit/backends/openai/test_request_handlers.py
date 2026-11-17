@@ -101,6 +101,49 @@ def test_multimodal_usage_preserves_server_totals(
 
 @pytest.mark.regression
 @pytest.mark.parametrize(
+    ("handler_type", "input_key", "output_key"),
+    [
+        (TextCompletionsRequestHandler, "prompt_tokens", "completion_tokens"),
+        (ChatCompletionsRequestHandler, "prompt_tokens", "completion_tokens"),
+        (PoolingRequestHandler, "prompt_tokens", "completion_tokens"),
+        (ResponsesRequestHandler, "input_tokens", "output_tokens"),
+    ],
+)
+@pytest.mark.parametrize(("input_total", "output_total"), [(50, 20), (0, 0)])
+def test_multimodal_usage_clamps_text_tokens(
+    handler_type, input_key, output_key, input_total, output_total
+):
+    """Keep text counts nonnegative when modalities exceed the reported totals.
+
+    ## WRITTEN BY AI ##
+    """
+    usage = {
+        input_key: input_total,
+        output_key: output_total,
+        f"{input_key}_details": {
+            "image_tokens": 20,
+            "video_tokens": 30,
+            "audio_tokens": 40,
+            "cached_tokens": 50,
+        },
+        f"{output_key}_details": {"audio_tokens": 25},
+    }
+
+    input_metrics, output_metrics = handler_type().extract_metrics(usage, "Hello")
+
+    assert input_metrics.text_tokens == 0
+    assert output_metrics.text_tokens == 0
+    assert input_metrics.image_tokens == 20
+    assert input_metrics.video_tokens == 30
+    assert input_metrics.audio_tokens == 40
+    assert input_metrics.cached_tokens == 50
+    assert output_metrics.audio_tokens == 25
+    assert input_metrics.total_tokens == 90
+    assert output_metrics.total_tokens == 25
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize(
     "handler_type",
     [
         TextCompletionsRequestHandler,
@@ -139,6 +182,16 @@ def test_multimodal_usage_preserves_server_totals(
             },
             (60, 0, None, 40),
             id="flat-keys-win",
+        ),
+        pytest.param(
+            {
+                "multimodal_tokens": {"image": 20, "video": 30, "audio": 40},
+                "image_tokens": None,
+                "video_tokens": None,
+                "audio_tokens": None,
+            },
+            (10, 20, 30, 40),
+            id="null-flat-keys",
         ),
         pytest.param(
             {"multimodal_tokens": {"image": 80, "cached": 50}},

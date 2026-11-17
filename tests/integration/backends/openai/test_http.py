@@ -307,6 +307,14 @@ async def test_requests_use_environment_proxy(monkeypatch: pytest.MonkeyPatch):
             },
             id="vllm",
         ),
+        pytest.param(
+            {
+                "multimodal_tokens": {"image": 10, "audio": 80},
+                "image_tokens": None,
+                "audio_tokens": None,
+            },
+            id="null-flat-vllm",
+        ),
     ],
 )
 async def test_multimodal_usage_reaches_request_stats(stream: bool, prompt_details):
