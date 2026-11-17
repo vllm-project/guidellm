@@ -275,7 +275,9 @@ class MyCustomBackend(Backend):
         history: list[tuple[GenerationRequest, GenerationResponse | None]] | None = None,
     ) -> AsyncIterator[tuple[GenerationResponse | None, RequestInfo]]:
         assert self._client is not None
-        prompt = " ".join(request.columns.get("text_column", [])) or "hello"
+        columns = request.columns
+        parts = [*columns.get("prefix_column", []), *columns.get("text_column", [])]
+        prompt = " ".join(parts) or "hello"
         body = {
             "model": await self.default_model(),
             "prompt": prompt,

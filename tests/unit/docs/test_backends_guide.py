@@ -35,3 +35,17 @@ def test_custom_backend_sample_can_target_a_local_server() -> None:
     assert "model=<served-or-hf-id>" in section
     assert "--tokenizer" in section
     assert "kind=huggingface_auto,model=<local-path-or-hf-repo>" in section
+
+
+def test_custom_backend_sample_sends_prefix_before_text() -> None:
+    """
+    The sample prompt keeps ``prefix_column`` ahead of ``text_column``.
+
+    ## WRITTEN BY AI ##
+    """
+    section = _custom_backend_section()
+
+    assert (
+        '[*columns.get("prefix_column", []), *columns.get("text_column", [])]'
+        in section
+    )

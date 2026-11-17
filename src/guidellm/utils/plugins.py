@@ -29,11 +29,6 @@ _loaded_entry_points: set[tuple[str, str]] = set()
 _loaded_plugin_targets: set[str] = set()
 
 
-def _is_duplicate_registration(err: BaseException) -> bool:
-    """Return whether ``err`` means the plugin kind is already registered."""
-    return isinstance(err, ValueError) and "already registered" in str(err)
-
-
 def _invoke_plugin_object(loaded: Any) -> None:
     """Invoke a callable plugin hook if it is not a class object."""
     if callable(loaded) and not isinstance(loaded, type):
@@ -61,11 +56,10 @@ def load_plugins() -> list[str]:
     loaded, including an entry-point value repeated in ``settings.plugins``,
     is skipped so that hook runs once.
 
-    An entry-point hook that raises because its kind is already registered is
-    counted as loaded. A kind registered while the module was imported stays
-    in place, and a colliding entry point does not replace it or warn. Other
-    entry-point failures emit a warning so an unrelated broken package does
-    not break all CLI invocations. Explicit ``settings.plugins`` load failures
+    Only a hook that returned is recorded as loaded. Entry-point failures,
+    including a hook that raises because its kind is already registered, emit
+    a warning so an unrelated broken package does not break all CLI
+    invocations. Explicit ``settings.plugins`` load failures
     raise ``RuntimeError`` with the failing target name and cause.
 
     :return: List of newly loaded plugin identifiers
@@ -86,14 +80,13 @@ def load_plugins() -> list[str]:
             loaded = ep.load()
             _invoke_plugin_object(loaded)
         except Exception as err:  # noqa: BLE001
-            if not _is_duplicate_registration(err):
-                msg = (
-                    f"Failed to load GuideLLM plugin entry point "
-                    f"'{ep.name}' ({ep.value}): {err}"
-                )
-                logger.warning(msg)
-                warnings.warn(msg, category=UserWarning, stacklevel=2)
-                continue
+            msg = (
+                f"Failed to load GuideLLM plugin entry point "
+                f"'{ep.name}' ({ep.value}): {err}"
+            )
+            logger.warning(msg)
+            warnings.warn(msg, category=UserWarning, stacklevel=2)
+            continue
 
         _loaded_entry_points.add(key)
         _loaded_plugin_targets.add(ep.value)
