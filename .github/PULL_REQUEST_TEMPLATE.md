@@ -36,11 +36,11 @@ Keep the certification statement below intact. Check at least one box in the
 this section aside from checking the AI boxes.
 -->
 
-- By submitting this PR I certify that I have reviewed every change in this pull request and take responsibility for its correctness, quality, and impact.
+- By submitting this PR I certify that I have reviewed every change and addition to this pull request and take responsibility for its correctness, quality, and impact.
 
 ## Use of AI
 
-- [ ] No AI was used
+- [ ] No AI was used in the creation of this PR
 - [ ] Includes code generated or substantially modified by an AI agent
 - [ ] Includes tests generated or substantially modified by an AI agent
 - [ ] AI was used to create this description or communicate with maintainers
