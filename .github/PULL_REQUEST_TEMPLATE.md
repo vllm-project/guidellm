@@ -31,14 +31,16 @@ Link any relevant issues that this PR addresses or relates to.
 
 <!--
 **REQUIRED**
-Check the boxes to certify your ownership of this PR and any use-of-ai
-disclaimers. DO NOT EDIT this section aside from checking boxes.
+Keep the certification statement below intact. Check at least one box in the
+"Use of AI" section to disclose any AI involvement or lack thereof. DO NOT EDIT
+this section aside from checking the AI boxes.
 -->
 
-- [ ] "I certify that all code in this PR is my own, except as noted below."
+- By submitting this PR I certify that I have reviewed every change in this pull request and take responsibility for its correctness, quality, and impact.
 
 ## Use of AI
 
+- [ ] No AI was used
 - [ ] Includes code generated or substantially modified by an AI agent
 - [ ] Includes tests generated or substantially modified by an AI agent
 - [ ] AI was used to create this description or communicate with maintainers
