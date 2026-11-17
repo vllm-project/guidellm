@@ -117,8 +117,9 @@ class WarningRuleArgs(StandardBaseModel):
 def default_warning_rules() -> list[WarningRuleArgs]:
     """
     :return: Generation delay and worker loop lag as fractions of time to
-        first token, late first turns measured in seconds, and an incomplete
-        dataset for trace replay
+        first token, late first turns measured in seconds, an incomplete
+        dataset for trace replay, and errored requests as a fraction of all
+        requests
     """
     return [
         WarningRuleArgs(
@@ -176,6 +177,17 @@ def default_warning_rules() -> list[WarningRuleArgs]:
                 "The trace dataset was not fully loaded. This could result in "
                 "late arrivals of trace conversations. See the troubleshooting "
                 "guide for more information."
+            ),
+        ),
+        WarningRuleArgs(
+            code="error_rate",
+            metric=MetricRef(name="request_totals.errored"),
+            relative_to=MetricRef(name="request_totals.total"),
+            threshold=0.05,
+            note=(
+                "The latency tables cover only successful requests, while the "
+                "throughput table counts errored requests too. Check the "
+                "backend logs for the cause of the errors."
             ),
         ),
     ]

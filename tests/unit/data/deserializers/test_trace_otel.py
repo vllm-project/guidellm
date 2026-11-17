@@ -27,7 +27,7 @@ from tests.unit.data.deserializers.trace_test_utils import trace_file_source
 def mock_processor() -> Mock:
     """Tokenizer where each whitespace-delimited word is one token."""
     proc = Mock()
-    proc.encode.side_effect = lambda text: list(range(len(text.split())))
+    proc.encode.side_effect = lambda text, **_kwargs: list(range(len(text.split())))
     proc.decode.side_effect = lambda tokens, skip_special_tokens=False: " ".join(
         f"tok{i}" for i, _ in enumerate(tokens)
     )

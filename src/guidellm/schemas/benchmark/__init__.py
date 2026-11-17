@@ -10,6 +10,7 @@ from guidellm.schemas.benchmark.collectors import (
     PrometheusGaugeSeries,
     PrometheusHistogramSeries,
     PrometheusSummary,
+    VLLMServerInfoCollectorArgs,
 )
 from guidellm.schemas.benchmark.entrypoints import (
     BenchmarkArgs,
@@ -88,6 +89,7 @@ __all__ = [
     "SynchronousProfileArgs",
     "ThroughputProfileArgs",
     "TransientPhaseConfig",
+    "VLLMServerInfoCollectorArgs",
     "WarningCondition",
     "WarningRuleArgs",
     "YAMLBenchmarkOutputArgs",
