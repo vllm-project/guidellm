@@ -263,6 +263,7 @@ def _make_common_field_callback(
     :param registry_type: The registry subclass for error messages
     :return: A Click callback function
     """
+    usage = format_kind_config_usage(registry_type)
 
     def callback(
         ctx: click.Context,
@@ -272,7 +273,6 @@ def _make_common_field_callback(
         if is_list:
             if not value:
                 return None
-            usage = format_kind_config_usage(registry_type)
             return [
                 _parse_and_check_kind_config(
                     ctx, param, v, discriminator, registry_type, usage
@@ -282,7 +282,6 @@ def _make_common_field_callback(
 
         if value is None:
             return None
-        usage = format_kind_config_usage(registry_type)
         return _parse_and_check_kind_config(
             ctx, param, value, discriminator, registry_type, usage
         )

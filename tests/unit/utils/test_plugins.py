@@ -5,14 +5,55 @@ from __future__ import annotations
 import importlib.metadata
 import sys
 import warnings
-from types import ModuleType
+from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
-from guidellm.backends import Backend
 from guidellm.settings import Settings, settings
 from guidellm.utils import plugins as plugin_utils
 from guidellm.utils.env_validator import validate_env_vars
+
+
+@pytest.fixture
+def fresh_loader(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Give each test an empty loader state, no entry points and no settings."""
+    monkeypatch.setattr(plugin_utils, "_attempted_targets", set())
+    monkeypatch.setattr(plugin_utils, "_failed_packages", set())
+    monkeypatch.setattr(importlib.metadata, "entry_points", lambda group: [])
+    monkeypatch.setattr(settings, "plugins", [])
+    plugin_utils._entry_point_packages.cache_clear()
+    yield
+    plugin_utils._entry_point_packages.cache_clear()
+
+
+def _make_plugin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    modules: dict[str, str],
+) -> None:
+    """Write a plugin package with the given ``{submodule: source}`` files."""
+    pkg_dir = tmp_path / name
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    for module, source in modules.items():
+        (pkg_dir / f"{module}.py").write_text(source)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    for loaded in [mod for mod in sys.modules if mod.split(".")[0] == name]:
+        monkeypatch.delitem(sys.modules, loaded)
+
+
+def _set_entry_points(monkeypatch: pytest.MonkeyPatch, *values: str) -> None:
+    monkeypatch.setattr(
+        importlib.metadata,
+        "entry_points",
+        lambda group: [
+            importlib.metadata.EntryPoint(name=f"ep{idx}", value=value, group=group)
+            for idx, value in enumerate(values)
+        ],
+    )
+    plugin_utils._entry_point_packages.cache_clear()
 
 
 @pytest.mark.smoke
@@ -29,205 +70,140 @@ def test_guidellm_plugins_env_var_recognized(monkeypatch: pytest.MonkeyPatch) ->
 
 
 @pytest.mark.sanity
-def test_load_plugins_callable_and_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.usefixtures("fresh_loader")
+def test_loads_only_the_matching_submodule_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """
-    Callable ``module:func`` plugins are invoked once and repeated calls are idempotent.
+    ``guidellm.backends`` imports ``<plugin>.backends`` once and nothing else.
 
     ## WRITTEN BY AI ##
     """
-    calls = 0
-    mod_name = "_guidellm_test_callable_plugin"
-    fake_mod = ModuleType(mod_name)
-
-    def register() -> None:
-        nonlocal calls
-        calls += 1
-
-    fake_mod.register = register  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, mod_name, fake_mod)
-    monkeypatch.setattr(
-        importlib.metadata,
-        "entry_points",
-        lambda group: [
-            importlib.metadata.EntryPoint(
-                name="callable_test",
-                value=f"{mod_name}:register",
-                group=group,
-            )
-        ],
+    _make_plugin(
+        tmp_path,
+        monkeypatch,
+        "_gl_plugin_match",
+        {"backends": "", "data": "raise RuntimeError('data must stay unloaded')"},
     )
-    monkeypatch.setattr(plugin_utils, "_loaded_entry_points", set())
-    monkeypatch.setattr(plugin_utils, "_loaded_plugin_targets", set())
-    monkeypatch.setattr(settings, "plugins", [])
+    monkeypatch.setattr(settings, "plugins", ["_gl_plugin_match"])
 
-    first = plugin_utils.load_plugins()
-    second = plugin_utils.load_plugins()
+    first = plugin_utils.load_plugin_submodules("guidellm.backends")
+    second = plugin_utils.load_plugin_submodules("guidellm.backends")
 
-    assert first == [f"callable_test={mod_name}:register"]
+    assert first == ["_gl_plugin_match.backends"]
     assert second == []
-    assert calls == 1
+    assert "_gl_plugin_match.data" not in sys.modules
 
 
-def _reset_plugin_loader(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Clear loader memory so a test sees one fresh ``load_plugins`` pass."""
-    monkeypatch.setattr(plugin_utils, "_loaded_entry_points", set())
-    monkeypatch.setattr(plugin_utils, "_loaded_plugin_targets", set())
-
-
-def _unregister_backend(kind: str) -> None:
-    """Drop a test backend kind so later tests see the real registry."""
-    if Backend.registry is not None and kind in Backend.registry:
-        del Backend.registry[kind]
-
-
-@pytest.mark.regression
-def test_callable_registers_once_for_entry_point_and_settings(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.sanity
+@pytest.mark.usefixtures("fresh_loader")
+def test_plugin_without_matching_submodule_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """
-    One ``module:callable`` discovered both ways registers its backend once.
+    A plugin with no ``scheduler`` module adds nothing and warns about nothing.
 
     ## WRITTEN BY AI ##
     """
-    calls = 0
-    kind = "_guidellm_test_plugin_once"
-    mod_name = "_guidellm_test_plugin_once_mod"
-    fake_mod = ModuleType(mod_name)
+    _make_plugin(tmp_path, monkeypatch, "_gl_plugin_partial", {"backends": ""})
+    _set_entry_points(monkeypatch, "_gl_plugin_partial")
 
-    class _DummyBackend:
-        pass
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        loaded = plugin_utils.load_plugin_submodules("guidellm.scheduler")
 
-    def register() -> None:
-        nonlocal calls
-        calls += 1
-        Backend.register(kind)(_DummyBackend)
-
-    fake_mod.register = register  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, mod_name, fake_mod)
-    monkeypatch.setattr(
-        importlib.metadata,
-        "entry_points",
-        lambda group: [
-            importlib.metadata.EntryPoint(
-                name="once_test",
-                value=f"{mod_name}:register",
-                group=group,
-            )
-        ],
-    )
-    _reset_plugin_loader(monkeypatch)
-    monkeypatch.setattr(settings, "plugins", [f"{mod_name}:register"])
-
-    try:
-        loaded = plugin_utils.load_plugins()
-        assert Backend.is_registered(kind)
-    finally:
-        _unregister_backend(kind)
-
-    assert loaded == [f"once_test={mod_name}:register"]
-    assert calls == 1
+    assert loaded == []
 
 
 @pytest.mark.regression
-def test_duplicate_registration_in_hook_warns_and_is_not_cached(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.usefixtures("fresh_loader")
+def test_entry_point_and_settings_package_load_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """
-    A hook that stops on a duplicate registration is not recorded as loaded.
+    A package found both as an entry point and in settings is imported once.
 
     ## WRITTEN BY AI ##
     """
-    calls = 0
-    kind = "_guidellm_test_plugin_import_time"
-    mod_name = "_guidellm_test_plugin_import_time_mod"
-    fake_mod = ModuleType(mod_name)
+    _make_plugin(tmp_path, monkeypatch, "_gl_plugin_both", {"backends": ""})
+    _set_entry_points(monkeypatch, "_gl_plugin_both")
+    monkeypatch.setattr(settings, "plugins", ["_gl_plugin_both"])
 
-    class _DummyBackend:
-        pass
-
-    def register() -> None:
-        nonlocal calls
-        calls += 1
-        Backend.register(kind)(_DummyBackend)
-
-    fake_mod.register = register  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, mod_name, fake_mod)
-    register()
-    monkeypatch.setattr(
-        importlib.metadata,
-        "entry_points",
-        lambda group: [
-            importlib.metadata.EntryPoint(
-                name="import_time_test",
-                value=f"{mod_name}:register",
-                group=group,
-            )
-        ],
-    )
-    _reset_plugin_loader(monkeypatch)
-    monkeypatch.setattr(settings, "plugins", [])
-
-    try:
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            loaded = plugin_utils.load_plugins()
-        assert Backend.is_registered(kind)
-    finally:
-        _unregister_backend(kind)
-
-    failure_warnings = [
-        item for item in caught if "Failed to load GuideLLM plugin" in str(item.message)
+    assert plugin_utils.load_plugin_submodules("guidellm.backends") == [
+        "_gl_plugin_both.backends"
     ]
-    assert len(failure_warnings) == 1
-    assert "already registered" in str(failure_warnings[0].message)
-    assert loaded == []
-    assert f"{mod_name}:register" not in plugin_utils._loaded_plugin_targets
 
 
 @pytest.mark.regression
-def test_broken_entry_point_emits_warning(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.usefixtures("fresh_loader")
+def test_missing_entry_point_package_warns_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
-    A broken ``guidellm.plugins`` entry point warns clearly instead of failing silently.
+    An entry point naming a missing package warns once, not once per package.
 
     ## WRITTEN BY AI ##
     """
-    monkeypatch.setattr(
-        importlib.metadata,
-        "entry_points",
-        lambda group: [
-            importlib.metadata.EntryPoint(
-                name="broken_plugin",
-                value="nonexistent_guidellm_plugin_pkg_xyz",
-                group=group,
-            )
-        ],
+    _set_entry_points(monkeypatch, "nonexistent_guidellm_plugin_pkg_xyz")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        plugin_utils.load_plugin_submodules("guidellm.schemas")
+        plugin_utils.load_plugin_submodules("guidellm.backends")
+
+    messages = [str(item.message) for item in caught]
+    assert len(messages) == 1
+    assert "Failed to load GuideLLM plugin entry point" in messages[0]
+
+
+@pytest.mark.regression
+@pytest.mark.usefixtures("fresh_loader")
+def test_broken_entry_point_submodule_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    An entry-point plugin module that raises is reported as a warning.
+
+    ## WRITTEN BY AI ##
+    """
+    _make_plugin(
+        tmp_path, monkeypatch, "_gl_plugin_broken", {"backends": "raise ValueError"}
     )
-    monkeypatch.setattr(plugin_utils, "_loaded_entry_points", set())
-    monkeypatch.setattr(plugin_utils, "_loaded_plugin_targets", set())
-    monkeypatch.setattr(settings, "plugins", [])
+    _set_entry_points(monkeypatch, "_gl_plugin_broken")
 
-    with pytest.warns(UserWarning, match="Failed to load GuideLLM plugin entry point"):
-        loaded = plugin_utils.load_plugins()
+    with pytest.warns(UserWarning, match=r"_gl_plugin_broken\.backends"):
+        loaded = plugin_utils.load_plugin_submodules("guidellm.backends")
 
     assert loaded == []
 
 
 @pytest.mark.regression
-def test_broken_env_plugin_raises_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.usefixtures("fresh_loader")
+def test_broken_settings_plugin_raises_clear_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """
-    An unimportable ``GUIDELLM__PLUGINS`` target raises a clear ``RuntimeError``.
+    An unimportable ``GUIDELLM__PLUGINS`` package raises a clear ``RuntimeError``.
 
     ## WRITTEN BY AI ##
     """
-    monkeypatch.setattr(importlib.metadata, "entry_points", lambda group: [])
-    monkeypatch.setattr(plugin_utils, "_loaded_entry_points", set())
-    monkeypatch.setattr(plugin_utils, "_loaded_plugin_targets", set())
     monkeypatch.setattr(settings, "plugins", ["nonexistent_guidellm_plugin_pkg_xyz"])
 
     with pytest.raises(
         RuntimeError,
         match="Failed to load GuideLLM plugin 'nonexistent_guidellm_plugin_pkg_xyz'",
     ) as exc_info:
-        plugin_utils.load_plugins()
+        plugin_utils.load_plugin_submodules("guidellm.backends")
 
     assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)
+
+
+@pytest.mark.smoke
+def test_rejects_package_outside_guidellm() -> None:
+    """
+    Only GuideLLM package names can be mirrored.
+
+    ## WRITTEN BY AI ##
+    """
+    with pytest.raises(ValueError, match="GuideLLM package name"):
+        plugin_utils.load_plugin_submodules("other.backends")

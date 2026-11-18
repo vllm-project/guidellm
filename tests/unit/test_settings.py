@@ -165,9 +165,9 @@ def test_loop_lag_interval_must_be_positive(interval: float):
     ("raw_value", "expected"),
     [
         ("", []),
-        ("my_pkg.plugin", ["my_pkg.plugin"]),
-        ("pkg_a.mod, pkg_b.mod:register", ["pkg_a.mod", "pkg_b.mod:register"]),
-        ('["pkg_a.mod", "pkg_b.mod"]', ["pkg_a.mod", "pkg_b.mod"]),
+        ("my_plugin", ["my_plugin"]),
+        ("plugin_a, plugin_b", ["plugin_a", "plugin_b"]),
+        ('["plugin_a", "plugin_b"]', ["plugin_a", "plugin_b"]),
     ],
 )
 def test_plugins_setting_parses_env_formats(

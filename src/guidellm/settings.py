@@ -86,8 +86,8 @@ class Settings(BaseSettings):
     plugins: Annotated[list[str], NoDecode] = Field(
         default_factory=list,
         description=(
-            "Comma-separated or JSON-encoded list of plugin module paths "
-            "(or 'module:callable' targets) to load on startup."
+            "Comma-separated or JSON-encoded list of plugin package names. Each "
+            "GuideLLM package imports the matching module of every plugin."
         ),
     )
 
@@ -112,7 +112,7 @@ class Settings(BaseSettings):
         if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
             return [str(item).strip() for item in value if str(item).strip()]
         raise ValueError(
-            "plugins must be a list of module names or a comma-separated string"
+            "plugins must be a list of package names or a comma-separated string"
         )
 
     # Scheduler settings

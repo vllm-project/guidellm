@@ -31,3 +31,9 @@ __all__ = [
     "parse_prometheus_text",
     "summarize_snapshots",
 ]
+
+# Import plugin modules that mirror this package, e.g. `<plugin>.collectors`.
+# Kept last so plugins can import anything this package defines.
+from guidellm.utils.plugins import load_plugin_submodules
+
+load_plugin_submodules(__name__)

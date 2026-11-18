@@ -37,7 +37,7 @@ def _unpack_fixture_wheel(dest_dir: Path) -> Path:
 
 
 def _assert_echo_plugin_registered_in_child(queue: multiprocessing.Queue) -> None:
-    """Child process entrypoint checking registries after ``import guidellm``."""
+    """Child process entrypoint checking registries after importing GuideLLM."""
     queue.put(
         (
             "echo_plugin" in (Backend.registry or {}),
@@ -48,9 +48,9 @@ def _assert_echo_plugin_registered_in_child(queue: multiprocessing.Queue) -> Non
 
 
 @pytest.mark.sanity
-def test_load_plugins_from_entry_point_in_subprocess(tmp_path: Path) -> None:
+def test_entry_point_plugin_registers_in_subprocess(tmp_path: Path) -> None:
     """
-    Installed ``guidellm.plugins`` entry points populate registries at import and CLI.
+    An installed ``guidellm.plugins`` package registers its backend and CLI kind.
 
     ## WRITTEN BY AI ##
     """
@@ -60,7 +60,6 @@ def test_load_plugins_from_entry_point_in_subprocess(tmp_path: Path) -> None:
     env["PYTHONPATH"] = f"{site_dir}{os.pathsep}{REPO_ROOT / 'src'}"
 
     script = (
-        "import guidellm; "
         "from guidellm.backends import Backend; "
         "from guidellm.schemas.backends import BackendArgs; "
         "assert Backend.is_registered('echo_plugin'); "
@@ -87,11 +86,11 @@ def test_load_plugins_from_entry_point_in_subprocess(tmp_path: Path) -> None:
 
 
 @pytest.mark.sanity
-def test_load_plugins_from_env_in_spawn_child(
+def test_env_plugin_registers_in_spawn_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    Spawned child processes importing ``guidellm`` load ``GUIDELLM__PLUGINS``.
+    Spawned child processes importing GuideLLM packages load ``GUIDELLM__PLUGINS``.
 
     ## WRITTEN BY AI ##
     """
@@ -116,3 +115,42 @@ def test_load_plugins_from_env_in_spawn_child(
     assert backend_ok is True
     assert args_ok is True
     assert plugins_cfg == ["guidellm_plugin_example"]
+
+
+_LAZY_IMPORT_SCRIPT = """
+import sys
+
+def plugin_modules():
+    return sorted(m for m in sys.modules if m.startswith("guidellm_plugin_example"))
+
+import guidellm
+assert plugin_modules() == [], plugin_modules()
+import guidellm.schemas
+import guidellm.scheduler
+assert "guidellm_plugin_example.schemas.backends" in sys.modules, plugin_modules()
+assert "guidellm_plugin_example.backends" not in sys.modules, plugin_modules()
+import guidellm.backends
+assert "guidellm_plugin_example.backends" in sys.modules, plugin_modules()
+"""
+
+
+@pytest.mark.sanity
+def test_plugin_modules_load_with_matching_guidellm_package(tmp_path: Path) -> None:
+    """
+    ``import guidellm`` loads no plugin code; each package loads only its mirror.
+
+    ## WRITTEN BY AI ##
+    """
+    site_dir = _unpack_fixture_wheel(tmp_path)
+    env = os.environ.copy()
+    env.pop("GUIDELLM__PLUGINS", None)
+    env["PYTHONPATH"] = f"{site_dir}{os.pathsep}{REPO_ROOT / 'src'}"
+
+    proc = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", _LAZY_IMPORT_SCRIPT],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr

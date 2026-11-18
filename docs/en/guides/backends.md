@@ -200,30 +200,32 @@ guidellm run \
 
 You can add custom backends without modifying GuideLLM itself by registering a `BackendArgs` schema and a `Backend` subclass and exposing them as a plugin.
 
-GuideLLM discovers and imports plugins automatically when the `guidellm` package is imported, before Click parses `--backend` options and whenever `spawn` or `forkserver` worker processes start.
+A plugin is a Python package that mirrors GuideLLM's top-level packages. When one of `guidellm.schemas`, `guidellm.backends`, `guidellm.scheduler`, `guidellm.data`, `guidellm.benchmark` or `guidellm.collectors` finishes importing, GuideLLM imports the module with the same name from each plugin, if the plugin has one. `import guidellm` alone loads no plugin code, so a plugin only adds import time to the processes that use the matching part of GuideLLM, including `spawn` and `forkserver` workers.
 
 ### 1. Define and Register the Backend
 
-Create a module (for example `my_guidellm_plugin/__init__.py`) that registers both a `BackendArgs` subclass and a `Backend` subclass under the same `kind` name:
+Register a `BackendArgs` subclass and a `Backend` subclass under the same `kind` name, each in the plugin module that matches where GuideLLM defines the base class:
+
+```text
+my_guidellm_plugin/
+├── __init__.py          # keep it empty: it is imported to find the modules below
+├── schemas/
+│   ├── __init__.py      # from .backends import MyCustomBackendArgs
+│   └── backends.py      # MyCustomBackendArgs, loaded with guidellm.schemas
+└── backends.py          # MyCustomBackend, loaded with guidellm.backends
+```
+
+`guidellm run --help` only imports `guidellm.schemas`, so it registers the `--backend` kind without importing the backend implementation.
+
+`my_guidellm_plugin/schemas/backends.py`:
 
 ```python
 from __future__ import annotations
 
-import json
-import time
-from collections.abc import AsyncIterator
 from typing import Literal
 
-import httpx2
 from pydantic import Field
 
-from guidellm.backends import Backend
-from guidellm.schemas import (
-    GenerationRequest,
-    GenerationResponse,
-    RequestInfo,
-    UsageMetrics,
-)
 from guidellm.schemas.backends import BackendArgs
 
 
@@ -235,6 +237,27 @@ class MyCustomBackendArgs(BackendArgs):
         default="",
         description="Served or Hugging Face model id. Empty queries /v1/models.",
     )
+```
+
+`my_guidellm_plugin/backends.py`:
+
+```python
+from __future__ import annotations
+
+import json
+import time
+from collections.abc import AsyncIterator
+
+import httpx2
+
+from guidellm.backends import Backend
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationResponse,
+    RequestInfo,
+    UsageMetrics,
+)
+from my_guidellm_plugin.schemas.backends import MyCustomBackendArgs
 
 
 @Backend.register("my_custom_backend")
@@ -307,7 +330,7 @@ class MyCustomBackend(Backend):
 ```
 
 > [!NOTE]\
-> Your `Backend` and `BackendArgs` classes must be pickleable because GuideLLM's scheduler runs them inside `spawn` or `forkserver` worker processes. Avoid registering classes inside `__main__` scripts without an importable plugin module.
+> Your `Backend` and `BackendArgs` classes must be pickleable because GuideLLM's scheduler runs them inside `spawn` or `forkserver` worker processes. Define them in the plugin package, not in a `__main__` script.
 
 ### 2. Expose the Plugin
 
@@ -315,7 +338,7 @@ You can load plugins via Python package entry points or the `GUIDELLM__PLUGINS` 
 
 #### Option A: Package Entry Point (`guidellm.plugins`)
 
-In your plugin package's `pyproject.toml`, register an entry point under the `guidellm.plugins` group pointing either to a module whose import registers the classes, or to a zero-argument `module:callable` registration function:
+In your plugin's `pyproject.toml`, register an entry point under the `guidellm.plugins` group that names the plugin package:
 
 ```toml
 [project.entry-points."guidellm.plugins"]
@@ -326,7 +349,7 @@ After installing your package (`pip install -e .`), `guidellm run --help` will l
 
 #### Option B: `GUIDELLM__PLUGINS` Environment Variable
 
-For local development or uninstalled modules on `PYTHONPATH`, set `GUIDELLM__PLUGINS` to a comma-separated list (or JSON array) of module paths or `module:callable` targets.
+For local development or uninstalled packages on `PYTHONPATH`, set `GUIDELLM__PLUGINS` to a comma-separated list (or JSON array) of plugin package names. A package listed here that fails to import raises an error, while a broken entry-point plugin only logs a warning.
 
 `model` defaults to empty. `default_model` then uses the first id from `GET /v1/models`, and the completion body sends that id. Set `model=<served-or-hf-id>` to choose one. GuideLLM copies that id into the tokenizer when `--tokenizer` is omitted and loads it with `AutoTokenizer.from_pretrained`. Pass `--tokenizer` when the id is not an existing local path or a Hugging Face repo:
 

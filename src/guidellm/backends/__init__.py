@@ -38,3 +38,9 @@ __all__ = [
     "VLLMPythonBatchBackend",
     "VLLMResponseHandler",
 ]
+
+# Import plugin modules that mirror this package, e.g. `<plugin>.backends`.
+# Kept last so plugins can import anything this package defines.
+from guidellm.utils.plugins import load_plugin_submodules
+
+load_plugin_submodules(__name__)
