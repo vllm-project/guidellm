@@ -78,7 +78,7 @@ To start a llama.cpp server with the gpt-oss-20b model, you can use the followin
 llama-server -hf ggml-org/gpt-oss-20b-GGUF --alias gpt-oss-20b --ctx-size 0 --jinja -ub 2048 -b 2048
 ```
 
-Note that we are providing an alias `gpt-oss-20b` for the model name because GuideLLM is using it to retrieve model metadata in JSON format and such metadata is not included in GGUF model repositories. A simple workaround is to download the metadata files from the safetensors repository and place them in a local directory named after the alias:
+Note that we are providing an alias `gpt-oss-20b` for the model name because GuideLLM uses the model name to load a tokenizer, and GGUF model repositories typically do not include the tokenizer files. A simple workaround is to download the tokenizer-related files from the safetensors repository and place them in a local directory named after the alias:
 
 ```bash
 huggingface-cli download openai/gpt-oss-20b --include "*.json" --local-dir gpt-oss-20b/
@@ -103,7 +103,8 @@ To provide an API key when running benchmarks, pass it in the backend configurat
 ```bash
 guidellm run \
   --backend kind=openai_http,target=https://api.openai.com/v1,api_key=sk-...,model=gpt-3.5-turbo \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep
 ```
 
 Or with JSON:
@@ -128,7 +129,8 @@ The `extras` field accepts a `body` key whose values are merged directly into th
 ```bash
 guidellm run \
   --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"meta-llama/Meta-Llama-3.1-8B-Instruct","extras":{"body":{"temperature":0.6,"top_p":0.95,"top_k":20}}}' \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep
 ```
 
 This will include `temperature`, `top_p`, and `top_k` in every request body sent to the server.
@@ -142,7 +144,8 @@ Some models should not have their end-of-sequence token suppressed. Formats such
 ```bash
 guidellm run \
   --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"openai/gpt-oss-20b","extras":{"body":{"ignore_eos":false}}}' \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep
 ```
 
 Or using GuideLLM's compact `key=value` parser:
@@ -150,7 +153,8 @@ Or using GuideLLM's compact `key=value` parser:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000/v1,model=openai/gpt-oss-20b,extras.body.ignore_eos=false \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep
 ```
 
 Values in `extras.body` are merged into the request body and take precedence over the defaults, so `ignore_eos: false` overrides the built-in `true`. Leave `ignore_eos` unset (the default) for models where suppressing the end-of-sequence token is safe, which lets GuideLLM control the exact output length.
@@ -176,6 +180,7 @@ guidellm run \
     }
   }' \
   --data kind=synthetic_text,prompt_tokens=1000,output_tokens=1000 \
+  --profile kind=sweep \
   --constraint kind=max_duration,seconds=60
 ```
 
@@ -193,7 +198,8 @@ The `--backend` config is parsed into keyword arguments for the backend construc
 ```bash
 guidellm run \
   --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"meta-llama/Meta-Llama-3.1-8B-Instruct","api_key":"sk-...","extras":{"body":{"temperature":0.8,"top_p":0.9}}}' \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep
 ```
 
 ## Expanding Backend Support

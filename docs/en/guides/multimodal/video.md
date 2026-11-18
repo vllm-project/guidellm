@@ -51,41 +51,41 @@ If you are combining multiple datasets (e.g., for prompts and video), prepend th
 --data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"1.video_column": "url"}}'
 ```
 
-### Request Formatting
+### Media Encoding and Request Options
 
-The `encode_media` data preprocessor encodes videos before the backend formats requests. Configure it with `--data-preprocessor`, putting encoding options in `video_kwargs`.
+Video data is encoded by the `encode_media` data preprocessor, which is part of the default data pipeline. Pass `video_kwargs` to control how videos are preprocessed before they are included in requests. For example, to send video URLs directly instead of downloading and re-encoding them:
 
-#### `video_kwargs`
+```bash
+guidellm run \
+  --backend "kind=openai_http,target=http://localhost:8000" \
+  --profile kind=synchronous \
+  --data '{"kind":"huggingface","source":"lmms-lab/Video-MME","load_kwargs":{"split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"video_column":"url"}}' \
+  --data-preprocessor kind=encode_media,video_kwargs.encode_type=url
+```
 
-Supported arguments include:
-
-- "encode_type": How to include the video in the request.
-  - "base64" (default): Downloads (if URL) or reads the video and encodes it as a base64 string.
-  - "url": Sends the video URL directly in the request. This requires the inference server to have network access to the video URL.
-
-To send video URLs directly:
+Or using JSON:
 
 ```bash
 --data-preprocessor '{"kind":"encode_media","video_kwargs":{"encode_type":"url"}}'
 ```
 
-#### `extras`
+Supported `video_kwargs` include:
 
-Add `extras` to your existing `--backend` configuration to pass request options:
+- `encode_type`: `base64` (default) downloads URL inputs and encodes the video bytes; `url` sends the URL directly. The inference server must have network access to the URL when using `url`.
 
-- `body`: Fields in the request body
-- `headers`: HTTP request headers
-- `params`: URL query parameters
+> [!WARNING]\
+> Specifying any `--data-preprocessor` replaces the default preprocessors except for the column mapper. Include every preprocessor the run needs, for example `--data-preprocessor kind=encode_media,video_kwargs.encode_type=url`.
 
-To set the sampling temperature:
+Request body parameters and headers are configured on the backend `extras` field. For example, to set `temperature` in the request body:
 
 ```bash
 --backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"temperature":0.7}}}'
 ```
 
-#### "stream"
+`extras` supports the `body`, `content`, `headers`, `params`, and `files` fields; see [Structured Chat Content Payloads](../backends.md#structured-chat-content-payloads).
 
-Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Pass `stream=false` in the backend configuration:
+To disable streaming responses (when the backend supports it), pass `stream=false` in the backend configuration:
 
 ```bash
 --backend kind=openai_http,target=http://localhost:8000,stream=false
@@ -98,8 +98,8 @@ GuideLLM captures comprehensive metrics across the entire request lifecycle, sto
 ### Output Files
 
 - **`benchmarks.json`**: The complete hierarchical statistics object containing scheduler timings, request distributions, and detailed metric summaries for text and videos.
-- **`benchmarks.csv`**: A row-per-request export of `GenerativeRequestStats`, useful for analyzing individual request performance, latency, and specific input/output configurations.
-- **`benchmarks.html`**: A visual report summarizing performance.
+- **`benchmarks.csv`**: A one-row-per-benchmark export of summary metrics and distributions, useful for comparing strategies and sharing results.
+- **`benchmarks.html`**: An optional visual report summarizing performance, written when `--output kind=html` is requested.
 
 ### Captured Metrics
 

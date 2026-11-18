@@ -30,7 +30,7 @@ guidellm run \
   --constraint kind=max_duration,seconds=20
 ```
 
-Engine behavior (device, memory, etc.) follows vLLM defaults unless you override it via `vllm_config` in the backend configuration. When running without a GPU (e.g. the GuideLLM + vLLM container without GPU access), the backend automatically uses the CPU device unless you set `device` in `vllm_config`. For engine configuration options, see vLLM's [Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/).
+Engine behavior (device, memory, etc.) follows vLLM defaults unless you override it via `vllm_config` in the backend configuration. vLLM's `device` option defaults to `auto`, which selects CUDA when available and CPU otherwise, so a GPU-less environment (for example, the GuideLLM + vLLM container without GPU access) runs on CPU unless you set `device` in `vllm_config`. For engine configuration options, see vLLM's [Engine Arguments](https://docs.vllm.ai/en/stable/configuration/engine_args/).
 
 ## Request format and backend options
 

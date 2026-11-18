@@ -41,7 +41,7 @@ Synthetic multiturn data (including single-turn and branched sub-agent configs) 
 When executing a multiturn benchmark, GuideLLM:
 
 1. **Sends a turn** (prefix + prompt_0) to the model and captures the response
-2. **Return the request** Store the request/response in the aggregator as a single request
+2. **Records the exchange** Stores the request and response in the aggregator as a single request
 3. **Builds conversation history** by combining the requests and the model's responses
 4. **Sends the next turn** (prompt_i) along with the conversation history
 5. **Repeat from (2)** for the `n` given turns
@@ -247,7 +247,8 @@ Enable server-side history in the backend configuration:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,request_format=/v1/responses,server_history=true \
-  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3 \
+  --profile kind=concurrent,streams=5
 ```
 
 When enabled, GuideLLM sends only the current turn's input and references the previous response by ID. The server reconstructs the full conversation context internally.
@@ -470,7 +471,7 @@ guidellm run \
   --profile kind=concurrent,streams=10 \
   --constraint kind=max_requests,count=150 \
   --data kind=synthetic_text,prefix_tokens=512,prompt_tokens=128,output_tokens=256 \
-  --data kind=synthetic_text,prompt_tokens=256,prompt_token_stdev=32,output_tokens=128 \
+  --data kind=synthetic_text,prompt_tokens=256,prompt_tokens_stdev=32,output_tokens=128 \
   --data kind=synthetic_text,prompt_tokens=64,output_tokens=128,output_tokens_stdev=16 \
   --data-preprocessor kind=turn_pivot
 ```

@@ -12,7 +12,7 @@ Before installing GuideLLM, ensure you have the following prerequisites:
 
 - **Operating System:** Linux or MacOS
 
-- **Python Version:** 3.11 – 3.15
+- **Python Version:** 3.11 or newer, below 4.0 (`>=3.11,<4.0`)
 
 - **Pip Version:** Ensure you have the latest version of pip installed. You can upgrade pip using the following command:
 
@@ -78,13 +78,13 @@ This allows you to make changes to the source code and have them reflected immed
 
 ## Verifying the Installation
 
-After installation, you can verify that GuideLLM is installed correctly by running:
+After installation, verify that GuideLLM is installed correctly by checking its version:
 
 ```bash
-guidellm --help
+guidellm --version
 ```
 
-This should display the installed version of GuideLLM.
+This prints the installed GuideLLM version. Run `guidellm --help` to list the available commands and options.
 
 To use the vLLM Python backend (in-process inference), see [vLLM Python backend](../guides/vllm-python-backend.md) for recommended installation (container or existing vLLM environment) and pip installation notes.
 

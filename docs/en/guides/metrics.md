@@ -188,6 +188,7 @@ GuideLLM calculates a comprehensive set of percentiles for each metric, includin
 - **5th Percentile (p05)**: The value below which 5% of the data falls.
 - **10th Percentile (p10)**: The value below which 10% of the data falls.
 - **25th Percentile (p25)**: The value below which 25% of the data falls.
+- **50th Percentile (p50)**: The value below which 50% of the data falls (the median).
 - **75th Percentile (p75)**: The value below which 75% of the data falls.
 - **90th Percentile (p90)**: The value below which 90% of the data falls.
 - **95th Percentile (p95)**: The value below which 95% of the data falls.

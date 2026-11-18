@@ -27,7 +27,7 @@ The GuideLLM CLI provides options using a common registry-backed format. The reg
 guidellm run --<option> kind=<TYPE>,key=value,...
 ```
 
-Use comma-separated key=value pairs for flat settings (for example, `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`). Use serialized JSON or YAML when any value is nested (for example, `--data '{"kind":"huggingface","source":"org/dataset","loader_kwargs":{"split":"test"}}'`). Do not mix inline key=value and JSON/YAML in the same option. Some options can be repeated to supply multiple values (for example, multiple `--data` or `--constraint` entries).
+Use comma-separated key=value pairs for flat settings (for example, `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`). Use serialized JSON or YAML when any value is nested (for example, `--data '{"kind":"huggingface","source":"org/dataset","load_kwargs":{"split":"test"}}'`). Do not mix inline key=value and JSON/YAML in the same option. Some options can be repeated to supply multiple values (for example, multiple `--data` or `--constraint` entries).
 
 ### Basic Example
 
@@ -36,6 +36,7 @@ To run a benchmark against your local vLLM server with default settings:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --constraint kind=max_duration,seconds=60
 ```
@@ -45,7 +46,7 @@ This command:
 - Connects to your vLLM server running at `http://localhost:8000`
 - Uses synthetic data with 256 prompt tokens and 128 output tokens per request
 - Automatically determines the available model on the server
-- Runs a `sweep` profile (default) to find optimal performance points
+- Runs a `sweep` profile to find optimal performance points
 - Stops each strategy after 60 seconds
 
 During the benchmark, you'll see a progress display similar to this:
@@ -103,9 +104,9 @@ See [Over-Saturation Stopping](../guides/over_saturation_stopping.md) for over-s
 
 When you use the `sweep` profile, or specify multiple `rate` values in the `async`/`constant`/`poisson` profiles, or multiple `streams` values in the `concurrent` profile, you are running multiple "benchmark strategies" within the profile. GuideLLM allows you to specify distinct control parameters for your constraints using the `--override` option. For example, `--profile kind=sweep,sweep_size=5 --constraint kind=max_duration,seconds=30` runs 5 strategies (synchronous, throughput, and three interpolated constant rates) for 30 seconds each. You can use `--override constraint[0].seconds 10,20,10,15,20` to run the synchronous strategy for 10 seconds, the throughput strategy for 20 seconds, and the three interpolated constant rates for 10 seconds, 15 seconds, and 20 seconds. Note that specifying fewer values, e.g. `--override constraint[0].seconds 10,20,10`, will reuse the final value of 10 seconds for all three constant strategies.
 
-### Benchmark Profiles (`--profile`)
+### Benchmark Profiles
 
-GuideLLM supports several benchmark profiles, which are described in detail below. Profile-specific parameters go in the same configuration string after `kind=<type>`.
+GuideLLM supports several benchmark profiles, which are described in detail below. Profile-specific parameters go in the same `--profile` configuration string after `kind=<type>`.
 
 #### Synchronous Profile
 
@@ -353,11 +354,14 @@ spec:
   profile:
     kind: concurrent
   constraints:
-    kind: max_duration
+  - kind: max_duration
+    seconds: 60
   tokenizer:
     kind: huggingface_auto
   data:
-    kind: synthetic_text
+  - kind: synthetic_text
+    prompt_tokens: 256
+    output_tokens: 128
   data_column_mapper:
     kind: generative_column_mapper
   data_preprocessors:
@@ -369,7 +373,7 @@ spec:
   seed:
     kind: static
     value: 42
-  output:
+  outputs:
   - kind: json
     path: output.json
   - kind: csv
@@ -411,7 +415,7 @@ These names are builtin to GuideLLM. Specify the full name as shown below, like 
 - `rhaiis/concurrent-8k-1k-equal`: Large context scenario. 8,000 input tokens, 1,000 output tokens.
 - `rhaiis/concurrent-8k-800-norm`: Large context scenario with sequence length variance. Mean 8,000 input tokens and 800 output tokens, but with large statistical variance.
 - `rhaiis/concurrent-100k-1k-equal`: Very large context scenario. 100,000 prompt tokens with 1,000 output tokens.
-- `rhaiis/concurrent-512-2ki-norm`: Generation heavy scenario with sequence length variance. Mean 512 prompt tokens with 1k output tokens, but with very large statistical variance.
+- `rhaiis/concurrent-512-2ki-norm`: Generation heavy scenario with sequence length variance. Mean 512 prompt tokens with 2,000 output tokens, but with very large statistical variance.
 
 ## Troubleshooting
 

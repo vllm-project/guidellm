@@ -34,6 +34,7 @@ For synthetic data, use `server_tool_call_turns` to mark user turns as server-ma
 guidellm run \
   --backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"tools":[{"type":"function","function":{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}]}}}' \
   --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,server_tool_call_turns=-1 \
+  --profile kind=concurrent,streams=5 \
   --constraint kind=max_requests,count=30
 ```
 
@@ -200,6 +201,7 @@ guidellm run \
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,tool_call_missing_behavior=ignore_continue,extras.body.tool_choice=auto \
   --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3,tool_call_turns=2 \
+  --profile kind=concurrent,streams=5 \
   --constraint kind=max_requests,count=30
 ```
 
