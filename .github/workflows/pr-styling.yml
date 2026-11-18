@@ -61,9 +61,17 @@ jobs:
       ${{ !(github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name &&
             startsWith(github.head_ref, 'mergify/merge-queue/')) }}
     runs-on: ubuntu-slim
-    # The body is read from the event payload; no token scopes are needed
-    permissions: {}
+    # Checkout needs a read token; the PR body still comes from the event payload.
+    permissions:
+      contents: read
     steps:
+      # pull_request_target runs the base branch's workflow and the default
+      # checkout ref is that trusted base commit. Never check out the PR head.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       # Bot-authored PRs (e.g. Dependabot) never use the template. Skip the
       # step, not the job, so the job still reports success for check-success.
       - name: Verify certification and AI disclosure
@@ -72,20 +80,5 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          # PR_BODY is untrusted: keep it in a variable and never echo it.
-          BODY="${PR_BODY:-}"
-
-          # Ignore generated content below the same marker format_pr.py uses.
-          BODY="${BODY%%<!-- begin:squash-data -->*}"
-
-          if ! grep -q -i -F -- '- By submitting this PR I certify that I have reviewed every change and addition to this pull request and take responsibility for its correctness, quality, and impact.' <<< "$BODY"; then
-            echo "::error title=Certification required::Keep the certification statement from the PR template in the description."
-            exit 1
-          fi
-
-          if ! grep -q -i -E '^[[:space:]]*[-*+][[:space:]]+\[x\][[:space:]]+(No AI was used in the creation of this PR|Includes code generated or substantially modified by an AI agent|Includes tests generated or substantially modified by an AI agent|AI was used to create this description or communicate with maintainers)' <<< "$BODY"; then
-            echo "::error title=AI disclosure required::Check at least one box in the 'Use of AI' section of the PR description."
-            exit 1
-          fi
-
-          echo "Certification statement is present and at least one use-of-AI box is checked."
+          # PR_BODY is untrusted: keep it in a variable and pass it on stdin.
+          printf '%s' "${PR_BODY:-}" | python3 scripts/check_pr_description.py

@@ -36,14 +36,18 @@ Keep the certification statement below intact. Check at least one box in the
 this section aside from checking the AI boxes.
 -->
 
+<!-- begin:certification -->
 - By submitting this PR I certify that I have reviewed every change and addition to this pull request and take responsibility for its correctness, quality, and impact.
+<!-- end:certification -->
 
 ## Use of AI
 
+<!-- begin:ai-disclosure -->
 - [ ] No AI was used in the creation of this PR
 - [ ] Includes code generated or substantially modified by an AI agent
 - [ ] Includes tests generated or substantially modified by an AI agent
 - [ ] AI was used to create this description or communicate with maintainers
+<!-- end:ai-disclosure -->
 
 > NOTE: the `Generated-by` or `Assisted-by` trailers should be used in git commit messages when code or tests were generated or substantially modified by an AI agent, as described in the project's [`DEVELOPING.md`](https://github.com/vllm-project/guidellm/blob/main/DEVELOPING.md) file.
 
