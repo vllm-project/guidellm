@@ -55,16 +55,14 @@ reviews:
       enabled: false
     custom: []
   path_instructions:
-    - path: "docs/en/**/*.md"
+    - path: "docs/**/*.md"
       instructions: |
-        Review new and changed documentation pages for accuracy against the source
-        code and for internal consistency. Embedded code examples should be complete
-        and accurate so that users can copy them and run them a terminal. Always
-        verify formatting and style against the guidelines in AGENTS.md.
-    - path: "docs/{zh,ko}/**/*.md"
-      instructions: |
-        Review new and changed translations only for accurate translation of the
-        English source page, using the agent translation review skill in
+        Review new and changed English documentation pages for accuracy against the
+        source code and for internal consistency. Embedded code examples should be
+        complete and accurate so that users can copy them and run them a terminal.
+        Always verify formatting and style against the guidelines in AGENTS.md.
+        Review new and changed non-English pages only for accurate translation of
+        the English source page, using the agent translation review skill in
         .agents/skills/guidellm-review-translation. Do not comment on linguistically
         correct translations of technically incorrect English documentation pages.
     - path: "src/guidellm/**/*.py"
