@@ -78,12 +78,12 @@ jobs:
           # Ignore generated content below the same marker format_pr.py uses.
           BODY="${BODY%%<!-- begin:squash-data -->*}"
 
-          if ! grep -q -i -F -- '- By submitting this PR I certify that I have reviewed every change in this pull request and take responsibility for its correctness, quality, and impact.' <<< "$BODY"; then
+          if ! grep -q -i -F -- '- By submitting this PR I certify that I have reviewed every change and addition to this pull request and take responsibility for its correctness, quality, and impact.' <<< "$BODY"; then
             echo "::error title=Certification required::Keep the certification statement from the PR template in the description."
             exit 1
           fi
 
-          if ! grep -q -i -E '^[[:space:]]*[-*+][[:space:]]+\[x\][[:space:]]+(No AI was used|Includes code generated or substantially modified by an AI agent|Includes tests generated or substantially modified by an AI agent|AI was used to create this description or communicate with maintainers)' <<< "$BODY"; then
+          if ! grep -q -i -E '^[[:space:]]*[-*+][[:space:]]+\[x\][[:space:]]+(No AI was used in the creation of this PR|Includes code generated or substantially modified by an AI agent|Includes tests generated or substantially modified by an AI agent|AI was used to create this description or communicate with maintainers)' <<< "$BODY"; then
             echo "::error title=AI disclosure required::Check at least one box in the 'Use of AI' section of the PR description."
             exit 1
           fi
