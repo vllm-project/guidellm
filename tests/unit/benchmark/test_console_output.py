@@ -44,6 +44,15 @@ LATENCY_TABLE_METRICS = (
     "time_per_output_token_ms",
 )
 
+# Metrics read by GenerativeBenchmarkerConsole.print_request_counts_table.
+TOKEN_TABLE_METRICS = (
+    "prompt_token_count",
+    "output_token_count",
+    "total_token_count",
+    "request_streaming_iterations_count",
+    "output_tokens_per_iteration",
+)
+
 
 def _make_benchmark() -> SimpleNamespace:
     """Build a benchmark stub exposing every metric the latency table reads.
@@ -441,6 +450,137 @@ class TestRunSummaryTableStrategyLabel:
         assert "concurrent@1" in cells
         assert "concurrent@2" in cells
         assert "concurrent" not in cells
+
+
+def _make_token_benchmark(
+    successful: list[float],
+    incomplete: list[float] | None = None,
+    errored: list[float] | None = None,
+) -> SimpleNamespace:
+    """Build a benchmark stub exposing every metric the token table reads.
+
+    The arguments are the prefix cache hit rates of the requests by status.
+
+    ## WRITTEN BY AI ##
+    """
+    distribution = StatusDistributionSummary.from_values([1.0, 2.0, 3.0], [], [])
+    metrics = SimpleNamespace(
+        **dict.fromkeys(TOKEN_TABLE_METRICS, distribution),
+        prefix_cache_hit_rate=StatusDistributionSummary.from_values(
+            successful, incomplete or [], errored or []
+        ),
+    )
+
+    return SimpleNamespace(
+        config=SimpleNamespace(strategy=SimpleNamespace(type_="constant")),
+        metrics=metrics,
+    )
+
+
+def _render_token_table(benchmarks) -> tuple[list[list[str]], list[list[str]]]:
+    """Render the token table and return its headers and value columns.
+
+    ## WRITTEN BY AI ##
+    """
+    captured: dict[str, object] = {}
+    output = GenerativeBenchmarkerConsole()
+    output.console.print = lambda *args, **kwargs: None
+    output.console.print_table = lambda headers, values, title=None: captured.update(
+        headers=headers, values=values
+    )
+    output.print_request_counts_table(SimpleNamespace(benchmarks=benchmarks))
+
+    return captured["headers"], captured["values"]  # type: ignore[return-value]
+
+
+class TestRequestTokenTablePrefixCache:
+    """
+    Verify the prefix cache hit rate column appears only when it was measured.
+
+    ## WRITTEN BY AI ##
+    """
+
+    HIT_RATE_HEADER = ["Prefix Cache", "Hit Rate %", "Mean"]
+
+    @pytest.mark.smoke
+    def test_renders_mean_hit_rate_after_input_tokens(self):
+        """
+        A run whose server reported cached tokens shows the mean hit rate as a
+        percentage.
+
+        ## WRITTEN BY AI ##
+        """
+        headers, values = _render_token_table([_make_token_benchmark([0.25, 0.75])])
+
+        index = headers.index(self.HIT_RATE_HEADER)
+        assert headers[index - 1][0] == "Input Tok"
+        assert headers[index + 1][0] == "Output Tok"
+        assert values[index] == ["50.0"]
+
+    @pytest.mark.sanity
+    def test_renders_a_measured_zero(self):
+        """
+        A server that reported zero cached tokens shows 0.0, not a missing column.
+
+        ## WRITTEN BY AI ##
+        """
+        headers, values = _render_token_table([_make_token_benchmark([0.0, 0.0])])
+
+        assert values[headers.index(self.HIT_RATE_HEADER)] == ["0.0"]
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("incomplete", "errored"), [([], []), ([0.5], []), ([], [0.5])]
+    )
+    def test_omits_column_without_a_completed_measurement(self, incomplete, errored):
+        """
+        A report with no hit rate on a completed request renders as before.
+
+        The distribution is then empty and its mean of 0.0 would read as a
+        measured zero. The table covers completed requests, so a rate that only
+        incomplete or errored requests reported does not add the column either.
+
+        ## WRITTEN BY AI ##
+        """
+        headers, _ = _render_token_table(
+            [
+                _make_token_benchmark([], incomplete, errored),
+                _make_token_benchmark([], incomplete, errored),
+            ]
+        )
+
+        assert [header[0] for header in headers] == [
+            "Benchmark",
+            "Input Tok",
+            "Input Tok",
+            "Output Tok",
+            "Output Tok",
+            "Total Tok",
+            "Total Tok",
+            "Stream Iter",
+            "Stream Iter",
+            "Output Tok",
+            "Output Tok",
+        ]
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("measured_first", [True, False])
+    def test_shows_a_benchmark_without_a_hit_rate_as_missing(self, measured_first):
+        """
+        A benchmark without a hit rate shows an empty cell next to one that
+        measured it, and every column still holds one value per benchmark.
+
+        ## WRITTEN BY AI ##
+        """
+        benchmarks = [_make_token_benchmark([0.25, 0.75]), _make_token_benchmark([])]
+        if not measured_first:
+            benchmarks.reverse()
+        headers, values = _render_token_table(benchmarks)
+
+        assert all(len(column) == 2 for column in values)
+        assert values[headers.index(self.HIT_RATE_HEADER)] == (
+            ["50.0", "--"] if measured_first else ["--", "50.0"]
+        )
 
 
 def _render_latency_table_values(
