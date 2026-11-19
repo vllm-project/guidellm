@@ -13,6 +13,7 @@ from unittest.mock import Mock
 
 import imageio
 import pytest
+from datasets import Dataset
 from PIL import Image
 from pydantic import ValidationError
 
@@ -23,9 +24,18 @@ from guidellm.data.deserializers import (
     SyntheticVideoDataset,
     SyntheticVideoDatasetDeserializer,
 )
+from guidellm.data.finalizers.generative import GenerativeRequestFinalizer
 from guidellm.data.preprocessors.encoders import MediaEncoder
+from guidellm.data.preprocessors.mappers import GenerativeColumnMapper
+from guidellm.data.schemas.conversation_graph_data import (
+    ConversationGraphData,
+    ConversationTurnData,
+)
+from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas.data import (
     DataArgs,
+    GenerativeColumnMapperArgs,
+    GenerativeRequestFinalizerArgs,
     MediaEncoderArgs,
     SyntheticImageDataArgs,
     SyntheticVideoDataArgs,
@@ -312,8 +322,11 @@ class TestSyntheticImageDeserializer:
         assert isinstance(ds, SyntheticImageDataset)
 
     @pytest.mark.regression
-    def test_images_per_request_emits_indexed_columns(self):
-        """## WRITTEN BY AI ##"""
+    def test_images_per_request_emits_one_image_column(self):
+        """Keep every image of a row in one `image` column, not turn-indexed names.
+
+        ## WRITTEN BY AI ##
+        """
         d = SyntheticImageDatasetDeserializer()
         ds = d(
             config=SyntheticImageDataArgs(
@@ -326,12 +339,95 @@ class TestSyntheticImageDeserializer:
             random_seed=42,
         )
         row = next(iter(ds))
-        assert "image_0" in row
-        assert "image_1" in row
-        assert "image_2" in row
-        # All three images in the same row should be byte-different.
-        digests = {row[f"image_{i}"]["image"] for i in range(3)}
+        assert set(row) == {"image", "output_tokens_count_0"}
+        assert "image_0" not in row
+        assert isinstance(row["image"], list)
+        assert len(row["image"]) == 3
+        assert row["output_tokens_count_0"] == 2
+        digests = {image["image"] for image in row["image"]}
         assert len(digests) == 3
+
+
+def _finalize_datasets(datasets):
+    mapper = GenerativeColumnMapper(GenerativeColumnMapperArgs())
+    mapper.setup_data(datasets)
+    mapped = mapper([{"dataset": next(iter(ds))} for ds in datasets])
+    encoded = MediaEncoder(MediaEncoderArgs())(mapped)
+    graph = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())(encoded)
+    assert isinstance(graph, GenerativeConversationGraph)
+    return graph
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("image_count", [1, 2, 12])
+@pytest.mark.parametrize("with_text", [False, True])
+def test_images_stay_on_one_request(image_count, with_text):
+    """All images of a row become one request, including packed synthetic text.
+
+    ## WRITTEN BY AI ##
+    """
+    config = SyntheticImageDataArgs(
+        width=8,
+        height=8,
+        images_per_request=image_count,
+        output_tokens=4,
+    )
+    datasets: list[Dataset | SyntheticImageDataset] = [SyntheticImageDataset(config)]
+    if with_text:
+        turn = ConversationTurnData(
+            node_id="root",
+            columns={
+                "text_column": ["hello"],
+                "prompt_tokens_count_column": [8],
+                "output_tokens_count_column": [3],
+            },
+        )
+        text = ConversationGraphData(turns=[turn]).model_dump_json()
+        datasets.append(Dataset.from_dict({"conversation_turns": [text]}))
+
+    graph = _finalize_datasets(datasets)
+    assert len(graph.nodes) == 1
+    node = next(iter(graph.nodes.values()))
+    images = node.request.columns["image_column"]
+    assert len(images) == image_count
+    assert len({image["image"] for image in images}) == image_count
+    assert node.request.input_metrics.image_count == image_count
+    assert node.request.input_metrics.image_pixels == 64 * image_count
+    if with_text:
+        assert node.node_id == "root"
+        assert node.request.columns["text_column"] == ["hello"]
+        assert node.request.input_metrics.text_tokens == 8
+        assert node.request.output_metrics.text_tokens == 7
+    else:
+        assert node.request.output_metrics.text_tokens == 4
+
+
+@pytest.mark.regression
+def test_indexed_image_columns_remain_separate_turns():
+    """Numeric image suffixes on a user dataset still define ordered turns.
+
+    ## WRITTEN BY AI ##
+    """
+    images = [synthesize_image(8, 8, seed=42, row_index=i) for i in range(2)]
+    dataset = Dataset.from_dict(
+        {
+            "image_0": [images[0]],
+            "image_1": [images[1]],
+            "output_tokens_count_0": [4],
+            "output_tokens_count_1": [5],
+        }
+    )
+    graph = _finalize_datasets([dataset])
+    requests = [node.request for node in graph.nodes.values()]
+    assert [request.columns["image_column"] for request in requests] == [
+        [image] for image in images
+    ]
+    assert [request.output_metrics.text_tokens for request in requests] == [4, 5]
+    assert len(graph.edges) == 1
+    edge = graph.edges[0]
+    assert edge.source_node_id == "turn_0"
+    assert edge.target_node_id == "turn_1"
+    assert edge.history_context == "full"
 
 
 class TestSyntheticVideoDeserializer:
