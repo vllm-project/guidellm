@@ -7,6 +7,7 @@ from pydantic import Field
 from guidellm.schemas.data.entrypoints import DataPreprocessorArgs
 
 
+@DataPreprocessorArgs.register("turn_pivot")
 class TurnPivotArgs(DataPreprocessorArgs):
     """Model for turn pivot preprocessor arguments."""
 
