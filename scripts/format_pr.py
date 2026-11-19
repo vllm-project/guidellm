@@ -25,11 +25,7 @@ import argparse
 import subprocess
 import sys
 
-if __package__:
-    from scripts import pr_template
-else:
-    import pr_template
-
+MARKER = "<!-- begin:squash-data -->"
 SIGNOFF_PREFIX = "Signed-off-by:"
 
 
@@ -74,7 +70,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def extract_user_content(body: str, marker: str) -> str:
+def extract_user_content(body: str) -> str:
     """Extract the user-authored content from the current PR body.
 
     Everything above the marker line is kept with trailing blank lines
@@ -82,12 +78,11 @@ def extract_user_content(body: str, marker: str) -> str:
     the body has no marker, the whole body is user content.
 
     :param body: The current PR body.
-    :param marker: The generated-content marker from the template contract.
     :return: The user-authored portion of the body.
     """
     lines = body.split("\n")
     for index, line in enumerate(lines):
-        if marker in line:
+        if MARKER in line:
             lines = lines[:index]
             break
     while lines and not lines[-1].strip():
@@ -153,20 +148,19 @@ def unique_trailers(commit_shas: list[str]) -> list[str]:
     return other_trailers + signoff_trailers
 
 
-def format_pr_description(body: str, base_ref: str, head_sha: str, marker: str) -> str:
+def format_pr_description(body: str, base_ref: str, head_sha: str) -> str:
     """Build the updated PR description from the current body and git data.
 
     :param body: The current PR body.
     :param base_ref: Git ref for the PR base branch.
     :param head_sha: Commit SHA of the PR head.
-    :param marker: The generated-content marker from the template contract.
     :return: The formatted PR description.
     """
     merge_base = run_git("merge-base", base_ref, head_sha)
     commit_range = f"{merge_base}..{head_sha}"
     commit_shas = list_commit_shas(commit_range)
 
-    sections = [extract_user_content(body, marker), marker]
+    sections = [extract_user_content(body), MARKER]
 
     # A single commit is already described by the PR body itself, so the
     # git log is only included when there are multiple commits to squash.
@@ -183,14 +177,8 @@ def format_pr_description(body: str, base_ref: str, head_sha: str, marker: str) 
 def main() -> None:
     """Read the PR body from stdin and print the formatted description."""
     args = parse_args()
-    try:
-        marker = pr_template.load_contract().squash_marker
-    except pr_template.TemplateContractError as exc:
-        print(f"error: invalid PR template contract: {exc}", file=sys.stderr)
-        raise SystemExit(2) from exc
-
     body = sys.stdin.read().replace("\r", "")
-    print(format_pr_description(body, args.base_ref, args.head_sha, marker), end="")
+    print(format_pr_description(body, args.base_ref, args.head_sha), end="")
 
 
 if __name__ == "__main__":
