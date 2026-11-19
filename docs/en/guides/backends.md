@@ -200,6 +200,9 @@ guidellm run \
 
 You can add custom backends without modifying GuideLLM itself by registering a `BackendArgs` schema and a `Backend` subclass and exposing them as a plugin.
 
+> [!WARNING]\
+> The plugin interfaces are experimental. The `Backend`, `BackendArgs` and other base classes that plugins subclass may change their method signatures between GuideLLM releases, so pin the GuideLLM version your plugin is tested against.
+
 A plugin is a Python package that mirrors GuideLLM's top-level packages. When one of `guidellm.schemas`, `guidellm.backends`, `guidellm.scheduler`, `guidellm.data`, `guidellm.benchmark` or `guidellm.collectors` finishes importing, GuideLLM imports the module with the same name from each plugin, if the plugin has one. `import guidellm` alone loads no plugin code, so a plugin only adds import time to the processes that use the matching part of GuideLLM, including `spawn` and `forkserver` workers.
 
 ### 1. Define and Register the Backend
@@ -216,6 +219,8 @@ my_guidellm_plugin/
 ```
 
 `guidellm run --help` only imports `guidellm.schemas`, so it registers the `--backend` kind without importing the backend implementation.
+
+Put every registered schema class (`BackendArgs`, `ProfileArgs`, `ConstraintArgs`, `DataArgs` and other `*Args` subclasses) under `my_guidellm_plugin/schemas/`. Those modules load before any GuideLLM model that contains these types is built. A schema registered from another plugin module can come too late: a model such as `BenchmarkArgs` that was already built keeps its old schema and rejects the new `kind`, and the CLI never sees it.
 
 `my_guidellm_plugin/schemas/backends.py`:
 

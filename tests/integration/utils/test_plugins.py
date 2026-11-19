@@ -129,6 +129,13 @@ import guidellm.schemas
 import guidellm.scheduler
 assert "guidellm_plugin_example.schemas.backends" in sys.modules, plugin_modules()
 assert "guidellm_plugin_example.backends" not in sys.modules, plugin_modules()
+from guidellm.schemas.benchmark.entrypoints import BenchmarkArgs
+args = BenchmarkArgs.model_validate({
+    "backend": {"kind": "echo_plugin", "target": "http://localhost:8000"},
+    "profile": {"kind": "synchronous"},
+    "data": [{"kind": "synthetic_text", "prompt_tokens": 1, "output_tokens": 1}],
+})
+assert type(args.backend).__name__ == "EchoPluginBackendArgs", type(args.backend)
 import guidellm.backends
 assert "guidellm_plugin_example.backends" in sys.modules, plugin_modules()
 """
