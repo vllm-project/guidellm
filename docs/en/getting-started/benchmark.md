@@ -96,6 +96,8 @@ Constraints control when each strategy in a profile stops. Add one or more `--co
 | `max_global_error_rate` | `rate`, `minimum`    | `--constraint kind=max_global_error_rate,rate=0.05,minimum=1000` |
 | `over_saturation`       | detection parameters | `--constraint kind=over_saturation,min_seconds=30,mode=enforce`  |
 
+Profiles do not add a default duration or request limit. Synthetic data is infinite unless capped by a positive data-loader sample count (for example, `--data-loader kind=pytorch,samples=1000`), so specify a stopping constraint for an otherwise unbounded run.
+
 For example, `--constraint kind=max_requests,count=1000` with `--profile kind=sweep` runs up to 1000 requests for each strategy in the sweep (synchronous, throughput, and each interpolated rate). `--constraint kind=min_requests,count=1000` is like `max_requests`, but keeps queuing until 1000 requests have been processed, which avoids throughput tail-off at the end of rate-based benchmarks. `--constraint kind=max_duration,seconds=30` with `--profile '{"kind":"concurrent","streams":[10,20]}'` runs 10 concurrent streams for 30 seconds, then 20 concurrent streams for 30 seconds.
 
 See [Over-Saturation Stopping](../guides/over_saturation_stopping.md) for over-saturation constraint details.
@@ -415,7 +417,7 @@ These names are builtin to GuideLLM. Specify the full name as shown below, like 
 - `rhaiis/concurrent-8k-1k-equal`: Large context scenario. 8,000 input tokens, 1,000 output tokens.
 - `rhaiis/concurrent-8k-800-norm`: Large context scenario with sequence length variance. Mean 8,000 input tokens and 800 output tokens, but with large statistical variance.
 - `rhaiis/concurrent-100k-1k-equal`: Very large context scenario. 100,000 prompt tokens with 1,000 output tokens.
-- `rhaiis/concurrent-512-2ki-norm`: Generation heavy scenario with sequence length variance. Mean 512 prompt tokens with 2,000 output tokens, but with very large statistical variance.
+- `rhaiis/concurrent-512-2ki-norm`: Generation heavy scenario with sequence length variance. Mean 512 prompt tokens with 2,048 output tokens, but with very large statistical variance.
 
 ## Troubleshooting
 

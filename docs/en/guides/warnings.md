@@ -110,6 +110,7 @@ guidellm run \
   --config scenario.yaml \
   --backend kind=openai_http,target=http://localhost:8000 \
   --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
   --data kind=synthetic_text,prompt_tokens=128,output_tokens=256
 ```
 

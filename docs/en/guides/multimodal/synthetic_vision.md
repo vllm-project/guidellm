@@ -28,6 +28,7 @@ A single 720p image alongside 200 text tokens and 64 output tokens:
 guidellm run \
   --backend "kind=openai_http,target=http://localhost:8000" \
   --profile "kind=concurrent,streams=4" \
+  --constraint kind=max_duration,seconds=60 \
   --data "kind=synthetic_text,prompt_tokens=200" \
   --data "kind=synthetic_image,resolution=720p,output_tokens=64"
 ```
@@ -38,6 +39,7 @@ A 1280×720 JPEG with two images per request:
 guidellm run \
   --backend "kind=openai_http,target=http://localhost:8000" \
   --profile "kind=concurrent,streams=4" \
+  --constraint kind=max_duration,seconds=60 \
   --data "kind=synthetic_text,prompt_tokens=200" \
   --data "kind=synthetic_image,width=1280,height=720,format=jpeg,images_per_request=2,output_tokens=64"
 ```
@@ -67,6 +69,7 @@ A six-frame 480p clip at 1 fps with modest prompt and output budgets:
 guidellm run \
   --backend "kind=openai_http,target=http://localhost:8000" \
   --profile "kind=concurrent,streams=4" \
+  --constraint kind=max_duration,seconds=60 \
   --data "kind=synthetic_text,prompt_tokens=64" \
   --data "kind=synthetic_video,width=854,height=480,frames=6,fps=1,output_tokens=128"
 ```
@@ -77,6 +80,7 @@ A twelve-frame 720p clip at 3 fps with an explicit h264 target bitrate:
 guidellm run \
   --backend "kind=openai_http,target=http://localhost:8000" \
   --profile "kind=concurrent,streams=4" \
+  --constraint kind=max_duration,seconds=60 \
   --data "kind=synthetic_text,prompt_tokens=64" \
   --data "kind=synthetic_video,width=1280,height=720,frames=12,fps=3,video_bitrate=2M,output_tokens=128"
 ```

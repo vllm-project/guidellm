@@ -64,7 +64,7 @@ Audio data is encoded by the `encode_media` data preprocessor, which is part of 
 guidellm run \
   --backend "kind=openai_http,target=http://localhost:8000,request_format=/v1/audio/transcriptions" \
   --profile kind=synchronous \
-  --data '{"kind":"huggingface","source":"openslr/librispeech_asr","load_kwargs":{"split":"test"}}' \
+  --data '{"kind":"huggingface","source":"openslr/librispeech_asr","load_kwargs":{"name":"clean","split":"test"}}' \
   --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"audio_column":"audio"}}' \
   --data-preprocessor kind=encode_media,audio_kwargs.audio_format=wav,audio_kwargs.encode_sample_rate=16000
 ```
@@ -88,11 +88,13 @@ Supported `audio_kwargs` include:
 > [!WARNING]\
 > Specifying any `--data-preprocessor` replaces the default preprocessors except for the column mapper. Include every preprocessor the run needs, for example `--data-preprocessor kind=encode_media,audio_kwargs.audio_format=wav`.
 
-Request body parameters and headers are configured on the backend `extras` field. For example, to set French as the target language for an audio translation request:
+Request body parameters and headers are configured on the backend `extras` field. For example, when using vLLM's translation endpoint, identify French as the input language:
 
 ```bash
 --backend '{"kind":"openai_http","target":"http://localhost:8000","request_format":"/v1/audio/translations","extras":{"body":{"language":"fr"}}}'
 ```
+
+The `language` field describes the source audio. Whisper translation models produce English text. vLLM's separate `to_language` extension is supported only by some models; see the [vLLM Translations API](https://docs.vllm.ai/en/stable/serving/online_serving/speech_to_text/#translations-api) for model-specific options.
 
 `extras` supports the `body`, `content`, `headers`, `params`, and `files` fields; see [Structured Chat Content Payloads](../backends.md#structured-chat-content-payloads).
 

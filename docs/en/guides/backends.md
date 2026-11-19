@@ -104,7 +104,8 @@ To provide an API key when running benchmarks, pass it in the backend configurat
 guidellm run \
   --backend kind=openai_http,target=https://api.openai.com/v1,api_key=sk-...,model=gpt-3.5-turbo \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --profile kind=sweep
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60
 ```
 
 Or with JSON:
@@ -130,7 +131,8 @@ The `extras` field accepts a `body` key whose values are merged directly into th
 guidellm run \
   --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"meta-llama/Meta-Llama-3.1-8B-Instruct","extras":{"body":{"temperature":0.6,"top_p":0.95,"top_k":20}}}' \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --profile kind=sweep
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60
 ```
 
 This will include `temperature`, `top_p`, and `top_k` in every request body sent to the server.
@@ -145,7 +147,8 @@ Some models should not have their end-of-sequence token suppressed. Formats such
 guidellm run \
   --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"openai/gpt-oss-20b","extras":{"body":{"ignore_eos":false}}}' \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --profile kind=sweep
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60
 ```
 
 Or using GuideLLM's compact `key=value` parser:
@@ -154,7 +157,8 @@ Or using GuideLLM's compact `key=value` parser:
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000/v1,model=openai/gpt-oss-20b,extras.body.ignore_eos=false \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --profile kind=sweep
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60
 ```
 
 Values in `extras.body` are merged into the request body and take precedence over the defaults, so `ignore_eos: false` overrides the built-in `true`. Leave `ignore_eos` unset (the default) for models where suppressing the end-of-sequence token is safe, which lets GuideLLM control the exact output length.
@@ -199,7 +203,8 @@ The `--backend` config is parsed into keyword arguments for the backend construc
 guidellm run \
   --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"meta-llama/Meta-Llama-3.1-8B-Instruct","api_key":"sk-...","extras":{"body":{"temperature":0.8,"top_p":0.9}}}' \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
-  --profile kind=sweep
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60
 ```
 
 ## Expanding Backend Support

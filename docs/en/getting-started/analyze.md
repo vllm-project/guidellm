@@ -8,11 +8,11 @@ After [running a benchmark](benchmark.md), GuideLLM provides comprehensive resul
 
 ## Understanding Console Output
 
-Upon benchmark completion, GuideLLM prints a series of result tables to the console, followed by any profile conclusions and post-benchmark warnings.
+GuideLLM displays configuration details during setup. Upon benchmark completion, it prints a series of result tables, followed by knee detection results when available and any post-benchmark warnings.
 
-### 1. Benchmarks Metadata
+### Initial Setup Output
 
-This section provides a high-level summary of the benchmark run, including:
+Before benchmark execution, the setup output summarizes the resolved configuration, including:
 
 - **Backend configuration**: Target URL, model name, and backend details
 - **Tokenizer configuration**: Tokenizer and load arguments
@@ -30,7 +30,8 @@ Example:
   {'kind': 'openai_http', 'target': 'http://localhost:8000', 'model': 'Qwen/Qwen3-0.6B', 'request_format': '/v1/chat/completions', 'api_key': None, 'api_routes': {'/health': 'health',
   '/v1/models': 'v1/models', '/v1/completions': 'v1/completions', '/v1/chat/completions': 'v1/chat/completions', '/v1/embeddings': 'v1/embeddings', '/v1/responses': 'v1/responses', '/v1/audio/transcriptions':
   'v1/audio/transcriptions', '/v1/audio/translations': 'v1/audio/translations', '/pooling': 'pooling'}, 'timeout': None, 'timeout_connect': 5.0, 'http2': True, 'follow_redirects': True, 'verify': False, 'validate_backend': True,
-  'stream': True, 'extras': None, 'max_tokens': None, 'server_history': False, 'tool_call_missing_behavior': 'error_stop', 'multiturn_reasoning': False}✔ Tokenizer resolved, using model 'Qwen/Qwen3-0.6B' as tokenizer
+  'stream': True, 'extras': None, 'max_tokens': None, 'server_history': False, 'tool_call_missing_behavior': 'error_stop', 'multiturn_reasoning': False}
+✔ Tokenizer resolved, using model 'Qwen/Qwen3-0.6B' as tokenizer
   {'kind': 'huggingface_auto', 'model': 'Qwen/Qwen3-0.6B', 'load_kwargs': {}}
 ✔ 1 datasets resolved
   [{'kind': 'synthetic_text', 'load_kwargs': {}, 'prompt_tokens': 128, 'prompt_tokens_stdev': 4, 'prompt_tokens_min': None, 'prompt_tokens_max': None, 'output_tokens': 128, 'output_tokens_stdev': None, 'output_tokens_min': None,
@@ -54,7 +55,7 @@ Example:
 The `Run Summary Info` table has one row per benchmark (strategy) and includes:
 
 - **Benchmark**: The strategy that ran, such as `synchronous`, `throughput`, or `constant@10.00`
-- **Timings**: Start and end timestamps, total duration, warmup duration, and cooldown duration
+- **Timings**: Measurement start and end timestamps and duration, excluding warmup and cooldown; warmup and cooldown durations are reported separately
 - **Requests**: Totals for completed, incomplete, and errored requests
 - **Input Tokens / Output Tokens**: Token totals broken down by request status
 
@@ -68,7 +69,7 @@ When the run includes text, image, video, audio, or tool-call data, GuideLLM pri
 
 ### Request Latency Statistics
 
-`Request Latency Statistics (Completed Requests)` reports the distribution of request latency, time to first token (TTFT), time to first output token (TTFOT), inter-token latency (ITL), and time per output token (TPOT). The table shows the mean with its margin of error, the median, and p95 with its confidence interval. The JSON and CSV reports contain the full percentile distributions, including p99.
+`Request Latency Statistics (Completed Requests)` reports the distribution of request latency, time to first token (TTFT), time to first output token (TTFOT), inter-token latency (ITL), and time per output token (TPOT). The table shows the mean, median, and p95. Request latency, TTFT, and TTFOT include a mean margin of error when available; ITL and TPOT do not. When confidence intervals are enabled, a marker identifies p95 estimates whose interval cannot be bounded by the sample. The console does not display percentile interval endpoints. JSON and CSV reports contain the available confidence intervals and additional percentiles, including p99.
 
 The p99 (99th percentile) values are particularly important for SLO analysis, as they represent the worst-case performance for 99% of requests.
 
@@ -76,7 +77,9 @@ The p99 (99th percentile) values are particularly important for SLO analysis, as
 
 `Server Throughput Statistics (All Requests)` reports request concurrency, requests per second, and input, output, and total tokens per second. When SLO objectives are configured with `--metrics`, this table also reports SLO attainment and goodput, and a separate `Per-Objective SLO Attainment` table reports attainment for each configured objective.
 
-The console tables summarize every strategy in the run. When a profile produces a conclusion, such as the detected knee for `knee`, it is printed after the tables and stored in the report's `conclusions` list. Any triggered warning rules appear in a final Warnings section. Per-request records and the full metric distributions are available in the JSON and CSV reports.
+The console tables summarize every strategy in the run. Profile conclusions, including knee detection and goodput search results, are stored in the report's `conclusions` list. The console prints knee detection results after the tables; goodput search conclusions are available in the saved JSON and YAML reports. Any triggered warning rules appear in a final Warnings section.
+
+JSON and YAML reports contain per-request records and metric summaries. CSV contains one row per benchmark with aggregate statistics and percentile summaries. `metrics.sample_size` controls retention of full request payloads; lightweight per-request statistics remain available in JSON and YAML regardless of that setting.
 
 ## Analyzing Saved Results
 
@@ -149,12 +152,14 @@ guidellm run \
   --backend kind=openai_http,target=http://server1:8000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
   --output kind=json,path=model1/benchmarks.json
 
 guidellm run \
   --backend kind=openai_http,target=http://server2:8000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
   --output kind=json,path=model2/benchmarks.json
 ```
 

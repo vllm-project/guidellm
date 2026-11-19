@@ -13,6 +13,7 @@ guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
   --output kind=json \
   --output kind=csv \
   --output kind=html
@@ -71,6 +72,10 @@ GuideLLM supports saving benchmark results to files in various formats, includin
 | `plot`          | `benchmarks.png`  | Static benchmark performance graphs.                                                                                                              |
 
 For `plot`, the `path` extension selects the image format: PNG, JPG/JPEG, SVG, or PDF. For example, `--output kind=plot,path=benchmarks.pdf` creates a PDF. A path without an extension defaults to `.png`; unsupported extensions raise an error. The `dpi` parameter (default `100`) controls image resolution, for example `--output kind=plot,path=benchmarks.jpg,dpi=72`.
+
+CSV preserves measured zero values in statistics and confidence intervals. Statuses with no measurements do not produce statistics columns.
+
+Round-trip latency distributions include only requests with recorded send and receive timings. Backends without those timings report no round-trip observations in JSON (`count: 0`), and CSV omits the corresponding statistics and confidence intervals.
 
 ### Configuring File Outputs
 
