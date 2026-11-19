@@ -589,6 +589,16 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 group="Input Tok",
                 name="Per Req",
             )
+            # A hit rate distribution without observations reports 0.0, which
+            # would read as a measured zero, so it is shown as missing.
+            hit_rate = benchmark.metrics.prefix_cache_hit_rate
+            columns.add_stats(
+                hit_rate if hit_rate.successful.count > 0 else None,
+                group="Prefix Cache",
+                name="Hit Rate",
+                precision=3,
+                types=("mean", "median", "p95"),
+            )
             columns.add_stats(
                 benchmark.metrics.output_token_count,
                 group="Output Tok",

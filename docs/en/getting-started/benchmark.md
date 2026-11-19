@@ -79,6 +79,8 @@ The random seed is used for any operation in GuideLLM that involves randomness, 
 --seed kind=static,value=42
 ```
 
+By default, a repeat of the same command sends the same prompts: synthetic data (such as `synthetic_text`) is generated deterministically, and other datasets are read in the same order. If the server has a prefix cache and stays up between runs, the repeat run can find its prompts still cached, which can lower the reported TTFT. To compare runs from a cold cache, empty the server's cache between them, for example by restarting the server. The [prefix cache hit rate](../guides/metrics.md#prefix-cache-hit-rate) shows how much of each prompt the server had cached.
+
 ### Constraints (`--constraint`)
 
 Constraints control when each strategy in a profile stops. Add one or more `--constraint` options. Constraints apply individually to each strategy in a profile. Profiles with multiple strategies include `sweep` and any profile whose primary parameter is a list (for example, `{"streams":[10,20]}` on `concurrent`).
