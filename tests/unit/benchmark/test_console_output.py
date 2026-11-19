@@ -460,6 +460,7 @@ def _make_token_benchmark(
     """Build a benchmark stub exposing every metric the token table reads.
 
     The arguments are the prefix cache hit rates of the requests by status.
+    The hit rate summary carries intervals, as it does in a real report.
 
     ## WRITTEN BY AI ##
     """
@@ -467,7 +468,10 @@ def _make_token_benchmark(
     metrics = SimpleNamespace(
         **dict.fromkeys(TOKEN_TABLE_METRICS, distribution),
         prefix_cache_hit_rate=StatusDistributionSummary.from_values(
-            successful, incomplete or [], errored or []
+            successful,
+            incomplete or [],
+            errored or [],
+            uncertainty=SampleUncertainty(confidence=0.95),
         ),
     )
 
@@ -495,92 +499,93 @@ def _render_token_table(benchmarks) -> tuple[list[list[str]], list[list[str]]]:
 
 class TestRequestTokenTablePrefixCache:
     """
-    Verify the prefix cache hit rate column appears only when it was measured.
+    Verify the prefix cache hit rate columns of the token table.
 
     ## WRITTEN BY AI ##
     """
 
-    HIT_RATE_HEADER = ["Prefix Cache", "Hit Rate %", "Mean"]
+    HIT_RATE_HEADERS = [
+        ["Prefix Cache", "Hit Rate", "Mean"],
+        ["Prefix Cache", "Hit Rate", "Mdn"],
+        ["Prefix Cache", "Hit Rate", "p95"],
+    ]
 
     @pytest.mark.smoke
-    def test_renders_mean_hit_rate_after_input_tokens(self):
+    def test_renders_hit_rate_stats_after_input_tokens(self):
         """
-        A run whose server reported cached tokens shows the mean hit rate as a
-        percentage.
+        The mean, median and p95 hit rate of the completed requests follow the
+        input token columns, as plain numbers.
 
         ## WRITTEN BY AI ##
         """
-        headers, values = _render_token_table([_make_token_benchmark([0.25, 0.75])])
+        headers, values = _render_token_table(
+            [_make_token_benchmark([0.1, 0.1, 0.1, 0.9], [1.0], [1.0])]
+        )
 
-        index = headers.index(self.HIT_RATE_HEADER)
+        index = headers.index(self.HIT_RATE_HEADERS[0])
+        assert headers[index : index + 3] == self.HIT_RATE_HEADERS
         assert headers[index - 1][0] == "Input Tok"
-        assert headers[index + 1][0] == "Output Tok"
-        assert values[index] == ["50.0"]
+        assert headers[index + 3][0] == "Output Tok"
+        assert values[index : index + 3] == [["0.300"], ["0.100"], ["0.900"]]
 
     @pytest.mark.sanity
     def test_renders_a_measured_zero(self):
         """
-        A server that reported zero cached tokens shows 0.0, not a missing column.
+        A server that reported zero cached tokens shows 0.000, not a missing value.
 
         ## WRITTEN BY AI ##
         """
         headers, values = _render_token_table([_make_token_benchmark([0.0, 0.0])])
 
-        assert values[headers.index(self.HIT_RATE_HEADER)] == ["0.0"]
+        index = headers.index(self.HIT_RATE_HEADERS[0])
+        assert values[index : index + 3] == [["0.000"], ["0.000"], ["0.000"]]
 
     @pytest.mark.regression
     @pytest.mark.parametrize(
         ("incomplete", "errored"), [([], []), ([0.5], []), ([], [0.5])]
     )
-    def test_omits_column_without_a_completed_measurement(self, incomplete, errored):
+    def test_shows_missing_without_a_completed_measurement(self, incomplete, errored):
         """
-        A report with no hit rate on a completed request renders as before.
+        A report with no hit rate on a completed request keeps the columns and
+        shows them as missing.
 
-        The distribution is then empty and its mean of 0.0 would read as a
+        The distribution is then empty and its statistics of 0.0 would read as a
         measured zero. The table covers completed requests, so a rate that only
-        incomplete or errored requests reported does not add the column either.
+        incomplete or errored requests reported is missing as well.
 
         ## WRITTEN BY AI ##
         """
-        headers, _ = _render_token_table(
+        measured_headers, _ = _render_token_table([_make_token_benchmark([0.5])])
+        headers, values = _render_token_table(
             [
                 _make_token_benchmark([], incomplete, errored),
                 _make_token_benchmark([], incomplete, errored),
             ]
         )
 
-        assert [header[0] for header in headers] == [
-            "Benchmark",
-            "Input Tok",
-            "Input Tok",
-            "Output Tok",
-            "Output Tok",
-            "Total Tok",
-            "Total Tok",
-            "Stream Iter",
-            "Stream Iter",
-            "Output Tok",
-            "Output Tok",
-        ]
+        index = headers.index(self.HIT_RATE_HEADERS[0])
+        assert headers == measured_headers
+        assert values[index : index + 3] == [["--", "--"]] * 3
 
     @pytest.mark.regression
     @pytest.mark.parametrize("measured_first", [True, False])
     def test_shows_a_benchmark_without_a_hit_rate_as_missing(self, measured_first):
         """
-        A benchmark without a hit rate shows an empty cell next to one that
-        measured it, and every column still holds one value per benchmark.
+        A benchmark without a hit rate shows missing values next to one that
+        measured it on a single request, and every column still holds one value
+        per benchmark.
 
         ## WRITTEN BY AI ##
         """
-        benchmarks = [_make_token_benchmark([0.25, 0.75]), _make_token_benchmark([])]
+        benchmarks = [_make_token_benchmark([0.5]), _make_token_benchmark([])]
         if not measured_first:
             benchmarks.reverse()
         headers, values = _render_token_table(benchmarks)
 
+        index = headers.index(self.HIT_RATE_HEADERS[0])
+        expected = ["0.500", "--"] if measured_first else ["--", "0.500"]
         assert all(len(column) == 2 for column in values)
-        assert values[headers.index(self.HIT_RATE_HEADER)] == (
-            ["50.0", "--"] if measured_first else ["--", "50.0"]
-        )
+        assert values[index : index + 3] == [expected] * 3
 
 
 def _render_latency_table_values(

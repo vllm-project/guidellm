@@ -576,14 +576,6 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
         :param report: The benchmark report containing request count metrics
         """
         columns = ConsoleTableColumnsCollection()
-        # A hit rate distribution without observations has a mean of 0.0, which
-        # would read as a measured zero. Leave the column out when no completed
-        # request in the report has a hit rate, and show a benchmark without
-        # one as missing.
-        report_has_hit_rate = any(
-            benchmark.metrics.prefix_cache_hit_rate.successful.count > 0
-            for benchmark in report.benchmarks
-        )
 
         for benchmark in report.benchmarks:
             columns.add_value(
@@ -597,15 +589,16 @@ class GenerativeBenchmarkerConsole(GenerativeBenchmarkerOutput):
                 group="Input Tok",
                 name="Per Req",
             )
-            if report_has_hit_rate:
-                hit_rate = benchmark.metrics.prefix_cache_hit_rate.successful
-                columns.add_value(
-                    None if hit_rate.count == 0 else hit_rate.mean * 100.0,
-                    group="Prefix Cache",
-                    name="Hit Rate %",
-                    units="Mean",
-                    precision=1,
-                )
+            # A hit rate distribution without observations reports 0.0, which
+            # would read as a measured zero, so it is shown as missing.
+            hit_rate = benchmark.metrics.prefix_cache_hit_rate
+            columns.add_stats(
+                hit_rate if hit_rate.successful.count > 0 else None,
+                group="Prefix Cache",
+                name="Hit Rate",
+                precision=3,
+                types=("mean", "median", "p95"),
+            )
             columns.add_stats(
                 benchmark.metrics.output_token_count,
                 group="Output Tok",

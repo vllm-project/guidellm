@@ -79,7 +79,7 @@ The random seed is used for any operation in GuideLLM that involves randomness, 
 --seed kind=static,value=42
 ```
 
-With `synthetic_text` data, the same seed also generates the same prompts, and a dataset that holds the prompts themselves, such as a `json_file` dataset, sends the same prompts whatever the seed. If the server has a prefix cache and stays up between runs, a repeat run can find its prompts still cached. The server then skips their prefill, which can lower the reported TTFT. Before comparing runs, empty the server's cache, for example by restarting the server. With `synthetic_text` data, a different `--seed` value for each run also avoids the cached prompts, because each run then sends new ones. The [prefix cache hit rate](../guides/metrics.md#prefix-cache-hit-rate) shows how much of each prompt the server had cached.
+By default, a repeat of the same command sends the same prompts: synthetic data (such as `synthetic_text`) is generated deterministically, and other datasets are read in the same order. If the server has a prefix cache and stays up between runs, the repeat run can find its prompts still cached, which can lower the reported TTFT. To compare runs from a cold cache, empty the server's cache between them, for example by restarting the server. The [prefix cache hit rate](../guides/metrics.md#prefix-cache-hit-rate) shows how much of each prompt the server had cached.
 
 ### Constraints (`--constraint`)
 
