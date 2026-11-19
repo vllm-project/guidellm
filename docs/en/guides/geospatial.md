@@ -124,6 +124,7 @@ vllm bench serve \
   --percentile-metrics e2el \
   --metric-percentiles 25,75,99 \
   --num-prompts 10 \
+  --max-concurrency 1 \
   --dataset-path flood_detection_dataset.jsonl
 ```
 
