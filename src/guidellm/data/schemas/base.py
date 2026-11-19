@@ -30,6 +30,7 @@ GenerativeDatasetColumnType = Literal[
     "requeue_delay_column",
     "request_duration_column",
     "conversation_turns_column",
+    "model_column",
 ]
 
 DatasetType: TypeAlias = Dataset | IterableDataset

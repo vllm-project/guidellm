@@ -21,6 +21,7 @@ The following arguments configure datasets and their processing:
   - `huggingface` (alias `hf`) — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (for example `split`, `name`) via `load_kwargs`.
   - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `tar_file` — loads from a local file. Required field: `path`.
   - `db_file` — loads rows from a database using `load_kwargs.sql`. Required field: `uri`, using a SQLAlchemy-style URI. GuideLLM currently supports only SQLite URIs, such as `sqlite:///prompts.db`.
+  - `weighted_sampler` — emits an infinite sequence of weighted source rows. Required field: nested `source` resolving to a finite, indexable dataset. Optional: `weight_column` (default `"weights"`) and `replacement` (default `true`). Iterable/streaming sources are unsupported. See [Weighted Sampling](#weighted-sampling).
   - `trace_synthetic`, `mooncake`, `weka`, `otel` — replay traces with `--profile kind=replay`. Required field: nested `source` pointing at another dataset kind, for example `source.kind=json_file,source.path=trace.jsonl` or `source.kind=huggingface,source.source=org/dataset`. Optional: `timestamp_column`, `prompt_tokens_column`, `output_tokens_column`, `time_scale`, `copies`, and other format-specific options. See [Trace File Formats](./trace_replay.md).
 
 For the `*_file` dataset kinds that take a local `path`, the path identifies one exact file. Glob characters in file or directory names are treated literally.
@@ -143,6 +144,57 @@ The default `samples=-1` streams rows instead of pre-generating a fixed pool. To
 #### Notes
 
 - A tokenizer is required. By default, the model from the backend is used. If unavailable, use `--tokenizer kind=huggingface_auto,model=<path-or-id>` to specify a directory or Hugging Face model ID containing the tokenizer files.
+
+### Weighted Sampling
+
+Use `weighted_sampler` to repeatedly select rows from a finite, indexable source according to integer weights. This is useful for sampling individual request fields alongside an independent prompt dataset. The wrapper preserves every source column, including the weight column, and retains feature definitions and the dataset name for column mapping.
+
+#### Weighted Model Selection
+
+Create a file named `models.csv` containing:
+
+```csv
+weights,model
+10,model-a
+10,model-b
+20,model-c
+```
+
+Combine it with a separate prompt source:
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=throughput \
+  --constraint kind=max_requests,count=1000 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --data kind=weighted_sampler,source.kind=csv_file,source.path=models.csv
+```
+
+The first dataset supplies prompt-related fields. The second supplies the sampled `model` field, which the existing column mapper recognizes automatically. Replace the model identifiers with models available from your backend. The wrapper can similarly sample other fields consumed by the data pipeline.
+
+By default, `replacement=true`: each draw is independent, with selection probability equal to the row's weight divided by the total weight. Here, `model-c` is selected approximately twice as often as either other model over many draws (50% versus 25% each).
+
+#### Sampling Without Replacement
+
+Set `replacement=false` to shuffle and exhaust a weighted pool before reshuffling for the next cycle:
+
+```bash
+--data kind=weighted_sampler,replacement=false,source.kind=csv_file,source.path=models.csv
+```
+
+Weights are divided by their greatest common divisor, so `10, 10, 20` becomes `1, 1, 2`. Every four-entry cycle contains one `model-a`, one `model-b`, and two `model-c` entries, in randomized order. Partial cycles need not match these proportions. Replacement applies to expanded pool entries, so the same source row can appear more than once within a cycle. Both modes continue indefinitely.
+
+#### Configuration and Behavior
+
+- `source` is a required nested deserializer configuration, such as `source.kind=csv_file,source.path=models.csv`. It must resolve to a finite, indexable `datasets.Dataset`; iterable/streaming sources are rejected without consuming them.
+- `weight_column` defaults to `weights`. For a CSV with a column named `weight`, use `--data kind=weighted_sampler,weight_column=weight,source.kind=csv_file,source.path=models.csv`.
+- Weights must be non-negative integer-valued numbers; values such as `10.0` are accepted. Zero-weight rows are excluded. Missing columns, empty sources, all-zero weights, nulls, booleans, non-numeric values, negatives, fractions, NaN, and infinities are rejected.
+- Use `--seed kind=static,value=42` for reproducible sampling. Equivalent seed and epoch inputs produce identical sequences. Without-replacement sampling uses an advancing random generator across cycle boundaries.
+- Source loading options can be specified under `source.load_kwargs`, or under the wrapper's `load_kwargs`. As with trace wrappers, outer options are deep-merged into the source options and take precedence. For example: `--data kind=weighted_sampler,source.kind=csv_file,source.path=models.csv,load_kwargs.split=train`.
+- The wrapper does not create a tokenizer; only its nested source may require one.
+- Pool storage is proportional to the sum of weights after GCD reduction. The pool stores repeated row indices rather than duplicated row payloads. Large, relatively prime weights can still produce a large pool. Replacement draws select an entry in constant time; without replacement, each cycle requires a full pool shuffle.
+- Bound consumption with a benchmark constraint such as `--constraint kind=max_requests,count=1000`, or use `--data-loader kind=pytorch,samples=100` to pre-generate a finite pool of samples for reuse.
 
 ### Hugging Face Datasets
 
@@ -443,6 +495,7 @@ When your dataset uses non-standard column names, you can use `--data-column-map
 - `image_column`: Image data column
 - `video_column`: Video data column
 - `audio_column`: Audio data column
+- `model_column`: Model identifier to send with the request (defaults: `model`). The OpenAI HTTP backend uses this value when it appears in the server's available models list.
 
 **Example: Mapping custom column names**
 
