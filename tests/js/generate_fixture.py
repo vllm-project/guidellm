@@ -28,12 +28,14 @@ def main() -> None:
             strategy=ConcurrentStrategy(streams=2),
             rps=1.0,
             tps=20.0,
+            output_tps=20.0,
             measure_start=1_700_000_000.0,
         ),
         make_benchmark(
-            strategy=ConcurrentStrategy(streams=4),
+            strategy=ConcurrentStrategy(streams=8),
             rps=2.0,
             tps=50.0,
+            output_tps=30.0,
             measure_start=1_700_000_010.0,
         ),
     )
