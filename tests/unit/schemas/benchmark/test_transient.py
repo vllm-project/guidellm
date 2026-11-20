@@ -217,3 +217,35 @@ class TestTransientPhaseConfigRequestTransitions:
         assert _count_measured(measure_start, measure_end, requests) == (
             expected_measured
         )
+
+
+class TestTransientPhaseConfigDurationTransitions:
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("period", "expected"),
+        [("start", 6.0), ("end", 12.0)],
+    )
+    def test_duration_phases_start_at_first_request(self, period, expected):
+        """
+        Measure duration phases from the first request, as max_duration does.
+
+        The scheduler starts at 0.0 and the first request starts at 4.0, so a
+        10 second max_duration ends at 14.0. A 2 second warmup ends at 6.0 and
+        a 2 second cooldown starts at 12.0.
+
+        ## WRITTEN BY AI ##
+        """
+        config = TransientPhaseConfig(mode="duration", value=2.0)
+        state = SchedulerState(
+            start_time=0.0,
+            start_requests_time=4.0,
+            progress=SchedulerProgress(total_duration=10.0),
+        )
+        info = RequestInfo(
+            status="in_progress", timings=RequestTimings(request_start=4.0)
+        )
+
+        active, transition_time = config.compute_transition_time(info, state, period)
+
+        assert active is True
+        assert transition_time == expected
