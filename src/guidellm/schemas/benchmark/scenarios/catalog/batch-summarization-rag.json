@@ -1,0 +1,87 @@
+{
+  "metadata": {
+    "labels": {
+      "name": "batch-summarization-rag",
+      "description": "Single-turn summarization and RAG with large variable prompts.",
+      "source": "https://github.com/kubernetes-sigs/inference-perf/blob/76e2959b6a8ed9ded7af9c7398d9025a04da195f/workload-catalog/batch-summarization-rag/inference-perf.yaml",
+      "source_revision": "76e2959b6a8ed9ded7af9c7398d9025a04da195f",
+      "source_model": "google/gemma-3-1b-it",
+      "approximations": "Lognormal distributions use bounded normal sampling; normal and uniform sampling retain upstream parameters. Request counts are min_requests stopping thresholds, not exact budgets. See catalog/README.md."
+    }
+  },
+  "spec": {
+    "backend": {
+      "kind": "openai_http",
+      "request_format": "/v1/completions",
+      "stream": true
+    },
+    "profile": {
+      "kind": "concurrent",
+      "streams": [
+        6
+      ]
+    },
+    "seed": {
+      "kind": "static",
+      "value": 42
+    },
+    "data": [
+      {
+        "kind": "synthetic_text",
+        "prompt_tokens": 15000,
+        "prompt_tokens_stdev": 22000,
+        "prompt_tokens_min": 1000,
+        "prompt_tokens_max": 80000,
+        "output_tokens": 500,
+        "output_tokens_stdev": 300,
+        "output_tokens_min": 50,
+        "output_tokens_max": 2000,
+        "turns": 1,
+        "prefix_buckets": [
+          {
+            "prefix_tokens": 500,
+            "prefix_count": 1
+          }
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "kind": "min_requests",
+        "count": 450
+      }
+    ]
+  },
+  "benchmarks": [
+    {
+      "profile.streams": [
+        6
+      ],
+      "constraints[0].count": 450
+    },
+    {
+      "profile.streams": [
+        12
+      ],
+      "constraints[0].count": 450
+    },
+    {
+      "profile.streams": [
+        18
+      ],
+      "constraints[0].count": 450
+    },
+    {
+      "profile.streams": [
+        24
+      ],
+      "constraints[0].count": 450
+    },
+    {
+      "profile.streams": [
+        30
+      ],
+      "constraints[0].count": 450
+    }
+  ]
+}

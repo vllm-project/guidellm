@@ -1,0 +1,86 @@
+{
+  "metadata": {
+    "labels": {
+      "name": "batch-synthetic-data-generation",
+      "description": "Single-turn batch generation with uniformly distributed output lengths.",
+      "source": "https://github.com/kubernetes-sigs/inference-perf/blob/76e2959b6a8ed9ded7af9c7398d9025a04da195f/workload-catalog/batch-synthetic-data-generation/inference-perf.yaml",
+      "source_revision": "76e2959b6a8ed9ded7af9c7398d9025a04da195f",
+      "source_model": "google/gemma-3-1b-it",
+      "approximations": "Lognormal distributions use bounded normal sampling; normal and uniform sampling retain upstream parameters. Request counts are min_requests stopping thresholds, not exact budgets. See catalog/README.md."
+    }
+  },
+  "spec": {
+    "backend": {
+      "kind": "openai_http",
+      "request_format": "/v1/completions",
+      "stream": true
+    },
+    "profile": {
+      "kind": "concurrent",
+      "streams": [
+        8
+      ]
+    },
+    "seed": {
+      "kind": "static",
+      "value": 42
+    },
+    "data": [
+      {
+        "kind": "synthetic_text",
+        "prompt_tokens": 500,
+        "prompt_tokens_stdev": 1200,
+        "prompt_tokens_min": 50,
+        "prompt_tokens_max": 15000,
+        "output_tokens": 4000,
+        "output_tokens_min": 500,
+        "output_tokens_max": 8000,
+        "turns": 1,
+        "prefix_buckets": [
+          {
+            "prefix_tokens": 2000,
+            "prefix_count": 1
+          }
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "kind": "min_requests",
+        "count": 160
+      }
+    ]
+  },
+  "benchmarks": [
+    {
+      "profile.streams": [
+        8
+      ],
+      "constraints[0].count": 160
+    },
+    {
+      "profile.streams": [
+        16
+      ],
+      "constraints[0].count": 160
+    },
+    {
+      "profile.streams": [
+        24
+      ],
+      "constraints[0].count": 160
+    },
+    {
+      "profile.streams": [
+        32
+      ],
+      "constraints[0].count": 160
+    },
+    {
+      "profile.streams": [
+        40
+      ],
+      "constraints[0].count": 160
+    }
+  ]
+}

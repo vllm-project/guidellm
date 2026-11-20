@@ -1,0 +1,95 @@
+{
+  "metadata": {
+    "labels": {
+      "name": "deep-research",
+      "description": "Sequential research conversations with accumulating context and simulated tool delays.",
+      "source": "https://github.com/kubernetes-sigs/inference-perf/blob/76e2959b6a8ed9ded7af9c7398d9025a04da195f/workload-catalog/deep-research/inference-perf.yaml",
+      "source_revision": "76e2959b6a8ed9ded7af9c7398d9025a04da195f",
+      "source_model": "google/gemma-3-1b-it",
+      "approximations": "Lognormal distributions use bounded normal sampling; normal and uniform sampling retain upstream parameters. Request counts are min_requests stopping thresholds, not exact budgets. Turn counts are fixed at the upstream mean; delays are sampled once per conversation. Dynamic context and first-turn input are combined; rolling context truncation and a fixed recycled conversation pool are not reproduced. See catalog/README.md."
+    }
+  },
+  "spec": {
+    "backend": {
+      "kind": "openai_http",
+      "request_format": "/v1/completions",
+      "stream": true
+    },
+    "profile": {
+      "kind": "concurrent",
+      "streams": [
+        1
+      ]
+    },
+    "seed": {
+      "kind": "static",
+      "value": 42
+    },
+    "data": [
+      {
+        "kind": "synthetic_text",
+        "prompt_tokens": 3000,
+        "prompt_tokens_stdev": 2500,
+        "prompt_tokens_min": 500,
+        "prompt_tokens_max": 15000,
+        "output_tokens": 300,
+        "output_tokens_stdev": 850,
+        "output_tokens_min": 50,
+        "output_tokens_max": 4000,
+        "first_prompt_tokens": 48000,
+        "first_prompt_tokens_stdev": 35089,
+        "first_prompt_tokens_min": 2500,
+        "first_prompt_tokens_max": 165000,
+        "turns": 15,
+        "delay": 25,
+        "delay_stdev": 12,
+        "delay_min": 5,
+        "delay_max": 60,
+        "prefix_buckets": [
+          {
+            "prefix_tokens": 2000,
+            "prefix_count": 1
+          }
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "kind": "min_requests",
+        "count": 50
+      }
+    ]
+  },
+  "benchmarks": [
+    {
+      "profile.streams": [
+        1
+      ],
+      "constraints[0].count": 50
+    },
+    {
+      "profile.streams": [
+        2
+      ],
+      "constraints[0].count": 50
+    },
+    {
+      "profile.streams": [
+        3
+      ],
+      "constraints[0].count": 50
+    },
+    {
+      "profile.streams": [
+        4
+      ],
+      "constraints[0].count": 50
+    },
+    {
+      "profile.streams": [
+        5
+      ],
+      "constraints[0].count": 50
+    }
+  ]
+}
