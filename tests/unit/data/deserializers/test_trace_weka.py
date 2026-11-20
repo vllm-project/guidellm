@@ -149,6 +149,7 @@ class TestWEKATraceFormat:
                 "timestamp_column",
                 "prompt_tokens_column",
                 "output_tokens_column",
+                "duration_column",
                 "hash_ids_column",
                 "hash_id_block_size",
                 "tools",
@@ -460,6 +461,48 @@ class TestWEKATraceFormat:
             0.0,
             17.0,
         ]
+        assert [
+            turn.columns["request_duration_column"][0] for turn in turns
+        ] == pytest.approx([4.87, 2.87])
+
+    @pytest.mark.sanity
+    def test_custom_duration_column_maps_to_request_duration(
+        self, tmp_path: Path, deserializer, default_block_size
+    ):
+        """A custom duration column overrides the WEKA api_time default.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"id": "conv0", "requests": ['
+            f'{{"t": 0.0, "in": {2 * default_block_size}, "out": 5, '
+            '"hash_ids": [1, 2], "input_types": ["text"], '
+            '"api_time": 4.0, "elapsed": 2.5}]}\n',
+        )
+        ds = self.deserialize(deserializer, trace, duration_column="elapsed")
+        turns = load_graph_turns(next(iter(ds)))
+        assert [
+            turn.columns["request_duration_column"][0] for turn in turns
+        ] == pytest.approx([2.5])
+
+    @pytest.mark.sanity
+    def test_negative_api_time_raises(
+        self, tmp_path: Path, deserializer, default_block_size
+    ):
+        """A negative recorded duration is rejected during row validation.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"id": "conv0", "requests": ['
+            f'{{"t": 0.0, "in": {default_block_size}, "out": 5, '
+            '"hash_ids": [1], "input_types": ["text"], "api_time": -1.0}]}\n',
+        )
+        ds = self.deserialize(deserializer, trace)
+        with pytest.raises(InvalidRowError, match="non-negative"):
+            next(iter(ds))
 
     @pytest.mark.sanity
     def test_incompatible_encoding_raises(
