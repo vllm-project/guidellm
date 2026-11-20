@@ -85,10 +85,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         worker.run()
     """
 
-    # Wake event for waiters blocked on the session cap. Created lazily inside
-    # the worker's event loop because asyncio primitives cannot cross between
-    # workers; see the ``_turns_changed`` property.
-    _turns_changed_event: asyncio.Event | None
+    # Wake event for waiters blocked on the session cap. Each worker owns its
+    # own event; it is never awaited until the worker's event loop runs, so it
+    # is safe to create before the process is forked or spawned.
+    _turns_changed: asyncio.Event
 
     def __init__(
         self,
@@ -163,14 +163,7 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         # reserved across the await so concurrent getters cannot overshoot
         # session_limit.
         self._sessions_pending = 0
-        self._turns_changed_event = None
-
-    @property
-    def _turns_changed(self) -> asyncio.Event:
-        """Return the turn-change wake event, creating it on first use."""
-        if self._turns_changed_event is None:
-            self._turns_changed_event = asyncio.Event()
-        return self._turns_changed_event
+        self._turns_changed = asyncio.Event()
 
     def run(self):
         """

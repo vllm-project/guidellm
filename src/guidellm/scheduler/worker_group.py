@@ -15,7 +15,7 @@ import math
 import threading
 import time
 import uuid
-from collections.abc import AsyncIterator, Generator
+from collections.abc import AsyncIterator, Generator, Sequence
 from multiprocessing import get_context
 from multiprocessing.context import BaseContext
 from multiprocessing.managers import BaseManager
@@ -198,7 +198,7 @@ class WorkerProcessGroup(Generic[RequestT, ResponseT]):
 
         async_limits = _distribute_capacity(max_conc, num_processes)
         sessions_limit = self.strategy.sessions_limit
-        session_limits: list[int | None] = (
+        session_limits: Sequence[int | None] = (
             _distribute_capacity(sessions_limit, num_processes)
             if sessions_limit is not None
             else [None] * num_processes
