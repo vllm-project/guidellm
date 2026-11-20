@@ -136,10 +136,10 @@ class GenerativeBenchmarksReport(StandardBaseModel):
         Load report from JSON or YAML file.
 
         :param path: File path or directory containing DEFAULT_FILE to load from
-        :param type_: File format override ('json' or 'yaml'), auto-detected from
-            extension if None
+        :param type_: File format override ('json' or 'yaml'), inferred from the
+            extension or file contents if None
         :return: Loaded report instance with benchmarks and configuration
-        :raises ValueError: If file type is unsupported or cannot be determined
+        :raises ValueError: If the override is unsupported or the report is invalid
         :raises FileNotFoundError: If specified file does not exist
         """
         file_path = GenerativeBenchmarksReport._resolve_path(path)
@@ -150,6 +150,12 @@ class GenerativeBenchmarksReport(StandardBaseModel):
                 model_dict = json.loads(file.read())
             elif file_type in ["yaml", "yml"]:
                 model_dict = yaml.safe_load(file)
+            elif type_ is None:
+                contents = file.read()
+                try:
+                    model_dict = json.loads(contents)
+                except json.JSONDecodeError:
+                    model_dict = yaml.safe_load(contents)
             else:
                 raise ValueError(f"Unsupported file type: {file_type} for {file_path}.")
 

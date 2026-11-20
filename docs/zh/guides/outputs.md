@@ -1,6 +1,6 @@
 ---
 weight: 2
-source_sha256: !!str "a92596617cad147aa021099b7ce2be22fc83304a85246db2e031f478dd401ad5"
+source_sha256: !!str "2f2d5389e6679f408c4cf8e6324c16479de8bdf934afc4aab543953a02d2f343"
 ---
 
 # 输出类型
@@ -126,7 +126,13 @@ guidellm run \
 
 ### 重新载入结果
 
-可以使用 `GenerativeBenchmarksReport` 类将 JSON 文件重新载入 Python，以便进一步分析。以下示例展示如何载入结果：
+使用 `guidellm export` 可重新载入已保存的 JSON 或 YAML 报告并生成新输出。GuideLLM 根据 `.json`、`.yaml` 或 `.yml` 扩展名选用格式。对于其他文件名，GuideLLM 从文件内容识别格式。
+
+```bash
+guidellm export results/run1 --output kind=json,path=copy.json
+```
+
+如需在 Python 中进一步分析报告，可以使用 `GenerativeBenchmarksReport` 类重新载入报告。
 
 ```python
 from guidellm.benchmark import GenerativeBenchmarksReport
