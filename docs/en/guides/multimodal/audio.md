@@ -56,51 +56,49 @@ If you are combining multiple datasets (e.g., for prompts and audio), prepend th
 --data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"1.audio_column": "speech_data"}}'
 ```
 
-### Request Formatting
+### Media Encoding and Request Options
 
-The `encode_media` data preprocessor encodes audio before the backend formats requests. Configure it with `--data-preprocessor`, putting encoding options in `audio_kwargs`. The same `audio_kwargs` structure applies to transcription, translation, and chat requests.
+Audio data is encoded by the `encode_media` data preprocessor, which is part of the default data pipeline. Pass `audio_kwargs` to control how audio is preprocessed before it is included in requests. For example, to convert audio to 16 kHz WAV:
 
-#### `audio_kwargs`
+```bash
+guidellm run \
+  --backend "kind=openai_http,target=http://localhost:8000,request_format=/v1/audio/transcriptions" \
+  --profile kind=synchronous \
+  --data '{"kind":"huggingface","source":"openslr/librispeech_asr","load_kwargs":{"name":"clean","split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"audio_column":"audio"}}' \
+  --data-preprocessor kind=encode_media,audio_kwargs.audio_format=wav,audio_kwargs.encode_sample_rate=16000
+```
 
-Supported arguments include:
-
-- "sample_rate": The sample rate of the input audio data. Only required if it cannot be inferred (e.g., for raw numpy/torch arrays).
-- "encode_sample_rate": Target sample rate for the audio sent to the API. (default: 16000 Hz).
-- "audio_format": File format for the payload. Supported formats are "wav", "mp3", and "flac". If not specified, the format is auto-detected from the source audio codec. When detection is not possible (e.g., raw arrays), defaults to "wav".
-- "bitrate": Bitrate for lossy formats like mp3 (default: "64k").
-- "max_duration": If specified, audio longer than this duration (in seconds) will be truncated.
-- "mono": Whether to convert audio to mono (default: True).
-- "file_name": Optional file name to include in the request metadata (useful for endpoints that rely on filename extensions). Defaults to the source filename when available, otherwise "audio.<format>".
-
-To encode audio as 16 kHz WAV:
+Or using JSON:
 
 ```bash
 --data-preprocessor '{"kind":"encode_media","audio_kwargs":{"audio_format":"wav","encode_sample_rate":16000}}'
 ```
 
-To truncate audio to 30 seconds:
+Supported `audio_kwargs` include:
+
+- `sample_rate`: Sample rate of the input audio. Only required when it cannot be inferred, such as for raw NumPy or PyTorch arrays.
+- `encode_sample_rate`: Target sample rate for the encoded audio (default: `16000` Hz).
+- `audio_format`: Output format, for example `wav`, `mp3`, or `flac`. When omitted, the format is detected from the source codec and falls back to `wav`.
+- `bitrate`: Bitrate for lossy formats such as mp3 (default: `64k`).
+- `max_duration`: Truncate audio longer than this many seconds.
+- `mono`: Whether to convert audio to mono (default: `true`).
+- `file_name`: Optional file name to include in the output metadata, useful for endpoints that rely on filename extensions.
+
+> [!WARNING]\
+> Specifying any `--data-preprocessor` replaces the default preprocessors except for the column mapper. Include every preprocessor the run needs, for example `--data-preprocessor kind=encode_media,audio_kwargs.audio_format=wav`.
+
+Request body parameters and headers are configured on the backend `extras` field. For example, when using vLLM's translation endpoint, identify French as the input language:
 
 ```bash
---data-preprocessor '{"kind":"encode_media","audio_kwargs":{"max_duration":30.0}}'
+--backend '{"kind":"openai_http","target":"http://localhost:8000","request_format":"/v1/audio/translations","extras":{"body":{"language":"fr"}}}'
 ```
 
-#### `extras`
+The `language` field describes the source audio. Whisper translation models produce English text. vLLM's separate `to_language` extension is supported only by some models; see the [vLLM Translations API](https://docs.vllm.ai/en/stable/serving/online_serving/speech_to_text/#translations-api) for model-specific options.
 
-Add `extras` to your existing `--backend` configuration to pass request options:
+`extras` supports the `body`, `content`, `headers`, `params`, and `files` fields; see [Structured Chat Content Payloads](../backends.md#structured-chat-content-payloads).
 
-- `body`: Fields in the request body
-- `headers`: HTTP request headers
-- `params`: URL query parameters
-
-To set the decoding temperature for transcription requests:
-
-```bash
---backend '{"kind":"openai_http","target":"http://localhost:8000","request_format":"/v1/audio/transcriptions","extras":{"body":{"temperature":0.0}}}'
-```
-
-#### "stream"
-
-Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Pass `stream=false` in the backend configuration:
+To disable streaming responses (when the backend supports it), pass `stream=false` in the backend configuration:
 
 ```bash
 --backend kind=openai_http,target=http://localhost:8000,stream=false
@@ -113,8 +111,8 @@ GuideLLM captures comprehensive metrics across the entire request lifecycle, sto
 ### Output Files
 
 - **`benchmarks.json`**: The complete hierarchical statistics object containing scheduler timings, request distributions, and detailed metric summaries for text and audio.
-- **`benchmarks.csv`**: A row-per-request export of `GenerativeRequestStats`, useful for analyzing individual request performance, latency, and specific input/output configurations.
-- **`benchmarks.html`**: A visual report summarizing performance.
+- **`benchmarks.csv`**: A one-row-per-benchmark export of summary metrics and distributions, useful for comparing strategies and sharing results.
+- **`benchmarks.html`**: An optional visual report summarizing performance, written when `--output kind=html` is requested.
 
 ### Captured Metrics
 
@@ -188,7 +186,6 @@ The above command benchmarks the audio/transcriptions endpoint on the target ser
 ✔ Benchmarking complete, generated 1 benchmark(s)
 …   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
 …   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 ```
 
 ### 2. Audio Translation
@@ -241,7 +238,6 @@ The above command benchmarks the audio/translations endpoint on the target serve
 ✔ Benchmarking complete, generated 1 benchmark(s)
 …   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
 …   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 
 ```
 
@@ -301,5 +297,4 @@ The above command benchmarks the chat/completions endpoint on the target server 
 ✔ Benchmarking complete, generated 1 benchmark(s)
 …   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
 …   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 ```

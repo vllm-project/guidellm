@@ -27,7 +27,7 @@ The GuideLLM CLI provides options using a common registry-backed format. The reg
 guidellm run --<option> kind=<TYPE>,key=value,...
 ```
 
-Use comma-separated key=value pairs for flat settings (for example, `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`). Use serialized JSON or YAML when any value is nested (for example, `--data '{"kind":"huggingface","source":"org/dataset","loader_kwargs":{"split":"test"}}'`). Do not mix inline key=value and JSON/YAML in the same option. Some options can be repeated to supply multiple values (for example, multiple `--data` or `--constraint` entries).
+Use comma-separated key=value pairs for flat settings (for example, `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`). Use serialized JSON or YAML when any value is nested (for example, `--data '{"kind":"huggingface","source":"org/dataset","load_kwargs":{"split":"test"}}'`). Do not mix inline key=value and JSON/YAML in the same option. Some options can be repeated to supply multiple values (for example, multiple `--data` or `--constraint` entries).
 
 ### Basic Example
 
@@ -36,6 +36,7 @@ To run a benchmark against your local vLLM server with default settings:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --constraint kind=max_duration,seconds=60
 ```
@@ -45,7 +46,7 @@ This command:
 - Connects to your vLLM server running at `http://localhost:8000`
 - Uses synthetic data with 256 prompt tokens and 128 output tokens per request
 - Automatically determines the available model on the server
-- Runs a `sweep` profile (default) to find optimal performance points
+- Runs a `sweep` profile to find optimal performance points
 - Stops each strategy after 60 seconds
 
 During the benchmark, you'll see a progress display similar to this:
@@ -95,6 +96,8 @@ Constraints control when each strategy in a profile stops. Add one or more `--co
 | `max_global_error_rate` | `rate`, `minimum`    | `--constraint kind=max_global_error_rate,rate=0.05,minimum=1000` |
 | `over_saturation`       | detection parameters | `--constraint kind=over_saturation,min_seconds=30,mode=enforce`  |
 
+Profiles do not add a default duration or request limit. Synthetic data is infinite unless capped by a positive data-loader sample count (for example, `--data-loader kind=pytorch,samples=1000`), so specify a stopping constraint for an otherwise unbounded run.
+
 For example, `--constraint kind=max_requests,count=1000` with `--profile kind=sweep` runs up to 1000 requests for each strategy in the sweep (synchronous, throughput, and each interpolated rate). `--constraint kind=min_requests,count=1000` is like `max_requests`, but keeps queuing until 1000 requests have been processed, which avoids throughput tail-off at the end of rate-based benchmarks. `--constraint kind=max_duration,seconds=30` with `--profile '{"kind":"concurrent","streams":[10,20]}'` runs 10 concurrent streams for 30 seconds, then 20 concurrent streams for 30 seconds.
 
 See [Over-Saturation Stopping](../guides/over_saturation_stopping.md) for over-saturation constraint details.
@@ -103,9 +106,9 @@ See [Over-Saturation Stopping](../guides/over_saturation_stopping.md) for over-s
 
 When you use the `sweep` profile, or specify multiple `rate` values in the `async`/`constant`/`poisson` profiles, or multiple `streams` values in the `concurrent` profile, you are running multiple "benchmark strategies" within the profile. GuideLLM allows you to specify distinct control parameters for your constraints using the `--override` option. For example, `--profile kind=sweep,sweep_size=5 --constraint kind=max_duration,seconds=30` runs 5 strategies (synchronous, throughput, and three interpolated constant rates) for 30 seconds each. You can use `--override constraint[0].seconds 10,20,10,15,20` to run the synchronous strategy for 10 seconds, the throughput strategy for 20 seconds, and the three interpolated constant rates for 10 seconds, 15 seconds, and 20 seconds. Note that specifying fewer values, e.g. `--override constraint[0].seconds 10,20,10`, will reuse the final value of 10 seconds for all three constant strategies.
 
-### Benchmark Profiles (`--profile`)
+### Benchmark Profiles
 
-GuideLLM supports several benchmark profiles, which are described in detail below. Profile-specific parameters go in the same configuration string after `kind=<type>`.
+GuideLLM supports several benchmark profiles, which are described in detail below. Profile-specific parameters go in the same `--profile` configuration string after `kind=<type>`.
 
 #### Synchronous Profile
 
@@ -353,11 +356,14 @@ spec:
   profile:
     kind: concurrent
   constraints:
-    kind: max_duration
+  - kind: max_duration
+    seconds: 60
   tokenizer:
     kind: huggingface_auto
   data:
-    kind: synthetic_text
+  - kind: synthetic_text
+    prompt_tokens: 256
+    output_tokens: 128
   data_column_mapper:
     kind: generative_column_mapper
   data_preprocessors:
@@ -369,7 +375,7 @@ spec:
   seed:
     kind: static
     value: 42
-  output:
+  outputs:
   - kind: json
     path: output.json
   - kind: csv
@@ -411,7 +417,7 @@ These names are builtin to GuideLLM. Specify the full name as shown below, like 
 - `rhaiis/concurrent-8k-1k-equal`: Large context scenario. 8,000 input tokens, 1,000 output tokens.
 - `rhaiis/concurrent-8k-800-norm`: Large context scenario with sequence length variance. Mean 8,000 input tokens and 800 output tokens, but with large statistical variance.
 - `rhaiis/concurrent-100k-1k-equal`: Very large context scenario. 100,000 prompt tokens with 1,000 output tokens.
-- `rhaiis/concurrent-512-2ki-norm`: Generation heavy scenario with sequence length variance. Mean 512 prompt tokens with 1k output tokens, but with very large statistical variance.
+- `rhaiis/concurrent-512-2ki-norm`: Generation heavy scenario with sequence length variance. Mean 512 prompt tokens with 2,048 output tokens, but with very large statistical variance.
 
 ## Troubleshooting
 

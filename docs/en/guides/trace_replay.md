@@ -15,7 +15,7 @@ These are passed to the `--data` argument as `kind=format`:
 
 ## Loading Trace Data
 
-Trace replay always uses `--profile kind=replay`. Choose a **format** (`trace_synthetic`, `mooncake`, or `weka`) and a **source** type from one of the other deserializer kinds (`json_file`, `huggingface`, etc). For example:
+Trace replay always uses `--profile kind=replay`. Choose a **format** (`trace_synthetic`, `mooncake`, `weka`, or `otel`) and a **source** type from one of the other deserializer kinds (`json_file`, `huggingface`, etc). For example:
 
 **`trace_synthetic` with local `json_file`:**
 

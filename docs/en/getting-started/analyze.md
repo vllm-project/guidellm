@@ -8,59 +8,78 @@ After [running a benchmark](benchmark.md), GuideLLM provides comprehensive resul
 
 ## Understanding Console Output
 
-Upon benchmark completion, GuideLLM automatically displays results in the console, divided into three main sections:
+GuideLLM displays configuration details during setup. Upon benchmark completion, it prints a series of result tables, followed by knee detection results when available and any post-benchmark warnings.
 
-### 1. Benchmarks Metadata
+### Initial Setup Output
 
-This section provides a high-level summary of the benchmark run, including:
+Before benchmark execution, the setup output summarizes the resolved configuration, including:
 
-- **Server configuration**: Target URL, model name, and backend details
+- **Backend configuration**: Target URL, model name, and backend details
+- **Tokenizer configuration**: Tokenizer and load arguments
 - **Data configuration**: Data source, token counts, and dataset properties
-- **Profile arguments**: Rate type, maximum duration, request limits, etc.
-- **Extras**: Any additional metadata provided via the `--output-extras` argument
+- **Preprocessor configuration**: Selected preprocessors
+- **Finalizer configuration**: A finalizer processes requests
+- **Request loader configuration**: Show the data loader parameters
+- **Profile configuration**: Show the settings of the benchmark run profile
+- **Output format configuration**: Confirm the output formats and paths selected.
 
 Example:
 
 ```
-Benchmarks Metadata
-------------------
-Args:        {"backend_type": "openai", "target": "http://localhost:8000", "model": "Meta-Llama-3.1-8B-Instruct-quantized", ...}
-Worker:      {"type_": "generative", "backend_type": "openai", "backend_args": {"timeout": 120.0, ...}, ...}
-Request Loader: {"type_": "generative", "data_args": {"prompt_tokens": 256, "output_tokens": 128, ...}, ...}
-Extras:      {}
+✔ OpenAIHTTPBackend backend validated with model Qwen/Qwen3-0.6B
+  {'kind': 'openai_http', 'target': 'http://localhost:8000', 'model': 'Qwen/Qwen3-0.6B', 'request_format': '/v1/chat/completions', 'api_key': None, 'api_routes': {'/health': 'health',
+  '/v1/models': 'v1/models', '/v1/completions': 'v1/completions', '/v1/chat/completions': 'v1/chat/completions', '/v1/embeddings': 'v1/embeddings', '/v1/responses': 'v1/responses', '/v1/audio/transcriptions':
+  'v1/audio/transcriptions', '/v1/audio/translations': 'v1/audio/translations', '/pooling': 'pooling'}, 'timeout': None, 'timeout_connect': 5.0, 'http2': True, 'follow_redirects': True, 'verify': False, 'validate_backend': True,
+  'stream': True, 'extras': None, 'max_tokens': None, 'server_history': False, 'tool_call_missing_behavior': 'error_stop', 'multiturn_reasoning': False}
+✔ Tokenizer resolved, using model 'Qwen/Qwen3-0.6B' as tokenizer
+  {'kind': 'huggingface_auto', 'model': 'Qwen/Qwen3-0.6B', 'load_kwargs': {}}
+✔ 1 datasets resolved
+  [{'kind': 'synthetic_text', 'load_kwargs': {}, 'prompt_tokens': 128, 'prompt_tokens_stdev': 4, 'prompt_tokens_min': None, 'prompt_tokens_max': None, 'output_tokens': 128, 'output_tokens_stdev': None, 'output_tokens_min': None,
+  'output_tokens_max': None, 'first_prompt_tokens': None, 'first_prompt_tokens_stdev': None, 'first_prompt_tokens_min': None, 'first_prompt_tokens_max': None, 'first_output_tokens': None, 'first_output_tokens_stdev': None,
+  'first_output_tokens_min': None, 'first_output_tokens_max': None, 'delay': None, 'delay_stdev': None, 'delay_min': None, 'delay_max': None, 'turns': 1, 'tool_call_turns': [], 'tools': None, 'tool_response_tokens': None,
+  'tool_response_tokens_stdev': None, 'tool_response_tokens_min': None, 'tool_response_tokens_max': None, 'server_tool_call_turns': [], 'branches': [], 'prefix_buckets': None}]
+✔ 2 preprocessors resolved
+  [{'kind': 'generative_column_mapper', 'column_mappings': None}, {'kind': 'encode_media', 'audio_kwargs': {}, 'image_kwargs': {}, 'video_kwargs': {}}]
+✔ Finalizer resolved
+  {'kind': 'generative', 'tool_call_mode': 'client'}
+✔ Request loader resolved with inf unique requests
+  {'kind': 'pytorch', 'samples': -1, 'shuffle': False, 'num_workers': 1, 'prefetch_factor': 4096}
+✔ ConcurrentProfile profile resolved
+  {'kind': 'concurrent', 'rampup_duration': 0.0, 'prefetch': 0, 'warmup': {'percent': None, 'value': None, 'mode': 'prefer_duration'}, 'cooldown': {'percent': None, 'value': None, 'mode': 'prefer_duration'}, 'streams': [20]}
+✔ Output formats resolved
+  [{'kind': 'json', 'path': '/home/dbutenho/ai/cleanup/benchmarks.json'}, {'kind': 'csv', 'path': '/home/dbutenho/ai/cleanup/benchmarks.csv'}]
 ```
 
-### 2. Benchmarks Info
+### Run Summary Info
 
-This section summarizes the key information about each benchmark run, presented as a table with columns:
+The `Run Summary Info` table has one row per benchmark (strategy) and includes:
 
-- **Type**: The benchmark type (e.g., synchronous, constant, poisson, etc.)
-- **Start/End Time**: When the benchmark started and ended
-- **Duration**: Total duration of the benchmark in seconds
-- **Requests**: Count of successful, incomplete, and errored requests
-- **Token Stats**: Average token counts and totals for prompts and outputs
+- **Benchmark**: The strategy that ran, such as `synchronous`, `throughput`, or `constant@10.00`
+- **Timings**: Measurement start and end timestamps and duration, excluding warmup and cooldown; warmup and cooldown durations are reported separately
+- **Requests**: Totals for completed, incomplete, and errored requests
+- **Input Tokens / Output Tokens**: Token totals broken down by request status
 
-This section helps you understand what was executed and provides a quick overview of the results.
+### Modality Statistics
 
-### 3. Benchmarks Stats
+When the run includes text, image, video, audio, or tool-call data, GuideLLM prints a statistics table for each modality that has data (for example, `Text Metrics Statistics (Completed Requests)`). These tables report per-request values and per-second rates for modality-specific counts such as tokens, words, characters, image pixels and bytes, video frames and seconds, audio samples and seconds, and tool calls.
 
-This is the most critical section for performance analysis. It displays detailed statistics for each metric:
+### Request Token Statistics
 
-- **Throughput Metrics**:
+`Request Token Statistics (Completed Requests)` reports per-request input, output, and total token counts, plus streaming iterations and output tokens per streaming iteration.
 
-  - Requests per second (RPS)
-  - Request concurrency
-  - Output tokens per second
-  - Total tokens per second
+### Request Latency Statistics
 
-- **Latency Metrics**:
-
-  - Request latency (mean, median, p99)
-  - Time to first token (TTFT) (mean, median, p99)
-  - Inter-token latency (ITL) (mean, median, p99)
-  - Time per output token (mean, median, p99)
+`Request Latency Statistics (Completed Requests)` reports the distribution of request latency, time to first token (TTFT), time to first output token (TTFOT), inter-token latency (ITL), and time per output token (TPOT). The table shows the mean, median, and p95. Request latency, TTFT, and TTFOT include a mean margin of error when available; ITL and TPOT do not. When confidence intervals are enabled, a marker identifies p95 estimates whose interval cannot be bounded by the sample. The console does not display percentile interval endpoints. JSON and CSV reports contain the available confidence intervals and additional percentiles, including p99.
 
 The p99 (99th percentile) values are particularly important for SLO analysis, as they represent the worst-case performance for 99% of requests.
+
+### Server Throughput Statistics
+
+`Server Throughput Statistics (All Requests)` reports request concurrency, requests per second, and input, output, and total tokens per second. When SLO objectives are configured with `--metrics`, this table also reports SLO attainment and goodput, and a separate `Per-Objective SLO Attainment` table reports attainment for each configured objective.
+
+The console tables summarize every strategy in the run. Profile conclusions, including knee detection and goodput search results, are stored in the report's `conclusions` list. The console prints knee detection results after the tables; goodput search conclusions are available in the saved JSON and YAML reports. Any triggered warning rules appear in a final Warnings section.
+
+JSON and YAML reports contain per-request records and metric summaries. CSV contains one row per benchmark with aggregate statistics and percentile summaries. `metrics.sample_size` controls retention of full request payloads; lightweight per-request statistics remain available in JSON and YAML regardless of that setting.
 
 ## Analyzing Saved Results
 
@@ -132,11 +151,15 @@ Run benchmarks with different models or hardware configurations, then compare:
 guidellm run \
   --backend kind=openai_http,target=http://server1:8000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
   --output kind=json,path=model1/benchmarks.json
 
 guidellm run \
   --backend kind=openai_http,target=http://server2:8000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
   --output kind=json,path=model2/benchmarks.json
 ```
 
