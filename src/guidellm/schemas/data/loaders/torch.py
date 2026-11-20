@@ -18,7 +18,11 @@ class TorchDataLoaderArgs(DataLoaderArgs):
     )
     shuffle: bool = Field(
         default=False,
-        description="Shuffle data rows at every epoch.",
+        description=(
+            "Shuffle the rows in an order that depends on the seed, reshuffled for "
+            "each benchmark unless samples is positive. Has no effect unless every "
+            "dataset is a file, Hugging Face or in-memory dataset."
+        ),
     )
     num_workers: int = Field(
         default=1,
