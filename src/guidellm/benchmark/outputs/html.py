@@ -74,6 +74,10 @@ _MODALITY_GROUPS: dict[str, list[tuple[str, str]]] = {
         ("samples", "Samples"),
         ("seconds", "Seconds"),
         ("bytes", "Bytes"),
+        ("ttfp_ms", "TTFP (ms)"),
+        ("rtf", "RTF"),
+        ("underrun_seconds", "Underrun (seconds)"),
+        ("continuity_ok_rate", "Continuity OK rate (0-1)"),
     ],
     "tool_call": [
         ("tokens", "Tokens"),
@@ -563,7 +567,7 @@ def _build_details(
                 output_mean = output_stats.get("mean")
                 output_p95 = output_stats.get("p95")
                 if all(
-                    value in (None, 0)
+                    value is None or (value == 0 and modality != "audio")
                     for value in (input_mean, input_p95, output_mean, output_p95)
                 ):
                     continue
@@ -942,7 +946,7 @@ def _select_video_metric(
             return None
 
 
-def _select_audio_metric(
+def _select_audio_metric(  # noqa: PLR0911
     modality: GenerativeAudioMetricsSummary,
     attr: str,
 ) -> GenerativeMetricsSummary | None:
@@ -955,6 +959,14 @@ def _select_audio_metric(
             return modality.seconds
         case "bytes":
             return modality.bytes
+        case "ttfp_ms":
+            return modality.ttfp_ms
+        case "rtf":
+            return modality.rtf
+        case "underrun_seconds":
+            return modality.underrun_seconds
+        case "continuity_ok_rate":
+            return modality.continuity_ok_rate
         case _:
             return None
 

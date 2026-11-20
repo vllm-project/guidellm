@@ -133,6 +133,13 @@ class ChatCompletionsRequest(BaseModel):
     n: int | None = Field(
         default=1, description="Number of completion choices to generate"
     )
+    modalities: list[str] | None = Field(
+        default=None,
+        description=(
+            "Requested output modalities: 'audio' will mock audio output; "
+            "None will keep the default text-only behavior"
+        ),
+    )
     stream: bool | None = Field(
         default=False, description="Whether to stream response chunks"
     )

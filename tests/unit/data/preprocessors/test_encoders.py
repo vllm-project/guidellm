@@ -64,6 +64,30 @@ def test_encode_audio_array_from_formatted_dataset(format_type):
 
 
 @pytest.mark.regression
+def test_media_encoder_preserves_canonical_audio_file_dict():
+    """Pass synthetic or already-encoded audio through without re-encoding.
+
+    :return: None.
+    ## WRITTEN BY AI ##
+    """
+    encoded_audio = {
+        "type": "audio_file",
+        "audio": b"encoded-wav",
+        "format": "wav",
+        "mimetype": "audio/wav",
+        "audio_samples": 1600,
+        "audio_seconds": 0.1,
+        "audio_bytes": 11,
+        "file_name": "synthetic.wav",
+    }
+    encoder = MediaEncoder(MediaEncoderArgs())
+
+    output = encoder([{"audio_column": [encoded_audio]}])
+
+    assert output[0]["audio_column"][0] is encoded_audio
+
+
+@pytest.mark.regression
 @pytest.mark.parametrize("column", ["image_column", "audio_column", "video_column"])
 def test_empty_media_placeholders_are_skipped(column):
     """Keep missing and empty media placeholders out of the encoded turn.

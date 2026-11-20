@@ -22,6 +22,7 @@ GenerativeDatasetColumnType = Literal[
     "image_column",
     "video_column",
     "audio_column",
+    "ref_text_column",
     "tools_column",
     "tool_response_column",
     "tool_choice_column",
