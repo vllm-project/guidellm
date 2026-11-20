@@ -32,6 +32,13 @@ class WEKATraceFormatArgs(TraceDataArgs):
         default="out",
         description="Column name for output token counts in the trace file.",
     )
+    duration_column: str = Field(
+        default="api_time",
+        description=(
+            "Column name for how long each request ran, in seconds. "
+            "Used by schedule_turn=idle_gap and concurrent-session packing."
+        ),
+    )
     conversation_id_column: str = Field(
         default="id",
         description="Column name for conversation UUIDs in the trace file.",
