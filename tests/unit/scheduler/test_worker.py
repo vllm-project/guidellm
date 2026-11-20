@@ -18,6 +18,7 @@ from guidellm import configure_logger, logger
 from guidellm.scheduler import (
     BackendInterface,
     SynchronousStrategy,
+    UsersStrategy,
     WorkerProcess,
 )
 from guidellm.scheduler.dag import DAGExecutionState
@@ -829,6 +830,359 @@ class TestWorkerProcessMultiturn:
         ]
         assert cancelled
         assert all(info.scheduler_node_id == 0 for info in cancelled)
+
+
+class TestWorkerProcessSessionCap:
+    """Test the strategy-driven session cap in the worker.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.fixture
+    def users_worker(self) -> WorkerProcess:
+        """Worker running the users strategy with a two-session cap.
+
+        ## WRITTEN BY AI ##
+        """
+        return self._users_worker(session_limit=2)
+
+    def _users_worker(self, session_limit: int = 2) -> WorkerProcess:
+        """Worker with an explicit session limit and two request slots.
+
+        ## WRITTEN BY AI ##
+        """
+        worker = WorkerProcess(
+            worker_index=0,
+            messaging=MockMessaging(),
+            backend=MockBackend(),
+            strategy=UsersStrategy(users=session_limit),
+            async_limit=2,
+            session_limit=session_limit,
+            fut_scheduling_time_limit=10.0,
+            startup_barrier=Barrier(2),
+            requests_generated_event=Event(),
+            constraint_reached_event=Event(),
+            shutdown_event=Event(),
+            error_event=Event(),
+            stdout_conn=None,
+            stderr_conn=None,
+            parent_logger=None,
+        )
+        assert worker.session_limit == session_limit
+        return worker
+
+    @staticmethod
+    def _single_node_graph(graph_id: str) -> ConversationGraph:
+        """Single-root graph ready to dispatch immediately.
+
+        ## WRITTEN BY AI ##
+        """
+        return ConversationGraph(
+            graph_id=graph_id,
+            nodes={
+                "n0": ConversationNode(
+                    node_id="n0",
+                    agent_id="a",
+                    request=f"r-{graph_id}",
+                )
+            },
+            edges=[],
+            request_infos={
+                "n0": RequestInfo(request_id=f"i-{graph_id}", node_id="n0"),
+            },
+        )
+
+    @staticmethod
+    def _gated_state(graph_id: str, delay: float = 30.0) -> DAGExecutionState:
+        """Two-node graph whose child is gated `delay` seconds out.
+
+        ## WRITTEN BY AI ##
+        """
+        nodes = {
+            "n0": ConversationNode(
+                node_id="n0",
+                agent_id="a",
+                request="r0",
+                settings=RequestSettings(requeue_delay=delay),
+            ),
+            "n1": ConversationNode(
+                node_id="n1",
+                agent_id="a",
+                request="r1",
+            ),
+        }
+        graph = ConversationGraph(
+            graph_id=graph_id,
+            nodes=nodes,
+            edges=[
+                ConversationEdge(
+                    source_node_id="n0",
+                    target_node_id="n1",
+                    history_context="full",
+                )
+            ],
+        )
+        state = DAGExecutionState(graph)
+        state.mark_completed("n0", "r0", "resp0")
+        return state
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_session_cap_blocks_ipc_pulls(self, users_worker):
+        """At the session cap, think time does not pull new conversations.
+
+        ## WRITTEN BY AI ##
+        """
+        users_worker.turns_queue.append(self._gated_state("g0"))
+        users_worker.turns_queue.append(self._gated_state("g1"))
+
+        getter = asyncio.create_task(users_worker._get_next_ready_node())
+        # One loop tick lets the getter reach its session-cap wait.
+        await asyncio.sleep(0)
+        await asyncio.sleep(0.05)
+
+        assert not getter.done()
+        # both sessions are in think time: no worker slot may read IPC
+        assert users_worker.messaging.get_calls == []
+
+        getter.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await getter
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_gate_expiry_returns_node_without_ipc_pull(self, users_worker):
+        """A think-time gate that expires wakes the capped waiter by itself.
+
+        ## WRITTEN BY AI ##
+        """
+        near = self._gated_state("g0", delay=0.05)
+        users_worker.turns_queue.append(near)
+        users_worker.turns_queue.append(self._gated_state("g1"))
+        near_ready = near.next_node_ready_at()
+        assert near_ready is not None
+        deadline = near_ready[1]
+
+        state, node_id = await asyncio.wait_for(
+            users_worker._get_next_ready_node(), timeout=2.0
+        )
+
+        assert state is near
+        assert node_id == "n1"
+        # the gate is honored: the turn is not claimed before its deadline
+        assert time.time() >= deadline
+        assert users_worker.messaging.get_calls == []
+
+    @pytest.mark.sanity
+    @pytest.mark.asyncio
+    async def test_new_graph_pulled_after_session_completes(self, users_worker):
+        """A finished session frees its slot and the worker reads IPC again.
+
+        ## WRITTEN BY AI ##
+        """
+        gated = self._gated_state("g0")
+        users_worker.turns_queue.append(gated)
+
+        finishing = ConversationGraph(
+            graph_id="finishing",
+            nodes={
+                "f0": ConversationNode(
+                    node_id="f0",
+                    agent_id="a",
+                    request="rf",
+                )
+            },
+            edges=[],
+            request_infos={
+                "f0": RequestInfo(request_id="if", node_id="f0"),
+            },
+        )
+        finishing_state = DAGExecutionState(finishing)
+        # the session's only turn is in flight, as it would be mid-run
+        finishing_state.claim_node("f0")
+        users_worker.turns_queue.append(finishing_state)
+        assert users_worker._at_session_cap()
+
+        getter = asyncio.create_task(users_worker._get_next_ready_node())
+        # One loop tick lets the getter reach its session-cap wait.
+        await asyncio.sleep(0)
+
+        # a new conversation is queued for the freed user slot
+        next_graph = ConversationGraph(
+            graph_id="next",
+            nodes={
+                "x0": ConversationNode(
+                    node_id="x0",
+                    agent_id="a",
+                    request="rx",
+                )
+            },
+            edges=[],
+        )
+        await users_worker.messaging.put(next_graph)
+
+        # the single-node session finishes: its slot frees and waiters wake
+        users_worker._finalize_node(
+            finishing_state, "f0", "rf", finishing.request_infos["f0"], "resp"
+        )
+        assert finishing_state not in users_worker.turns_queue
+
+        state, node_id = await asyncio.wait_for(getter, timeout=2.0)
+        assert state.graph.graph_id == "next"
+        assert node_id == "x0"
+        assert state in users_worker.turns_queue
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_race_does_not_exceed_session_cap(self):
+        """Concurrent pullers reserve slots, so the cap holds under a race.
+
+        ## WRITTEN BY AI ##
+        """
+        worker = self._users_worker(session_limit=1)
+        assert worker.session_limit is not None
+        first = asyncio.create_task(worker._get_next_ready_node())
+        await wait_until(lambda: bool(worker.messaging.get_calls))
+
+        second = asyncio.create_task(worker._get_next_ready_node())
+        # One loop tick lets the second getter reach its session-cap wait.
+        await asyncio.sleep(0)
+        await asyncio.sleep(0.05)
+
+        # the reservation blocks the second getter before it reads IPC
+        assert len(worker.messaging.get_calls) == 1
+        assert not second.done()
+
+        first_graph = self._single_node_graph("g1")
+        await worker.messaging.put(first_graph)
+        state, node_id = await asyncio.wait_for(first, timeout=2.0)
+        assert state.graph.graph_id == "g1"
+
+        # while the slot is held, the extra graph stays in IPC
+        await worker.messaging.put(self._single_node_graph("g2"))
+        await asyncio.sleep(0.05)
+        assert not second.done()
+        assert len(worker.turns_queue) <= worker.session_limit
+        assert [graph.graph_id for graph in worker.messaging._queue] == ["g2"]
+
+        # finishing the session frees the slot for the parked getter
+        worker._finalize_node(
+            state,
+            node_id,
+            state.graph.nodes[node_id].request,
+            state.request_infos[node_id],
+            "resp",
+        )
+        state2, node2 = await asyncio.wait_for(second, timeout=2.0)
+        assert state2.graph.graph_id == "g2"
+        assert node2 == "n0"
+        assert len(worker.turns_queue) <= worker.session_limit
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_aborting_a_session_wakes_capped_waiter(self):
+        """Aborting a session frees its slot and wakes a capped waiter.
+
+        ## WRITTEN BY AI ##
+        """
+        worker = self._users_worker(session_limit=1)
+        gated = self._gated_state("gated")
+        worker.turns_queue.append(gated)
+
+        waiter = asyncio.create_task(worker._get_next_ready_node())
+        # One loop tick lets the waiter reach its session-cap wait.
+        await asyncio.sleep(0)
+        assert worker._at_session_cap()
+
+        await worker.messaging.put(self._single_node_graph("next"))
+        worker._abort_remaining_nodes(gated)
+        assert gated not in worker.turns_queue
+
+        state, node_id = await asyncio.wait_for(waiter, timeout=2.0)
+        assert state.graph.graph_id == "next"
+        assert node_id == "n0"
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_parallel_branches_of_one_session_are_claimable(self):
+        """Two ready branches of one session can be in flight together.
+
+        ## WRITTEN BY AI ##
+        """
+        worker = self._users_worker(session_limit=1)
+        assert worker.session_limit is not None
+        graph = ConversationGraph(
+            graph_id="branched",
+            nodes={
+                "r0": ConversationNode(node_id="r0", agent_id="a", request="r0"),
+                "r1": ConversationNode(node_id="r1", agent_id="a", request="r1"),
+            },
+            edges=[],
+            request_infos={
+                "r0": RequestInfo(request_id="i0", node_id="r0"),
+                "r1": RequestInfo(request_id="i1", node_id="r1"),
+            },
+        )
+        worker.turns_queue.append(DAGExecutionState(graph))
+
+        first_state, first_node = await worker._get_next_ready_node()
+        second_state, second_node = await worker._get_next_ready_node()
+
+        assert first_state is second_state
+        assert {first_node, second_node} == {"r0", "r1"}
+        # one user slot holds the session while both branches are in flight
+        assert len(worker.turns_queue) == 1
+        assert worker.messaging.get_calls == []
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    async def test_new_graphs_gate_on_dataset_requeue_delay(self, users_worker):
+        """Graphs dequeued by the worker gate turns on the dataset delay.
+
+        ## WRITTEN BY AI ##
+        """
+        root_graph = ConversationGraph(
+            graph_id="rooted",
+            nodes={
+                "r0": ConversationNode(
+                    node_id="r0",
+                    agent_id="a",
+                    request="rr0",
+                    settings=RequestSettings(requeue_delay=30.0),
+                ),
+                "r1": ConversationNode(
+                    node_id="r1",
+                    agent_id="a",
+                    request="rr1",
+                ),
+            },
+            edges=[
+                ConversationEdge(
+                    source_node_id="r0",
+                    target_node_id="r1",
+                    history_context="full",
+                )
+            ],
+            request_infos={
+                "r0": RequestInfo(request_id="ir0", node_id="r0"),
+                "r1": RequestInfo(request_id="ir1", node_id="r1"),
+            },
+        )
+        await users_worker.messaging.put(root_graph)
+
+        state, node_id = await asyncio.wait_for(
+            users_worker._get_next_ready_node(), timeout=2.0
+        )
+        assert node_id == "r0"
+
+        users_worker._finalize_node(
+            state, "r0", "rr0", state.request_infos["r0"], "resp"
+        )
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "r1"
+        # the dataset's 30 second requeue delay gates the child
+        assert nxt[1] > time.time() + 25.0
 
 
 class _ChildMockMessaging:

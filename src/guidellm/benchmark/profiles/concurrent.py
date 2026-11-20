@@ -2,26 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import MutableMapping
-from typing import TYPE_CHECKING, Any
+from collections.abc import Sequence
 
-from guidellm.scheduler import (
-    ConcurrentStrategy,
-    ConstraintInitializer,
-    SchedulingStrategy,
-)
+from guidellm.scheduler import ConcurrentStrategy
 from guidellm.schemas.benchmark.profiles import ConcurrentProfileArgs
 
-from .profile import Profile, ProfileFactory
+from .profile import FixedCountProfile, ProfileFactory
 
 __all__ = ["ConcurrentProfile"]
 
-if TYPE_CHECKING:
-    from guidellm.benchmark.schemas import Benchmark
-
 
 @ProfileFactory.register("concurrent")
-class ConcurrentProfile(Profile):
+class ConcurrentProfile(FixedCountProfile[ConcurrentStrategy]):
     """
     Execute strategies with fixed concurrency levels for performance testing.
 
@@ -31,48 +23,18 @@ class ConcurrentProfile(Profile):
 
     args: ConcurrentProfileArgs
 
-    def __init__(
-        self,
-        args: ConcurrentProfileArgs,
-        random_seed: int,
-        constraints: MutableMapping[str, ConstraintInitializer | Any] | None,
-        **kwargs: Any,
-    ):
-        super().__init__(args, random_seed, constraints, **kwargs)
-        self.args = args
-
     @property
-    def strategy_types(self) -> list[str]:
+    def _counts(self) -> Sequence[int]:
         """
-        :return: Concurrent strategy types for each configured stream count
+        :return: Configured stream counts to execute
         """
-        return [self.kind] * len(self.args.streams)
+        return self.args.streams
 
-    def next_strategy(
-        self,
-        prev_strategy: SchedulingStrategy | None,
-        prev_benchmark: Benchmark | None,
-    ) -> ConcurrentStrategy | None:
+    def _build_strategy(self, count: int) -> ConcurrentStrategy:
         """
-        Generate concurrent strategy for next stream count.
-
-        If a previous stream count was terminated by a constraint with
-        stopping_scope='all', remaining stream counts are skipped.
-
-        :param prev_strategy: Previously completed strategy
-        :param prev_benchmark: Benchmark results from previous execution
-        :return: ConcurrentStrategy with next stream count, or None if complete
-            or escalation halted
+        :param count: Number of concurrent streams for the next strategy
+        :return: Concurrent strategy for the count
         """
-        _ = prev_strategy
-
-        if len(self.completed_strategies) >= len(self.args.streams):
-            return None
-
-        if prev_benchmark is not None and self._should_stop_escalating(prev_benchmark):
-            return None
-
         return ConcurrentStrategy(
-            streams=self.args.streams[len(self.completed_strategies)],
-            rampup_duration=self.args.rampup_duration,
+            streams=count, rampup_duration=self.args.rampup_duration
         )

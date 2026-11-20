@@ -48,6 +48,12 @@ When executing a multiturn benchmark, GuideLLM:
 
 For `/v1/chat/completions`, the conversation history is passed as a messages array with alternating user and assistant roles. For `/v1/responses`, the history is either passed as alternating user and assistant roles, or as a previous request ID. For `/v1/completions`, the history is concatenated as a single prompt string.
 
+### Simulated Users
+
+The [users profile](../getting-started/benchmark.md#users-profile) keeps each conversation bound to one simulated user for its whole session: the user sends a turn, waits out the dataset `requeue_delay`, and sends the next turn of the same conversation, only starting a new conversation when the current one finishes. Unlike the `concurrent` profile, the slot is held for multi-turn data rather than scheduling other requests during the gap.
+
+A conversation with parallel branches (sub-agent forks) can occupy more than one request slot while its branches are in flight. Request slots are shared among the users on a worker and are not reserved per user, so a wide fan-out can delay another user's next turn. Each session is capped by its conversation graph (one user slot per session), not by a limit of one in-flight request per session.
+
 For more information see [Request Formatting](#request-formatting) and [Server-Side Conversation History](#server-side-conversation-history-v1responses-only).
 
 ### Prefix Columns and System Prompts

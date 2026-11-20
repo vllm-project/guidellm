@@ -132,10 +132,8 @@ class GenerativeRequestStats(StandardBaseDict):
         :attr:`turn_predecessor_delay` and :attr:`turn_scheduling_delay`
         split this into time blocked by a prior turn and time the harness
         itself was late. Only describes arrival-schedule delay for strategies
-        that define an arrival schedule (constant, poisson, and trace when the
-        dataset supplies timestamps); the synchronous, concurrent, and
-        throughput strategies target an ASAP start instead. See the metrics
-        guide for full caveats.
+        that define an arrival schedule, rather than strategies that have requests
+        executed as soon as possible. See the metrics guide for full caveats.
 
         :return: Duration from targeted start to request start in seconds, or
             None if unavailable
