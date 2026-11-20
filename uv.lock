@@ -1546,7 +1546,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'vision'" },
     { name = "protobuf" },
     { name = "pydantic", specifier = ">=2.11.7" },
-    { name = "pydantic-settings", specifier = ">=2.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.7.0" },
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "rich" },
     { name = "sanic" },

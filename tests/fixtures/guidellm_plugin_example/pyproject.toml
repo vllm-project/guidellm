@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guidellm-plugin-example"
+version = "0.1.0"
+description = "Example external backend plugin fixture for GuideLLM tests."
+requires-python = ">=3.11"
+
+[project.entry-points."guidellm.plugins"]
+echo_plugin = "guidellm_plugin_example"
+
+[tool.setuptools.packages.find]
+include = ["guidellm_plugin_example*"]

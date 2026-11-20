@@ -35,3 +35,9 @@ __all__ = [
     "create_data_loader",
     "process_dataset",
 ]
+
+# Import plugin modules that mirror this package, e.g. `<plugin>.data`.
+# Kept last so plugins can import anything this package defines.
+from guidellm.utils.plugins import load_plugin_submodules
+
+load_plugin_submodules(__name__)

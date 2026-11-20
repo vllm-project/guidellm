@@ -207,6 +207,178 @@ guidellm run \
   --constraint kind=max_duration,seconds=60
 ```
 
+## Custom Backends and Plugins
+
+You can add custom backends without modifying GuideLLM itself by registering a `BackendArgs` schema and a `Backend` subclass and exposing them as a plugin.
+
+> [!WARNING]\
+> The plugin interfaces are experimental. The `Backend`, `BackendArgs` and other base classes that plugins subclass may change their method signatures between GuideLLM releases, so pin the GuideLLM version your plugin is tested against.
+
+A plugin is a Python package that mirrors GuideLLM's top-level packages. When one of `guidellm.schemas`, `guidellm.backends`, `guidellm.scheduler`, `guidellm.data`, `guidellm.benchmark` or `guidellm.collectors` finishes importing, GuideLLM imports the module with the same name from each plugin, if the plugin has one. `import guidellm` alone loads no plugin code, so a plugin only adds import time to the processes that use the matching part of GuideLLM, including `spawn` and `forkserver` workers.
+
+### 1. Define and Register the Backend
+
+Register a `BackendArgs` subclass and a `Backend` subclass under the same `kind` name, each in the plugin module that matches where GuideLLM defines the base class:
+
+```text
+my_guidellm_plugin/
+├── __init__.py          # keep it empty: it is imported to find the modules below
+├── schemas/
+│   ├── __init__.py      # from .backends import MyCustomBackendArgs
+│   └── backends.py      # MyCustomBackendArgs, loaded with guidellm.schemas
+└── backends.py          # MyCustomBackend, loaded with guidellm.backends
+```
+
+`guidellm run --help` only imports `guidellm.schemas`, so it registers the `--backend` kind without importing the backend implementation.
+
+Put every registered schema class (`BackendArgs`, `ProfileArgs`, `ConstraintArgs`, `DataArgs` and other `*Args` subclasses) under `my_guidellm_plugin/schemas/`. Those modules load before any GuideLLM model that contains these types is built. A schema registered from another plugin module can come too late: a model such as `BenchmarkArgs` that was already built keeps its old schema and rejects the new `kind`, and the CLI never sees it.
+
+`my_guidellm_plugin/schemas/backends.py`:
+
+```python
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import Field
+
+from guidellm.schemas.backends import BackendArgs
+
+
+@BackendArgs.register("my_custom_backend")
+class MyCustomBackendArgs(BackendArgs):
+    kind: Literal["my_custom_backend"] = Field(default="my_custom_backend")
+    target: str = Field(description="Base URL of the inference server.")
+    model: str = Field(
+        default="",
+        description="Served or Hugging Face model id. Empty queries /v1/models.",
+    )
+```
+
+`my_guidellm_plugin/backends.py`:
+
+```python
+from __future__ import annotations
+
+import json
+import time
+from collections.abc import AsyncIterator
+
+import httpx2
+
+from guidellm.backends import Backend
+from guidellm.schemas import (
+    GenerationRequest,
+    GenerationResponse,
+    RequestInfo,
+    UsageMetrics,
+)
+from my_guidellm_plugin.schemas.backends import MyCustomBackendArgs
+
+
+@Backend.register("my_custom_backend")
+class MyCustomBackend(Backend):
+    _args: MyCustomBackendArgs
+
+    def __init__(self, arguments: MyCustomBackendArgs) -> None:
+        super().__init__(arguments)
+        self._client: httpx2.AsyncClient | None = None
+
+    async def process_startup(self) -> None:
+        self._client = httpx2.AsyncClient()
+
+    async def process_shutdown(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    async def validate(self) -> None:
+        assert self._client is not None
+        response = await self._client.get(f"{self._args.target.rstrip('/')}/health")
+        response.raise_for_status()
+
+    async def default_model(self) -> str:
+        if self._args.model:
+            return self._args.model
+        assert self._client is not None
+        response = await self._client.get(f"{self._args.target.rstrip('/')}/v1/models")
+        response.raise_for_status()
+        models = response.json().get("data", [])
+        self._args.model = models[0]["id"] if models else ""
+        return self._args.model
+
+    async def resolve(
+        self,
+        request: GenerationRequest,
+        request_info: RequestInfo,
+        history: list[tuple[GenerationRequest, GenerationResponse | None]] | None = None,
+    ) -> AsyncIterator[tuple[GenerationResponse | None, RequestInfo]]:
+        assert self._client is not None
+        columns = request.columns
+        parts = [*columns.get("prefix_column", []), *columns.get("text_column", [])]
+        prompt = " ".join(parts) or "hello"
+        body = {
+            "model": await self.default_model(),
+            "prompt": prompt,
+            "max_tokens": request.output_metrics.text_tokens or 16,
+            "stream": False,
+        }
+        request_info.timings.request_start = time.time()
+        response = await self._client.post(
+            f"{self._args.target.rstrip('/')}/v1/completions",
+            json=body,
+        )
+        request_info.timings.request_end = time.time()
+        response.raise_for_status()
+        payload = response.json()
+        text = payload["choices"][0]["text"]
+        usage = payload.get("usage", {})
+        yield (
+            GenerationResponse(
+                request_id=request.request_id,
+                request_args=json.dumps(body),
+                text=text,
+                input_metrics=UsageMetrics(text_tokens=usage.get("prompt_tokens")),
+                output_metrics=UsageMetrics(text_tokens=usage.get("completion_tokens")),
+            ),
+            request_info,
+        )
+```
+
+> [!NOTE]\
+> Your `Backend` and `BackendArgs` classes must be pickleable because GuideLLM's scheduler runs them inside `spawn` or `forkserver` worker processes. Define them in the plugin package, not in a `__main__` script.
+
+### 2. Expose the Plugin
+
+You can load plugins via Python package entry points or the `GUIDELLM__PLUGINS` environment variable:
+
+#### Option A: Package Entry Point (`guidellm.plugins`)
+
+In your plugin's `pyproject.toml`, register an entry point under the `guidellm.plugins` group that names the plugin package:
+
+```toml
+[project.entry-points."guidellm.plugins"]
+my_custom_backend = "my_guidellm_plugin"
+```
+
+After installing your package (`pip install -e .`), `guidellm run --help` will list `my_custom_backend` under `--backend`.
+
+#### Option B: `GUIDELLM__PLUGINS` Environment Variable
+
+For local development or uninstalled packages on `PYTHONPATH`, set `GUIDELLM__PLUGINS` to a comma-separated list (or JSON array) of plugin package names. A package listed here that fails to import raises an error, while a broken entry-point plugin only logs a warning.
+
+`model` defaults to empty. `default_model` then uses the first id from `GET /v1/models`, and the completion body sends that id. Set `model=<served-or-hf-id>` to choose one. GuideLLM copies that id into the tokenizer when `--tokenizer` is omitted and loads it with `AutoTokenizer.from_pretrained`. Pass `--tokenizer` when the id is not an existing local path or a Hugging Face repo:
+
+```bash
+GUIDELLM__PLUGINS=my_guidellm_plugin \
+guidellm run \
+  --backend kind=my_custom_backend,target=http://localhost:8000,model=<served-or-hf-id> \
+  --tokenizer kind=huggingface_auto,model=<local-path-or-hf-repo> \
+  --profile kind=synchronous \
+  --data kind=synthetic_text,prompt_tokens=16,output_tokens=8 \
+  --constraint kind=max_requests,count=5
+```
+
 ## Expanding Backend Support
 
 GuideLLM is an open platform, and we encourage contributions to extend its backend support. Whether it's adding new server implementations, integrating with Python-based backends, or enhancing existing capabilities, your contributions are welcome. For more details on how to contribute, see the [CONTRIBUTING.md](https://github.com/vllm-project/guidellm/blob/main/CONTRIBUTING.md) file.

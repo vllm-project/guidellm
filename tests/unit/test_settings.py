@@ -158,3 +158,28 @@ def test_loop_lag_interval_must_be_positive(interval: float):
     """
     with pytest.raises(ValueError, match="loop_lag_interval"):
         Settings(_env_file=None, loop_lag_interval=interval)
+
+
+@pytest.mark.smoke
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        ("", []),
+        ("my_plugin", ["my_plugin"]),
+        ("plugin_a, plugin_b", ["plugin_a", "plugin_b"]),
+        ('["plugin_a", "plugin_b"]', ["plugin_a", "plugin_b"]),
+    ],
+)
+def test_plugins_setting_parses_env_formats(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_value: str,
+    expected: list[str],
+) -> None:
+    """
+    Plugins setting should accept empty, single, comma-separated, and JSON lists.
+
+    ## WRITTEN BY AI ##
+    """
+    monkeypatch.setenv("GUIDELLM__PLUGINS", raw_value)
+    loaded = Settings(_env_file=None)
+    assert loaded.plugins == expected

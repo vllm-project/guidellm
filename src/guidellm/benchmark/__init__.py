@@ -15,6 +15,7 @@ from guidellm.schemas.benchmark import (
     BenchmarkScenario,
     get_builtin_scenarios,
 )
+from guidellm.utils.plugins import load_plugin_submodules
 
 from .benchmarker import Benchmarker
 from .entrypoints import benchmark_generative_text, reimport_benchmarks_report
@@ -61,6 +62,10 @@ from .schemas import (
     SchedulerMetrics,
     SchedulerMetricsAccumulator,
 )
+
+# Import plugin modules that mirror this package, e.g. `<plugin>.benchmark`,
+# before the rebuild below so that it also picks up anything they register.
+load_plugin_submodules(__name__)
 
 # Rebuild schemas one more time before
 # export to catch any nested field changes
