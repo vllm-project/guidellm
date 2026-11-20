@@ -14,9 +14,12 @@ from guidellm.extras import torch
 from guidellm.logger import logger
 
 __all__ = [
+    "PCM16_BYTES_PER_SAMPLE",
+    "PCM16_SAMPLE_RATE_HZ",
     "encode_audio",
     "is_url",
     "pcm16_append_b64_chunks",
+    "pcm16_b64_duration_seconds",
 ]
 
 
@@ -296,7 +299,22 @@ _PCM16_WAVE_CLIP_MIN = -1.0
 _PCM16_WAVE_CLIP_MAX = 1.0
 # Symmetric int16 positive peak (2**15 - 1); standard float[-1, 1] -> PCM16 mapping.
 _PCM16_FLOAT_TO_INT16_SCALE = 32767.0
-_BYTES_PER_PCM16_SAMPLE = 2
+PCM16_SAMPLE_RATE_HZ = 16_000
+PCM16_BYTES_PER_SAMPLE = 2
+
+
+def pcm16_b64_duration_seconds(b64_chunk: str) -> float:
+    """
+    Duration of one standard base64 PCM16 mono chunk.
+
+    The byte count comes from the encoded length and ``=`` padding.
+    Playback rate is :data:`PCM16_SAMPLE_RATE_HZ`.
+
+    :param b64_chunk: Text from :func:`base64.b64encode`.
+    :return: Duration in seconds.
+    """
+    pcm_bytes = (len(b64_chunk) * 3) // 4 - b64_chunk.count("=")
+    return pcm_bytes / (PCM16_BYTES_PER_SAMPLE * PCM16_SAMPLE_RATE_HZ)
 
 
 def _sample_rate_hint_from_audio_column_dict(d: dict[str, Any]) -> int | None:
@@ -324,7 +342,7 @@ def _require_positive_sample_rate(sr_raw: Any) -> float:
 def pcm16_append_b64_chunks(
     audio_item: dict[str, Any] | bytes,
     *,
-    target_sample_rate: int = 16000,
+    target_sample_rate: int = PCM16_SAMPLE_RATE_HZ,
     chunk_samples: int = 3200,
 ) -> list[str]:
     """
@@ -386,7 +404,7 @@ def pcm16_append_b64_chunks(
     buf = pcm_i16.cpu().numpy().tobytes()
 
     # Split PCM bytes into chunk-sized base64 payloads for append events.
-    chunk_bytes = max(1, chunk_samples) * _BYTES_PER_PCM16_SAMPLE
+    chunk_bytes = max(1, chunk_samples) * PCM16_BYTES_PER_SAMPLE
     out: list[str] = []
     for i in range(0, len(buf), chunk_bytes):
         pcm_chunk = buf[i : i + chunk_bytes]

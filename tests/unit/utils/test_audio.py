@@ -563,6 +563,32 @@ def test_explicit_format_overrides_codec(real_wav_file):
     assert result["mimetype"] == "audio/mp3"
 
 
+@pytest.mark.sanity
+@pytest.mark.parametrize("nbytes", [0, 1, 2, 3, 4, 5, 3200, 8000])
+def test_pcm16_b64_duration_seconds_uses_length_and_padding(nbytes: int) -> None:
+    """## WRITTEN BY AI ##"""
+    encoded = base64.b64encode(b"\xab" * nbytes).decode("ascii")
+    assert _audio_mod.pcm16_b64_duration_seconds(encoded) == pytest.approx(
+        nbytes / (2 * 16000)
+    )
+
+
+@pytest.mark.sanity
+def test_pcm16_b64_duration_seconds_does_not_decode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """## WRITTEN BY AI ##"""
+    encoded = base64.b64encode(b"\x00" * 5).decode("ascii")
+
+    def _refuse_decode(*_args: object, **_kwargs: object) -> bytes:
+        raise AssertionError("duration must not decode the payload")
+
+    monkeypatch.setattr("guidellm.utils.audio.base64.b64decode", _refuse_decode)
+    assert _audio_mod.pcm16_b64_duration_seconds(encoded) == pytest.approx(
+        5 / (2 * 16000)
+    )
+
+
 @patch("guidellm.utils.audio._decode_audio")
 def test_pcm16_append_b64_chunks_rejects_unknown_dict_keys(mock_decode):
     """## WRITTEN BY AI ##"""
