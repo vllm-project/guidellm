@@ -228,9 +228,14 @@ class GenerativeColumnMapper(DataDependentPreprocessor):
                 dataset_index,
                 dataset_column,
             ) in column_mappings:
-                mapped[turn][column_type].append(
-                    items[dataset_index]["dataset"][dataset_column]
-                )
+                value = items[dataset_index]["dataset"][dataset_column]
+                # A list in an image cell is several images on this turn, not
+                # one nested value. Other column types keep a list cell as one
+                # entry. Numeric suffixes still select the turn.
+                if column_type == "image_column" and isinstance(value, list):
+                    mapped[turn][column_type].extend(value)
+                else:
+                    mapped[turn][column_type].append(value)
 
         return [dict(m) for m in mapped if len(m) > 0]
 
