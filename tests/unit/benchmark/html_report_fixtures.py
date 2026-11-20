@@ -25,6 +25,7 @@ from guidellm.scheduler import (
     ConcurrentStrategy,
     SchedulerState,
     ThroughputStrategy,
+    UsersStrategy,
 )
 from guidellm.schemas import (
     DistributionSummary,
@@ -317,12 +318,16 @@ def report(
 
 def make_benchmark(
     *,
-    strategy: AsyncConstantStrategy | ConcurrentStrategy | ThroughputStrategy,
+    strategy: (
+        AsyncConstantStrategy | ConcurrentStrategy | ThroughputStrategy | UsersStrategy
+    ),
     rps: float,
     tps: float,
     backend_model: str | None = None,
     requests: list[GenerativeRequestStats] | None = None,
     measure_start: float = 1_700_000_000.0,
+    output_tps: float = 20.0,
+    tpot_median_ms: float = 18.0,
 ) -> GenerativeBenchmark:
     """
     Build a generative benchmark with populated rate/latency metrics.
@@ -372,15 +377,15 @@ def make_benchmark(
         count=request_count,
     )
     metrics.time_per_output_token_ms = status_dist(
-        20.0,
-        median=18.0,
-        p95=25.0,
-        p99=30.0,
+        20.0 * (tpot_median_ms / 18.0),
+        median=tpot_median_ms,
+        p95=25.0 * (tpot_median_ms / 18.0),
+        p99=30.0 * (tpot_median_ms / 18.0),
         count=request_count,
     )
     metrics.tokens_per_second = status_dist(tps, count=request_count)
     metrics.prompt_tokens_per_second = status_dist(10.0, count=request_count)
-    metrics.output_tokens_per_second = status_dist(20.0, count=request_count)
+    metrics.output_tokens_per_second = status_dist(output_tps, count=request_count)
     metrics.prompt_token_count = status_dist(
         128.0,
         median=128.0,

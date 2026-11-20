@@ -8,8 +8,12 @@ from pydantic import ValidationError
 from guidellm.benchmark.entrypoints import reimport_benchmarks_report
 from guidellm.benchmark.outputs.plot import (
     GenerativeBenchmarkerPlot,
+    _build_points,
+    _per_request_output_tps,
+    plot_interactivity_vs_output_throughput,
 )
 from guidellm.benchmark.schemas import GenerativeBenchmarksReport
+from guidellm.extras import plot
 from guidellm.schemas.benchmark import (
     BenchmarkOutputArgs,
     BenchmarkScenario,
@@ -84,8 +88,14 @@ class MockMetrics:
 
 
 class MockBenchmark:
-    def __init__(self):
+    def __init__(self, user_count: int | None = None, stream_count: int | None = None):
         self.metrics = MockMetrics()
+        self.config = SimpleNamespace(
+            strategy=SimpleNamespace(
+                user_count=user_count,
+                stream_count=stream_count,
+            )
+        )
 
 
 @pytest.mark.smoke
@@ -345,3 +355,77 @@ async def test_reimport_benchmarks_report_multiple_sibling_file_path(
     assert expected_json.is_file()
     assert expected_png.exists()
     assert expected_png.is_file()
+
+
+@pytest.mark.sanity
+def test_per_request_output_tps_converts_ms_to_tokens_per_second():
+    """
+    Test that median ms per output token becomes per-request output tokens/sec.
+
+    ## WRITTEN BY AI ##
+    """
+    assert _per_request_output_tps(20.0) == pytest.approx(50.0)
+    assert _per_request_output_tps(100.0) == pytest.approx(10.0)
+    assert _per_request_output_tps(0.0) == 0.0
+
+
+@pytest.mark.sanity
+def test_plot_interactivity_draws_load_curve_and_annotations():
+    """
+    Test that the interactivity plot draws a load line, peak marker, and labels.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmarks = [MockBenchmark(), MockBenchmark(), MockBenchmark()]
+    # (median TPOT ms, aggregate output tokens/sec): speed falls as load rises.
+    for benchmark, (tpot, output_tps) in zip(
+        benchmarks,
+        [(10.0, 20.0), (20.0, 40.0), (40.0, 60.0)],
+        strict=True,
+    ):
+        benchmark.metrics.time_per_output_token_ms = MockStatusDistribution(
+            mean=tpot, median=tpot, p95=tpot
+        )
+        benchmark.metrics.output_tokens_per_second = MockStatusDistribution(
+            mean=output_tps
+        )
+
+    points = _build_points(benchmarks)  # type: ignore[arg-type]
+    assert [point.per_user_scope for point in points] == ["request"] * 3
+    assert [point.per_user_output_tps for point in points] == pytest.approx(
+        [100.0, 50.0, 25.0]
+    )
+
+    plot.use("Agg")
+    fig, ax = plot.plt.subplots()
+    plot_interactivity_vs_output_throughput(ax, points)
+
+    # One load line; one annotation per plotted point.
+    assert len(ax.lines) == 1
+    assert len(ax.texts) == 3
+    # Y runs from zero to 5% above the peak; X has 8% padding on each side.
+    assert ax.get_ylim() == pytest.approx((0.0, 63.0))
+    x_low, x_high = ax.get_xlim()
+    assert x_low == pytest.approx(19.0)
+    assert x_high == pytest.approx(106.0)
+    plot.plt.close(fig)
+
+
+@pytest.mark.sanity
+def test_build_points_uses_users_and_streams_counts():
+    """
+    Test that user/stream scopes divide aggregate throughput by the fixed count.
+
+    ## WRITTEN BY AI ##
+    """
+    points = _build_points(
+        [MockBenchmark(user_count=4), MockBenchmark(stream_count=5)]  # type: ignore[list-item]
+    )
+
+    assert points[0].per_user_scope == "user"
+    assert points[0].load_count == 4.0
+    assert points[0].per_user_output_tps == pytest.approx(20.0 / 4)
+
+    assert points[1].per_user_scope == "stream"
+    assert points[1].load_count == 5.0
+    assert points[1].per_user_output_tps == pytest.approx(20.0 / 5)

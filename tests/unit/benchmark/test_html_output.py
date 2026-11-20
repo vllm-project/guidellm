@@ -22,6 +22,7 @@ from guidellm.scheduler import (
     AsyncConstantStrategy,
     ConcurrentStrategy,
     ThroughputStrategy,
+    UsersStrategy,
 )
 from guidellm.schemas import DistributionSummary
 from guidellm.schemas.benchmark import BenchmarkOutputArgs
@@ -90,6 +91,9 @@ def test_build_report_view_single_and_multi_run():
     assert "kpis" not in single_view
     assert "modalities" not in single_view["runs"][0]
     assert single_view["runs"][0]["total_tps"] == 40.0
+    assert single_view["runs"][0]["per_user_scope"] == "request"
+    assert single_view["runs"][0]["load_count"] is None
+    assert single_view["runs"][0]["per_user_output_tps"] == pytest.approx(1000.0 / 18.0)
 
     multi_report = _report(
         _make_benchmark(
@@ -116,6 +120,11 @@ def test_build_report_view_single_and_multi_run():
     assert multi_view["runs"][0]["configured_concurrency"] == 2
     assert multi_view["runs"][0]["configured_request_rate"] is None
     assert multi_view["runs"][1]["configured_request_rate"] is None
+    assert multi_view["runs"][0]["per_user_scope"] == "stream"
+    assert multi_view["runs"][0]["load_count"] == 2
+    assert multi_view["runs"][1]["load_count"] == 4
+    assert multi_view["runs"][0]["per_user_output_tps"] == pytest.approx(20.0 / 2)
+    assert multi_view["runs"][1]["per_user_output_tps"] == pytest.approx(20.0 / 4)
 
     throughput_report = _report(
         _make_benchmark(
@@ -139,6 +148,52 @@ def test_build_report_view_single_and_multi_run():
     unlimited_view = build_report_view(unlimited_throughput)
     assert unlimited_view["runs"][0]["configured_concurrency"] is None
     assert unlimited_view["runs"][0]["configured_request_rate"] is None
+
+
+@pytest.mark.sanity
+def test_build_report_view_users_scope_divides_by_users():
+    """
+    The users profile reports per-user output throughput, not per request.
+
+    ## WRITTEN BY AI ##
+    """
+    view = build_report_view(
+        _report(
+            _make_benchmark(
+                strategy=UsersStrategy(users=4),
+                rps=1.0,
+                tps=20.0,
+                output_tps=20.0,
+            )
+        )
+    )
+
+    row = view["runs"][0]
+    assert row["per_user_scope"] == "user"
+    assert row["load_count"] == 4
+    assert row["per_user_output_tps"] == pytest.approx(20.0 / 4)
+    # The TPOT-derived fallback must not be used when users are modeled.
+    assert row["per_user_output_tps"] != pytest.approx(1000.0 / 18.0)
+
+
+@pytest.mark.sanity
+def test_build_report_view_missing_tpot_yields_no_per_request_rate():
+    """
+    A missing/zero TPOT leaves the per-request scope without a usable rate.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = _make_benchmark(
+        strategy=AsyncConstantStrategy(rate=2.0),
+        rps=2.0,
+        tps=40.0,
+        tpot_median_ms=0.0,
+    )
+    view = build_report_view(_report(benchmark))
+
+    row = view["runs"][0]
+    assert row["per_user_scope"] == "request"
+    assert row["per_user_output_tps"] is None
 
 
 @pytest.mark.sanity

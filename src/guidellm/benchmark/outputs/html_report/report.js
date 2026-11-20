@@ -28,6 +28,8 @@
     // Efficiency series: keep concurrency vs request-rate visually distinct.
     effByConcurrency: "#37a3a3", // teal-50
     effByRequest: "#5e40be", // purple-50
+    // Interactivity load curve; the peak marker reuses the output-token orange.
+    interactivity: "#0066cc", // interaction-blue-50
   };
 
   // Canonical metric clauses. Glossary entries expand the acronym; chart tips
@@ -248,6 +250,14 @@
         "By request rate: total tokens/sec ÷ configured request rate (tok/s per intended request).",
         "Falling efficiency as load rises often means contention or saturation.",
         "On concurrency bars, hover for measured and achieved concurrency.",
+      ],
+    },
+    interactivity: {
+      title: "Interactivity",
+      lines: [
+        "Y: aggregate output tokens per second the server sustains.",
+        "X: output tokens per second per user when the profile models users (total ÷ users), per stream for the concurrent workload (total ÷ streams), or the generation speed of one in-flight request otherwise (1 / time per output token).",
+        "Points follow increasing load. When Y keeps rising while X falls, extra load is paid for with per-user speed.",
       ],
     },
     tokens_per_request: {
@@ -1212,8 +1222,21 @@
       }
     }
     var yExt = extent(ys);
+    if (options && options.yFromZero) yExt.min = Math.min(0, yExt.min);
+    var yPad = options && options.yPad;
+    if (yPad) {
+      var ySpan = yExt.max - yExt.min;
+      yExt.max += ySpan > 0 ? ySpan * yPad : Math.max(Math.abs(yExt.max) * yPad, 1);
+    }
     var y2Ext = hasRight ? extent(y2s) : null;
     if (y2Ext) y2Ext.min = Math.min(0, y2Ext.min);
+    var xPad = options && options.xPad;
+    if (xPad && xs.length) {
+      var xSpan = xExt.max - xExt.min;
+      var xPadding = xSpan > 0 ? xSpan * xPad : Math.max(Math.abs(xExt.max) * xPad, 1);
+      xExt.min -= xPadding;
+      xExt.max += xPadding;
+    }
     var svg = svgEl("svg", {
       viewBox: "0 0 " + width + " " + height,
       width: String(width),
@@ -1272,6 +1295,7 @@
           xLabel + ": " + fmt(rawPts[pi][0]),
           yLabel + ": " + fmt(rawPts[pi][1]),
         ];
+        if (rawPts[pi][2]) tipLines.push(String(rawPts[pi][2]));
         bindChartTip(hit, s.label || "Series", tipLines);
         if (marker) bindChartTip(marker, s.label || "Series", tipLines);
       });
@@ -2254,6 +2278,99 @@
     );
   }
 
+  /**
+   * Per-user/per-stream/per-request output speed against aggregate output
+   * throughput. Hidden unless there are at least two runs to form a curve.
+   */
+  function renderInteractivity(rows) {
+    var card = el("card-interactivity");
+    if (!card) return;
+    var points = rows.filter(function (r) {
+      return (
+        r.per_user_output_tps != null &&
+        Number(r.per_user_output_tps) > 0 &&
+        r.output_tps != null &&
+        Number(r.output_tps) > 0
+      );
+    });
+    var show = isMultiRun() && points.length >= 2;
+    card.hidden = !show;
+    if (!show) return;
+
+    // All runs share the report's profile, so the first row sets the scope.
+    var scope = points[0].per_user_scope || "request";
+    var words = {
+      user: {
+        title: "Interactivity: per-user vs. aggregate output throughput",
+        x: "Per-user output tok/s",
+        unit: "users",
+        hint:
+          "Aggregate output throughput against the speed each simulated user " +
+          "sees (total ÷ users). Points follow increasing user counts; up and " +
+          "left means more total throughput at the cost of per-user speed.",
+      },
+      stream: {
+        title: "Interactivity: per-stream vs. aggregate output throughput",
+        x: "Per-stream output tok/s",
+        unit: "streams",
+        hint:
+          "Aggregate output throughput against the effective speed of each " +
+          "concurrent stream (total ÷ streams). Points follow increasing " +
+          "stream counts; up and left means more total throughput at the " +
+          "cost of per-stream speed.",
+      },
+      request: {
+        title: "Interactivity: per active request vs. aggregate output throughput",
+        x: "Per active request output tok/s",
+        unit: null,
+        hint:
+          "Aggregate output throughput against the generation speed per request. " +
+          "Higher and to the right is better. Left points mean per-user throughput " +
+          "degradation. Up and left means more total throughput at the " +
+          "cost of per-request speed."
+      },
+    };
+    var copy = words[scope] || words.request;
+    setTitleWithHelp("title-interactivity", copy.title, "interactivity");
+    setCopy("hint-interactivity", copy.hint);
+
+    points.sort(function (a, b) {
+      return (Number(a.concurrency) || 0) - (Number(b.concurrency) || 0);
+    });
+
+    function loadTip(r) {
+      if (copy.unit && r.load_count != null) {
+        return fmt(r.load_count) + " " + copy.unit;
+      }
+      // For rate-based strategies configured_concurrency is just the scheduler's
+      // max_concurrency cap (often the same for every run); measured concurrency
+      // is the informative load for the per-request scope.
+      return r.concurrency ? fmt(r.concurrency) + " concurrent (measured)" : "";
+    }
+
+    var series = [
+      {
+        label: "Load points",
+        color: COLORS.interactivity,
+        shape: "circle",
+        points: points.map(function (r) {
+          var load = loadTip(r);
+          var tip = (r.label || r.strategy || "run") + (load ? " · " + load : "");
+          return [r.per_user_output_tps, r.output_tps, tip];
+        }),
+      },
+    ];
+
+    drawLineChart("chart-interactivity", series, {
+      xLabel: copy.x,
+      yLabel: "Aggregate output tok/s",
+      ariaLabel: "Interactivity: per-user versus aggregate output throughput",
+      xPad: 0.08,
+      yFromZero: true,
+      yPad: 0.05,
+    });
+  }
+
 
   function renderSelectedRunCharts() {
     var details = data.details || {};
@@ -2456,6 +2573,7 @@
       renderSingleRunThroughput(selected);
     }
 
+    renderInteractivity(rows);
     renderSelectedRunCharts();
 
     // By turn: latency (left) + prompt median tokens (right, dashed).
