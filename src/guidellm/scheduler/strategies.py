@@ -9,8 +9,9 @@ The scheduling system separates timing logic from strategy constraints, enabling
 flexible combination of timing behaviors with process and concurrency limits.
 
 Available strategies include synchronous (sequential), concurrent (fixed streams),
-throughput (maximum load), constant-rate (steady intervals), and Poisson-distributed
-(realistic variance) patterns for comprehensive benchmarking scenarios.
+throughput (maximum load), constant-rate (steady intervals), Poisson-distributed
+(realistic variance), trace replay, and users (session-bound conversations) patterns
+for comprehensive benchmarking scenarios.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from abc import abstractmethod
 from multiprocessing import synchronize
 from multiprocessing.context import BaseContext
 from multiprocessing.sharedctypes import Synchronized
-from typing import Annotated, ClassVar, Literal, TypeVar
+from typing import ClassVar, Literal, TypeVar
 
 from pydantic import (
     Field,
@@ -32,7 +33,11 @@ from pydantic import (
     PrivateAttr,
 )
 
-from guidellm.schemas import PydanticClassRegistryMixin, RequestInfo, RequestSettings
+from guidellm.schemas import (
+    PydanticClassRegistryMixin,
+    RequestInfo,
+    RequestSettings,
+)
 from guidellm.schemas.scheduler.prefetch import PrefetchType
 from guidellm.utils.mixins import InfoMixin
 
@@ -42,16 +47,10 @@ __all__ = [
     "ConcurrentStrategy",
     "SchedulingStrategy",
     "StrategyT",
-    "StrategyType",
     "SynchronousStrategy",
     "ThroughputStrategy",
     "TraceReplayStrategy",
-]
-
-
-StrategyType = Annotated[
-    Literal["synchronous", "concurrent", "throughput", "constant", "poisson", "trace"],
-    "Valid strategy type identifiers for scheduling request patterns",
+    "UsersStrategy",
 ]
 
 
@@ -140,6 +139,19 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
             return 0
 
         return self.prefetch
+
+    @property
+    def sessions_limit(self) -> PositiveInt | None:
+        """
+        Get the maximum number of active conversation sessions supported.
+
+        Unlike :attr:`requests_limit`, which caps concurrent requests, this
+        caps conversations held open across their think time. Strategies that
+        bind a slot to a conversation, such as users, override this.
+
+        :return: Maximum number of active sessions, None if unbounded
+        """
+        return None
 
     @property
     def defines_arrival_schedule(self) -> bool:
@@ -401,7 +413,7 @@ class ConcurrentStrategy(SchedulingStrategy):
         """
         return self.streams
 
-    async def next_request_time(self, worker_index: PositiveInt) -> float:
+    async def next_request_time(self, worker_index: NonNegativeInt) -> float:
         """
         Calculate next request time with stream-based distribution.
 
@@ -434,6 +446,129 @@ class ConcurrentStrategy(SchedulingStrategy):
         """
         if request_info.completed_at is not None:
             self._process_last_request_time = request_info.completed_at
+
+
+@SchedulingStrategy.register("users")
+class UsersStrategy(SchedulingStrategy):
+    """
+    Simulated users, each holding one dataset-defined session at a time.
+
+    Models multiple people (defined by ``users``) sharing the server: each user
+    owns one conversation and waits out the dataset ``requeue_delay`` between
+    turns (for example synthetic text's ``delay`` options), starting the next
+    conversation immediately after one finishes. Unlike ``concurrent``,
+    the user's slot stays bound to the session across the delay. It does
+    not pull another conversation while the modeled user waits.
+
+    Request slots remain shared among the sessions assigned to a worker
+    and are not reserved per user, so a conversation with parallel
+    branches can use several request slots at once.
+    """
+
+    type_: Literal["users"] = "users"  # type: ignore[assignment]
+    users: PositiveInt = Field(
+        description="Number of simulated users to schedule",
+    )
+    rampup_duration: NonNegativeFloat = Field(
+        default=0.0,
+        description=(
+            "Duration in seconds to spread the initial user sessions "
+            "at the beginning of each strategy run"
+        ),
+    )
+
+    def __str__(self) -> str:
+        """
+        :return: String identifier with user count
+        """
+        return f"users@{self.users}"
+
+    @property
+    def processes_limit(self) -> PositiveInt:
+        """
+        :return: Number of users as maximum worker processes
+        """
+        return self.users
+
+    @property
+    def requests_limit(self) -> PositiveInt:
+        """
+        :return: Number of users as maximum concurrent requests
+        """
+        return self.users
+
+    @property
+    def sessions_limit(self) -> PositiveInt:
+        """
+        :return: Number of users as the maximum number of active sessions
+        """
+        return self.users
+
+    async def next_request_time(self, worker_index: NonNegativeInt) -> float:
+        """
+        Return the benchmark start for every worker scheduling slot.
+
+        Ramp-up is applied per session in :meth:`resolve_dequeued_target_start`
+        so that follow-up turns do not consume ramp positions. Gating between
+        turns comes from the per-user session slot and the dataset think time,
+        not from completions.
+
+        :param worker_index: Unused for users strategy
+        :return: Benchmark start time
+        """
+        _ = worker_index  # unused
+        return await self.get_processes_start_time()
+
+    async def resolve_dequeued_target_start(
+        self,
+        worker_index: NonNegativeInt,
+        provisional_start: float,
+        settings: RequestSettings,
+        request_info: RequestInfo | None = None,
+    ) -> float:
+        """
+        Stagger the first request of each user session during ramp-up.
+
+        Only root nodes (``preceding_nodes == 0``) consume a ramp position, so
+        a multi-turn conversation spends one position no matter how many turns
+        it has, and a conversation with several independent roots still
+        consumes exactly one. Follow-up turns keep the provisional target.
+        The shared request counter makes the stagger approximate across worker
+        processes.
+
+        :param worker_index: Unused for users strategy
+        :param provisional_start: Start time from the worker's scheduling slot
+        :param settings: Per-request scheduling metadata (unused)
+        :param request_info: Request metadata whose ``preceding_nodes`` marks
+            root requests
+        :return: Staggered start time for a root session, otherwise
+            ``provisional_start``
+        """
+        _ = (worker_index, settings)
+        if (
+            self.rampup_duration <= 0
+            or request_info is None
+            or request_info.preceding_nodes != 0
+        ):
+            return provisional_start
+
+        index = self.next_request_index()
+        if index <= self.users:
+            # linearly spread the first user sessions across the rampup window
+            return provisional_start + self.rampup_duration * (index / self.users)
+
+        return provisional_start
+
+    def request_completed(self, request_info: RequestInfo):
+        """
+        Handle request completion (no-op for users strategy).
+
+        Think time comes from the dataset ``requeue_delay``, which the DAG
+        applies between turns, so no completion state is kept.
+
+        :param request_info: Completed request metadata (unused)
+        """
+        _ = request_info  # request_info unused for users strategy
 
 
 @SchedulingStrategy.register("throughput")

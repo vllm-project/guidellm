@@ -48,10 +48,10 @@ from .strategies import (
     ConcurrentStrategy,
     SchedulingStrategy,
     StrategyT,
-    StrategyType,
     SynchronousStrategy,
     ThroughputStrategy,
     TraceReplayStrategy,
+    UsersStrategy,
 )
 from .worker import WorkerProcess
 from .worker_group import WorkerProcessGroup
@@ -90,11 +90,11 @@ __all__ = [
     "SchedulingStrategy",
     "SerializableConstraintInitializer",
     "StrategyT",
-    "StrategyType",
     "SynchronousStrategy",
     "ThroughputStrategy",
     "TraceReplayStrategy",
     "UnserializableConstraintInitializer",
+    "UsersStrategy",
     "WorkerProcess",
     "WorkerProcessGroup",
     "prefetch_requests",
