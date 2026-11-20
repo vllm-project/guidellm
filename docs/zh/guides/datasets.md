@@ -1,6 +1,6 @@
 ---
 weight: -2
-source_sha256: !!str "a9ee73fa2742ed6e4a262e1ea21d4cf885d8efac8455890b54170627ebe91025"
+source_sha256: !!str "4f372ddac9fc8c6d3371c251dfb67c9706add3e33fe25dd4b5daf60048d67095"
 ---
 
 # 数据集
@@ -71,6 +71,35 @@ guidellm run --data kind=<TYPE>,key=value,... [other options...]
 ### 数据终结器
 
 使用 `--data-finalizer` 可以控制如何将数据集行转换为请求（默认值为 `generative`）。
+
+#### 清理尾部补齐轮次 {#trimming-trailing-padding-turns}
+
+带轮次下标的文本数据集可以用固定数量的列对存储长度不同的会话，例如 `prompt_0` / `output_tokens_count_0`、`prompt_1` / `output_tokens_count_1` 等。如果数据集使用空提示词和零输出数量作为尾部补齐槽，可以启用：
+
+```bash
+--data-finalizer kind=generative,trim_text_padding=true
+```
+
+例如，下面这一行包含两个有效轮次和两个尾部补齐槽：
+
+```json
+{
+  "prompt_0": "Explain this function",
+  "output_tokens_count_0": 32,
+  "prompt_1": "Suggest a test",
+  "output_tokens_count_1": 32,
+  "prompt_2": "",
+  "output_tokens_count_2": 0,
+  "prompt_3": "",
+  "output_tokens_count_3": 0
+}
+```
+
+默认值 `trim_text_padding=false` 会保留全部四轮。启用后，finalizer 只构建前两轮，并保留它们之间的完整历史依赖。启用此选项表示数据集采用下面的补齐约定；其他数据集中的空提示词不一定代表补齐。
+
+补齐项必须恰好包含两个映射后的列：`text_column` 和 `output_tokens_count_column`，且每列只有一个值。文本必须是 `""` 或 `None`（JSON 中为 `null`），输出数量必须是整数 `0` 或 `None`。空白字符文本、正输出数量以及额外的映射列（包括前缀、媒体、工具或调度列）均不匹配。只会删除连续的尾部补齐槽。整行都是补齐槽，或者补齐槽之后又出现非补齐轮次时，会报错，避免静默改变会话顺序。
+
+此选项不改变显式提供的 `conversation_turns` 图。其他数据约定可以通过预处理，或通过只包含预期轮次的显式图来处理。
 
 ### 随机种子
 
