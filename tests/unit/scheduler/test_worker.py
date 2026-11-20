@@ -414,7 +414,7 @@ class TestWorkerProcessMultiturn:
 
         ## WRITTEN BY AI ##
         """
-        worker = WorkerProcess(
+        return WorkerProcess(
             worker_index=1,
             messaging=MockMessaging(),
             backend=MockBackend(),
@@ -430,9 +430,6 @@ class TestWorkerProcessMultiturn:
             stderr_conn=None,
             parent_logger=None,
         )
-        # run_async() normally creates this; direct method calls need it too.
-        worker._turns_changed = asyncio.Event()
-        return worker
 
     @pytest.mark.smoke
     def test_turns_queue_initialization(self, worker_instance):
@@ -584,8 +581,6 @@ class TestWorkerProcessMultiturn:
             stderr_conn=None,
             parent_logger=None,
         )
-        # run_async() normally creates this; direct method calls need it too.
-        worker._turns_changed = asyncio.Event()
         graph = ConversationGraph(
             graph_id="cancel_partial",
             nodes={
@@ -873,8 +868,6 @@ class TestWorkerProcessSessionCap:
             stderr_conn=None,
             parent_logger=None,
         )
-        # run_async() normally creates this; direct method calls need it too.
-        worker._turns_changed = asyncio.Event()
         assert worker.session_limit == session_limit
         return worker
 

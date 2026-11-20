@@ -85,9 +85,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         worker.run()
     """
 
-    # Wake event for waiters blocked on the session cap. Assigned in run_async
-    # rather than __init__ because asyncio primitives cannot cross between workers.
-    _turns_changed: asyncio.Event
+    # Wake event for waiters blocked on the session cap. Created lazily inside
+    # the worker's event loop because asyncio primitives cannot cross between
+    # workers; see the ``_turns_changed`` property.
+    _turns_changed_event: asyncio.Event | None
 
     def __init__(
         self,
@@ -162,6 +163,14 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         # reserved across the await so concurrent getters cannot overshoot
         # session_limit.
         self._sessions_pending = 0
+        self._turns_changed_event = None
+
+    @property
+    def _turns_changed(self) -> asyncio.Event:
+        """Return the turn-change wake event, creating it on first use."""
+        if self._turns_changed_event is None:
+            self._turns_changed_event = asyncio.Event()
+        return self._turns_changed_event
 
     def run(self):
         """
@@ -207,7 +216,6 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
         :raises RuntimeError: If worker tasks encounter unrecoverable errors
         :raises asyncio.CancelledError: If worker process was cancelled
         """
-        self._turns_changed = asyncio.Event()
         stop_task = asyncio.create_task(self._stop_monitor())
         request_proc_task = asyncio.create_task(self._process_requests())
         caller_cancelled = False

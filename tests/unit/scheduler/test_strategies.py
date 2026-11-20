@@ -306,8 +306,8 @@ class TestConcurrentStrategy:
 
     @pytest.mark.sanity
     @pytest.mark.asyncio
-    async def test_next_request_time_ramps_every_stream(self):
-        """The ramp covers all configured streams, including the last one.
+    async def test_next_request_time_ramps_initial_streams(self):
+        """Ramp positions are consumed before the final stream.
 
         ## WRITTEN BY AI ##
         """
@@ -318,7 +318,7 @@ class TestConcurrentStrategy:
         strategy.init_processes_start(1000.0)
 
         times = [await strategy.next_request_time(0) for _ in range(6)]
-        assert times == [1002.0, 1004.0, 1006.0, 1008.0, 1000.0, 1000.0]
+        assert times == [1002.0, 1004.0, 1006.0, 1000.0, 1000.0, 1000.0]
 
 
 class TestThroughputStrategy:

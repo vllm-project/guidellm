@@ -170,7 +170,7 @@ def _analyze(
             if strategy.defines_arrival_schedule
             else None
         ),
-        request_totals = request_totals,
+        request_totals=request_totals,
     )
     return BenchmarkWarningAnalyzer(rules).analyze(
         scheduler_metrics=cast("SchedulerMetrics", scheduler_metrics),
