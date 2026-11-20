@@ -576,6 +576,8 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
         self.streaming_response_id: str | None = None
         self.response_metrics: dict[str, Any] | None = None
+        # Set once a streamed choice carries a non-null ``finish_reason``.
+        self.finish_reason_received: bool = False
 
     @property
     def last_iteration_had_content(self) -> bool:
@@ -783,6 +785,8 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         # first index to keep this shared parsing path constant-time.
         if choices and (len(choices) > 1 or choices[0].get("index", 0) != 0):
             raise NotImplementedError("Multiple completion choices are not supported")
+        if choices and choices[0].get("finish_reason") is not None:
+            self.finish_reason_received = True
         return choices, response.get("usage", {})
 
     def extract_metrics(

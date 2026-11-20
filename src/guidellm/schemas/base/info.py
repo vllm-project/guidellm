@@ -79,6 +79,13 @@ class RequestTimings(StandardBaseDict):
     last_request_iteration: float | None = Field(
         default=None,
     )
+    finish_iteration: float | None = Field(
+        default=None,
+        description=(
+            "Unix timestamp of the first stream event that carried a non-null "
+            "finish_reason, i.e. when generation ended"
+        ),
+    )
     request_iterations: int = Field(
         default=0,
     )
