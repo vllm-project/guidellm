@@ -86,21 +86,22 @@ By default, a repeat of the same command sends the same prompts: synthetic data 
 
 Constraints control when each strategy in a profile stops. Add one or more `--constraint` options. Constraints apply individually to each strategy in a profile. Profiles with multiple strategies include `sweep` and any profile whose primary parameter is a list (for example, `{"streams":[10,20]}` on `concurrent`).
 
-| Constraint type         | Config parameters    | Example                                                          |
-| ----------------------- | -------------------- | ---------------------------------------------------------------- |
-| `max_duration`          | `seconds`            | `--constraint kind=max_duration,seconds=30`                      |
-| `max_requests`          | `count`              | `--constraint kind=max_requests,count=1000`                      |
-| `min_requests`          | `count`              | `--constraint kind=min_requests,count=1000`                      |
-| `max_errors`            | `count`              | `--constraint kind=max_errors,count=10`                          |
-| `max_error_rate`        | `rate`, `window`     | `--constraint kind=max_error_rate,rate=0.05,window=10`           |
-| `max_global_error_rate` | `rate`, `minimum`    | `--constraint kind=max_global_error_rate,rate=0.05,minimum=1000` |
-| `over_saturation`       | detection parameters | `--constraint kind=over_saturation,min_seconds=30,mode=enforce`  |
+| Constraint type         | Config parameters            | Example                                                          |
+| ----------------------- | ---------------------------- | ---------------------------------------------------------------- |
+| `max_duration`          | `seconds`                    | `--constraint kind=max_duration,seconds=30`                      |
+| `max_requests`          | `count`                      | `--constraint kind=max_requests,count=1000`                      |
+| `min_requests`          | `count`                      | `--constraint kind=min_requests,count=1000`                      |
+| `max_errors`            | `count`                      | `--constraint kind=max_errors,count=10`                          |
+| `max_error_rate`        | `rate`, `window`             | `--constraint kind=max_error_rate,rate=0.05,window=10`           |
+| `max_global_error_rate` | `rate`, `minimum`            | `--constraint kind=max_global_error_rate,rate=0.05,minimum=1000` |
+| `over_saturation`       | detection parameters         | `--constraint kind=over_saturation,min_seconds=30,mode=enforce`  |
+| `target_moe`            | `moe`, `metric`, `statistic` | `--constraint kind=target_moe,statistic=p95,moe=0.05`            |
 
 Profiles do not add a default duration or request limit. Synthetic data is infinite unless capped by a positive data-loader sample count (for example, `--data-loader kind=pytorch,samples=1000`), so specify a stopping constraint for an otherwise unbounded run.
 
 For example, `--constraint kind=max_requests,count=1000` with `--profile kind=sweep` runs up to 1000 requests for each strategy in the sweep (synchronous, throughput, and each interpolated rate). `--constraint kind=min_requests,count=1000` is like `max_requests`, but keeps queuing until 1000 requests have been processed, which avoids throughput tail-off at the end of rate-based benchmarks. `--constraint kind=max_duration,seconds=30` with `--profile '{"kind":"concurrent","streams":[10,20]}'` runs 10 concurrent streams for 30 seconds, then 20 concurrent streams for 30 seconds.
 
-See [Over-Saturation Stopping](../guides/over_saturation_stopping.md) for over-saturation constraint details.
+See [Over-Saturation Stopping](../guides/over_saturation_stopping.md) for over-saturation constraint details, and [Target Margin of Error Stopping](../guides/target_moe_stopping.md) for stopping once a statistic reaches a requested precision.
 
 ### Sub-benchmark (per-strategy) Constraints
 

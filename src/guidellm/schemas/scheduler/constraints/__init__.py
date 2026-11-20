@@ -14,6 +14,11 @@ from guidellm.schemas.scheduler.constraints.error import (
     MaxErrorsConstraintArgs,
     MaxGlobalErrorRateConstraintArgs,
 )
+from guidellm.schemas.scheduler.constraints.precision import (
+    TargetMoeConstraintArgs,
+    TargetMoeMetric,
+    TargetMoeStatistic,
+)
 from guidellm.schemas.scheduler.constraints.request import (
     MaxDurationConstraintArgs,
     MaxRequestsConstraintArgs,
@@ -36,4 +41,7 @@ __all__ = [
     "OverSaturationConstraintArgs",
     "PositiveNum",
     "PositiveNumOrList",
+    "TargetMoeConstraintArgs",
+    "TargetMoeMetric",
+    "TargetMoeStatistic",
 ]
