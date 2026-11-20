@@ -154,7 +154,7 @@ class GenerativeBenchmark(Benchmark[GenerativeBenchmarkAccumulator]):
         :param scheduler_state: Final scheduler state after execution completion
         :return: Compiled generative benchmark instance with complete metrics
         """
-        metrics = GenerativeMetrics.compile(accumulator)
+        metrics = GenerativeMetrics.compile(accumulator, scheduler_state)
         scheduler_metrics = SchedulerMetrics.compile(accumulator, scheduler_state)
         warnings = BenchmarkWarningAnalyzer(accumulator.config.warnings).analyze(
             scheduler_metrics=scheduler_metrics,

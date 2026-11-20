@@ -1361,11 +1361,16 @@ class GenerativeMetrics(StandardBaseDict):
         )
 
     @classmethod
-    def compile(cls, accumulator: GenerativeBenchmarkAccumulator) -> GenerativeMetrics:
+    def compile(
+        cls,
+        accumulator: GenerativeBenchmarkAccumulator,
+        scheduler_state: SchedulerState | None = None,
+    ) -> GenerativeMetrics:
         """
         Compile comprehensive generative metrics from benchmark accumulator.
 
         :param accumulator: Benchmark accumulator with completed request statistics
+        :param scheduler_state: Final scheduler budgets for transient phase selection
         :return: Compiled generative metrics with all distributions and summaries
         :raises ValueError: If measure_start and measure_end/request_end are not set
         """
@@ -1378,9 +1383,12 @@ class GenerativeMetrics(StandardBaseDict):
                 "No measurement start or end times available."
             )
 
-        successful = accumulator.completed.get_within_range(start_time, end_time)
-        incomplete = accumulator.incomplete.get_within_range(start_time, end_time)
-        errored = accumulator.errored.get_within_range(start_time, end_time)
+        event_successful = accumulator.completed.get_within_range(start_time, end_time)
+        event_incomplete = accumulator.incomplete.get_within_range(start_time, end_time)
+        event_errored = accumulator.errored.get_within_range(start_time, end_time)
+        successful, incomplete, errored = accumulator.get_request_metrics_population(
+            scheduler_state
+        )
 
         # Intervals are reported only for metrics recorded once per request, so
         # that each value is one observation. Token-weighted metrics and derived
@@ -1482,9 +1490,9 @@ class GenerativeMetrics(StandardBaseDict):
             ),
             requests_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.request_end_time,
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+                successful=event_successful,
+                incomplete=event_incomplete,
+                errored=event_errored,
                 start_time=start_time,
                 end_time=end_time,
             ),
@@ -1497,9 +1505,9 @@ class GenerativeMetrics(StandardBaseDict):
                         else None
                     )
                 ),
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+                successful=event_successful,
+                incomplete=event_incomplete,
+                errored=event_errored,
                 start_time=start_time,
                 end_time=end_time,
             ),
@@ -1626,25 +1634,25 @@ class GenerativeMetrics(StandardBaseDict):
             ),
             prompt_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.prompt_tokens_timing,
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+                successful=event_successful,
+                incomplete=event_incomplete,
+                errored=event_errored,
                 start_time=start_time,
                 end_time=end_time,
             ),
             output_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.output_tokens_timings,
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+                successful=event_successful,
+                incomplete=event_incomplete,
+                errored=event_errored,
                 start_time=start_time,
                 end_time=end_time,
             ),
             tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.total_tokens_timings,
-                successful=successful,
-                incomplete=incomplete,
-                errored=errored,
+                successful=event_successful,
+                incomplete=event_incomplete,
+                errored=event_errored,
                 start_time=start_time,
                 end_time=end_time,
             ),
