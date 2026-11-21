@@ -4,7 +4,9 @@ import contextlib
 from collections.abc import Iterator
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
+import numpy as np
 import torch
+from datasets import Dataset
 from torch.utils.data.dataloader import DataLoader as PyTorchDataLoader
 from torch.utils.data.dataset import IterableDataset as TorchIterableDataset
 
@@ -18,6 +20,7 @@ from guidellm.data.schemas import DatasetType
 from guidellm.logger import logger
 from guidellm.schemas.data.loaders import TorchDataLoaderArgs
 from guidellm.utils.mixins import InfoMixin
+from guidellm.utils.random import derive_seed
 
 __all__ = ["DatasetsIterator", "TorchDataLoader"]
 
@@ -64,8 +67,18 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         data_samples: int,
         preprocessors: list[DatasetPreprocessor | DataDependentPreprocessor],
         finalizer: DatasetFinalizer[DataT],
+        shuffle: bool = False,
+        random_seed: int = 42,
     ):
         self.datasets = datasets
+        if shuffle and not all(isinstance(item, Dataset) for item in datasets):
+            raise ValueError(
+                "data_loader.shuffle requires map-style datasets, but got a "
+                "datasets.IterableDataset (such as synthetic, trace or streaming "
+                "data)."
+            )
+        self.shuffle = shuffle and bool(datasets)
+        self.random_seed = random_seed
         self.preprocessors = preprocessors
         for preprocessor in self.preprocessors:
             if isinstance(preprocessor, DataDependentPreprocessor):
@@ -74,7 +87,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                 )
         self.finalizer = finalizer
         self.precache: list[Any] | None = (
-            list(self.generator(data_samples)) if data_samples else None
+            list(self.generator(data_samples)) if data_samples > 0 else None
         )
         self.epoch = 0
 
@@ -95,6 +108,19 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
     def set_epoch(self, epoch: int):
         self.epoch = epoch
 
+    def _epoch_datasets(self, epoch: int) -> list[DatasetType]:
+        """
+        Datasets to read for one epoch, reordered when shuffling is on.
+
+        Every dataset gets the same permutation of the shortest one's rows, so
+        combined rows stay paired.
+        """
+        if not self.shuffle:
+            return self.datasets
+        rng = np.random.default_rng(derive_seed(self.random_seed, epoch))
+        order = rng.permutation(min(len(item) for item in self.datasets))
+        return [item.select(order, keep_in_memory=True) for item in self.datasets]
+
     def generator(  # noqa: C901
         self,
         max_items: int | None = None,
@@ -109,7 +135,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
 
         with contextlib.suppress(StopIteration):
             dataset_iters = []
-            for dataset in self.datasets:
+            for dataset in self._epoch_datasets(epoch):
                 if hasattr(dataset, "set_epoch"):
                     with contextlib.suppress(Exception):
                         dataset.set_epoch(epoch)
@@ -184,6 +210,8 @@ class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
             data_samples=config.samples,
             preprocessors=preprocessors,
             finalizer=finalizer,
+            shuffle=config.shuffle,
+            random_seed=random_seed,
         )
         self._info: dict[str, Any] = config.model_dump(mode="json")
         self.epoch = 0
@@ -193,7 +221,6 @@ class TorchDataLoader(PyTorchDataLoader[DataT], InfoMixin, DataLoader[DataT]):
         super().__init__(
             dataset=iterator,
             batch_size=1,
-            shuffle=config.shuffle,
             collate_fn=_collate_first,
             num_workers=config.num_workers,
             prefetch_factor=config.prefetch_factor,

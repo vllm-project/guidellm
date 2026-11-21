@@ -38,6 +38,8 @@ You can specify the data loader with `--data-loader` and a configuration string.
 
 - `--data-loader kind=pytorch,samples=1000,shuffle=true`
 
+`shuffle=true` shuffles the rows again for each benchmark in the run. The orders depend on `--seed`, so a repeat run with the same seed repeats them. Every `--data` source must be a file, Hugging Face or in-memory dataset. With a synthetic, trace or streaming source, GuideLLM exits with an error before the first benchmark. When you combine several sources, their rows are reordered together, so the pairing of rows doesn't change. With a positive `samples`, the rows are drawn from the shuffled dataset once, and every benchmark reads them in that order.
+
 The PyTorch loader accepts `num_workers`, but values other than the default of `1` are currently unsupported and produce a warning.
 
 ### Tokenizer
