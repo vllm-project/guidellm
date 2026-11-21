@@ -20,8 +20,9 @@ class TorchDataLoaderArgs(DataLoaderArgs):
         default=False,
         description=(
             "Shuffle the rows in an order that depends on the seed, reshuffled for "
-            "each benchmark unless samples is positive. Has no effect unless every "
-            "dataset is a file, Hugging Face or in-memory dataset."
+            "each benchmark unless samples is positive. Loading fails unless every "
+            "dataset is a file, Hugging Face or in-memory dataset that isn't "
+            "streamed."
         ),
     )
     num_workers: int = Field(

@@ -72,12 +72,11 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
     ):
         self.datasets = datasets
         if shuffle and not all(isinstance(item, Dataset) for item in datasets):
-            logger.warning(
-                "data_loader.shuffle has no effect: it reorders whole rows, so "
-                "every dataset must be a file, Hugging Face or in-memory dataset, "
-                "not a synthetic, trace or streaming one."
+            raise ValueError(
+                "data_loader.shuffle requires map-style datasets, but got a "
+                "datasets.IterableDataset (such as synthetic, trace or streaming "
+                "data)."
             )
-            shuffle = False
         self.shuffle = shuffle and bool(datasets)
         self.random_seed = random_seed
         self.preprocessors = preprocessors
@@ -118,13 +117,9 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
         """
         if not self.shuffle:
             return self.datasets
-        map_datasets = [item for item in self.datasets if isinstance(item, Dataset)]
         rng = np.random.default_rng(derive_seed(self.random_seed, epoch))
-        order = rng.permutation(min(len(item) for item in map_datasets))
-        shuffled: list[DatasetType] = [
-            item.select(order, keep_in_memory=True) for item in map_datasets
-        ]
-        return shuffled
+        order = rng.permutation(min(len(item) for item in self.datasets))
+        return [item.select(order, keep_in_memory=True) for item in self.datasets]
 
     def generator(  # noqa: C901
         self,

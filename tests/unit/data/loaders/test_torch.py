@@ -11,7 +11,6 @@ from datasets import Dataset
 
 from guidellm.data.loaders.loader import DataLoaderRegistry
 from guidellm.data.loaders.torch import DatasetsIterator, TorchDataLoader
-from guidellm.logger import logger
 from guidellm.schemas.data import TorchDataLoaderArgs
 
 
@@ -174,32 +173,32 @@ def test_shuffle_keeps_combined_rows_paired(label_count):
 
 @pytest.mark.sanity
 @pytest.mark.parametrize("with_map_dataset", [True, False])
-def test_shuffle_is_skipped_unless_every_dataset_is_map_style(with_map_dataset):
-    """An iterable source can't be reordered, so nothing is shuffled and a
-    warning says so.
+def test_shuffle_rejects_iterable_datasets(with_map_dataset):
+    """An iterable source can't be reordered, so asking to shuffle it is a
+    misconfiguration and the loader raises.
 
     ## WRITTEN BY AI ##
     """
-    labels = [f"label{index:02d}" for index in range(20)]
-    datasets = [Dataset.from_dict({"label": labels}).to_iterable_dataset()]
+    datasets = [Dataset.from_dict({"label": ROWS}).to_iterable_dataset()]
     if with_map_dataset:
         datasets.insert(0, Dataset.from_dict({"text": ROWS}))
-    warnings: list[str] = []
-    sink = logger.add(
-        lambda message: warnings.append(message.record["message"]), level="WARNING"
-    )
-    try:
-        iterator = _shuffle_iterator(datasets)
-    finally:
-        logger.remove(sink)
 
-    rows = _epoch_rows(iterator, 0)
+    with pytest.raises(ValueError, match="requires map-style datasets"):
+        _shuffle_iterator(datasets)
 
-    assert _column(rows, index=len(datasets) - 1, name="label") == labels
-    if with_map_dataset:
-        assert _column(rows) == ROWS
-    assert len(warnings) == 1
-    assert "shuffle" in warnings[0]
+
+@pytest.mark.sanity
+def test_iterable_datasets_load_with_shuffle_off():
+    """The check applies only when shuffling, so an iterable source still
+    loads in its own order by default.
+
+    ## WRITTEN BY AI ##
+    """
+    datasets = [Dataset.from_dict({"text": ROWS}).to_iterable_dataset()]
+
+    iterator = _shuffle_iterator(datasets, shuffle=False)
+
+    assert _column(_epoch_rows(iterator, 0)) == ROWS
 
 
 @pytest.mark.regression
