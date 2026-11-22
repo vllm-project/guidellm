@@ -61,24 +61,24 @@ jobs:
       ${{ !(github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name &&
             startsWith(github.head_ref, 'mergify/merge-queue/')) }}
     runs-on: ubuntu-slim
-    # The body is read from the event payload; no token scopes are needed
-    permissions: {}
+    # Checkout needs a read token; the PR body still comes from the event payload.
+    permissions:
+      contents: read
     steps:
+      # pull_request_target runs the base branch's workflow and the default
+      # checkout ref is that trusted base commit. Never check out the PR head.
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       # Bot-authored PRs (e.g. Dependabot) never use the template. Skip the
       # step, not the job, so the job still reports success for check-success.
-      - name: Verify certification checkbox
+      - name: Verify certification and AI disclosure
         if: ${{ github.event.pull_request.user.type != 'Bot' }}
         shell: bash
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          # Ignore generated content below the same marker format_pr.py uses
-          BODY="${PR_BODY:-}"
-          BODY="${BODY%%<!-- begin:squash-data -->*}"
-          if grep -qiE '^[[:space:]]*[-*+][[:space:]]+\[x\][[:space:]]*"?I certify that all code in this PR is my own, except as noted below\.' <<< "$BODY"; then
-            echo "Certification checkbox is checked."
-            exit 0
-          fi
-          echo "::error title=Certification required::Check the certification checkbox in the PR description:"
-          echo '- [x] "I certify that all code in this PR is my own, except as noted below."'
-          exit 1
+          # PR_BODY is untrusted: keep it in a variable and pass it on stdin.
+          printf '%s' "${PR_BODY:-}" | python3 scripts/check_pr_description.py

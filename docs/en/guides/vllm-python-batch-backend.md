@@ -63,7 +63,7 @@ guidellm run \
 The vLLM `LLM` engine is never loaded during `process_startup()`. Engine creation is controlled by a worker-process check that distinguishes the main (preflight) process from scheduler workers:
 
 - **Main preflight** (`resolve_backend`): `validate()` runs in the main process (`multiprocessing.parent_process()` is `None`) and performs a cheap readiness check only — no model weights are loaded.
-- **Worker process**: when `multiprocessing.parent_process()` is set (true for both `fork` and `spawn` workers; see `GUIDELLM__MP_CONTEXT_TYPE`), `validate()` calls `_ensure_engine()` to **preload** the engine so the cold-start time is excluded from the timed benchmark phase.
+- **Worker process**: when `multiprocessing.parent_process()` is set (true for both `spawn` and `forkserver` workers; `fork` is not supported, and the context is set with `GUIDELLM__MP_CONTEXT_TYPE`), `validate()` calls `_ensure_engine()` to **preload** the engine so the cold-start time is excluded from the timed benchmark phase.
 - **Inference-time safety net**: as requests are generated from the dataset, `_ensure_engine()` is called as an idempotent fallback, so inference works correctly even if `validate()` was skipped.
 
 ## See also

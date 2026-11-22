@@ -21,6 +21,7 @@ The following arguments configure datasets and their processing:
   - `huggingface` (alias `hf`) — loads from HuggingFace Hub or a local directory/file. Required field: `source` (dataset ID or path). Pass dataset loading arguments (for example `split`, `name`) via `load_kwargs`.
   - `json_file`, `csv_file`, `text_file`, `parquet_file`, `arrow_file`, `hdf5_file`, `tar_file` — loads from a local file. Required field: `path`.
   - `db_file` — loads rows from a database using `load_kwargs.sql`. Required field: `uri`, using a SQLAlchemy-style URI. GuideLLM currently supports only SQLite URIs, such as `sqlite:///prompts.db`.
+  - `in_memory_dict`, `in_memory_dict_list`, `in_memory_item_list` — pass data directly as Python objects through the `data` field, typically from the API or a scenario file rather than the CLI. Use a dictionary of columns, a list of dictionaries, or a list of primitive values.
   - `trace_synthetic`, `mooncake`, `weka`, `otel` — replay traces with `--profile kind=replay`. Required field: nested `source` pointing at another dataset kind, for example `source.kind=json_file,source.path=trace.jsonl` or `source.kind=huggingface,source.source=org/dataset`. Optional: `timestamp_column`, `prompt_tokens_column`, `output_tokens_column`, `time_scale`, `copies`, and other format-specific options. See [Trace File Formats](./trace_replay.md).
 
 For the `*_file` dataset kinds that take a local `path`, the path identifies one exact file. Glob characters in file or directory names are treated literally.
@@ -35,7 +36,9 @@ For SQLite databases, provide the query through `load_kwargs.sql`, for example `
 
 You can specify the data loader with `--data-loader` and a configuration string. The only current type is `pytorch`:
 
-- `--data-loader kind=pytorch,samples=1000,num_workers=4,shuffle=true`
+- `--data-loader kind=pytorch,samples=1000,shuffle=true`
+
+The PyTorch loader accepts `num_workers`, but values other than the default of `1` are currently unsupported and produce a warning.
 
 ### Tokenizer
 
@@ -178,7 +181,7 @@ Pass HuggingFace `load_dataset` options through `load_kwargs`:
 
 - Hugging Face datasets can be specified by ID, a local directory, or a path to a local Python file.
 - A supported Hugging Face datasets format is defined as one that can be loaded using the `datasets` library with the `load_dataset` function and therefore it is representable as a `Dataset`, `DatasetDict`, `IterableDataset`, or `IterableDatasetDict`. More information on the supported data types and additional args for the underlying use of `load_dataset` can be found in the [Hugging Face datasets documentation](https://huggingface.co/docs/datasets/en/loading#hugging-face-hub).
-- A tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the tokenizer must be specified using `--tokenizer kind=huggingface_auto,model=...`. If not set, the tokenizer will be set to the model passed in or retrieved from the backend.
+- The tokenizer defaults to the model reported by the backend. Override it with `--tokenizer kind=huggingface_auto,model=<id-or-path>` when the backend's model name is not a Hugging Face id or local tokenizer path, or when token counts should come from a different tokenizer.
 
 ### File-Based Datasets
 
@@ -247,9 +250,9 @@ GuideLLM supports various file formats for datasets, including text, CSV, JSON, 
 
   Defaults are recorded `gen_ai.input.messages` and `history=trace` (each span's full input, `history_context=new`). Pass `history=runtime` to send only new messages and attach live completions through the DAG. Spans without `gen_ai.input.messages` should use `trace_synthetic`. Local JSONL uses `source.kind=json_file,source.path=...` with the same `history` switch. See [Trace File Formats](./trace_replay.md#otel).
 
-  For replay, `time_scale` on `--data` is a time scale for the intervals between trace events after wait and pack caps. Wait caps (`max_wait`, `max_session_wait`, `min_concurrent_sessions`) are applied in original trace seconds before `time_scale`. Prefer those packing options to raise parallelism; use `copies` to replay the packed dataset sequentially when it is too short for the benchmark. The replay profile also accepts a scheduler-side `time_scale` on `--profile kind=replay`. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. Use `--constraint kind=max_requests,count=<n>` only as a runtime completion constraint; it does not limit the trace rows loaded from the file. `--constraint kind=max_duration,seconds=<n>` also cancels in-flight waits, including replay sleeps.
+  For replay, `time_scale` on `--data` is a time scale for the intervals between trace events after the wait and concurrency options. The wait and concurrency options (`max_wait`, `max_session_wait`, `min_concurrent_sessions`, `max_concurrent_sessions`) are applied in original trace seconds before `time_scale`. `max_concurrent_sessions` holds each lane until the session would finish using recorded durations (WEKA `api_time`); single-request traces need a duration column for this to take effect. Prefer those concurrency options to raise or cap parallelism; use `copies` to replay the re-timed dataset sequentially when it is too short for the benchmark. The replay profile also accepts a scheduler-side `time_scale` on `--profile kind=replay`. Use `--data-loader kind=pytorch,samples=1000` to limit how many trace rows are loaded and replayed. Use `--constraint kind=max_requests,count=<n>` only as a runtime completion constraint; it does not limit the trace rows loaded from the file. `--constraint kind=max_duration,seconds=<n>` also cancels in-flight waits, including replay sleeps.
 
-- **JSON files (`.json`)**: Where the entire dataset is represented as a JSON array of objects nested under a specific key. To surface the correct key to use, a `--data-column-mapper` argument must be passed in of `"field": "NAME"` for where the array exists. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
+- **JSON files (`.json`)**: Where the entire dataset is represented as a JSON array of objects nested under a specific key. Pass the key that contains the array through `load_kwargs.field`, for example `--data '{"kind":"json_file","path":"dataset.json","load_kwargs":{"field":"data"}}'`. The objects should include `prompt` or other common names for the prompt which will be used as the prompt column. Additional fields can be included based on the previously mentioned aliases for the `--data-column-mapper` argument.
 
   ```json
   {
@@ -308,15 +311,36 @@ In-memory datasets allow you to directly pass data as Python objects, making the
 #### Example Usage
 
 ```python
+import asyncio
+
 from guidellm.benchmark import benchmark_generative_text
+from guidellm.schemas.benchmark import BenchmarkScenario
 
-data = [
-    {"prompt": "Hello", "output": "Hi"},
-    {"prompt": "How are you?", "output": "I'm fine."}
-]
+def main():
+    data = [
+        {"prompt": "Hello", "output": "Hi"},
+        {"prompt": "How are you?", "output": "I'm fine."},
+    ]
 
-benchmark_generative_text(data=data, ...)
+    scenario = BenchmarkScenario.create(
+        spec={
+            "backend": {"kind": "openai_http", "target": "http://localhost:8000"},
+            "profile": {"kind": "synchronous"},
+            "data": [{"kind": "in_memory_dict_list", "data": data}],
+            "constraints": [{"kind": "max_requests", "count": 2}],
+            "outputs": [{"kind": "json", "path": "benchmarks.json"}],
+        },
+        scenario=(),
+    )
+
+    asyncio.run(benchmark_generative_text(args=scenario, progress=False))
+
+
+if __name__ == "__main__":
+    main()
 ```
+
+Save this example as a Python script. The `__main__` guard prevents spawned worker processes from starting another benchmark when they import the script.
 
 #### Notes
 
@@ -324,7 +348,7 @@ benchmark_generative_text(data=data, ...)
 - For dictionaries, all columns must have the same number of samples.
 - For lists of dictionaries, all items must have the same keys.
 - For lists of items, all elements must be of the same type.
-- A tokenizer is only required if `GUIDELLM__PREFERRED_PROMPT_TOKENS_SOURCE="local"` or `GUIDELLM__PREFERRED_OUTPUT_TOKENS_SOURCE="local"` is set in the environment. In this case, the tokenizer must be specified using `--tokenizer kind=huggingface_auto,model=...`. If not set, the tokenizer will be set to the model passed in or retrieved from the server.
+- A tokenizer is required for token counting. It defaults to the model reported by the backend; override it with `--tokenizer kind=huggingface_auto,model=<id-or-path>` when the backend's model name is not a Hugging Face id or local tokenizer path.
 
 ## Preprocessing Datasets
 
@@ -350,12 +374,12 @@ guidellm preprocess dataset \
 
 ### Required Arguments
 
-| Argument      | Description                                                                                                                                                                    |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `DATA`        | Identify the dataset to process. Supports all dataset formats documented in the [Dataset Configurations](#datasets). Pass loader options via `load_kwargs` on this descriptor. |
-| `OUTPUT_PATH` | Path to save the processed dataset, including file suffix (e.g., `processed_dataset.jsonl`, `output.csv`).                                                                     |
-| `--tokenizer` | **Required.** Tokenizer configuration using registry syntax, for example `--tokenizer kind=huggingface_auto,model=gpt2`. Optional constructor kwargs go in `load_kwargs`.      |
-| `--strategy`  | **Required.** Preprocess strategy including token targets and short-prompt handling. See [Preprocess Strategy](#preprocess-strategy).                                          |
+| Argument      | Description                                                                                                                                                                        |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATA`        | Identify the dataset to process. Supports all dataset formats documented in the [Dataset Types](#dataset-types) section. Pass loader options via `load_kwargs` on this descriptor. |
+| `OUTPUT_PATH` | Path to save the processed dataset, including file suffix (e.g., `processed_dataset.jsonl`, `output.csv`).                                                                         |
+| `--tokenizer` | **Required.** Tokenizer configuration using registry syntax, for example `--tokenizer kind=huggingface_auto,model=gpt2`. Optional constructor kwargs go in `load_kwargs`.          |
+| `--strategy`  | **Required.** Preprocess strategy including token targets and short-prompt handling. See [Preprocess Strategy](#preprocess-strategy).                                              |
 
 ### Example
 
@@ -435,7 +459,7 @@ When your dataset uses non-standard column names, you can use `--data-column-map
 
 **Supported column types:**
 
-- `text_column`: The main prompt text (defaults: `prompt`, `instruction`, `question`, `input`, `context`, `content`, `text`)
+- `text_column`: The main prompt text (defaults: `prompt`, `instruction`, `question`, `input`, `context`, `content`, `conversation`, `turn`, `text`)
 - `raw_messages_column`: Chat-completions messages for the current turn (`[{role, content}, …]`; defaults: `messages`, `chat_messages`). `/v1/chat/completions` sends them as-is. Other request formats abort if they cannot build `prompt`/`input` from these messages.
 - `prefix_column`: System prompt or prefix (defaults: `system_prompt`, `system`, `prefix`)
 - `prompt_tokens_count_column`: Column containing prompt token counts (defaults: `prompt_tokens_count`, `input_tokens_count`)

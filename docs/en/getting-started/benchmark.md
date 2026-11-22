@@ -27,7 +27,7 @@ The GuideLLM CLI provides options using a common registry-backed format. The reg
 guidellm run --<option> kind=<TYPE>,key=value,...
 ```
 
-Use comma-separated key=value pairs for flat settings (for example, `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`). Use serialized JSON or YAML when any value is nested (for example, `--data '{"kind":"huggingface","source":"org/dataset","loader_kwargs":{"split":"test"}}'`). Do not mix inline key=value and JSON/YAML in the same option. Some options can be repeated to supply multiple values (for example, multiple `--data` or `--constraint` entries).
+Use comma-separated key=value pairs for flat settings (for example, `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`). Use serialized JSON or YAML when any value is nested (for example, `--data '{"kind":"huggingface","source":"org/dataset","load_kwargs":{"split":"test"}}'`). Do not mix inline key=value and JSON/YAML in the same option. Some options can be repeated to supply multiple values (for example, multiple `--data` or `--constraint` entries).
 
 ### Basic Example
 
@@ -36,6 +36,7 @@ To run a benchmark against your local vLLM server with default settings:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --constraint kind=max_duration,seconds=60
 ```
@@ -45,7 +46,7 @@ This command:
 - Connects to your vLLM server running at `http://localhost:8000`
 - Uses synthetic data with 256 prompt tokens and 128 output tokens per request
 - Automatically determines the available model on the server
-- Runs a `sweep` profile (default) to find optimal performance points
+- Runs a `sweep` profile to find optimal performance points
 - Stops each strategy after 60 seconds
 
 During the benchmark, you'll see a progress display similar to this:
@@ -79,6 +80,8 @@ The random seed is used for any operation in GuideLLM that involves randomness, 
 --seed kind=static,value=42
 ```
 
+By default, a repeat of the same command sends the same prompts: synthetic data (such as `synthetic_text`) is generated deterministically, and other datasets are read in the same order. If the server has a prefix cache and stays up between runs, the repeat run can find its prompts still cached, which can lower the reported TTFT. To compare runs from a cold cache, empty the server's cache between them, for example by restarting the server. The [prefix cache hit rate](../guides/metrics.md#prefix-cache-hit-rate) shows how much of each prompt the server had cached.
+
 ### Constraints (`--constraint`)
 
 Constraints control when each strategy in a profile stops. Add one or more `--constraint` options. Constraints apply individually to each strategy in a profile. Profiles with multiple strategies include `sweep` and any profile whose primary parameter is a list (for example, `{"streams":[10,20]}` on `concurrent`).
@@ -93,17 +96,19 @@ Constraints control when each strategy in a profile stops. Add one or more `--co
 | `max_global_error_rate` | `rate`, `minimum`    | `--constraint kind=max_global_error_rate,rate=0.05,minimum=1000` |
 | `over_saturation`       | detection parameters | `--constraint kind=over_saturation,min_seconds=30,mode=enforce`  |
 
+Profiles do not add a default duration or request limit. Synthetic data is infinite unless capped by a positive data-loader sample count (for example, `--data-loader kind=pytorch,samples=1000`), so specify a stopping constraint for an otherwise unbounded run.
+
 For example, `--constraint kind=max_requests,count=1000` with `--profile kind=sweep` runs up to 1000 requests for each strategy in the sweep (synchronous, throughput, and each interpolated rate). `--constraint kind=min_requests,count=1000` is like `max_requests`, but keeps queuing until 1000 requests have been processed, which avoids throughput tail-off at the end of rate-based benchmarks. `--constraint kind=max_duration,seconds=30` with `--profile '{"kind":"concurrent","streams":[10,20]}'` runs 10 concurrent streams for 30 seconds, then 20 concurrent streams for 30 seconds.
 
 See [Over-Saturation Stopping](../guides/over_saturation_stopping.md) for over-saturation constraint details.
 
 ### Sub-benchmark (per-strategy) Constraints
 
-When you use the `sweep` profile, or specify multiple `rate` values in the `async`/`constant`/`poisson` profiles, or multiple `streams` values in the `concurrent` profile, you are running multiple "benchmark strategies" within the profile. GuideLLM allows you to specify distinct control parameters for your constraints using the `--override` option. For example, `--profile kind=sweep,sweep_size=5 --constraint kind=max_duration,seconds=30` runs 5 strategies (synchronous, throughput, and three interpolated constant rates) for 30 seconds each. You can use `--override constraint[0].seconds 10,20,10,15,20` to run the synchronous strategy for 10 seconds, the throughput strategy for 20 seconds, and the three interpolated constant rates for 10 seconds, 15 seconds, and 20 seconds. Note that specifying fewer values, e.g. `--override constraint[0].seconds 10,20,10`, will reuse the final value of 10 seconds for all three constant strategies.
+When you use the `sweep` profile, or specify multiple `rate` values in the `async`/`constant`/`poisson` profiles, multiple `streams` values in the `concurrent` profile, or multiple `users` values in the `users` profile, you are running multiple "benchmark strategies" within the profile. GuideLLM allows you to specify distinct control parameters for your constraints using the `--override` option. For example, `--profile kind=sweep,sweep_size=5 --constraint kind=max_duration,seconds=30` runs 5 strategies (synchronous, throughput, and three interpolated constant rates) for 30 seconds each. You can use `--override constraint[0].seconds 10,20,10,15,20` to run the synchronous strategy for 10 seconds, the throughput strategy for 20 seconds, and the three interpolated constant rates for 10 seconds, 15 seconds, and 20 seconds. Note that specifying fewer values, e.g. `--override constraint[0].seconds 10,20,10`, will reuse the final value of 10 seconds for all three constant strategies.
 
-### Benchmark Profiles (`--profile`)
+### Benchmark Profiles
 
-GuideLLM supports several benchmark profiles, which are described in detail below. Profile-specific parameters go in the same configuration string after `kind=<type>`.
+GuideLLM supports several benchmark profiles, which are described in detail below. Profile-specific parameters go in the same `--profile` configuration string after `kind=<type>`.
 
 #### Synchronous Profile
 
@@ -145,6 +150,34 @@ guidellm run --profile kind=concurrent,streams=10
 | `max_concurrency` | Maximum concurrent requests to schedule       | `--profile kind=concurrent,streams=10,max_concurrency=10`                                       |
 
 You can use the `--override` option to specify a list of stream values, to run a set of concurrent "strategies" (sub-benchmarks) with different stream values. For example, `--profile kind=concurrent --override profile.streams 10,20,30` will run a concurrent strategy with 10 streams, a concurrent strategy with 20 streams, and a concurrent strategy with 30 streams.
+
+#### Users Profile
+
+Simulates a fixed number of users, each holding one session (conversation) from the dataset at a time. This profile behaves much like `concurrent` with one major difference: a user's slot stays bound to their session. When a turn is made, the user slot waits out the dataset's requeue delay, sends the next turn of the same conversation, and only starts a new conversation when that one finishes. Use it to answer questions like "server X with model Y can support Z concurrent users".
+
+```bash
+guidellm run --profile kind=users,users=10 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=5,delay=5
+```
+
+| Profile parameter | Description                                 | Example                                            |
+| ----------------- | ------------------------------------------- | -------------------------------------------------- |
+| `users`           | Simulated users to maintain                 | `--profile kind=users,users=10`                    |
+| `rampup_duration` | Seconds to spread the initial user sessions | `--profile kind=users,users=10,rampup_duration=10` |
+
+Think time comes from the dataset: each turn's `requeue_delay` gates the next turn of the same conversation. With synthetic data, the `delay*` options (`delay`, `delay_stdev`, `delay_min`, `delay_max`) define that delay, including its distribution.
+
+Delay only gates turns *within* a conversation: when a session ends, the user immediately starts the next conversation. Single-turn data therefore has no between-turn gap to gate — with no delay configured it chains conversations as fast as the server responds, behaving like `concurrent`.
+
+Because a user's slot stays idle for the think time instead of immediately scheduling another conversation, `users` can offer a lower request rate than `concurrent` with the same number of slots, and the conversations interleave differently.
+
+Trace datasets carry request timestamps and durations but not a `requeue_delay`, so a `users` run over a trace has no between-turn gap and behaves like `concurrent`. Use synthetic `delay*` data or the `replay` profile when between-turn pacing matters.
+
+`rampup_duration` staggers only the first turn of each new session; follow-up turns are not ramped.
+
+The next turn is scheduled `delay` seconds after the previous response finishes, like a person who reads the reply and then thinks. This is closed-loop pacing: as latency rises, each user slows down, so the offered request rate falls near capacity. When comparing user counts, compare the achieved request rate rather than assuming it is constant.
+
+You can use the `--override` option to specify a list of user counts, to run a set of users "strategies" (sub-benchmarks) with different user counts. For example, `--profile kind=users --override profile.users 10,20,30` will run a users strategy with 10 users, a users strategy with 20 users, and a users strategy with 30 users. As with the other multi-value profiles, a constraint configured with `stopping_scope="all"` skips the remaining counts once it triggers, so specify counts in ascending order.
 
 #### Knee Profile
 
@@ -231,9 +264,9 @@ guidellm run --profile kind=replay,time_scale=1.0
 | `schedule_turn`   | `idle_gap` (default) keeps the idle gap after each recorded request duration. `timestamp` targets each trace timestamp | `--profile kind=replay,schedule_turn=timestamp` |
 | `prefetch`        | Requests to load before the run clock starts. Defaults to 0 (no pre-fetch)                                             | `--profile kind=replay,prefetch=all`            |
 
-Wait caps and a data-side `time_scale` are set on `--data`. The profile `time_scale` is applied by the scheduler after those dataset timestamps are built, allowing multiple runs with different time scales.
+Wait and concurrency options, along with a data-side `time_scale`, are set on `--data`. The profile `time_scale` is applied by the scheduler after those dataset timestamps are built, allowing multiple runs with different time scales.
 
-`schedule_turn=idle_gap` (the default) keeps the gap that followed the recorded duration: if a request was recorded as 1 second and the next timestamp is 5 seconds later, the next request starts 4 seconds after this one actually finishes. A late or slow request shifts everything after it. When the trace has no duration column, the loader logs one warning and each request is treated as instantaneous, so that same example starts the next request 5 seconds after this one finishes. Set the column name with `duration_column` on `--data` (default `duration`). `schedule_turn=timestamp` runs each request at its trace time and holds it only while a prior turn is still in progress.
+`schedule_turn=idle_gap` (the default) keeps the gap that followed the recorded duration: if a request was recorded as 1 second and the next timestamp is 5 seconds later, the next request starts 4 seconds after this one actually finishes. A late or slow request shifts everything after it. When the trace has no duration column, the loader logs one warning and each request is treated as instantaneous, so that same example starts the next request 5 seconds after this one finishes. Set the column name with `duration_column` on `--data` (default `duration`; WEKA defaults to `api_time`). `schedule_turn=timestamp` runs each request at its trace time and holds it only while a prior turn is still in progress.
 
 ## Data Options
 
@@ -275,9 +308,9 @@ guidellm run \
   --profile kind=replay,time_scale=0.5
 ```
 
-The data parameter `time_scale` acts as a scaling factor for the intervals between trace events after wait and pack caps: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast. Wait caps (`max_wait`, `max_session_wait`, `min_concurrent_sessions`) are applied in original trace seconds before `time_scale`.
+The data parameter `time_scale` acts as a scaling factor for the intervals between trace events after the wait and concurrency options: `1.0` preserves the original timing, `2.0` doubles the intervals and runs twice as long, and `0.5` halves the intervals and runs twice as fast. The wait and concurrency options (`max_wait`, `max_session_wait`, `min_concurrent_sessions`, `max_concurrent_sessions`) are applied in original trace seconds before `time_scale`.
 
-Raise parallelism with `min_concurrent_sessions`. Use `copies` when the packed dataset is not large enough to sustain that load for the whole benchmark. By default (`copy_offset=1`) `copies` replays the full packed trace sequentially: the next pass starts at the previous pass's last scheduled request. `copy_offset` can overlay or gap copies relative to that prior span. Synthetic data traces re-salt the synthetic data to ensure cache-unique conversations for the copies.
+Raise parallelism with `min_concurrent_sessions`, or limit simultaneous sessions with `max_concurrent_sessions`. Use `copies` when the re-timed dataset is not large enough to sustain that load for the whole benchmark. By default (`copy_offset=1`) `copies` replays the full re-timed trace sequentially: the next pass starts at the previous pass's last scheduled request. `copy_offset` can overlay or gap copies relative to that prior span. Synthetic data traces re-salt the synthetic data to ensure cache-unique conversations for the copies.
 
 Strategically choose between increasing parallelism and affecting request timings for your use case. Higher parallelism increases concurrent simultaneous requests, and increases the chance of cache evictions affecting your benchmark.
 
@@ -351,11 +384,14 @@ spec:
   profile:
     kind: concurrent
   constraints:
-    kind: max_duration
+  - kind: max_duration
+    seconds: 60
   tokenizer:
     kind: huggingface_auto
   data:
-    kind: synthetic_text
+  - kind: synthetic_text
+    prompt_tokens: 256
+    output_tokens: 128
   data_column_mapper:
     kind: generative_column_mapper
   data_preprocessors:
@@ -367,7 +403,7 @@ spec:
   seed:
     kind: static
     value: 42
-  output:
+  outputs:
   - kind: json
     path: output.json
   - kind: csv
@@ -409,7 +445,7 @@ These names are builtin to GuideLLM. Specify the full name as shown below, like 
 - `rhaiis/concurrent-8k-1k-equal`: Large context scenario. 8,000 input tokens, 1,000 output tokens.
 - `rhaiis/concurrent-8k-800-norm`: Large context scenario with sequence length variance. Mean 8,000 input tokens and 800 output tokens, but with large statistical variance.
 - `rhaiis/concurrent-100k-1k-equal`: Very large context scenario. 100,000 prompt tokens with 1,000 output tokens.
-- `rhaiis/concurrent-512-2ki-norm`: Generation heavy scenario with sequence length variance. Mean 512 prompt tokens with 1k output tokens, but with very large statistical variance.
+- `rhaiis/concurrent-512-2ki-norm`: Generation heavy scenario with sequence length variance. Mean 512 prompt tokens with 2,048 output tokens, but with very large statistical variance.
 
 ## Troubleshooting
 

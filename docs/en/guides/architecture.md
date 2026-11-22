@@ -1,97 +1,92 @@
 # Architecture
 
-GuideLLM is designed to evaluate and optimize large language model (LLM) deployments by simulating real-world inference workloads. The architecture is modular, enabling flexibility and scalability. Below is an overview of the core components and their interactions.
+GuideLLM evaluates and optimizes large language model (LLM) deployments by simulating real-world inference workloads. Its components are decoupled so that data sources, backends, scheduling strategies, and reporting can be changed independently.
 
-```
-+------------------+       +------------------+       +------------------+
-|   DatasetCreator | --->  |   RequestLoader  | --->  |     Scheduler    |
-+------------------+       +------------------+       +------------------+
-                                                    /         |          \
-                                                   /          |           \
-                                                  /           |            \
-                                                 v            v             v
-                                       +------------------+ +------------------+
-                                       | RequestsWorker   | | RequestsWorker   |
-                                       +------------------+ +------------------+
-                                                 |                     |
-                                                 v                     v
-                                       +------------------+ +------------------+
-                                       |     Backend      | |     Backend      |
-                                       +------------------+ +------------------+
-                                                 |                     |
-                                                 v                     v
-                                       +---------------------------------------+
-                                       |         BenchmarkAggregator           |
-                                       +---------------------------------------+
-                                                 |
-                                                 v
-                                       +------------------+
-                                       |    Benchmarker   |
-                                       +------------------+
+## Component Flow
+
+```mermaid
+flowchart LR
+    A["Configuration<br/>CLI, scenario file, or env vars"] --> B["Data pipeline<br/>conversation graphs"]
+    A --> P["Profile<br/>generate strategies"]
+    P --> G["Benchmarker<br/>run strategies and accumulate results"]
+    B --> C["Scheduler<br/>execute one strategy and enforce constraints"]
+    G --> C
+    C --> D["Worker processes"]
+    D --> E["Backend"]
+    G --> F["Collectors"]
+    E --> C
+    C --> G
+    F --> G
+    G --> H["GenerativeBenchmarksReport"]
+    H --> I["Outputs<br/>console, JSON/YAML, CSV, HTML, plot"]
 ```
 
 ## Core Components
 
-### 1. **Backend**
+### 1. **Configuration**
 
-The `Backend` is an abstract interface for interacting with generative AI backends. It is responsible for processing requests and generating results. GuideLLM supports OpenAI-compatible HTTP servers, such as vLLM, as backends.
-
-- **Responsibilities:**
-  - Accept requests from the `RequestsWorker`.
-  - Generate responses for text or chat completions.
-  - Validate backend readiness and available models.
-
-### 2. **RequestLoader**
-
-The `RequestLoader` handles sourcing data from an iterable and generating requests for the backend. It ensures that data is properly formatted and ready for processing.
+Benchmarks are configured through the CLI (`guidellm run`), one or more scenario files (`--config`), or `GUIDELLM__SPEC__...` environment variables. All three forms populate the same `BenchmarkScenario` schema, whose `spec` field is a `BenchmarkArgs` object containing the backend, profile, constraints, data pipeline, tokenizer, metrics, collectors, and outputs.
 
 - **Responsibilities:**
-  - Load data from datasets or synthetic sources.
-  - Generate requests in a format compatible with the backend.
+  - Select registered implementations with the `kind=` prefix (for example, `--profile kind=sweep`)
+  - Merge scenario files and command-line overrides in order
+  - Validate the complete configuration before any requests are sent
 
-### 3. **DatasetCreator**
+### 2. **Data Pipeline**
 
-The `DatasetCreator` is responsible for loading data sources and converting them into Hugging Face (HF) dataset items. These items can then be streamed by the `RequestLoader`.
+The data pipeline lives in `guidellm/data` and converts dataset definitions into a stream of `GenerativeConversationGraph` objects containing `GenerationRequest` nodes. Single-turn data also produces conversation graphs, with one request node each.
 
-- **Responsibilities:**
-  - Load datasets from local files, Hugging Face datasets, or synthetic data.
-  - Convert data into a format compatible with the `RequestLoader`.
+- **Deserializers** turn a source into a Hugging Face dataset. Supported kinds include `synthetic_text`, `synthetic_image`, `synthetic_video`, `huggingface`/`hf`, file kinds such as `json_file` and `parquet_file`, in-memory kinds, and trace formats such as `trace_synthetic` and `otel`.
+- **Preprocessors** map dataset columns (`generative_column_mapper`, `pooling_column_mapper`), encode media (`encode_media`), transpose turn columns (`turn_pivot`), and extract tool-call data from messages (`tool_calling_message_extractor`).
+- **The `generative` finalizer** builds request nodes and their conversation graph, including expansion of client-managed tool-call turns. `conversation_graph` is an internal helper module, not a selectable finalizer kind.
+- **Data loaders** (`pytorch`) stream rows and apply `samples` limits.
+- **Tokenizers** (`huggingface_auto`) compute token counts, defaulting to the model reported by the backend.
 
-### 4. **Scheduler**
+### 3. **Scheduler**
 
-The `Scheduler` manages the scheduling of requests to the backend. It uses multiprocessing and multithreading with asyncio to minimize overheads and maximize throughput.
-
-- **Responsibilities:**
-  - Schedule requests to the backend.
-  - Manage queues for requests and results.
-  - Ensure efficient utilization of resources.
-
-### 5. **RequestsWorker**
-
-The `RequestsWorker` is a worker process that pulls requests from a queue, processes them using the backend, and sends the results back to the scheduler.
+Profiles generate scheduling strategies, and the `Benchmarker` iterates over them. The `Scheduler` in `guidellm/scheduler` executes one strategy at a time and enforces constraints while requests run.
 
 - **Responsibilities:**
-  - Process requests from the scheduler.
-  - Interact with the backend to generate results.
-  - Return results to the scheduler.
+  - Run the strategies generated by the configured profile (`synchronous`, `throughput`, `concurrent`, `constant`/`poisson`, `sweep`, `knee`, `goodput`, or `replay`)
+  - Apply constraints such as `max_duration`, `max_requests`, `min_requests`, `max_errors`, `max_error_rate`, `max_global_error_rate`, and `over_saturation`
+  - Track warmup and cooldown windows that are excluded from the measured results
+  - Dispatch requests to worker processes and enforce turn dependencies for multiturn conversations
 
-### 6. **Benchmarker**
+### 4. **Worker Processes**
 
-The `Benchmarker` wraps around multiple invocations of the `Scheduler`, one for each benchmark. It aggregates results using a `BenchmarkAggregator` and compiles them into a `Benchmark` once complete.
+Worker processes send requests concurrently and return responses plus timing information to the scheduler. They are started with `spawn` or `forkserver` multiprocessing; `fork` is not supported. Worker pool size and messaging behavior are controlled by `GUIDELLM__...` settings such as `GUIDELLM__MAX_WORKER_PROCESSES`.
 
-- **Responsibilities:**
-  - Manage multiple benchmarks.
-  - Aggregate results from the scheduler.
-  - Compile results into a final benchmark report.
+### 5. **Backend**
 
-### 7. **BenchmarkAggregator**
-
-The `BenchmarkAggregator` is responsible for storing and compiling results from the benchmarks.
+The `Backend` is an abstract interface for interacting with inference servers and local inference engines. GuideLLM ships with OpenAI-compatible HTTP (`openai_http`) and WebSocket (`openai_websocket`) backends, an in-process vLLM Python backend (`vllm_python_async`, also accepted as `vllm_python`), and a vLLM Python batch backend (`vllm_python_batch`).
 
 - **Responsibilities:**
-  - Aggregate results from multiple benchmarks.
-  - Compile results into a `Benchmark` object.
+  - Validate backend readiness and resolve the model when it is not configured explicitly
+  - Format and send requests
+  - Parse streaming and non-streaming responses, including token usage and tool calls
 
-## Component Interactions
+### 6. **Collectors**
 
-The following diagram illustrates the relationships between the core components:
+Collectors in `guidellm/collectors` gather data from outside GuideLLM while benchmarks run. The built-in `prometheus` collector scrapes a metrics endpoint in a separate process and attaches its summary to each benchmark result.
+
+### 7. **Benchmarker and Results**
+
+The `Benchmarker` in `guidellm/benchmark` runs a profile's strategies and aggregates each one with `GenerativeBenchmarkAccumulator` into a `GenerativeBenchmark`. Each benchmark contains `SchedulerMetrics` and `GenerativeMetrics`, including status breakdowns, percentile distributions, confidence intervals, SLO attainment, warnings, and collector results.
+
+`GenerativeBenchmarksReport` collects the benchmarks, the merged configuration, and any profile conclusions (for example, knee or goodput analysis), and writes the requested outputs from `guidellm/benchmark/outputs`: console, CSV, HTML, plot, and JSON/YAML.
+
+### 8. **Progress and Warnings**
+
+`guidellm/benchmark/progress.py` reports setup and benchmark progress to the console and logs. After each benchmark, warning rules from `guidellm/schemas/benchmark/warnings.py` are evaluated against the compiled metrics and recorded in the report; warnings never stop the run.
+
+## Package Layout
+
+| Package               | Responsibility                                                    |
+| --------------------- | ----------------------------------------------------------------- |
+| `guidellm.cli`        | Click-based commands for `run`, `preprocess`, `export`, and more  |
+| `guidellm.schemas`    | Pydantic argument, request, response, metric, and report schemas  |
+| `guidellm.data`       | Deserializers, preprocessors, finalizers, loaders, and tokenizers |
+| `guidellm.backends`   | Backend implementations and request handlers                      |
+| `guidellm.scheduler`  | Strategies, constraints, worker processes, and DAG execution      |
+| `guidellm.collectors` | Collectors that gather external data during a benchmark           |
+| `guidellm.benchmark`  | Benchmark orchestration, metrics, progress, warnings, and outputs |

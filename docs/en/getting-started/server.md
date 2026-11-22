@@ -30,7 +30,7 @@ For more configuration options, refer to the [vLLM documentation](https://docs.
 
 ## **Alternative Servers**
 
-GuideLLM supports any OpenAI-compatible server, such as TGI, SG Lang, and more. For detailed information on all supported backends, see the [Backends documentation](../guides/backends.md).
+GuideLLM supports any OpenAI-compatible server, such as TGI, SGLang, and more. For detailed information on all supported backends, see the [Backends documentation](../guides/backends.md).
 
 ## **Verifying Your Server**
 

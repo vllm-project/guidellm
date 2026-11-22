@@ -32,6 +32,7 @@ from guidellm.schemas.data import (
     HuggingFaceDataArgs,
     HuggingFaceTokenizerArgs,
     TorchDataLoaderArgs,
+    TurnPivotArgs,
 )
 
 
@@ -157,6 +158,16 @@ class TestDataPreprocessorArgsRegistry:
         """
         result = DataPreprocessorArgs.model_validate({"kind": "pooling_column_mapper"})
         assert isinstance(result, GenerativeColumnMapperArgs)
+
+    @pytest.mark.regression
+    def test_turn_pivot_dispatch(self):
+        """DataPreprocessorArgs dispatches to TurnPivotArgs.
+
+        ## WRITTEN BY AI ##
+        """
+        result = DataPreprocessorArgs.model_validate({"kind": "turn_pivot"})
+        assert isinstance(result, TurnPivotArgs)
+        assert result.kind == "turn_pivot"
 
     @pytest.mark.sanity
     def test_data_preprocessor_args_schema_discriminator(self):
