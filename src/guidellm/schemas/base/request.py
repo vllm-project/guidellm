@@ -164,6 +164,13 @@ class UsageMetrics(StandardBaseDict):
         default=None, description="Number of video bytes processed/generated."
     )
 
+    unclassified_total_tokens: int | None = Field(
+        default=None,
+        description=(
+            "Aggregate token total, used internally only when per-modality "
+            "tokens break isn't available."
+        ),
+    )
     # Audio stats
     audio_tokens: int | None = Field(
         default=None, description="Number of audio tokens processed/generated."
@@ -234,9 +241,11 @@ class UsageMetrics(StandardBaseDict):
     @property
     def total_tokens(self) -> int | None:
         """
-        Calculate total tokens across all modalities.
+        Sum known modality tokens; fall back to the unclassified total
+        if no modality tokens were reported.
 
-        :return: Sum of text, image, video, and audio tokens, or None if all are None
+        :return: Sum of text, image, video, and audio tokens,
+                 or unclassified_total if all are None
         """
         token_metrics = [
             self.text_tokens,
@@ -244,11 +253,9 @@ class UsageMetrics(StandardBaseDict):
             self.video_tokens,
             self.audio_tokens,
         ]
-        # NOTE: None should indicate no data rather than zero usage
-        if token_metrics.count(None) == len(token_metrics):
-            return None
-        else:
-            return sum(token or 0 for token in token_metrics)
+        known_tokens = [count for count in token_metrics if count is not None]
+
+        return sum(known_tokens) if known_tokens else self.unclassified_total_tokens
 
     def add_text_metrics(self, text):
         """

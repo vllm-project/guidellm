@@ -2448,8 +2448,27 @@ class TestAudioRequestHandler:
             RequestInfo(request_id=request.request_id, status="completed"),
         )
 
+        assert stats.input_metrics.text_tokens is None
+        assert stats.input_metrics.audio_tokens is None
+        assert stats.input_metrics.unclassified_total_tokens == 100
         assert stats.output_tokens == 5
         assert (stats.prompt_tokens, stats.total_tokens) == (100, 105)
+
+    @pytest.mark.regression
+    def test_extract_metrics_uses_known_modality_counts(self):
+        """Use known text/audio counts when the backend also reports a total."""
+        handler = AudioRequestHandler()
+        usage = {
+            "prompt_tokens": 100,
+            "prompt_tokens_details": {"audio_tokens": 60},
+        }
+
+        input_metrics, _ = handler.extract_metrics(usage, "transcript")
+
+        assert input_metrics.text_tokens == 40
+        assert input_metrics.audio_tokens == 60
+        assert input_metrics.unclassified_total_tokens is None
+        assert input_metrics.total_tokens == 100
 
     @pytest.fixture
     def valid_instances(self):
@@ -7322,8 +7341,10 @@ class TestChatAudioOutput:
     """Regression coverage for audio emitted by chat completions."""
 
     @pytest.mark.regression
-    def test_non_streaming_audio_is_collected_across_choices(self, generation_request):
-        """Keep text and audio returned in separate chat choices.
+    def test_non_streaming_audio_is_collected_from_single_choice(
+        self, generation_request
+    ):
+        """Collect text and audio fields from one chat completion choice.
 
         :param generation_request: Basic generation request fixture.
         :return: None.
@@ -7335,18 +7356,13 @@ class TestChatAudioOutput:
             "choices": [
                 {
                     "index": 0,
-                    "message": {"role": "assistant", "content": "Hello."},
-                },
-                {
-                    "index": 1,
                     "message": {
                         "role": "assistant",
-                        "content": None,
+                        "content": "Hello.",
                         "audio": {
                             "id": "audio-1",
                             "data": base64.b64encode(audio).decode("ascii"),
-                            "format": "wav",
-                            "transcript": "Hello.",
+                            "transcript": "",
                         },
                     },
                     "audio_metadata": {
@@ -7355,7 +7371,7 @@ class TestChatAudioOutput:
                         "frame_count": 1600,
                         "channels": 1,
                     },
-                },
+                }
             ],
             "usage": {
                 "prompt_tokens": 4,
@@ -7369,9 +7385,10 @@ class TestChatAudioOutput:
         )
 
         assert result.text == "Hello."
+        assert result.output_media is not None
+        assert len(result.output_media) == 1
         assert result.output_media[0]["data"] == audio
-        assert result.output_media[0]["choice_index"] == 1
-        assert result.output_media[0]["transcript"] == "Hello."
+        assert result.output_media[0]["choice_index"] == 0
         assert result.output_metrics.audio_samples == 1600
         assert result.output_metrics.audio_seconds == pytest.approx(0.1)
         assert result.output_metrics.audio_bytes == len(audio)
@@ -7807,8 +7824,8 @@ class TestChatAudioOutput:
         assert response.output_media is None
 
     @pytest.mark.regression
-    def test_transcript_only_choice_preserves_other_choice_audio_metrics(self):
-        """Keep audio metrics when another choice provides only a transcript.
+    def test_streamed_multimodal_from_single_choice_preserves_audio_metrics(self):
+        """Collect streamed text and audio from the same chat choice.
 
         :return: None.
         ## WRITTEN BY AI ##
@@ -7817,35 +7834,46 @@ class TestChatAudioOutput:
         request = GenerationRequest(columns={"text_column": ["Prompt."]})
         arguments = GenerationRequestArguments()
         audio = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
-        event = {
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {
-                        "audio": {
-                            "data": base64.b64encode(audio).decode("ascii"),
-                        }
-                    },
-                    "audio_metadata": {
-                        "format": "wav",
-                        "sample_rate_hz": 16000,
-                        "frame_count": 1600,
-                        "channels": 1,
-                    },
-                },
-                {
-                    "index": 1,
-                    "delta": {"audio": {"transcript": "Other choice."}},
-                },
-            ]
+        encoded_audio = base64.b64encode(audio).decode("ascii")
+        audio_metadata = {
+            "format": "wav",
+            "sample_rate_hz": 16000,
+            "frame_count": 1600,
+            "channels": 1,
         }
+        sse_payloads = [
+            {
+                "modality": "text",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": "Hello."},
+                    }
+                ],
+            },
+            {
+                "modality": "audio",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": encoded_audio},
+                        "audio_metadata": audio_metadata,
+                    }
+                ],
+            },
+        ]
 
-        assert handler.add_streaming_line("data: " + json.dumps(event)) == 0
+        assert handler.add_streaming_line("data: " + json.dumps(sse_payloads[0])) == 1
+        assert handler.add_streaming_line("data: " + json.dumps(sse_payloads[1])) == 0
+
         handler.mark_stream_complete()
         response = handler.compile_streaming(request, arguments)
 
-        assert response.text == "Other choice."
+        assert response.text == "Hello."
+        assert response.output_media is not None
         assert len(response.output_media) == 1
+        assert response.output_media[0]["data"] == audio
+        assert response.output_media[0]["choice_index"] == 0
         assert response.output_metrics.audio_samples == 1600
         assert response.output_metrics.audio_seconds == pytest.approx(0.1)
         assert response.output_metrics.audio_bytes == len(audio)

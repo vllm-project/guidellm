@@ -2482,6 +2482,17 @@ class AudioRequestHandler(ChatCompletionsRequestHandler):
         ):
             output_metrics.text_tokens = None
 
+        if input_total_tokens is not None and all(
+            count is None
+            for count in (
+                input_metrics.text_tokens,
+                input_metrics.image_tokens,
+                input_metrics.video_tokens,
+                input_metrics.audio_tokens,
+            )
+        ):
+            input_metrics.unclassified_total_tokens = input_total_tokens
+
         return input_metrics, output_metrics
 
 

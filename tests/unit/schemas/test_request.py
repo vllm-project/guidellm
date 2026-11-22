@@ -405,6 +405,7 @@ class TestUsageMetrics:
     @pytest.fixture(
         params=[
             {},
+            {"unclassified_total_tokens": 125},
             {"text_tokens": 100, "text_words": 50},
             {"image_tokens": 200, "image_count": 5, "image_pixels": 1024},
             {"audio_tokens": 150, "audio_seconds": 30.5},
@@ -423,6 +424,7 @@ class TestUsageMetrics:
         ],
         ids=[
             "empty",
+            "unclassified_total",
             "text_metrics",
             "image_metrics",
             "audio_metrics",
@@ -458,6 +460,7 @@ class TestUsageMetrics:
             "video_frames",
             "video_seconds",
             "video_bytes",
+            "unclassified_total_tokens",
             "audio_tokens",
             "audio_samples",
             "audio_seconds",
@@ -492,6 +495,7 @@ class TestUsageMetrics:
             "video_frames",
             "video_seconds",
             "video_bytes",
+            "unclassified_total_tokens",
             "audio_tokens",
             "audio_samples",
             "audio_seconds",
@@ -529,6 +533,7 @@ class TestUsageMetrics:
         assert metrics.text_tokens is None
         assert metrics.image_tokens is None
         assert metrics.video_tokens is None
+        assert metrics.unclassified_total_tokens is None
         assert metrics.audio_tokens is None
 
     @pytest.mark.smoke
@@ -540,6 +545,7 @@ class TestUsageMetrics:
         assert metrics.image_tokens is None
         assert metrics.audio_tokens is None
         assert metrics.video_tokens is None
+        assert metrics.unclassified_total_tokens is None
 
     @pytest.mark.smoke
     @pytest.mark.parametrize(
@@ -559,6 +565,17 @@ class TestUsageMetrics:
                 200,
             ),
             ({"image_tokens": 50, "video_tokens": 25}, 75),
+            ({"unclassified_total_tokens": 100}, 100),
+            ({"text_tokens": 40, "unclassified_total_tokens": 100}, 40),
+            ({"audio_tokens": 0, "unclassified_total_tokens": 120}, 0),
+            (
+                {
+                    "text_tokens": 40,
+                    "audio_tokens": 60,
+                    "unclassified_total_tokens": 999,
+                },
+                100,
+            ),
         ],
         ids=[
             "no_tokens",
@@ -567,6 +584,10 @@ class TestUsageMetrics:
             "text_and_image",
             "all_modalities",
             "image_and_video",
+            "unclassified_fallback",
+            "known_text_takes_precedence",
+            "known_zero_audio_takes_precedence",
+            "known_modalities_sum_takes_precedence",
         ],
     )
     def test_total_tokens_property(self, metrics_kwargs, expected_total):
