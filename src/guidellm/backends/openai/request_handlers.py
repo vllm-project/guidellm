@@ -27,6 +27,7 @@ from guidellm.schemas import (
     ToolCall,
     ToolCallFunction,
     UsageMetrics,
+    VLLMRequestMetrics,
 )
 from guidellm.settings import settings
 from guidellm.utils.audio import pcm16_append_b64_chunks
@@ -395,7 +396,7 @@ def _compile_streaming_response(
         tuple[UsageMetrics, UsageMetrics],
     ],
     streaming_reasoning_texts: list[str] | None = None,
-    response_metrics: dict[str, Any] | None = None,
+    response_metrics: VLLMRequestMetrics | None = None,
 ) -> GenerationResponse:
     """Compile accumulated streaming state into a final response.
 
@@ -575,7 +576,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         self.streaming_texts: list[str] = []
         self.streaming_usage: dict[str, int | dict[str, int]] | None = None
         self.streaming_response_id: str | None = None
-        self.response_metrics: dict[str, Any] | None = None
+        self.response_metrics: VLLMRequestMetrics | None = None
 
     @property
     def last_iteration_had_content(self) -> bool:
@@ -777,7 +778,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         :raises NotImplementedError: If the response contains multiple choices.
         """
         if isinstance(metrics := response.get("metrics"), dict):
-            self.response_metrics = metrics
+            self.response_metrics = VLLMRequestMetrics.model_validate(metrics)
         choices = response.get("choices", [])
         # vLLM may stream each alternative in a separate event. Check only the
         # first index to keep this shared parsing path constant-time.
@@ -836,6 +837,7 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
                 or usage_metrics.get("completion_tokens")
                 or 0
             ),
+            reasoning_tokens=output_details.get("reasoning_tokens"),
             text_words=text_words,
             text_characters=text_chars,
             image_tokens=output_details.get("image_tokens"),
@@ -2388,6 +2390,7 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
                 or usage_metrics.get("output_tokens")
                 or 0
             ),
+            reasoning_tokens=output_details.get("reasoning_tokens"),
             text_words=text_words,
             text_characters=text_chars,
             image_tokens=output_details.get("image_tokens"),

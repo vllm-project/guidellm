@@ -30,6 +30,7 @@ from .request import (
 )
 from .request_stats import GenerativeRequestStats
 from .response import GenerationResponse
+from .response_metrics import VLLMRequestMetrics, VLLMSpeculativeDecodingMetrics
 from .statistics import (
     ConfidenceInterval,
     DistributionSummary,
@@ -71,5 +72,7 @@ __all__ = [
     "TotalT",
     "TurnType",
     "UsageMetrics",
+    "VLLMRequestMetrics",
+    "VLLMSpeculativeDecodingMetrics",
     "standard_model_config",
 ]
