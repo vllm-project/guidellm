@@ -99,16 +99,6 @@ class TestSchedulingStrategy:
         requests_limit_prop = SchedulingStrategy.requests_limit
         assert isinstance(requests_limit_prop, property)
 
-    @pytest.mark.smoke
-    def test_modeled_counts_default_none(self):
-        """Strategies without modeled users or streams report None for both counts.
-
-        ## WRITTEN BY AI ##
-        """
-        strategy = ThroughputStrategy()
-        assert strategy.user_count is None
-        assert strategy.stream_count is None
-
     @pytest.mark.sanity
     def test_invalid_implementation(self):
         """Test that invalid implementations raise NotImplementedError."""
@@ -260,8 +250,6 @@ class TestConcurrentStrategy:
         streams = constructor_args["streams"]
         assert instance.processes_limit == streams
         assert instance.requests_limit == streams
-        assert instance.stream_count == streams
-        assert instance.user_count is None
 
     @pytest.mark.smoke
     def test_string_representation(
@@ -914,8 +902,6 @@ class TestUsersStrategy:
         assert instance.processes_limit == users
         assert instance.requests_limit == users
         assert instance.sessions_limit == users
-        assert instance.user_count == users
-        assert instance.stream_count is None
 
     @pytest.mark.smoke
     def test_string_representation(self, valid_instances: tuple[UsersStrategy, dict]):

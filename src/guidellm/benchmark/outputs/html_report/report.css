@@ -602,8 +602,8 @@ h1 {
   height: clamp(280px, 36vw, 400px);
 }
 
-/* Full-width throughput scaling curve: give the scatter room to breathe. */
-.chart.chart-throughput-scaling {
+/* Full-width interactivity curve: give the scatter room to breathe. */
+.chart.chart-interactivity {
   height: clamp(300px, 34vw, 420px);
 }
 

@@ -154,30 +154,6 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         return None
 
     @property
-    def user_count(self) -> PositiveInt | None:
-        """
-        Get the number of simulated users this strategy models, if any.
-
-        Used for per-user normalization in reports. Strategies that do not model
-        users return None.
-
-        :return: Number of simulated users, None when users are not modeled
-        """
-        return None
-
-    @property
-    def stream_count(self) -> PositiveInt | None:
-        """
-        Get the fixed number of concurrent request streams this strategy models.
-
-        Used for per-stream normalization in reports. Strategies whose load is
-        not a fixed stream count return None.
-
-        :return: Number of concurrent streams, None when not fixed
-        """
-        return None
-
-    @property
     def defines_arrival_schedule(self) -> bool:
         """
         Whether targeted start times follow an independent arrival schedule.
@@ -437,13 +413,6 @@ class ConcurrentStrategy(SchedulingStrategy):
         """
         return self.streams
 
-    @property
-    def stream_count(self) -> PositiveInt:
-        """
-        :return: Number of concurrent request streams
-        """
-        return self.streams
-
     async def next_request_time(self, worker_index: NonNegativeInt) -> float:
         """
         Calculate next request time with stream-based distribution.
@@ -532,13 +501,6 @@ class UsersStrategy(SchedulingStrategy):
     def sessions_limit(self) -> PositiveInt:
         """
         :return: Number of users as the maximum number of active sessions
-        """
-        return self.users
-
-    @property
-    def user_count(self) -> PositiveInt:
-        """
-        :return: Number of simulated users
         """
         return self.users
 

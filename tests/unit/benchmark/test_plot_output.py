@@ -9,8 +9,8 @@ from guidellm.benchmark.entrypoints import reimport_benchmarks_report
 from guidellm.benchmark.outputs.plot import (
     GenerativeBenchmarkerPlot,
     _build_points,
-    _per_request_output_tps,
-    plot_throughput_scaling,
+    _interactivity_from_itl_ms,
+    plot_interactivity,
 )
 from guidellm.benchmark.schemas import GenerativeBenchmarksReport
 from guidellm.extras import plot
@@ -81,6 +81,7 @@ class MockMetrics:
             median=14.0,
             p95=18.0,
         )
+        self.interactivity = None
         self.request_concurrency = MockStatusDistribution(mean=4.0)
         self.tokens_per_second = MockStatusDistribution(mean=30.0)
         self.prompt_tokens_per_second = MockStatusDistribution(mean=10.0)
@@ -88,14 +89,8 @@ class MockMetrics:
 
 
 class MockBenchmark:
-    def __init__(self, user_count: int | None = None, stream_count: int | None = None):
+    def __init__(self):
         self.metrics = MockMetrics()
-        self.config = SimpleNamespace(
-            strategy=SimpleNamespace(
-                user_count=user_count,
-                stream_count=stream_count,
-            )
-        )
 
 
 @pytest.mark.smoke
@@ -358,47 +353,47 @@ async def test_reimport_benchmarks_report_multiple_sibling_file_path(
 
 
 @pytest.mark.sanity
-def test_per_request_output_tps_converts_ms_to_tokens_per_second():
+def test_interactivity_from_itl_ms_converts_latency_to_interactivity():
     """
-    Test that median ms per output token becomes per-request output tokens/sec.
+    Test that inter-token latency in milliseconds becomes interactivity.
 
     ## WRITTEN BY AI ##
     """
-    assert _per_request_output_tps(20.0) == pytest.approx(50.0)
-    assert _per_request_output_tps(100.0) == pytest.approx(10.0)
-    assert _per_request_output_tps(0.0) == 0.0
+    assert _interactivity_from_itl_ms(20.0) == pytest.approx(1.0 / (20.0 / 1000.0))
+    assert _interactivity_from_itl_ms(100.0) == pytest.approx(1.0 / (100.0 / 1000.0))
+    assert _interactivity_from_itl_ms(0.0) == 0.0
 
 
 @pytest.mark.sanity
-def test_plot_throughput_scaling_draws_load_curve_and_annotations():
+def test_plot_interactivity_draws_load_curve_and_annotations():
     """
-    Test that the throughput scaling plot draws a load line and labels.
+    Test that the interactivity plot draws a load line and labels.
 
     ## WRITTEN BY AI ##
     """
     benchmarks = [MockBenchmark(), MockBenchmark(), MockBenchmark()]
-    # (median TPOT ms, aggregate output tokens/sec): speed falls as load rises.
-    for benchmark, (tpot, output_tps) in zip(
+    # (median ITL ms, total output tokens/sec): interactivity falls as load
+    # rises while total throughput keeps increasing.
+    for benchmark, (itl, output_tps) in zip(
         benchmarks,
         [(10.0, 20.0), (20.0, 40.0), (40.0, 60.0)],
         strict=True,
     ):
-        benchmark.metrics.time_per_output_token_ms = MockStatusDistribution(
-            mean=tpot, median=tpot, p95=tpot
+        benchmark.metrics.inter_token_latency_ms = MockStatusDistribution(
+            mean=itl, median=itl, p95=itl
         )
         benchmark.metrics.output_tokens_per_second = MockStatusDistribution(
             mean=output_tps
         )
 
     points = _build_points(benchmarks)  # type: ignore[arg-type]
-    assert [point.per_user_scope for point in points] == ["request"] * 3
-    assert [point.per_user_output_tps for point in points] == pytest.approx(
+    assert [point.interactivity for point in points] == pytest.approx(
         [100.0, 50.0, 25.0]
     )
 
     plot.use("Agg")
     fig, ax = plot.plt.subplots()
-    plot_throughput_scaling(ax, points)
+    plot_interactivity(ax, points)
 
     # One load line; one annotation per plotted point.
     assert len(ax.lines) == 1
@@ -412,20 +407,18 @@ def test_plot_throughput_scaling_draws_load_curve_and_annotations():
 
 
 @pytest.mark.sanity
-def test_build_points_uses_users_and_streams_counts():
+def test_build_points_prefers_compiled_interactivity_metric():
     """
-    Test that user/stream scopes divide aggregate throughput by the fixed count.
+    Test that the compiled interactivity distribution is used when present.
 
     ## WRITTEN BY AI ##
     """
-    points = _build_points(
-        [MockBenchmark(user_count=4), MockBenchmark(stream_count=5)]  # type: ignore[list-item]
+    benchmark = MockBenchmark()
+    benchmark.metrics.interactivity = MockStatusDistribution(mean=1e-3, median=1e-3)
+    benchmark.metrics.inter_token_latency_ms = MockStatusDistribution(
+        mean=14.0, median=14.0, p95=18.0
     )
 
-    assert points[0].per_user_scope == "user"
-    assert points[0].load_count == 4.0
-    assert points[0].per_user_output_tps == pytest.approx(20.0 / 4)
+    points = _build_points([benchmark])  # type: ignore[list-item]
 
-    assert points[1].per_user_scope == "stream"
-    assert points[1].load_count == 5.0
-    assert points[1].per_user_output_tps == pytest.approx(20.0 / 5)
+    assert points[0].interactivity == pytest.approx(1e-3)

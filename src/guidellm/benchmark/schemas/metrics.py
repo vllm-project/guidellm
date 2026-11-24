@@ -1149,6 +1149,13 @@ class GenerativeMetrics(StandardBaseDict):
     inter_token_latency_ms: StatusDistributionSummary = Field(
         description="Distribution of inter-token latencies in milliseconds"
     )
+    interactivity: StatusDistributionSummary | None = Field(
+        default=None,
+        description=(
+            "Distribution of per-request interactivity, defined as 1 / "
+            "inter-token latency in seconds, i.e. output tokens per second"
+        ),
+    )
     time_to_last_round_trip_ms: StatusDistributionSummary = Field(
         description=(
             "Distribution of websocket last-round-trip latencies in milliseconds "
@@ -1626,6 +1633,15 @@ class GenerativeMetrics(StandardBaseDict):
                 successful=after_first_token_requests[0],
                 incomplete=after_first_token_requests[1],
                 errored=after_first_token_requests[2],
+            ),
+            # Derived from ITL but recorded once per request, so each request is
+            # one observation rather than being weighted by its token count.
+            interactivity=StatusDistributionSummary.from_values_function(
+                function=lambda req: req.interactivity,
+                successful=after_first_token_requests[0],
+                incomplete=after_first_token_requests[1],
+                errored=after_first_token_requests[2],
+                uncertainty=uncertainty,
             ),
             prompt_tokens_per_second=StatusDistributionSummary.rate_distribution_from_timings_function(
                 function=lambda req: req.prompt_tokens_timing,

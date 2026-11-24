@@ -51,9 +51,7 @@ class _BenchmarkPoint:
     total_tps: float
     input_tps: float
     output_tps: float
-    per_user_scope: Literal["user", "stream", "request"]
-    load_count: float | None
-    per_user_output_tps: float
+    interactivity: float
     ttft_median_ms: float
     ttft_p95_ms: float
     ttfo_median_ms: float
@@ -148,15 +146,18 @@ def _get_status_total(totals: StatusBreakdown | None, status: _StatusName) -> fl
     return float(value) if value is not None else 0.0
 
 
-def _per_request_output_tps(tpot_median_ms: float) -> float:
+def _interactivity_from_itl_ms(itl_ms: float) -> float:
     """
-    Convert median milliseconds per output token to output tokens per second.
+    Convert inter-token latency in milliseconds to interactivity.
 
-    :param tpot_median_ms: Median time per output token in milliseconds
-    :return: Per-request output tokens per second, or 0.0 when undefined
+    Interactivity is 1 / ITL, where ITL is inter-token latency in seconds
+    (milliseconds / 1000), so lower inter-token latency means higher
+    interactivity.
+
+    :param itl_ms: Median inter-token latency in milliseconds
+    :return: Interactivity value, or 0.0 when undefined
     """
-    # ms/token -> tokens/s: 1 / (ms_per_token / 1000 ms/s) == 1000 / ms_per_token
-    return 1000.0 / tpot_median_ms if tpot_median_ms > 0.0 else 0.0
+    return 1.0 / (itl_ms / 1000.0) if itl_ms > 0.0 else 0.0
 
 
 def _build_points(benchmarks: Sequence[GenerativeBenchmark]) -> list[_BenchmarkPoint]:
@@ -165,25 +166,21 @@ def _build_points(benchmarks: Sequence[GenerativeBenchmark]) -> list[_BenchmarkP
         metrics = benchmark.metrics
         request_totals = metrics.request_totals
         output_tps = _get_val(metrics.output_tokens_per_second, status="total")
-        tpot_total_median = _get_val(
-            metrics.time_per_output_token_ms,
+        interactivity = _get_val(
+            metrics.interactivity,
             is_median=True,
             status="total",
         )
-        strategy = benchmark.config.strategy
-        user_count = strategy.user_count
-        stream_count = strategy.stream_count
-        per_user_scope: Literal["user", "stream", "request"]
-        load_count: float | None
-        if user_count:
-            per_user_scope, load_count = "user", float(user_count)
-            per_user_output_tps = output_tps / user_count
-        elif stream_count:
-            per_user_scope, load_count = "stream", float(stream_count)
-            per_user_output_tps = output_tps / stream_count
-        else:
-            per_user_scope, load_count = "request", None
-            per_user_output_tps = _per_request_output_tps(tpot_total_median)
+        if interactivity <= 0.0:
+            # Reports written before the interactivity metric existed have no
+            # distribution; derive it from the inter-token latency instead.
+            interactivity = _interactivity_from_itl_ms(
+                _get_val(
+                    metrics.inter_token_latency_ms,
+                    is_median=True,
+                    status="total",
+                )
+            )
 
         points.append(
             _BenchmarkPoint(
@@ -198,9 +195,7 @@ def _build_points(benchmarks: Sequence[GenerativeBenchmark]) -> list[_BenchmarkP
                 total_tps=_get_val(metrics.tokens_per_second, status="total"),
                 input_tps=_get_val(metrics.prompt_tokens_per_second, status="total"),
                 output_tps=output_tps,
-                per_user_scope=per_user_scope,
-                load_count=load_count,
-                per_user_output_tps=per_user_output_tps,
+                interactivity=interactivity,
                 ttft_median_ms=_get_val(
                     metrics.time_to_first_token_ms,
                     is_median=True,
@@ -314,22 +309,6 @@ def _label_for_concurrency(point: _BenchmarkPoint, index: int) -> str:
     if point.concurrency > 0.0:
         return f"{point.concurrency:g}"
     return str(index + 1)
-
-
-def _load_label(point: _BenchmarkPoint, index: int) -> str:
-    """
-    Label a point with its modeled users/streams, falling back to concurrency.
-
-    :param point: Benchmark point to label
-    :param index: Position of the point in load order
-    :return: Human-readable load label
-    """
-    if point.load_count is None:
-        return _label_for_concurrency(point, index)
-
-    noun = "user" if point.per_user_scope == "user" else "stream"
-    suffix = "" if point.load_count == 1.0 else "s"
-    return f"{point.load_count:g} {noun}{suffix}"
 
 
 def _style_axis(ax: plot.Axes) -> None:
@@ -540,42 +519,27 @@ def plot_token_throughput_vs_concurrency(
     _show_legend(ax)
 
 
-_THROUGHPUT_SCALING_LABELS: dict[str, tuple[str, str]] = {
-    "user": ("Per-User", "Per-User Output Speed (Output Tokens/sec)"),
-    "stream": ("Per-Stream", "Per-Stream Output Speed (Output Tokens/sec)"),
-    "request": (
-        "Per Active Request",
-        "Per Active Request Output Speed (Output Tokens/sec)",
-    ),
-}
-
-
-def plot_throughput_scaling(
+def plot_interactivity(
     ax: plot.Axes,
     points: Sequence[_BenchmarkPoint],
 ) -> None:
     """
-    Plot per-user, per-stream, or per-request generation speed against aggregate
-    output throughput.
+    Plot per-request interactivity against total output throughput.
 
+    Interactivity is 1 / ITL, where ITL is inter-token latency in seconds.
     Points are connected in increasing-concurrency order so the saturation
-    trade-off (throughput still rising, per-unit speed falling) is visible.
+    trade-off (throughput still rising, interactivity falling) is visible.
 
     :param ax: Matplotlib axis to draw on
     :param points: Benchmark points extracted from the report
     """
-    scope = points[0].per_user_scope if points else "request"
-    scope_label, x_label = _THROUGHPUT_SCALING_LABELS.get(
-        scope, _THROUGHPUT_SCALING_LABELS["request"]
-    )
-
     sorted_points = _sort_by_concurrency(points)
-    per_user = _series(sorted_points, lambda point: point.per_user_output_tps)
+    interactivity = _series(sorted_points, lambda point: point.interactivity)
     output_tps = _series(sorted_points, lambda point: point.output_tps)
     valid = [
         (point, x_value, y_value)
         for point, x_value, y_value in zip(
-            sorted_points, per_user, output_tps, strict=True
+            sorted_points, interactivity, output_tps, strict=True
         )
         if x_value > 0.0 and y_value > 0.0
     ]
@@ -594,7 +558,7 @@ def plot_throughput_scaling(
         )
         for index, (point, x_value, y_value) in enumerate(valid):
             ax.annotate(
-                _load_label(point, index),
+                _label_for_concurrency(point, index),
                 (x_value, y_value),
                 textcoords="offset points",
                 xytext=(6, 6),
@@ -604,10 +568,11 @@ def plot_throughput_scaling(
 
         # Pad X so edge markers are not clipped, anchor Y at zero, and leave a
         # little headroom above the peak so small differences are not
-        # visually exaggerated.
+        # visually exaggerated. Interactivity values are small, so the
+        # single-point padding cannot use a floor of one.
         x_min, x_max = min(x_values), max(x_values)
         x_span = x_max - x_min
-        x_padding = x_span * 0.08 if x_span > 0.0 else max(abs(x_max) * 0.08, 1.0)
+        x_padding = x_span * 0.08 if x_span > 0.0 else max(abs(x_max) * 0.1, 1e-12)
         y_max = max(y_values)
         y_padding = y_max * 0.05 if y_max > 0.0 else 1.0
         ax.set_xlim(x_min - x_padding, x_max + x_padding)
@@ -615,11 +580,11 @@ def plot_throughput_scaling(
 
     _set_title(
         ax,
-        f"4. Throughput Scaling: {scope_label} vs. Aggregate Output Throughput\n"
-        "(further right and higher is better)",
+        "4. Interactivity vs. Total Output Throughput\n"
+        "(higher and further right is better)",
     )
-    ax.set_xlabel(x_label)
-    ax.set_ylabel("Aggregate Output Throughput (Output Tokens/sec)")
+    ax.set_xlabel("Interactivity (1/ITL) tokens/sec")
+    ax.set_ylabel("Total Output Throughput (Output Tokens/sec)")
     _show_legend(ax)
 
 
@@ -852,7 +817,7 @@ _PLOT_FUNCTIONS: tuple[_PlotFunction, ...] = (
     plot_latency_vs_request_rate,
     plot_generation_latency_vs_request_rate,
     plot_token_throughput_vs_concurrency,
-    plot_throughput_scaling,
+    plot_interactivity,
     plot_latency_vs_throughput,
     plot_request_status_counts,
     plot_latency_breakdown_at_peak_throughput,

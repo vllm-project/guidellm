@@ -232,6 +232,11 @@ class TestGenerativeRequestStats:
             "time_to_first_token_ms": expected_time_to_first_ms,
             "time_per_output_token_ms": expected_time_per_output_ms,
             "inter_token_latency_ms": expected_inter_token_ms,
+            "interactivity": (
+                None
+                if expected_inter_token_ms is None or expected_inter_token_ms <= 0
+                else 1.0 / (expected_inter_token_ms / 1000.0)
+            ),
             "tokens_per_second": expected_tokens_per_sec,
             "output_tokens_per_second": expected_output_tokens_per_sec,
             "iter_tokens_per_iteration": expected_iter_tokens_per_iter,
@@ -290,6 +295,7 @@ class TestGenerativeRequestStats:
             "output_tokens_per_iteration",
             "time_to_last_round_trip_ms",
             "avg_round_trip_time_ms",
+            "interactivity",
         ):
             assert hasattr(GenerativeRequestStats, prop_name)
 
@@ -374,6 +380,7 @@ class TestGenerativeRequestStats:
             "first_token_iteration",
             "last_token_iteration",
             "token_iterations",
+            "interactivity",
         ):
             got = getattr(instance, key)
             exp = expected[key]

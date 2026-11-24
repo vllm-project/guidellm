@@ -22,7 +22,6 @@ from guidellm.scheduler import (
     AsyncConstantStrategy,
     ConcurrentStrategy,
     ThroughputStrategy,
-    UsersStrategy,
 )
 from guidellm.schemas import DistributionSummary
 from guidellm.schemas.benchmark import BenchmarkOutputArgs
@@ -37,6 +36,9 @@ from tests.unit.benchmark.html_report_fixtures import (
 )
 from tests.unit.benchmark.html_report_fixtures import (
     report as _report,
+)
+from tests.unit.benchmark.html_report_fixtures import (
+    status_dist as _status_dist,
 )
 
 
@@ -91,9 +93,9 @@ def test_build_report_view_single_and_multi_run():
     assert "kpis" not in single_view
     assert "modalities" not in single_view["runs"][0]
     assert single_view["runs"][0]["total_tps"] == 40.0
-    assert single_view["runs"][0]["per_user_scope"] == "request"
-    assert single_view["runs"][0]["load_count"] is None
-    assert single_view["runs"][0]["per_user_output_tps"] == pytest.approx(1000.0 / 18.0)
+    assert single_view["runs"][0]["interactivity"] == pytest.approx(
+        1.0 / (14.0 / 1000.0)
+    )
 
     multi_report = _report(
         _make_benchmark(
@@ -101,12 +103,14 @@ def test_build_report_view_single_and_multi_run():
             rps=1.0,
             tps=20.0,
             measure_start=1_700_000_000.0,
+            itl_median_ms=10.0,
         ),
         _make_benchmark(
             strategy=ConcurrentStrategy(streams=4),
             rps=2.0,
             tps=50.0,
             measure_start=1_700_000_010.0,
+            itl_median_ms=28.0,
         ),
     )
     multi_view = build_report_view(multi_report)
@@ -120,11 +124,10 @@ def test_build_report_view_single_and_multi_run():
     assert multi_view["runs"][0]["configured_concurrency"] == 2
     assert multi_view["runs"][0]["configured_request_rate"] is None
     assert multi_view["runs"][1]["configured_request_rate"] is None
-    assert multi_view["runs"][0]["per_user_scope"] == "stream"
-    assert multi_view["runs"][0]["load_count"] == 2
-    assert multi_view["runs"][1]["load_count"] == 4
-    assert multi_view["runs"][0]["per_user_output_tps"] == pytest.approx(20.0 / 2)
-    assert multi_view["runs"][1]["per_user_output_tps"] == pytest.approx(20.0 / 4)
+    assert multi_view["runs"][0]["interactivity"] == pytest.approx(100.0)
+    assert multi_view["runs"][1]["interactivity"] == pytest.approx(
+        1.0 / (28.0 / 1000.0)
+    )
 
     throughput_report = _report(
         _make_benchmark(
@@ -151,35 +154,9 @@ def test_build_report_view_single_and_multi_run():
 
 
 @pytest.mark.sanity
-def test_build_report_view_users_scope_divides_by_users():
+def test_build_report_view_interactivity_falls_back_to_itl():
     """
-    The users profile reports per-user output throughput, not per request.
-
-    ## WRITTEN BY AI ##
-    """
-    view = build_report_view(
-        _report(
-            _make_benchmark(
-                strategy=UsersStrategy(users=4),
-                rps=1.0,
-                tps=20.0,
-                output_tps=20.0,
-            )
-        )
-    )
-
-    row = view["runs"][0]
-    assert row["per_user_scope"] == "user"
-    assert row["load_count"] == 4
-    assert row["per_user_output_tps"] == pytest.approx(20.0 / 4)
-    # The TPOT-derived fallback must not be used when users are modeled.
-    assert row["per_user_output_tps"] != pytest.approx(1000.0 / 18.0)
-
-
-@pytest.mark.sanity
-def test_build_report_view_missing_tpot_yields_no_per_request_rate():
-    """
-    A missing/zero TPOT leaves the per-request scope without a usable rate.
+    Reports without the interactivity distribution derive it from ITL.
 
     ## WRITTEN BY AI ##
     """
@@ -187,13 +164,16 @@ def test_build_report_view_missing_tpot_yields_no_per_request_rate():
         strategy=AsyncConstantStrategy(rate=2.0),
         rps=2.0,
         tps=40.0,
-        tpot_median_ms=0.0,
+        itl_median_ms=20.0,
     )
-    view = build_report_view(_report(benchmark))
+    benchmark.metrics.interactivity = None
+    row = build_report_view(_report(benchmark))["runs"][0]
+    assert row["interactivity"] == pytest.approx(1.0 / (20.0 / 1000.0))
 
-    row = view["runs"][0]
-    assert row["per_user_scope"] == "request"
-    assert row["per_user_output_tps"] is None
+    # When neither is available, there is no usable X value.
+    benchmark.metrics.inter_token_latency_ms = _status_dist(0.0, median=0.0, count=0)
+    row = build_report_view(_report(benchmark))["runs"][0]
+    assert row["interactivity"] is None
 
 
 @pytest.mark.sanity

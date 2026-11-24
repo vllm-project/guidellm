@@ -497,15 +497,13 @@ def _build_run_row(benchmark: GenerativeBenchmark, index: int) -> dict[str, Any]
     )
 
     output_tps = _mean(metrics.output_tokens_per_second, status="total")
-    tpot_median_ms = _median(metrics.time_per_output_token_ms, status="total")
-    per_user_scope: str
-    load_count: int | None
-    if strategy.user_count:
-        per_user_scope, load_count = "user", strategy.user_count
-    elif strategy.stream_count:
-        per_user_scope, load_count = "stream", strategy.stream_count
-    else:
-        per_user_scope, load_count = "request", None
+    interactivity = _median(metrics.interactivity, status="total")
+    if interactivity is None:
+        # Reports written before the interactivity metric existed have no
+        # distribution; derive it from the inter-token latency instead.
+        interactivity = _interactivity_from_itl_ms(
+            _median(metrics.inter_token_latency_ms, status="total")
+        )
 
     return {
         "index": index,
@@ -518,12 +516,7 @@ def _build_run_row(benchmark: GenerativeBenchmark, index: int) -> dict[str, Any]
         "total_tps": _mean(metrics.tokens_per_second, status="total"),
         "input_tps": _mean(metrics.prompt_tokens_per_second, status="total"),
         "output_tps": output_tps,
-        "per_user_scope": per_user_scope,
-        "load_count": load_count,
-        "tpot_median_ms": tpot_median_ms,
-        "per_user_output_tps": _per_unit_output_tps(
-            output_tps, tpot_median_ms, load_count
-        ),
+        "interactivity": interactivity,
         "request_latency_p95_ms": _ms(req_lat_p95),
         "request_latency_p99_ms": _ms(req_lat_p99),
         "ttft_p95_ms": _percentile(metrics.time_to_first_token_ms, "p95"),
@@ -1079,25 +1072,20 @@ def _ms(seconds: float | None) -> float | None:
     return float(seconds) * 1000.0
 
 
-def _per_unit_output_tps(
-    output_tps: float | None,
-    tpot_median_ms: float | None,
-    load_count: int | None,
-) -> float | None:
+def _interactivity_from_itl_ms(itl_ms: float | None) -> float | None:
     """
-    Per-user/per-stream (or per-request) output tokens per second.
+    Convert inter-token latency in milliseconds to interactivity.
 
-    :param output_tps: Aggregate output tokens per second
-    :param tpot_median_ms: Median time per output token in milliseconds
-    :param load_count: Modeled users or streams, None for the per-request scope
-    :return: Scoped output tokens per second, or None when undefined
+    Interactivity is 1 / ITL, where ITL is inter-token latency in seconds
+    (milliseconds / 1000), so lower inter-token latency means higher
+    interactivity.
+
+    :param itl_ms: Median inter-token latency in milliseconds
+    :return: Interactivity value, or None when undefined
     """
-    if load_count:
-        return output_tps / load_count if output_tps is not None else None
-    if tpot_median_ms is None or tpot_median_ms <= 0:
+    if itl_ms is None or itl_ms <= 0:
         return None
-    # ms/token -> tokens/s: 1000 / ms_per_token
-    return 1000.0 / tpot_median_ms
+    return 1.0 / (itl_ms / 1000.0)
 
 
 def _ttfot_differs(ttft: float | None, ttfot: float | None) -> bool:
