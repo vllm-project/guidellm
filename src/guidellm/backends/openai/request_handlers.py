@@ -17,8 +17,10 @@ from enum import Enum, auto
 from typing import Any, Protocol, cast
 
 from more_itertools import roundrobin
+from pydantic import ValidationError
 
 from guidellm.backends.openai.common import format_ws_error
+from guidellm.logger import logger
 from guidellm.scheduler import HistoryT
 from guidellm.schemas import (
     GenerationRequest,
@@ -778,7 +780,13 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         :raises NotImplementedError: If the response contains multiple choices.
         """
         if isinstance(metrics := response.get("metrics"), dict):
-            self.response_metrics = VLLMRequestMetrics.model_validate(metrics)
+            try:
+                # TODO: Improve this handling if we end up supporting
+                #       multiple different response formats
+                self.response_metrics = VLLMRequestMetrics.model_validate(metrics)
+            except ValidationError as e:
+                logger.warning("Failed to parse vLLM metrics: {}", e)
+
         choices = response.get("choices", [])
         # vLLM may stream each alternative in a separate event. Check only the
         # first index to keep this shared parsing path constant-time.

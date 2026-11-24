@@ -12,7 +12,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from pydantic import ValidationError
+from logot import Logot
+from logot.logged import warning
 
 from guidellm.backends.openai.request_handlers import (
     AudioRequestHandler,
@@ -521,19 +522,22 @@ class TestResponseMetricsPassthrough:
         assert stats.response_metrics.model_dump(exclude_unset=True) == metrics
 
     @pytest.mark.regression
-    def test_metrics_validated_during_extraction(self):
-        """Reject invalid known fields when parsing the backend response payload.
+    def test_metrics_validation_failure_warns(self, logot: Logot):
+        """Warn and skip invalid known fields when parsing the backend payload.
 
         ## WRITTEN BY AI ##
         """
         handler = TextCompletionsRequestHandler()
-        with pytest.raises(ValidationError, match="num_spec_steps"):
-            handler.extract_choices_and_usage(
-                {
-                    "choices": [],
-                    "metrics": {"speculative_decoding": {"num_spec_steps": "invalid"}},
-                }
-            )
+        choices, usage = handler.extract_choices_and_usage(
+            {
+                "choices": [],
+                "metrics": {"speculative_decoding": {"num_spec_steps": "invalid"}},
+            }
+        )
+        assert choices == []
+        assert usage == {}
+        assert handler.response_metrics is None
+        logot.assert_logged(warning("Failed to parse vLLM metrics: %s"))
 
     def test_non_streaming(self) -> None:
         """Parse metrics into the shared model for non-streamed completions.
