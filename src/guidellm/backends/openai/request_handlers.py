@@ -10,9 +10,11 @@ extract usage metrics, and convert results into standardized GenerationResponse.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import io
+import math
 import wave
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -49,6 +51,8 @@ from guidellm.utils.registry import RegistryMixin
 WS_AUDIO_CHUNKS_BODY_KEY = "audio_chunks"
 PCM_WAV_HEADER_SIZE = 44
 WAV_FMT_CHUNK_SIZE = 16
+WAV_RIFF_HEADER_SIZE = 12
+WAV_UNKNOWN_SIZE = 0xFFFFFFFF
 PCM_BITS_PER_SAMPLE = 16
 PCM16_BYTES_PER_SAMPLE = PCM_BITS_PER_SAMPLE // 8
 
@@ -301,30 +305,223 @@ def _apply_audio_metadata(item: dict[str, Any], metadata: Any) -> None:
     )
 
 
+def _validate_wav_trailing_chunks(
+    data: bytes,
+    offset: int,
+    riff_end: int,
+) -> None:
+    """
+    Validate the RIFF chunks following the WAV data chunk.
+
+    :param data: Complete WAV response bytes.
+    :param offset: Byte offset where the trailing chunks begin.
+    :param riff_end: Exclusive byte offset at the end of the RIFF container.
+    :return: None.
+    :raises ValueError: If a trailing chunk is incomplete, truncated, or extends
+        beyond the RIFF container.
+    """
+
+    while offset < riff_end:
+        if offset + 8 > riff_end:
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] incomplete WAV trailing chunk header"
+            )
+        if offset + 8 > len(data):
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] truncated WAV trailing chunk header"
+            )
+
+        chunk_size: int = int.from_bytes(data[offset + 4 : offset + 8], "little")
+        chunk_end: int = offset + 8 + chunk_size
+        padded_end: int = chunk_end + (chunk_size & 1)
+
+        if padded_end > riff_end:
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] WAV trailing chunk exceeds RIFF boundary"
+            )
+        if padded_end > len(data):
+            raise ValueError("[UNUSABLE_BACKEND_RESPONSE] truncated WAV trailing chunk")
+
+        offset = padded_end
+
+
+def _is_riff_wave(data: bytes) -> bool:
+    """
+    Return whether the bytes begin with a RIFF/WAVE header.
+
+    :param data: Audio response bytes.
+    :return: True if the RIFF/WAVE header is present; otherwise, False.
+    """
+    return (
+        len(data) >= WAV_RIFF_HEADER_SIZE
+        and data[:4] == b"RIFF"
+        and data[8:WAV_RIFF_HEADER_SIZE] == b"WAVE"
+    )
+
+
+def _is_canonical_pcm16_wav_header(data: bytes) -> bool:
+    """
+    Return whether the WAV header uses the supported canonical PCM16 layout.
+
+    :param data: WAV response bytes.
+    :return: True if the header describes canonical PCM16 data; otherwise, False.
+    """
+    return (
+        len(data) >= PCM_WAV_HEADER_SIZE
+        and data[12:16] == b"fmt "
+        and int.from_bytes(data[16:20], "little") == WAV_FMT_CHUNK_SIZE
+        and int.from_bytes(data[20:22], "little") == 1
+        and int.from_bytes(data[34:36], "little") == PCM_BITS_PER_SAMPLE
+        and data[36:40] == b"data"
+    )
+
+
+def _validated_pcm16_dimensions(
+    sample_rate: object, channels: object
+) -> tuple[int, int] | None:
+    """
+    Return valid PCM16 sample-rate and channel values.
+
+    :param sample_rate: Sample rate parsed from metadata or a WAV header.
+    :param channels: Channel count parsed from metadata or a WAV header.
+    :return: The positive integer values, or None if either value is invalid.
+    """
+    if type(sample_rate) is not int or sample_rate <= 0:
+        return None
+    if type(channels) is not int or channels <= 0:
+        return None
+    return sample_rate, channels
+
+
+def _finite_wav_pcm16_payload_bytes(
+    data: bytes,
+    riff_size: int,
+    data_size: int,
+    complete: bool,
+) -> int:
+    """
+    Validate finite WAV chunk sizes and return available PCM payload bytes.
+
+    :param data: WAV response bytes received so far.
+    :param riff_size: Finite RIFF size from the WAV header.
+    :param data_size: Finite data chunk size from the WAV header.
+    :param complete: Whether the full response body has arrived.
+    :return: Available bytes belonging to the WAV data chunk.
+    :raises ValueError: If chunk boundaries are invalid or a complete WAV is
+        truncated or contains malformed trailing chunks.
+    """
+    riff_end: int = riff_size + 8
+    data_end: int = PCM_WAV_HEADER_SIZE + data_size
+    padded_data_end: int = data_end + (data_size & 1)
+
+    if riff_end < PCM_WAV_HEADER_SIZE or padded_data_end > riff_end:
+        raise ValueError(
+            "[UNUSABLE_BACKEND_RESPONSE] WAV data chunk exceeds RIFF boundary"
+        )
+
+    if complete:
+        if data_end > len(data):
+            raise ValueError("[UNUSABLE_BACKEND_RESPONSE] truncated WAV data chunk")
+        if riff_end > len(data):
+            raise ValueError("[UNUSABLE_BACKEND_RESPONSE] truncated WAV RIFF container")
+        _validate_wav_trailing_chunks(data, padded_data_end, riff_end)
+
+    # Bytes after the declared data chunk belong to other RIFF chunks.
+    return min(max(0, len(data) - PCM_WAV_HEADER_SIZE), data_size)
+
+
+def _wav_pcm16_payload_bytes(
+    data: bytes,
+    *,
+    complete: bool,
+    allow_unknown_length: bool,
+) -> int | None:
+    """
+    Validate a WAV header and return its PCM payload size when supported.
+
+    :param data: WAV response bytes received so far.
+    :param complete: Whether the full response body has arrived.
+    :param allow_unknown_length: Whether streaming WAV headers may use unknown
+        RIFF and data sizes.
+    :return: PCM payload size in bytes, or None for non-PCM16 WAV data or an
+        incomplete header received during streaming.
+    :raises ValueError: If the complete WAV header is truncated, its chunk
+        boundaries are malformed, or unknown sizes are not allowed.
+    """
+    if not _is_riff_wave(data):
+        return None
+
+    if len(data) < PCM_WAV_HEADER_SIZE:
+        if complete:
+            raise ValueError("[UNUSABLE_BACKEND_RESPONSE] truncated PCM16 WAV header")
+        return None
+
+    if not _is_canonical_pcm16_wav_header(data):
+        return None
+
+    riff_size: int = int.from_bytes(data[4:8], "little")
+    data_size: int = int.from_bytes(data[40:44], "little")
+    has_unknown_riff_size: bool = riff_size == WAV_UNKNOWN_SIZE
+    has_unknown_data_size: bool = data_size == WAV_UNKNOWN_SIZE
+
+    if has_unknown_riff_size or has_unknown_data_size:
+        if allow_unknown_length and has_unknown_riff_size and has_unknown_data_size:
+            # Omni streaming WAVs end at transport EOF, so count bytes received
+            # after the data header.
+            return len(data) - PCM_WAV_HEADER_SIZE
+        raise ValueError(
+            "[UNUSABLE_BACKEND_RESPONSE] unknown-length WAV header "
+            "outside a streaming response"
+        )
+
+    return _finite_wav_pcm16_payload_bytes(
+        data,
+        riff_size,
+        data_size,
+        complete,
+    )
+
+
 def _pcm16_layout(
     data: bytes,
     audio_format: str,
     sample_rate_hint: int | None,
     channels_hint: int | None,
+    *,
+    complete: bool = True,
+    allow_unknown_length: bool = False,
 ) -> tuple[int, int, int, int] | None:
     """
-    Returning tuple contains: (sample_rate, channels, header_bytes, frame_count).
+    Return (sample_rate, channels, header_bytes, frame_count) for PCM16 audio.
+    Finite WAV sizes are validated when complete. Unknown WAV sizes are accepted
+    only when the caller identifies a streaming response.
+
+    :param data: PCM or WAV response bytes.
+    :param audio_format: Response format, such as ``"pcm"`` or ``"wav"``.
+    :param sample_rate_hint: Sample rate for headerless PCM data.
+    :param channels_hint: Channel count for headerless PCM data.
+    :param complete: Whether the full response body has arrived.
+    :param allow_unknown_length: Whether streaming WAV headers may use unknown
+        RIFF and data sizes.
+    :return: ``(sample_rate, channels, header_bytes, frame_count)``, or None
+        when the format, layout, or incomplete streaming payload is unsupported.
+    :raises ValueError: If a completed PCM payload has an incomplete frame or
+        WAV data has an invalid or truncated container.
     """
     sample_rate: int | None
     channels: int | None
+    header_bytes: int
+    payload_bytes: int | None
 
     if audio_format == "wav":
-        if (
-            len(data) < PCM_WAV_HEADER_SIZE
-            or data[:4] != b"RIFF"
-            or data[8:12] != b"WAVE"
-            or data[12:16] != b"fmt "
-            or int.from_bytes(data[16:20], "little") != WAV_FMT_CHUNK_SIZE
-            or int.from_bytes(data[20:22], "little") != 1
-            or int.from_bytes(data[34:36], "little") != PCM_BITS_PER_SAMPLE
-            or data[36:40] != b"data"
-        ):
+        payload_bytes = _wav_pcm16_payload_bytes(
+            data,
+            complete=complete,
+            allow_unknown_length=allow_unknown_length,
+        )
+        if payload_bytes is None:
             return None
+
         sample_rate = int.from_bytes(data[24:28], "little")
         channels = int.from_bytes(data[22:24], "little")
         header_bytes = PCM_WAV_HEADER_SIZE
@@ -332,20 +529,22 @@ def _pcm16_layout(
         sample_rate = sample_rate_hint
         channels = channels_hint
         header_bytes = 0
+        payload_bytes = len(data)
     else:
         return None
 
-    if (
-        type(sample_rate) is not int
-        or sample_rate <= 0
-        or type(channels) is not int
-        or channels <= 0
-    ):
+    if payload_bytes < 0:
         return None
 
-    payload_bytes = len(data) - header_bytes
-    bytes_per_frame = 2 * channels
-    if payload_bytes < 0 or payload_bytes % bytes_per_frame:
+    dimensions = _validated_pcm16_dimensions(sample_rate, channels)
+    if dimensions is None:
+        return None
+    sample_rate, channels = dimensions
+
+    bytes_per_frame: int = PCM16_BYTES_PER_SAMPLE * channels
+    if payload_bytes % bytes_per_frame:
+        if complete:
+            raise ValueError("[UNUSABLE_BACKEND_RESPONSE] incomplete PCM16 frame")
         return None
 
     return sample_rate, channels, header_bytes, payload_bytes // bytes_per_frame
@@ -1174,7 +1373,11 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         self._output_sample_rate_hint: int | None = None
         self._output_channels_hint: int | None = None
         self._requested_audio_format = "wav"
-        self._stream_complete = False
+        self._streaming_response: bool = False
+        self._audio_requested: bool = False
+        self._transport_complete: bool = False
+        self._stream_done_received: bool = False
+        self._stream_choice_finished: bool = False
 
     def set_streaming_arrival_time(self, timestamp_s: float) -> None:
         """
@@ -1185,7 +1388,12 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         self._streaming_arrival_time = timestamp_s
 
     def mark_stream_complete(self) -> None:
-        self._stream_complete = True
+        """
+        Record HTTP transport EOF separately from chat protocol completion.
+
+        :return: None.
+        """
+        self._transport_complete = True
 
     def _append_streaming_media_item(
         self, choice_index: int, item: dict[str, Any]
@@ -1197,6 +1405,15 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         self.streaming_media_packets.append(
             (choice_index, item, self._streaming_arrival_time)
         )
+
+    @property
+    def _stream_protocol_complete(self) -> bool:
+        """
+        Return whether a choice finished and the SSE [DONE] marker arrived.
+
+        :return: True when both protocol markers were received.
+        """
+        return self._stream_choice_finished and self._stream_done_received
 
     @property
     def last_iteration_had_content(self) -> bool:
@@ -1388,15 +1605,28 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         rate = audio_item.get("sample_rate") or self._output_sample_rate_hint
         channels = audio_item.get("channels") or self._output_channels_hint
 
-        if samples is None or seconds is None:
-            layout = _pcm16_layout(audio_item["data"], audio_format, rate, channels)
-            if layout is not None:
-                rate, channels, _, frames = layout
+        if audio_format in ("pcm", "pcm16", "wav"):
+            layout = _pcm16_layout(
+                audio_item["data"],
+                audio_format,
+                rate,
+                channels,
+                complete=True,
+                allow_unknown_length=self._streaming_response,
+            )
+        else:
+            layout = None
+
+        if layout is not None:
+            rate, channels, _, frames = layout
+            if samples is None:
                 samples = frames
+            if seconds is None:
                 seconds = frames / rate
-            elif audio_format in ("pcm", "pcm16"):
+        elif samples is None or seconds is None:
+            if audio_format in ("pcm", "pcm16"):
                 audio_len = len(audio_item["data"])
-                pcm_len = 2 * (channels or 1)
+                pcm_len = PCM16_BYTES_PER_SAMPLE * (channels or 1)
                 if (audio_len - int(audio_len / pcm_len) * pcm_len) > 0:
                     raise ValueError(
                         "[UNUSABLE_BACKEND_RESPONSE] incomplete PCM16 frame"
@@ -1795,6 +2025,9 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
 
         self._output_sample_rate_hint = kwargs.get("audio_output_sample_rate")
         self._output_channels_hint = kwargs.get("audio_output_channels")
+        self._streaming_response = arguments.stream is True
+        modalities = arguments.body.get("modalities")
+        self._audio_requested = isinstance(modalities, list) and "audio" in modalities
         self._requested_audio_format = "wav"
         if isinstance(arguments.body, dict):
             audio_settings = arguments.body.get("audio")
@@ -1910,6 +2143,14 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         """
 
         self._last_iteration_had_audio = False
+        stripped_line = line.strip()
+        if (
+            stripped_line.startswith("data:")
+            and stripped_line[len("data:") :].strip() == "[DONE]"
+        ):
+            self._stream_done_received = True
+            return None
+
         if not (data := self.extract_line_data(line)):
             return None if data is None else 0
 
@@ -1923,6 +2164,8 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
         choices, usage = self.extract_choices_and_usage(data)
 
         for choice in choices:
+            if choice.get("finish_reason") is not None:
+                self._stream_choice_finished = True
             audio_parser = ModalityParserRegistry.create("audio")
             choice_updated, choice_had_content = self._process_streaming_choice(
                 data, choice, audio_parser
@@ -2171,7 +2414,7 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                 response.output_metrics.text_words = None
                 response.output_metrics.text_characters = None
 
-        if self._stream_complete:
+        if self._transport_complete and self._stream_protocol_complete:
             by_choice: dict[int, list[tuple[dict[str, Any], float | None]]] = {}
             for index, item, arrival in self.streaming_media_packets:
                 if item.get("modality") == "audio":
@@ -2222,6 +2465,29 @@ class ChatCompletionsRequestHandler(TextCompletionsRequestHandler):
                     all(result.is_continuous for result in continuity)
                 )
         return response
+
+    def post_validation(self, response: GenerationResponse) -> None:
+        """
+        Reject chat audio streams without complete SSE termination.
+
+        :param response: Compiled chat completion response.
+        :return: None.
+        :raises ValueError: If an audio stream ended without both protocol markers.
+        """
+        has_audio_output = any(
+            item.get("modality") == "audio" for item in (response.output_media or [])
+        )
+        if (
+            self._streaming_response
+            and (self._audio_requested or has_audio_output)
+            and not (self._transport_complete and self._stream_protocol_complete)
+        ):
+            raise ValueError(
+                "[UNUSABLE_BACKEND_RESPONSE] chat audio stream ended without "
+                "both a choice finish_reason and the [DONE] marker"
+            )
+
+        super().post_validation(response)
 
 
 @OpenAIRequestHandlerFactory.register(
@@ -2526,6 +2792,8 @@ class SpeechRequestHandler(OpenAIRequestHandler):
         self._output_channels_hint: int | None = None
         self._response_sample_rate: int | None = None
         self._response_channels: int | None = None
+        self._response_audio_duration: float | None = None
+        self._streaming_audio_duration: float | None = None
         self._requested_audio_format = "wav"
         self._streaming_arrival_time: float | None = None
         self._stream_complete = False
@@ -2554,15 +2822,35 @@ class SpeechRequestHandler(OpenAIRequestHandler):
 
     def set_response_headers(self, headers: Mapping[str, str]) -> None:
         """
-        Store usage headers and server's PCM layout.
+        Store usage, duration, and PCM layout from response headers.
         :param headers: HTTP response headers.
         :return: None.
         """
         self._response_headers = {key.lower(): value for key, value in headers.items()}
+        self._response_audio_duration = self._parse_duration_seconds(
+            self._response_headers.get("x-audio-duration-seconds")
+        )
         self._update_audio_layout(
             self._response_headers.get("x-audio-sample-rate"),
             self._response_headers.get("x-audio-channels"),
         )
+
+    @staticmethod
+    def _parse_duration_seconds(value: object) -> float | None:
+        """Parse non-negative finite duration metadata, or return None."""
+        if value is None or isinstance(value, bool):
+            return None
+        if not isinstance(value, (int, float, str)):
+            return None
+
+        try:
+            duration: float = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+        if not math.isfinite(duration) or duration < 0:
+            return None
+        return duration
 
     def _update_audio_layout(self, sample_rate: Any, channels: Any) -> None:
         """
@@ -2771,6 +3059,8 @@ class SpeechRequestHandler(OpenAIRequestHandler):
                 audio_format,
                 None,
                 None,
+                complete=False,
+                allow_unknown_length=True,
             )
             if wav_layout is None:
                 # Do not count container/header bytes as playable audio.
@@ -2797,22 +3087,26 @@ class SpeechRequestHandler(OpenAIRequestHandler):
         audio_format: str,
         arguments: GenerationRequestArguments,
         complete: bool = True,
+        duration_hint: float | None = None,
     ) -> tuple[int, int, int, int] | None:
         """
-        Populate audio sample and duration metrics when the layout is known.
-
+        Populate audio sample and duration metrics from PCM/WAV frames.
         Headerless PCM remains with unknown layout-dependent metrics when
         no server metadata or configured layout hints are available. Encoded
-        containers are decoded after having the complete response.
+        containers are decoded in a separate call after having the complete response.
 
         :param output_metrics: Metrics updated in place.
         :param data: Accumulated encoded audio or PCM16 bytes.
         :param audio_format: Response audio format.
         :param arguments: Request arguments containing optional layout hints.
         :param complete: Whether all response bytes have been received.
+        :param duration_hint: Optional server-provided duration in seconds.
         :return: PCM16 layout, or None for other or unknown layouts.
         :raises ValueError: If completed audio is malformed or cannot be decoded.
         """
+        if duration_hint is not None:
+            output_metrics.audio_seconds = duration_hint
+
         if not data:
             return None
 
@@ -2823,7 +3117,14 @@ class SpeechRequestHandler(OpenAIRequestHandler):
             or body.get("sample_rate")
         )
         channels = self._response_channels or self._output_channels_hint
-        layout = _pcm16_layout(data, audio_format, sample_rate, channels)
+        layout = _pcm16_layout(
+            data,
+            audio_format,
+            sample_rate,
+            channels,
+            complete=complete,
+            allow_unknown_length=self._streaming_response,
+        )
         if layout is not None:
             rate, _, _, frames = layout
             output_metrics.audio_samples = frames
@@ -2844,24 +3145,75 @@ class SpeechRequestHandler(OpenAIRequestHandler):
                         "[UNUSABLE_BACKEND_RESPONSE] incomplete PCM16 frame"
                     )
 
-            logger.warning(
-                "PCM speech output has no usable sample-rate/channel layout; "
-                "preserving audio bytes and leaving sample count and duration "
-                "unknown. Configure audio_output_sample_rate and "
-                "audio_output_channels to calculate them."
-            )
-            return None
+            if output_metrics.audio_seconds is None:
+                logger.warning(
+                    "PCM speech output has no usable sample-rate/channel layout; "
+                    "preserving audio bytes and leaving sample count and duration "
+                    "unknown. Configure audio_output_sample_rate and "
+                    "audio_output_channels to calculate them."
+                )
+            else:
+                logger.warning(
+                    "PCM speech output has no usable sample-rate/channel layout; "
+                    "preserving server-provided duration and leaving sample count "
+                    "unknown."
+                )
+        return None
+
+    async def _populate_decoded_audio_metrics_async(
+        self,
+        output_metrics: UsageMetrics,
+        data: bytes,
+        audio_format: str,
+        complete: bool,
+    ) -> None:
+        """
+        Decode completed audio outside the event loop (when metrics actually need it).
+
+        Use decoding to get the exact sample count and duration, from encoded audio,
+        when unavailable from server's sources.
+
+        :param output_metrics: Output metrics to update (in place)
+        :param data: Complete audio response bytes.
+        :param audio_format: Declared response format.
+        :param complete: Whether the response is completed (incomplete audio
+            not decoded)
+        :return: None.
+        :raises ValueError: If no duration is available from the server AND
+            decoding has failed.
+        """
+        if (
+            not complete
+            or not data
+            or output_metrics.audio_samples is not None
+            or audio_format in ("pcm", "pcm16")
+        ):
+            return
 
         try:
-            samples, _, duration = decode_audio_with_metadata(data)
+            decoded_result: tuple[Any, int, float] = await asyncio.to_thread(
+                decode_audio_with_metadata,
+                data,
+            )
         except Exception as exc:
-            raise ValueError(
-                "[UNUSABLE_BACKEND_RESPONSE] audio decoding failed"
-            ) from exc
+            if output_metrics.audio_seconds is None:
+                raise ValueError(
+                    "[UNUSABLE_BACKEND_RESPONSE] audio decoding failed"
+                ) from exc
 
-        output_metrics.audio_samples = int(samples.shape[-1])
-        output_metrics.audio_seconds = duration
-        return None
+            logger.warning(
+                "Could not decode speech audio to count samples; preserving "
+                "server-provided audio duration. Error: %s",
+                exc,
+            )
+            return
+
+        decoded_samples: Any = decoded_result[0]
+        decoded_duration: float = decoded_result[2]
+        output_metrics.audio_samples = int(decoded_samples.shape[-1])
+
+        if output_metrics.audio_seconds is None:
+            output_metrics.audio_seconds = decoded_duration
 
     def compile_non_streaming(
         self,
@@ -2870,11 +3222,14 @@ class SpeechRequestHandler(OpenAIRequestHandler):
         response: bytes,
     ) -> GenerationResponse:
         """
-        Process a raw-bytes TTS response. Usage comes from
-        x-vllm-omni-{input,output,total,input-text,input-audio}-tokens
-        response headers (set via set_response_headers() before this call)
-        when present; falls back to None (not zero) when talking to a
-        server that doesn't set them, per design principle #1.
+        Compile a non-streaming speech response and its available metrics.
+
+         :param request: Original generation request.
+         :param arguments: Formatted request arguments for the speech request.
+         :param response: Complete audio response body.
+         :return: Compiled generation response containing the audio and usage
+             and audio metrics available without decoding.
+         :raises ValueError: If PCM/WAV data is malformed or incomplete.
         """
         audio_format = (arguments.body or {}).get("response_format") or "wav"
 
@@ -2891,11 +3246,13 @@ class SpeechRequestHandler(OpenAIRequestHandler):
             audio_bytes=len(response),
         )
 
-        self._populate_audio_duration(output_metrics, response, audio_format, arguments)
-        if audio_format not in ("pcm", "pcm16") and (
-            output_metrics.audio_seconds is None
-        ):
-            raise ValueError("[UNUSABLE_BACKEND_RESPONSE] audio decoding has failed.")
+        self._populate_audio_duration(
+            output_metrics,
+            response,
+            audio_format,
+            arguments,
+            duration_hint=self._response_audio_duration,
+        )
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -2909,11 +3266,47 @@ class SpeechRequestHandler(OpenAIRequestHandler):
             output_metrics=output_metrics,
         )
 
+    async def compile_non_streaming_async(
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+        response: bytes,
+    ) -> GenerationResponse:
+        """
+        Compile a non-streaming response and asynchronously finalize metrics.
+
+        :param request: Original generation request.
+        :param arguments: Formatted request arguments for the speech request.
+        :param response: Complete audio response body.
+        :return: Compiled generation response with all available audio metrics.
+        :raises ValueError: If PCM/WAV data is malformed, or encoded-audio
+            decoding fails when server duration metadata is unavailable.
+        """
+
+        generation_response: GenerationResponse = self.compile_non_streaming(
+            request,
+            arguments,
+            response,
+        )
+        audio_format: str = (arguments.body or {}).get("response_format") or "wav"
+
+        await self._populate_decoded_audio_metrics_async(
+            generation_response.output_metrics,
+            response,
+            audio_format,
+            complete=True,
+        )
+        return generation_response
+
     def add_streaming_line(self, line: str) -> int | None:
         """
-        Parse a single speech.audio.* SSE line. Reused unmodified line-oriented
-        loop -- the payload is text (base64 JSON), so this is not
-        the raw-byte streaming path (that's add_streaming_chunk(), below).
+        Parse one speech SSE line and update the handler's audio state.
+
+        :param line: One line from the server's speech SSE response.
+        :return: None for a terminal event; otherwise, the token-iteration count
+            (zero for speech audio events).
+        :raises ValueError: If the event JSON or audio payload is malformed, the
+        server reports an audio error, or audio layout metadata is invalid.
         """
 
         self._last_iteration_had_audio = False
@@ -2945,8 +3338,12 @@ class SpeechRequestHandler(OpenAIRequestHandler):
 
         if event_type == "speech.audio.done":
             self.streaming_usage = data.get("usage")
+            self._streaming_audio_duration = self._parse_duration_seconds(
+                data.get("duration")
+            )
             self._stream_complete = True
             return None
+
         if event_type == "speech.audio.error":
             raise ValueError(
                 f"Streaming speech response returned an error: "
@@ -2969,11 +3366,13 @@ class SpeechRequestHandler(OpenAIRequestHandler):
         self, request: GenerationRequest, arguments: GenerationRequestArguments
     ) -> GenerationResponse:
         """
-        Compile the accumulated speech response.
+        Compile the accumulated speech stream and its available metrics.
 
         :param request: Original generation request.
-        :param arguments: Original generation request.
-        :return: Audio response and available usage measurements.
+        :param arguments: Formatted request arguments for the speech request.
+        :return: Compiled generation response containing accumulated audio and
+            available usage and audio metrics.
+        :raises ValueError: If completed PCM/WAV data is malformed or incomplete.
         """
 
         self._streaming_response = True
@@ -3004,6 +3403,7 @@ class SpeechRequestHandler(OpenAIRequestHandler):
             audio_format,
             arguments,
             complete=self._stream_complete,
+            duration_hint=self._streaming_audio_duration,
         )
 
         if self._stream_complete and layout is not None:
@@ -3052,6 +3452,45 @@ class SpeechRequestHandler(OpenAIRequestHandler):
             input_metrics=input_metrics,
             output_metrics=output_metrics,
         )
+
+    async def compile_streaming_async(
+        self,
+        request: GenerationRequest,
+        arguments: GenerationRequestArguments,
+    ) -> GenerationResponse:
+        """Compile a speech stream and asynchronously finalize audio metrics.
+
+        :param request: Original generation request.
+        :param arguments: Formatted request arguments for the speech request.
+        :return: Compiled generation response with available audio metrics.
+        :raises ValueError: If streamed PCM/WAV data is malformed, or
+            encoded-audio decoding fails when server duration metadata is
+            unavailable.
+        """
+        generation_response: GenerationResponse = self.compile_streaming(
+            request,
+            arguments,
+        )
+        media: list[dict[str, Any]] = generation_response.output_media or []
+        if not media:
+            return generation_response
+
+        audio_data: object = media[0].get("data")
+        if not isinstance(audio_data, bytes):
+            return generation_response
+
+        audio_format: str = (
+            media[0].get("format")
+            or (arguments.body or {}).get("response_format")
+            or "wav"
+        )
+        await self._populate_decoded_audio_metrics_async(
+            generation_response.output_metrics,
+            audio_data,
+            audio_format,
+            complete=self._stream_complete,
+        )
+        return generation_response
 
     def post_validation(self, response: GenerationResponse) -> None:
         """

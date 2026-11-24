@@ -336,7 +336,20 @@ class OpenAIHTTPBackend(Backend):
             response.content if request_handler.raw_response else response.json()
         )
 
-        gen_response = request_handler.compile_non_streaming(request, arguments, data)
+        async_compiler: Callable[..., Awaitable[GenerationResponse]] | None = getattr(
+            request_handler,
+            "compile_non_streaming_async",
+            None,
+        )
+        if async_compiler is None:
+            gen_response = request_handler.compile_non_streaming(
+                request,
+                arguments,
+                data,
+            )
+        else:
+            gen_response = await async_compiler(request, arguments, data)
+
         request_handler.post_validation(gen_response)
         self._update_audio_response_timings(
             gen_response,
@@ -433,7 +446,14 @@ class OpenAIHTTPBackend(Backend):
                 await self._close_stream(stream, chunks, end_reached)
 
             request_handler.mark_stream_complete()
-            gen_response = request_handler.compile_streaming(request, arguments)
+            async_compiler: Callable[..., Awaitable[GenerationResponse]] | None = (
+                getattr(request_handler, "compile_streaming_async", None)
+            )
+            if async_compiler is None:
+                gen_response = request_handler.compile_streaming(request, arguments)
+            else:
+                gen_response = await async_compiler(request, arguments)
+
             request_handler.post_validation(gen_response)
             self._update_audio_response_timings(
                 gen_response,

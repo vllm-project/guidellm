@@ -6880,6 +6880,42 @@ class TestSpeechRequestHandler:
         )
 
     @pytest.mark.regression
+    def test_streaming_wav_accepts_omni_unknown_length_header(
+        self,
+        generation_request,
+    ):
+        """Accept Omni's unknown-length WAV sizes on a stream.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        pcm = mock_pcm16(sample_rate=16000, seconds=0.0625)
+        wav_header = bytearray(mock_wav(b"", sample_rate=16000))
+        wav_header[4:8] = (0xFFFFFFFF).to_bytes(4, "little")
+        wav_header[40:44] = (0xFFFFFFFF).to_bytes(4, "little")
+
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(
+                body={"response_format": "wav", "stream_format": "audio"}
+            ),
+        )
+        handler.set_response_headers(
+            {"X-Audio-Sample-Rate": "16000", "X-Audio-Channels": "1"}
+        )
+        handler.add_streaming_chunk(bytes(wav_header))
+        handler.add_streaming_chunk(pcm)
+        handler.mark_stream_complete()
+
+        result = handler.compile_streaming(generation_request, arguments)
+        handler.post_validation(result)
+
+        assert result.output_metrics.audio_samples == 1000
+        assert result.output_metrics.audio_seconds == pytest.approx(1000 / 16000)
+
+    @pytest.mark.regression
     @pytest.mark.parametrize("audio_format", ["mp3", "flac"])
     def test_encoded_stream_chunks_are_retained_without_pcm_ttfp(
         self, generation_request, audio_format
@@ -7163,8 +7199,63 @@ class TestSpeechRequestHandler:
         assert result.output_metrics.audio_seconds == pytest.approx(0.25)
 
     @pytest.mark.regression
+    def test_non_streaming_wav_ignores_trailing_junk_chunk(self, generation_request):
+        """Exclude a trailing JUNK chunk from WAV audio frames.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        pcm = mock_pcm16(sample_rate=16000, seconds=0.0625)
+        audio = bytearray(mock_wav(pcm, sample_rate=16000))
+        junk_payload = b"metadata"
+        audio.extend(b"JUNK" + len(junk_payload).to_bytes(4, "little") + junk_payload)
+        audio[4:8] = (len(audio) - 8).to_bytes(4, "little")
+
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(body={"response_format": "wav"}),
+        )
+
+        result = handler.compile_non_streaming(
+            generation_request,
+            arguments,
+            bytes(audio),
+        )
+
+        assert result.output_metrics.audio_samples == 1000
+        assert result.output_metrics.audio_seconds == pytest.approx(1000 / 16000)
+
+    @pytest.mark.regression
+    def test_non_streaming_wav_rejects_truncated_data_chunk(self, generation_request):
+        """Reject a WAV whose declared audio data is truncated.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        pcm = mock_pcm16(sample_rate=16000, seconds=0.0625)
+        complete_audio = mock_wav(pcm, sample_rate=16000)
+        truncated_audio = complete_audio[: 44 + len(pcm) // 2]
+
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(body={"response_format": "wav"}),
+        )
+
+        with pytest.raises(ValueError, match="truncated WAV data chunk"):
+            handler.compile_non_streaming(
+                generation_request,
+                arguments,
+                truncated_audio,
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.regression
     @pytest.mark.parametrize("audio_format", ["wav", "mp3", "flac", "opus"])
-    def test_non_pcm_response_formats_use_container_decoder(
+    async def test_non_pcm_response_formats_use_container_decoder(
         self, generation_request, audio_format
     ):
         """Decode supported non-streaming containers and retain their original bytes.
@@ -7187,7 +7278,7 @@ class TestSpeechRequestHandler:
             "guidellm.backends.openai.request_handlers.decode_audio_with_metadata",
             return_value=(decoded_samples, 24000, 0.1),
         ) as decode_audio:
-            result = handler.compile_non_streaming(
+            result = await handler.compile_non_streaming_async(
                 generation_request,
                 arguments,
                 payload,
@@ -7254,8 +7345,9 @@ class TestSpeechRequestHandler:
         assert result.output_metrics.audio_samples is None
         assert result.output_metrics.audio_seconds is None
 
+    @pytest.mark.asyncio
     @pytest.mark.regression
-    def test_decode_failure_is_not_swallowed(self, generation_request):
+    async def test_decode_failure_is_not_swallowed(self, generation_request):
         """Surface a decoder error for a completed encoded response.
 
         :param generation_request: Basic generation request fixture.
@@ -7275,7 +7367,9 @@ class TestSpeechRequestHandler:
             ),
             pytest.raises(ValueError, match="audio decoding failed"),
         ):
-            handler.compile_non_streaming(generation_request, arguments, b"X" * 44)
+            await handler.compile_non_streaming_async(
+                generation_request, arguments, b"X" * 44
+            )
 
     @pytest.mark.regression
     @pytest.mark.parametrize(
@@ -7393,6 +7487,51 @@ class TestChatAudioOutput:
         assert result.output_metrics.audio_seconds == pytest.approx(0.1)
         assert result.output_metrics.audio_bytes == len(audio)
         assert result.use_request_output_metrics is True
+
+    @pytest.mark.regression
+    def test_chat_wav_rejects_truncated_data_chunk_with_metadata(
+        self,
+        generation_request,
+    ):
+        """Reject truncated chat WAV even when audio metadata is present.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        pcm = mock_pcm16(sample_rate=16000, seconds=0.0625)
+        complete_audio = mock_wav(pcm, sample_rate=16000)
+        truncated_audio = complete_audio[: 44 + len(pcm) // 2]
+        response = {
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "audio": {
+                            "id": "audio-1",
+                            "data": base64.b64encode(truncated_audio).decode("ascii"),
+                            "format": "wav",
+                        },
+                    },
+                    "audio_metadata": {
+                        "format": "wav",
+                        "sample_rate_hz": 16000,
+                        "frame_count": 1000,
+                        "channels": 1,
+                    },
+                }
+            ],
+            "usage": {},
+        }
+
+        with pytest.raises(ValueError, match="truncated WAV data chunk"):
+            ChatCompletionsRequestHandler().compile_non_streaming(
+                generation_request,
+                GenerationRequestArguments(),
+                response,
+            )
 
     @pytest.mark.regression
     def test_audio_only_response_does_not_report_text_tokens(self, generation_request):
@@ -7886,6 +8025,15 @@ class TestChatAudioOutput:
         ## WRITTEN BY AI ##
         """
         handler = ChatCompletionsRequestHandler()
+        request: GenerationRequest = GenerationRequest(
+            columns={"text_column": ["Speak."]}
+        )
+        arguments: GenerationRequestArguments = handler.format(
+            request,
+            stream=True,
+            extras=GenerationRequestArguments(body={"modalities": ["audio"]}),
+        )
+
         for arrival, frame_count in ((0.0, 1600), (0.05, 1600)):
             packet = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
             event = {
@@ -7906,17 +8054,83 @@ class TestChatAudioOutput:
             handler.set_streaming_arrival_time(arrival)
             handler.add_streaming_line("data: " + json.dumps(event))
 
+        finish_event = {
+            "choices": [
+                {"index": 0, "delta": {}, "finish_reason": "stop"},
+            ]
+        }
+        assert handler.add_streaming_line("data: " + json.dumps(finish_event)) == 0
+        assert handler.add_streaming_line("data: [DONE]") is None
         handler.mark_stream_complete()
-        result = handler.compile_streaming(
-            GenerationRequest(columns={"text_column": ["Speak."]}),
-            GenerationRequestArguments(),
-        )
+
+        result = handler.compile_streaming(request, arguments)
+        handler.post_validation(result)
 
         assert result.output_metrics.audio_samples == 3200
         assert result.output_metrics.audio_underrun_seconds == 0
         assert result.output_metrics.audio_continuity_ok == 1
         assert len(result.output_media) == 2
         assert all(item["data"].startswith(b"RIFF") for item in result.output_media)
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "terminal_events",
+        [(), ("finish_reason",), ("done",)],
+        ids=["neither-marker", "missing-done", "missing-finish-reason"],
+    )
+    def test_streamed_audio_rejects_incomplete_protocol(
+        self, terminal_events: tuple[str, ...]
+    ):
+        """Reject audio streams missing either chat completion marker.
+
+        :param terminal_events: Protocol markers present before transport EOF.
+        :return: None.
+        """
+        handler: ChatCompletionsRequestHandler = ChatCompletionsRequestHandler()
+        request: GenerationRequest = GenerationRequest(
+            columns={"text_column": ["Speak."]}
+        )
+        arguments: GenerationRequestArguments = handler.format(
+            request,
+            stream=True,
+            extras=GenerationRequestArguments(body={"modalities": ["audio"]}),
+        )
+        packet = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+        audio_event = {
+            "modality": "audio",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": base64.b64encode(packet).decode("ascii")},
+                    "audio_metadata": {
+                        "format": "wav",
+                        "sample_rate_hz": 16000,
+                        "frame_count": 1600,
+                        "channels": 1,
+                    },
+                }
+            ],
+        }
+        assert handler.add_streaming_line("data: " + json.dumps(audio_event)) == 0
+
+        if "finish_reason" in terminal_events:
+            finish_event = {
+                "choices": [
+                    {"index": 0, "delta": {}, "finish_reason": "stop"},
+                ]
+            }
+            assert handler.add_streaming_line("data: " + json.dumps(finish_event)) == 0
+        if "done" in terminal_events:
+            assert handler.add_streaming_line("data: [DONE]") is None
+
+        handler.mark_stream_complete()
+        response = handler.compile_streaming(request, arguments)
+
+        with pytest.raises(
+            ValueError,
+            match=r"both a choice finish_reason and the \[DONE\] marker",
+        ):
+            handler.post_validation(response)
 
     @pytest.mark.regression
     def test_audio_only_pcm_history_is_wrapped_as_wav(self):
