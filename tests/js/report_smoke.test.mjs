@@ -66,12 +66,14 @@ test("multi-run HTML populates KPIs, comparison rows, and Performance SVGs", asy
   assert.ok(perfSvg, "expected an SVG after switching to Performance");
   assert.equal(perfSvg.getAttribute("role"), "img");
 
-  const interactivityCard = document.getElementById("card-interactivity");
-  assert.ok(interactivityCard, "expected the interactivity card");
-  assert.equal(interactivityCard.hidden, false);
-  const interactivitySvg = await waitFor(() =>
-    document.querySelector("#chart-interactivity svg")
+  const throughputScalingCard = document.getElementById(
+    "card-throughput-scaling"
   );
-  assert.ok(interactivitySvg, "expected an interactivity SVG");
-  assert.equal(interactivitySvg.getAttribute("role"), "img");
+  assert.ok(throughputScalingCard, "expected the throughput scaling card");
+  assert.equal(throughputScalingCard.hidden, false);
+  const throughputScalingSvg = await waitFor(() =>
+    document.querySelector("#chart-throughput-scaling svg")
+  );
+  assert.ok(throughputScalingSvg, "expected a throughput scaling SVG");
+  assert.equal(throughputScalingSvg.getAttribute("role"), "img");
 });

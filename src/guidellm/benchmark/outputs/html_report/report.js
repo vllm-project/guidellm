@@ -28,8 +28,8 @@
     // Efficiency series: keep concurrency vs request-rate visually distinct.
     effByConcurrency: "#37a3a3", // teal-50
     effByRequest: "#5e40be", // purple-50
-    // Interactivity load curve; the peak marker reuses the output-token orange.
-    interactivity: "#0066cc", // interaction-blue-50
+    // Throughput scaling load curve.
+    throughputScaling: "#0066cc", // interaction-blue-50
   };
 
   // Canonical metric clauses. Glossary entries expand the acronym; chart tips
@@ -252,8 +252,8 @@
         "On concurrency bars, hover for measured and achieved concurrency.",
       ],
     },
-    interactivity: {
-      title: "Interactivity",
+    throughput_scaling: {
+      title: "Throughput scaling",
       lines: [
         "Y: aggregate output tokens per second the server sustains.",
         "X: output tokens per second per user when the profile models users (total ÷ users), per stream for the concurrent workload (total ÷ streams), or the generation speed of one in-flight request otherwise (1 / time per output token).",
@@ -2282,8 +2282,8 @@
    * Per-user/per-stream/per-request output speed against aggregate output
    * throughput. Hidden unless there are at least two runs to form a curve.
    */
-  function renderInteractivity(rows) {
-    var card = el("card-interactivity");
+  function renderThroughputScaling(rows) {
+    var card = el("card-throughput-scaling");
     if (!card) return;
     var points = rows.filter(function (r) {
       return (
@@ -2301,7 +2301,7 @@
     var scope = points[0].per_user_scope || "request";
     var words = {
       user: {
-        title: "Interactivity: per-user vs. aggregate output throughput",
+        title: "Throughput scaling: per-user vs. aggregate output throughput",
         x: "Per-user output tok/s",
         unit: "users",
         hint:
@@ -2310,7 +2310,7 @@
           "left means more total throughput at the cost of per-user speed.",
       },
       stream: {
-        title: "Interactivity: per-stream vs. aggregate output throughput",
+        title: "Throughput scaling: per-stream vs. aggregate output throughput",
         x: "Per-stream output tok/s",
         unit: "streams",
         hint:
@@ -2320,7 +2320,7 @@
           "cost of per-stream speed.",
       },
       request: {
-        title: "Interactivity: per active request vs. aggregate output throughput",
+        title: "Throughput scaling: per active request vs. aggregate output throughput",
         x: "Per active request output tok/s",
         unit: null,
         hint:
@@ -2331,8 +2331,12 @@
       },
     };
     var copy = words[scope] || words.request;
-    setTitleWithHelp("title-interactivity", copy.title, "interactivity");
-    setCopy("hint-interactivity", copy.hint);
+    setTitleWithHelp(
+      "title-throughput-scaling",
+      copy.title,
+      "throughput_scaling"
+    );
+    setCopy("hint-throughput-scaling", copy.hint);
 
     points.sort(function (a, b) {
       return (Number(a.concurrency) || 0) - (Number(b.concurrency) || 0);
@@ -2351,7 +2355,7 @@
     var series = [
       {
         label: "Load points",
-        color: COLORS.interactivity,
+        color: COLORS.throughputScaling,
         shape: "circle",
         points: points.map(function (r) {
           var load = loadTip(r);
@@ -2361,10 +2365,10 @@
       },
     ];
 
-    drawLineChart("chart-interactivity", series, {
+    drawLineChart("chart-throughput-scaling", series, {
       xLabel: copy.x,
       yLabel: "Aggregate output tok/s",
-      ariaLabel: "Interactivity: per-user versus aggregate output throughput",
+      ariaLabel: "Throughput scaling: per-user versus aggregate output throughput",
       xPad: 0.08,
       yFromZero: true,
       yPad: 0.05,
@@ -2573,7 +2577,7 @@
       renderSingleRunThroughput(selected);
     }
 
-    renderInteractivity(rows);
+    renderThroughputScaling(rows);
     renderSelectedRunCharts();
 
     // By turn: latency (left) + prompt median tokens (right, dashed).

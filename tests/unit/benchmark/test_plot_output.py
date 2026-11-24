@@ -10,7 +10,7 @@ from guidellm.benchmark.outputs.plot import (
     GenerativeBenchmarkerPlot,
     _build_points,
     _per_request_output_tps,
-    plot_interactivity_vs_output_throughput,
+    plot_throughput_scaling,
 )
 from guidellm.benchmark.schemas import GenerativeBenchmarksReport
 from guidellm.extras import plot
@@ -370,9 +370,9 @@ def test_per_request_output_tps_converts_ms_to_tokens_per_second():
 
 
 @pytest.mark.sanity
-def test_plot_interactivity_draws_load_curve_and_annotations():
+def test_plot_throughput_scaling_draws_load_curve_and_annotations():
     """
-    Test that the interactivity plot draws a load line, peak marker, and labels.
+    Test that the throughput scaling plot draws a load line and labels.
 
     ## WRITTEN BY AI ##
     """
@@ -398,7 +398,7 @@ def test_plot_interactivity_draws_load_curve_and_annotations():
 
     plot.use("Agg")
     fig, ax = plot.plt.subplots()
-    plot_interactivity_vs_output_throughput(ax, points)
+    plot_throughput_scaling(ax, points)
 
     # One load line; one annotation per plotted point.
     assert len(ax.lines) == 1

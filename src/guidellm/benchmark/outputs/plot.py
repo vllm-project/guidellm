@@ -540,7 +540,7 @@ def plot_token_throughput_vs_concurrency(
     _show_legend(ax)
 
 
-_INTERACTIVITY_LABELS: dict[str, tuple[str, str]] = {
+_THROUGHPUT_SCALING_LABELS: dict[str, tuple[str, str]] = {
     "user": ("Per-User", "Per-User Output Speed (Output Tokens/sec)"),
     "stream": ("Per-Stream", "Per-Stream Output Speed (Output Tokens/sec)"),
     "request": (
@@ -550,7 +550,7 @@ _INTERACTIVITY_LABELS: dict[str, tuple[str, str]] = {
 }
 
 
-def plot_interactivity_vs_output_throughput(
+def plot_throughput_scaling(
     ax: plot.Axes,
     points: Sequence[_BenchmarkPoint],
 ) -> None:
@@ -565,8 +565,8 @@ def plot_interactivity_vs_output_throughput(
     :param points: Benchmark points extracted from the report
     """
     scope = points[0].per_user_scope if points else "request"
-    scope_label, x_label = _INTERACTIVITY_LABELS.get(
-        scope, _INTERACTIVITY_LABELS["request"]
+    scope_label, x_label = _THROUGHPUT_SCALING_LABELS.get(
+        scope, _THROUGHPUT_SCALING_LABELS["request"]
     )
 
     sorted_points = _sort_by_concurrency(points)
@@ -615,7 +615,7 @@ def plot_interactivity_vs_output_throughput(
 
     _set_title(
         ax,
-        f"4. Interactivity: {scope_label} vs. Aggregate Output Throughput\n"
+        f"4. Throughput Scaling: {scope_label} vs. Aggregate Output Throughput\n"
         "(further right and higher is better)",
     )
     ax.set_xlabel(x_label)
@@ -852,7 +852,7 @@ _PLOT_FUNCTIONS: tuple[_PlotFunction, ...] = (
     plot_latency_vs_request_rate,
     plot_generation_latency_vs_request_rate,
     plot_token_throughput_vs_concurrency,
-    plot_interactivity_vs_output_throughput,
+    plot_throughput_scaling,
     plot_latency_vs_throughput,
     plot_request_status_counts,
     plot_latency_breakdown_at_peak_throughput,
