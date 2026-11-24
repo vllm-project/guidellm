@@ -64,6 +64,17 @@ GuideLLM 支持多种音频数据加载方式。首先，数据源整体必须�
 
 `encode_media` 数据预处理器会在后端构造请求前编码音频。使用 `--data-preprocessor` 配置预处理器，并将编码选项放在 `audio_kwargs` 中。转录、翻译和聊天请求均使用相同的 `audio_kwargs` 结构。
 
+例如，将音频转换为 16 kHz WAV：
+
+```bash
+guidellm run \
+  --backend "kind=openai_http,target=http://localhost:8000,request_format=/v1/audio/transcriptions" \
+  --profile kind=synchronous \
+  --data '{"kind":"huggingface","source":"openslr/librispeech_asr","load_kwargs":{"name":"clean","split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"audio_column":"audio"}}' \
+  --data-preprocessor kind=encode_media,audio_kwargs.audio_format=wav,audio_kwargs.encode_sample_rate=16000
+```
+
 #### `audio_kwargs`
 
 支持的参数包括：
@@ -82,12 +93,6 @@ GuideLLM 支持多种音频数据加载方式。首先，数据源整体必须�
 --data-preprocessor '{"kind":"encode_media","audio_kwargs":{"audio_format":"wav","encode_sample_rate":16000}}'
 ```
 
-将音频截断到 30 秒：
-
-```bash
---data-preprocessor '{"kind":"encode_media","audio_kwargs":{"max_duration":30.0}}'
-```
-
 #### `extras`
 
 在现有的 `--backend` 配置中加入 `extras`，以传递请求选项：
@@ -96,11 +101,13 @@ GuideLLM 支持多种音频数据加载方式。首先，数据源整体必须�
 - `headers`：HTTP 请求头
 - `params`：URL 查询参数
 
-设置转录请求的解码温度：
+例如，使用 vLLM 翻译端点时，将输入语言指定为法语：
 
 ```bash
---backend '{"kind":"openai_http","target":"http://localhost:8000","request_format":"/v1/audio/transcriptions","extras":{"body":{"temperature":0.0}}}'
+--backend '{"kind":"openai_http","target":"http://localhost:8000","request_format":"/v1/audio/translations","extras":{"body":{"language":"fr"}}}'
 ```
+
+`language` 指源音频的语言。Whisper 翻译模型输出英文文本；vLLM 的 `to_language` 扩展仅受部分模型支持，具体选项参见 [vLLM Translations API](https://docs.vllm.ai/en/stable/serving/online_serving/speech_to_text/#translations-api)。
 
 #### `"stream"`
 
@@ -192,7 +199,6 @@ guidellm run \
 ✔ Benchmarking complete, generated 1 benchmark(s)
 …   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
 …   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 ```
 
 ### 2. 音频翻译
@@ -245,7 +251,6 @@ guidellm run \
 ✔ Benchmarking complete, generated 1 benchmark(s)
 …   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
 …   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 
 ```
 
@@ -305,5 +310,4 @@ guidellm run \
 ✔ Benchmarking complete, generated 1 benchmark(s)
 …   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
 …   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 ```

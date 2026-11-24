@@ -21,7 +21,35 @@ vllm serve Qwen/Qwen3-VL-2B-Instruct
 pip install guidellm[vision,recommended]
 ```
 
-最后，准备包含受支持视频文件的数据集以进行基准测试。GuideLLM 可以从 Hugging Face 数据集、本地文件、URL 等来源读取视频数据。以下示例使用 `lmms-lab/Video-MME` 数据集。
+最后，准备包含受支持视频文件的数据集以进行基准测试。GuideLLM 可以从 Hugging Face 数据集、本地文件、URL 等来源读取视频数据。以下示例使用 IMAVB 数据集。
+
+### 准备 IMAVB 提示和 URL
+
+IMAVB 的 `video` 列包含仓库相对路径。以下脚本将其转换为 MP4 直链，并将每个问题与六个选项合并。准备时只下载标注数据并写入 `imavb.jsonl`，无需下载或解压视频。
+
+```python
+import json
+
+from datasets import load_dataset
+from huggingface_hub import hf_hub_url
+
+repo_id = "ngqtrung/IMAVB"
+annotations = load_dataset(repo_id, split="standard_vision")
+with open("imavb.jsonl", "w", encoding="utf-8") as output:
+    for row in annotations:
+        options = "\n".join(
+            f"{letter.upper()}. {row[f'option_{letter}']}" for letter in "abcdef"
+        )
+        record = {
+            "video": hf_hub_url(repo_id, row["video"], repo_type="dataset"),
+            "prompt": f"{row['question']}\n{options}",
+            "caption": "Describe the events in this video.",
+            "output_tokens_count": 128,
+        }
+        output.write(json.dumps(record) + "\n")
+```
+
+下列示例使用 `encode_type=url`，由推理服务器直接从 Hugging Face 获取 MP4；服务器必须支持远程视频 URL 并能访问这些地址。默认的 `encode_type=base64` 则由 GuideLLM 下载视频并将字节嵌入请求。
 
 ## 处理选项
 
@@ -58,6 +86,17 @@ GuideLLM 支持多种视频数据加载方式。首先，数据源整体必须�
 ### 请求格式
 
 `encode_media` 数据预处理器会在后端构造请求前编码视频。使用 `--data-preprocessor` 配置预处理器，并将编码选项放在 `video_kwargs` 中。
+
+下面的单视频示例使用 IMAVB 托管的 MP4 直链，无需执行上述准备步骤：
+
+```bash
+guidellm run \
+  --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions \
+  --profile kind=synchronous \
+  --constraint kind=max_requests,count=1 \
+  --data '{"kind":"in_memory_dict_list","data":[{"video":"https://huggingface.co/datasets/ngqtrung/IMAVB/resolve/main/videos/--aqjaJyZLk.mp4","prompt":"Describe the events in this video.","output_tokens_count":128}]}' \
+  --data-preprocessor kind=encode_media,video_kwargs.encode_type=url
+```
 
 #### `video_kwargs`
 
@@ -129,7 +168,7 @@ GuideLLM 会捕获整个请求生命周期的全面指标，并将其存储在 `
 
 ### 1. 视频问答（Video QA）
 
-此基准测试用于评估视频语言模型回答视频相关问题的能力。我们使用 `lmms-lab/Video-MME` 数据集，其中包含视频和文本问题。
+此基准测试用于衡量模型回答 IMAVB 视频问题时的性能，使用上一步准备的 `imavb.jsonl`。GuideLLM 衡量推理性能，不会根据数据集的答案评估回答。
 
 **命令：**
 
@@ -138,19 +177,20 @@ guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions \
   --profile kind=synchronous \
   --constraint kind=max_requests,count=50 \
-  --data '{"kind":"huggingface","source":"lmms-lab/Video-MME","load_kwargs":{"split":"test"}}' \
-  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"video_column":"url","text_column":"question"}}'
+  --data kind=json_file,path=imavb.jsonl \
+  --data-preprocessor kind=encode_media,video_kwargs.encode_type=url
 ```
 
 **关键参数**
 
 - `--backend`：服务器 URL、模型和聊天补全端点
-- `--data`：要加载的数据集——使用 `kind=huggingface` 和数据集标识符，并通过 `load_kwargs` 配置数据集加载方式（选择 `"test"` 划分）。所有有效选项请参阅 [`datasets.load_dataset`](https://huggingface.co/docs/datasets/v4.5.0/en/package_reference/loading_methods#datasets.load_dataset)
-- `--data-column-mapper`：将包含视频链接的数据集 `url` 列映射到 `video_column`，并将 `question` 映射到 `text_column`
+- `--data`：加载准备好的 JSONL，其中包含 MP4 直链、问题和选项，以及 128 token 的输出上限
+- 列映射自动完成：`video` 映射到 `video_column`，`prompt` 映射到 `text_column`，`output_tokens_count` 映射到 `output_tokens_count_column`
+- `--data-preprocessor`：将 MP4 URL 传给推理服务器
 
 ### 2. 视频描述
 
-此基准测试用于评估模型在没有具体问题（或使用通用提示词）的情况下描述视频的能力。此处不映射文本列，只发送视频。
+此基准测试使用相同的 `imavb.jsonl` 文件，选择通用的 `caption` 提示词，而不是问题和选项。
 
 **命令：**
 
@@ -159,10 +199,12 @@ guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,model=Qwen/Qwen3-VL-2B-Instruct,request_format=/v1/chat/completions \
   --profile kind=synchronous \
   --constraint kind=max_requests,count=50 \
-  --data '{"kind":"huggingface","source":"lmms-lab/Video-MME","load_kwargs":{"split":"test"}}' \
-  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"video_column":"url"}}'
+  --data kind=json_file,path=imavb.jsonl \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"video_column":"video","text_column":"caption","output_tokens_count_column":"output_tokens_count"}}' \
+  --data-preprocessor kind=encode_media,video_kwargs.encode_type=url
 ```
 
 **关键参数：**
 
-- `--data-column-mapper`：只映射 `video_column`，表示发送仅包含视频的请求（或让模型生成视频标题/描述的请求）。
+- `--data-column-mapper`：从每行选择视频 URL、通用描述提示词和输出上限
+- `--data-preprocessor`：将 MP4 URL 传给推理服务器
