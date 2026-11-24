@@ -87,7 +87,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                 )
         self.finalizer = finalizer
         self.precache: list[Any] | None = (
-            list(self.generator(data_samples)) if data_samples > 0 else None
+            list(self.generator(data_samples)) if data_samples else None
         )
         self.epoch = 0
 

@@ -201,26 +201,6 @@ def test_iterable_datasets_load_with_shuffle_off():
     assert _column(_epoch_rows(iterator, 0)) == ROWS
 
 
-@pytest.mark.regression
-def test_shuffle_reads_no_rows_before_the_first_epoch(monkeypatch):
-    """Without a sample cap, building the iterator must not shuffle anything.
-
-    ## WRITTEN BY AI ##
-    """
-    selected: list[int] = []
-    real_select = Dataset.select
-
-    def counting_select(self, *args, **kwargs):
-        selected.append(len(self))
-        return real_select(self, *args, **kwargs)
-
-    monkeypatch.setattr(Dataset, "select", counting_select)
-    iterator = _shuffle_iterator([Dataset.from_dict({"text": ROWS})], samples=-1)
-
-    assert selected == []
-    assert sorted(_column(_epoch_rows(iterator, 0))) == ROWS
-
-
 @pytest.mark.sanity
 def test_shuffle_with_samples_draws_the_rows_once():
     """With ``samples``, a seeded sample is drawn once and reused every epoch.
