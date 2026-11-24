@@ -7,32 +7,21 @@ source_sha256: !!str "cb361c81b3be5da0a7e3faaebe5afcb844c70a82d634600231e4dcb850
 
 GuideLLM 通过模拟真实场景中的推理工作负载，帮助评估和优化大语言模型（LLM）部署。其模块化架构兼具灵活性和可扩展性。下文概述核心组件及其交互方式。
 
-```
-+------------------+       +------------------+       +------------------+
-|   DatasetCreator | --->  |   RequestLoader  | --->  |     Scheduler    |
-+------------------+       +------------------+       +------------------+
-                                                    /         |          \
-                                                   /          |           \
-                                                  /           |            \
-                                                 v            v             v
-                                       +------------------+ +------------------+
-                                       | RequestsWorker   | | RequestsWorker   |
-                                       +------------------+ +------------------+
-                                                 |                     |
-                                                 v                     v
-                                       +------------------+ +------------------+
-                                       |     Backend      | |     Backend      |
-                                       +------------------+ +------------------+
-                                                 |                     |
-                                                 v                     v
-                                       +---------------------------------------+
-                                       |         BenchmarkAggregator           |
-                                       +---------------------------------------+
-                                                 |
-                                                 v
-                                       +------------------+
-                                       |    Benchmarker   |
-                                       +------------------+
+```mermaid
+flowchart LR
+    A["Configuration<br/>CLI, scenario file, or env vars"] --> B["Data pipeline<br/>conversation graphs"]
+    A --> P["Profile<br/>generate strategies"]
+    P --> G["Benchmarker<br/>run strategies and accumulate results"]
+    B --> C["Scheduler<br/>execute one strategy and enforce constraints"]
+    G --> C
+    C --> D["Worker processes"]
+    D --> E["Backend"]
+    G --> F["Collectors"]
+    E --> C
+    C --> G
+    F --> G
+    G --> H["GenerativeBenchmarksReport"]
+    H --> I["Outputs<br/>console, JSON/YAML, CSV, HTML, plot"]
 ```
 
 ## 核心组件
