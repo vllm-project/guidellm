@@ -138,7 +138,39 @@ def _merge_sibling_columns_into_graph(
     return ConversationGraphData(graph_id=graph_data.graph_id, turns=merged_turns)
 
 
-def turns_from_mapped_items(items: list[dict[str, Any]]) -> ConversationGraphData:
+def _is_text_padding(item: dict[str, Any]) -> bool:
+    """Recognize the opt-in padding convention without ignoring other columns."""
+    if set(item) != {"text_column", "output_tokens_count_column"}:
+        return False
+    texts = item["text_column"]
+    counts = item["output_tokens_count_column"]
+    if not isinstance(texts, list) or not isinstance(counts, list):
+        return False
+    if len(texts) != 1 or len(counts) != 1:
+        return False
+    return (texts[0] is None or texts[0] == "") and (
+        counts[0] is None or (type(counts[0]) is int and counts[0] == 0)
+    )
+
+
+def _trim_text_padding(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Validate the padding suffix and return the populated prefix without mutation."""
+    first_padding = next(
+        (index for index, item in enumerate(items) if _is_text_padding(item)),
+        len(items),
+    )
+    if first_padding == len(items):
+        return items
+    if any(not _is_text_padding(item) for item in items[first_padding:]):
+        raise ValueError("Text padding before a non-padding turn; refusing to reindex")
+    if first_padding == 0:
+        raise ValueError("All-padding conversation; check the source dataset")
+    return items[:first_padding]
+
+
+def turns_from_mapped_items(
+    items: list[dict[str, Any]], *, trim_text_padding: bool = False
+) -> ConversationGraphData:
     """
     Normalize mapper output into a :class:`ConversationGraphData` payload.
 
@@ -153,8 +185,12 @@ def turns_from_mapped_items(items: list[dict[str, Any]]) -> ConversationGraphDat
 
     :param items: Mapper output — either one graph payload item or one dict of
         columns per logical turn.
+    :param trim_text_padding: Remove explicitly recognized trailing text padding
+        from indexed rows. Does not change pre-built conversation graphs.
     :return: A conversation graph data object (possibly with an empty turns list).
-    :raises ValueError: If ``conversation_turns_column`` is present but empty.
+    :raises ValueError: If ``conversation_turns_column`` is present but empty, or
+        padding removal is enabled and a row is all padding or contains padding
+        before a later non-padding turn.
     """
     for index, item in enumerate(items):
         raw_values = item.get("conversation_turns_column")
@@ -164,6 +200,9 @@ def turns_from_mapped_items(items: list[dict[str, Any]]) -> ConversationGraphDat
         if not graph_data.turns:
             raise ValueError("ConversationGraphData.turns must not be empty")
         return _merge_sibling_columns_into_graph(items, index, graph_data)
+
+    if trim_text_padding:
+        items = _trim_text_padding(items)
 
     turns: list[ConversationTurnData] = []
     for item in items:

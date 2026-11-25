@@ -70,6 +70,35 @@ With `--data-preprocessor` you can control the GuideLLM preprocessors to apply: 
 
 With `--data-finalizer` you can control how dataset rows are converted to requests (default: `generative`).
 
+#### Trimming Trailing Padding Turns
+
+Indexed text datasets can store conversations of different lengths in a fixed number of column pairs, such as `prompt_0` / `output_tokens_count_0`, `prompt_1` / `output_tokens_count_1`, and so on. If your dataset uses empty prompts and zero output counts as trailing padding, enable:
+
+```bash
+--data-finalizer kind=generative,trim_text_padding=true
+```
+
+For example, this row contains two populated turns followed by two padding slots:
+
+```json
+{
+  "prompt_0": "Explain this function",
+  "output_tokens_count_0": 32,
+  "prompt_1": "Suggest a test",
+  "output_tokens_count_1": 32,
+  "prompt_2": "",
+  "output_tokens_count_2": 0,
+  "prompt_3": "",
+  "output_tokens_count_3": 0
+}
+```
+
+The default, `trim_text_padding=false`, retains all four turns. With the option enabled, the finalizer builds only the first two turns and preserves their full-history dependency. Enabling this option declares that your dataset follows the padding convention below; an empty prompt is not necessarily padding in other datasets.
+
+A padding item must contain exactly two mapped columns: `text_column` and `output_tokens_count_column`, each with one value. The text must be `""` or `None` (`null` in JSON); the output count must be integer `0` or `None`. Whitespace text, positive output counts, and additional mapped columns (including prefix, media, tools, or scheduling columns) do not match. Only a contiguous suffix is removed. All-padding rows and padding followed by a non-padding turn raise an error instead of silently changing the conversation order.
+
+Explicit `conversation_turns` graphs are unchanged by this option. Other dataset conventions can be handled by preprocessing or by supplying an explicit graph with only the intended turns.
+
 ### Random Seed
 
 Use `--seed` with a configuration string to control how sequences (in scheduling and synthetic data generation) are randomized: For example, `--seed kind=static,value=42`.
