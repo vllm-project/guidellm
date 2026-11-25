@@ -222,7 +222,7 @@ The example is written to pass restricted Pod Security Standards / restricted-v2
 Additional hardening you may want per your environment:
 
 - **NetworkPolicy**: restrict egress from this Job to only the inference Service (and image registry if pulls happen at runtime).
-- **Authenticated endpoints**: don't inline API keys in `args`. Set `GUIDELLM__SPEC__BACKEND__API_KEY` from a `Secret` via `valueFrom.secretKeyRef` (commented out in the manifest above).
+- **Authenticated endpoints**: don't inline API keys in `args`. Set `GUIDELLM__SPEC__BACKEND__API_KEY` from a `Secret` via `valueFrom.secretKeyRef` (commented out in the manifest above), or mount the `Secret` as a volume and set `GUIDELLM__SPEC__BACKEND__API_KEY_FILE` to the mounted file path.
 - **Quotas**: the Job sets CPU/memory requests and limits so it fits namespaces with `ResourceQuota` / `LimitRange` enforcement.
 
 ## OpenShift notes

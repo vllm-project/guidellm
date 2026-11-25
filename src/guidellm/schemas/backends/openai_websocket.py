@@ -4,11 +4,12 @@ OpenAI WebSocket backend Args schema.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 
-from guidellm.schemas.backends.backend import BackendArgs
+from guidellm.schemas.backends.backend import BackendArgs, resolve_api_key_file
 
 __all__ = ["OpenAIWebSocketBackendArgs"]
 
@@ -48,6 +49,13 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
     api_key: SecretStr | None = Field(
         default=None, description="Bearer token if required."
     )
+    api_key_file: Path | None = Field(
+        default=None,
+        description=(
+            "Path to a file containing the bearer token; surrounding whitespace is "
+            "stripped. Mutually exclusive with api_key."
+        ),
+    )
     verify: bool = Field(default=False, description="Verify TLS certificates.")
     timeout: float | None = Field(
         default=None,
@@ -82,3 +90,15 @@ class OpenAIWebSocketBackendArgs(BackendArgs):
         if stripped != "/v1/realtime":
             raise ValueError(f"request_format must be '/v1/realtime', got {stripped!r}")
         return stripped
+
+    @model_validator(mode="after")
+    def load_api_key_file(self):
+        """
+        Load api_key from api_key_file when the latter is set.
+
+        api_key_file is cleared once consumed so dumped args re-validate cleanly
+        without needing the file again.
+        """
+        self.api_key = resolve_api_key_file(self.api_key, self.api_key_file)
+        self.api_key_file = None
+        return self
