@@ -37,9 +37,6 @@ from tests.unit.benchmark.html_report_fixtures import (
 from tests.unit.benchmark.html_report_fixtures import (
     report as _report,
 )
-from tests.unit.benchmark.html_report_fixtures import (
-    status_dist as _status_dist,
-)
 
 
 @pytest.mark.smoke
@@ -154,9 +151,9 @@ def test_build_report_view_single_and_multi_run():
 
 
 @pytest.mark.sanity
-def test_build_report_view_interactivity_falls_back_to_itl():
+def test_build_report_view_omits_interactivity_without_compiled_metric():
     """
-    Reports without the interactivity distribution derive it from ITL.
+    The view omits interactivity when the compiled distribution is absent.
 
     ## WRITTEN BY AI ##
     """
@@ -167,12 +164,9 @@ def test_build_report_view_interactivity_falls_back_to_itl():
         itl_median_ms=20.0,
     )
     benchmark.metrics.interactivity = None
-    row = build_report_view(_report(benchmark))["runs"][0]
-    assert row["interactivity"] == pytest.approx(1.0 / (20.0 / 1000.0))
 
-    # When neither is available, there is no usable X value.
-    benchmark.metrics.inter_token_latency_ms = _status_dist(0.0, median=0.0, count=0)
     row = build_report_view(_report(benchmark))["runs"][0]
+
     assert row["interactivity"] is None
 
 

@@ -146,41 +146,21 @@ def _get_status_total(totals: StatusBreakdown | None, status: _StatusName) -> fl
     return float(value) if value is not None else 0.0
 
 
-def _interactivity_from_itl_ms(itl_ms: float) -> float:
-    """
-    Convert inter-token latency in milliseconds to interactivity.
-
-    Interactivity is 1 / ITL, where ITL is inter-token latency in seconds
-    (milliseconds / 1000), so lower inter-token latency means higher
-    interactivity.
-
-    :param itl_ms: Median inter-token latency in milliseconds
-    :return: Interactivity value, or 0.0 when undefined
-    """
-    return 1.0 / (itl_ms / 1000.0) if itl_ms > 0.0 else 0.0
-
-
 def _build_points(benchmarks: Sequence[GenerativeBenchmark]) -> list[_BenchmarkPoint]:
     points = []
     for benchmark in benchmarks:
         metrics = benchmark.metrics
         request_totals = metrics.request_totals
         output_tps = _get_val(metrics.output_tokens_per_second, status="total")
+        # Only the compiled per-request distribution is used. Reports written
+        # before the metric existed have none; inverting the token-weighted ITL
+        # distribution would report a different statistic, so those points are
+        # left without an interactivity value.
         interactivity = _get_val(
             metrics.interactivity,
             is_median=True,
             status="total",
         )
-        if interactivity <= 0.0:
-            # Reports written before the interactivity metric existed have no
-            # distribution; derive it from the inter-token latency instead.
-            interactivity = _interactivity_from_itl_ms(
-                _get_val(
-                    metrics.inter_token_latency_ms,
-                    is_median=True,
-                    status="total",
-                )
-            )
 
         points.append(
             _BenchmarkPoint(
@@ -568,8 +548,7 @@ def plot_interactivity(
 
         # Pad X so edge markers are not clipped, anchor Y at zero, and leave a
         # little headroom above the peak so small differences are not
-        # visually exaggerated. Interactivity values are small, so the
-        # single-point padding cannot use a floor of one.
+        # visually exaggerated.
         x_min, x_max = min(x_values), max(x_values)
         x_span = x_max - x_min
         x_padding = x_span * 0.08 if x_span > 0.0 else max(abs(x_max) * 0.1, 1e-12)
@@ -577,6 +556,17 @@ def plot_interactivity(
         y_padding = y_max * 0.05 if y_max > 0.0 else 1.0
         ax.set_xlim(x_min - x_padding, x_max + x_padding)
         ax.set_ylim(0.0, y_max + y_padding)
+    else:
+        ax.text(
+            0.5,
+            0.5,
+            "No interactivity data",
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            fontsize=10,
+            color=_GRAY,
+        )
 
     _set_title(
         ax,

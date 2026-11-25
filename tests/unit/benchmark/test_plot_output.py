@@ -9,7 +9,6 @@ from guidellm.benchmark.entrypoints import reimport_benchmarks_report
 from guidellm.benchmark.outputs.plot import (
     GenerativeBenchmarkerPlot,
     _build_points,
-    _interactivity_from_itl_ms,
     plot_interactivity,
 )
 from guidellm.benchmark.schemas import GenerativeBenchmarksReport
@@ -353,18 +352,6 @@ async def test_reimport_benchmarks_report_multiple_sibling_file_path(
 
 
 @pytest.mark.sanity
-def test_interactivity_from_itl_ms_converts_latency_to_interactivity():
-    """
-    Test that inter-token latency in milliseconds becomes interactivity.
-
-    ## WRITTEN BY AI ##
-    """
-    assert _interactivity_from_itl_ms(20.0) == pytest.approx(1.0 / (20.0 / 1000.0))
-    assert _interactivity_from_itl_ms(100.0) == pytest.approx(1.0 / (100.0 / 1000.0))
-    assert _interactivity_from_itl_ms(0.0) == 0.0
-
-
-@pytest.mark.sanity
 def test_plot_interactivity_draws_load_curve_and_annotations():
     """
     Test that the interactivity plot draws a load line and labels.
@@ -379,8 +366,9 @@ def test_plot_interactivity_draws_load_curve_and_annotations():
         [(10.0, 20.0), (20.0, 40.0), (40.0, 60.0)],
         strict=True,
     ):
-        benchmark.metrics.inter_token_latency_ms = MockStatusDistribution(
-            mean=itl, median=itl, p95=itl
+        interactivity = 1.0 / (itl / 1000.0)
+        benchmark.metrics.interactivity = MockStatusDistribution(
+            mean=interactivity, median=interactivity
         )
         benchmark.metrics.output_tokens_per_second = MockStatusDistribution(
             mean=output_tps
@@ -422,3 +410,35 @@ def test_build_points_prefers_compiled_interactivity_metric():
     points = _build_points([benchmark])  # type: ignore[list-item]
 
     assert points[0].interactivity == pytest.approx(1e-3)
+
+
+@pytest.mark.sanity
+def test_build_points_omits_interactivity_without_compiled_metric():
+    """
+    Without the compiled distribution, no reciprocal-ITL approximation is used.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = MockBenchmark()  # interactivity is None; ITL is populated
+
+    points = _build_points([benchmark])  # type: ignore[list-item]
+
+    assert points[0].interactivity == 0.0
+
+
+@pytest.mark.sanity
+def test_plot_interactivity_without_data_shows_note():
+    """
+    An empty interactivity series draws an explanatory note and no load line.
+
+    ## WRITTEN BY AI ##
+    """
+    points = _build_points([MockBenchmark()])  # type: ignore[list-item]
+
+    plot.use("Agg")
+    fig, ax = plot.plt.subplots()
+    plot_interactivity(ax, points)
+
+    assert len(ax.lines) == 0
+    assert [text.get_text() for text in ax.texts] == ["No interactivity data"]
+    plot.plt.close(fig)

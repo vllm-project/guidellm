@@ -497,13 +497,10 @@ def _build_run_row(benchmark: GenerativeBenchmark, index: int) -> dict[str, Any]
     )
 
     output_tps = _mean(metrics.output_tokens_per_second, status="total")
+    # Only the compiled per-request distribution is used. Reports written before
+    # the metric existed have none; inverting the token-weighted ITL
+    # distribution would report a different statistic, so the chart omits them.
     interactivity = _median(metrics.interactivity, status="total")
-    if interactivity is None:
-        # Reports written before the interactivity metric existed have no
-        # distribution; derive it from the inter-token latency instead.
-        interactivity = _interactivity_from_itl_ms(
-            _median(metrics.inter_token_latency_ms, status="total")
-        )
 
     return {
         "index": index,
@@ -1070,22 +1067,6 @@ def _ms(seconds: float | None) -> float | None:
     if seconds is None:
         return None
     return float(seconds) * 1000.0
-
-
-def _interactivity_from_itl_ms(itl_ms: float | None) -> float | None:
-    """
-    Convert inter-token latency in milliseconds to interactivity.
-
-    Interactivity is 1 / ITL, where ITL is inter-token latency in seconds
-    (milliseconds / 1000), so lower inter-token latency means higher
-    interactivity.
-
-    :param itl_ms: Median inter-token latency in milliseconds
-    :return: Interactivity value, or None when undefined
-    """
-    if itl_ms is None or itl_ms <= 0:
-        return None
-    return 1.0 / (itl_ms / 1000.0)
 
 
 def _ttfot_differs(ttft: float | None, ttfot: float | None) -> bool:
