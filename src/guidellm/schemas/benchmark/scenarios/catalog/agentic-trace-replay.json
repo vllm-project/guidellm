@@ -1,0 +1,66 @@
+{
+  "metadata": {
+    "labels": {
+      "name": "agentic-trace-replay",
+      "description": "Timed replay of recorded agent sessions with tool calls and independent-call context.",
+      "source": "https://github.com/kubernetes-sigs/inference-perf/blob/76e2959b6a8ed9ded7af9c7398d9025a04da195f/workload-catalog/agentic-trace-replay/inference-perf.yaml",
+      "source_revision": "76e2959b6a8ed9ded7af9c7398d9025a04da195f",
+      "source_model": "Qwen/Qwen2.5-72B-Instruct",
+      "approximations": "Recorded prompt history and capped request-start timing; upstream session concurrency, live-output substitution, malformed-tool fallback, and token allowance expansion are not reproduced. See catalog/README.md."
+    }
+  },
+  "spec": {
+    "backend": {
+      "kind": "openai_http",
+      "request_format": "/v1/chat/completions",
+      "stream": true
+    },
+    "profile": {
+      "kind": "replay"
+    },
+    "seed": {
+      "kind": "static",
+      "value": 42
+    },
+    "data": [
+      {
+        "kind": "otel",
+        "source": {
+          "kind": "huggingface",
+          "source": "Exgentic/agent-llm-traces-v2",
+          "load_kwargs": {
+            "split": "train[:50]",
+            "filters": [
+              [
+                "max_tokens",
+                "<",
+                25000
+              ]
+            ],
+            "on_bad_files": "skip"
+          }
+        },
+        "max_wait": 15,
+        "history": "trace",
+        "tool_choice": "required"
+      }
+    ]
+  },
+  "benchmarks": [
+    {
+      "data[0].source.load_kwargs.split": "train[:50]"
+    },
+    {
+      "data[0].source.load_kwargs.split": "train[:100]"
+    },
+    {
+      "data[0].source.load_kwargs.split": "train[:200]"
+    },
+    {
+      "data[0].source.load_kwargs.split": "train[:300]"
+    },
+    {
+      "data[0].source.load_kwargs.split": "train[:400]"
+    }
+  ]
+}
