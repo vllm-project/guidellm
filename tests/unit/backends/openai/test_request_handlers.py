@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import json
 import json as stdlib_json
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from logot import Logot
+from logot.logged import warning
 
 from guidellm.backends.openai.request_handlers import (
     AudioRequestHandler,
@@ -31,10 +34,14 @@ from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
     GenerationResponse,
+    GenerativeRequestStats,
     RequestInfo,
+    RequestTimings,
     ToolCall,
     ToolCallFunction,
     UsageMetrics,
+    VLLMRequestMetrics,
+    VLLMSpeculativeDecodingMetrics,
 )
 from guidellm.schemas.data import GenerativeRequestFinalizerArgs
 from guidellm.settings import settings
@@ -396,7 +403,147 @@ class TestResponseMetricsPassthrough:
         }
     }
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize("streaming", [True, False])
+    @pytest.mark.parametrize("level", ["summary", "detailed", "detailed_reasoning"])
+    def test_server_fixtures_metrics(self, streaming, level):
+        """Real server payloads preserve usage and response metrics through replay.
+
+        ## WRITTEN BY AI ##
+        """
+        payload = json.loads(
+            (
+                Path(__file__).parents[2]
+                / "benchmark"
+                / "schemas"
+                / "fixtures"
+                / f"vllm_spec_{level}.json"
+            ).read_text()
+        )
+        handler = ChatCompletionsRequestHandler()
+        request = GenerationRequest(request_id="spec")
+        args = GenerationRequestArguments()
+        if streaming:
+            handler.add_streaming_line("data: " + json.dumps(payload))
+            response = handler.compile_streaming(request, args)
+        else:
+            response = handler.compile_non_streaming(request, args, payload)
+        usage = payload["usage"]
+        assert (
+            response.output_metrics.reasoning_tokens
+            == (usage["completion_tokens_details"]["reasoning_tokens"])
+        )
+        assert response.output_metrics.total_tokens == usage["completion_tokens"]
+        stats = response.compile_stats(
+            request,
+            RequestInfo(
+                request_id="spec",
+                status="completed",
+                timings=RequestTimings(resolve_start=1, resolve_end=2),
+            ),
+        )
+        restored = GenerativeRequestStats.model_validate_json(stats.model_dump_json())
+        assert (
+            stats.response_metrics.model_dump(exclude_unset=True) == payload["metrics"]
+        )
+        assert restored.response_metrics == stats.response_metrics
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("reasoning", [None, 0, 5])
+    @pytest.mark.parametrize(
+        "handler_type",
+        [
+            TextCompletionsRequestHandler,
+            ChatCompletionsRequestHandler,
+            ResponsesRequestHandler,
+        ],
+    )
+    def test_reasoning_usage_subset(self, reasoning, handler_type):
+        """Keep missing and zero reasoning distinct and avoid double-counting usage.
+
+        ## WRITTEN BY AI ##
+        """
+        details = {} if reasoning is None else {"reasoning_tokens": reasoning}
+        usage = (
+            {"output_tokens": 10, "output_tokens_details": details}
+            if handler_type is ResponsesRequestHandler
+            else {"completion_tokens": 10, "completion_tokens_details": details}
+        )
+        _, output = handler_type().extract_metrics(usage, "text")
+        assert output.reasoning_tokens == reasoning
+        assert output.text_tokens == output.total_tokens == 10
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("streaming", [True, False])
+    @pytest.mark.parametrize(
+        "handler_type", [TextCompletionsRequestHandler, ChatCompletionsRequestHandler]
+    )
+    def test_server_metrics_survive_stats_compilation(self, streaming, handler_type):
+        """Final streamed and non-streamed vLLM metrics survive stats compilation.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = handler_type()
+        request = GenerationRequest(request_id="spec", columns={"text_column": ["hi"]})
+        args = GenerationRequestArguments()
+        metrics = {
+            "queue_time_ms": 0.04,
+            "server_extension": {"value": 123},
+            "speculative_decoding": {
+                **self.SPEC["speculative_decoding"],
+                "acceptance_histogram": [1, 0, 3],
+                "per_step_accepted": [0, 2, 2, 2],
+                "server_extension": "preserved",
+            },
+        }
+        if streaming:
+            handler.add_streaming_line(
+                "data: " + json.dumps({"choices": [], "usage": {}, "metrics": metrics})
+            )
+            response = handler.compile_streaming(request, args)
+        else:
+            response = handler.compile_non_streaming(
+                request, args, {"choices": [], "usage": {}, "metrics": metrics}
+            )
+        stats = response.compile_stats(
+            request,
+            RequestInfo(
+                request_id="spec",
+                status="completed",
+                timings=RequestTimings(resolve_start=1, resolve_end=2),
+            ),
+        )
+        assert isinstance(handler.response_metrics, VLLMRequestMetrics)
+        assert response.response_metrics is handler.response_metrics
+        assert stats.response_metrics is response.response_metrics
+        assert isinstance(
+            stats.response_metrics.speculative_decoding, VLLMSpeculativeDecodingMetrics
+        )
+        assert stats.response_metrics.model_dump(exclude_unset=True) == metrics
+
+    @pytest.mark.regression
+    def test_metrics_validation_failure_warns(self, logot: Logot):
+        """Warn and skip invalid known fields when parsing the backend payload.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = TextCompletionsRequestHandler()
+        choices, usage = handler.extract_choices_and_usage(
+            {
+                "choices": [],
+                "metrics": {"speculative_decoding": {"num_spec_steps": "invalid"}},
+            }
+        )
+        assert choices == []
+        assert usage == {}
+        assert handler.response_metrics is None
+        logot.assert_logged(warning("Failed to parse vLLM metrics: %s"))
+
     def test_non_streaming(self) -> None:
+        """Parse metrics into the shared model for non-streamed completions.
+
+        ## WRITTEN BY AI ##
+        """
         handler = TextCompletionsRequestHandler()
         response = handler.compile_non_streaming(
             GenerationRequest(request_id="r1", columns={"text_column": ["hi"]}),
@@ -408,9 +555,14 @@ class TestResponseMetricsPassthrough:
                 "metrics": self.SPEC,
             },
         )
-        assert response.response_metrics == self.SPEC
+        assert isinstance(response.response_metrics, VLLMRequestMetrics)
+        assert response.response_metrics.model_dump(exclude_unset=True) == self.SPEC
 
     def test_streaming(self) -> None:
+        """Parse metrics from the final usage chunk of a streamed completion.
+
+        ## WRITTEN BY AI ##
+        """
         handler = TextCompletionsRequestHandler()
         handler.add_streaming_line('data: {"id": "c1", "choices": [{"text": "hello"}]}')
         # vLLM attaches the metrics to the closing usage event, not to a text delta.
@@ -422,7 +574,8 @@ class TestResponseMetricsPassthrough:
             GenerationRequest(request_id="r1", columns={"text_column": ["hi"]}),
             GenerationRequestArguments(),
         )
-        assert response.response_metrics == self.SPEC
+        assert isinstance(response.response_metrics, VLLMRequestMetrics)
+        assert response.response_metrics.model_dump(exclude_unset=True) == self.SPEC
 
     def test_absent_when_the_backend_reports_none(self) -> None:
         handler = TextCompletionsRequestHandler()

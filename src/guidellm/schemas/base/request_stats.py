@@ -10,7 +10,7 @@ analysis of time-to-first-token, inter-token latency, and token generation rates
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import Field, computed_field
 
@@ -18,6 +18,7 @@ import guidellm.extras.numpy as np
 from guidellm.schemas.base.base import StandardBaseDict
 from guidellm.schemas.base.info import RequestInfo
 from guidellm.schemas.base.request import UsageMetrics
+from guidellm.schemas.base.response_metrics import VLLMRequestMetrics
 from guidellm.schemas.base.tool_call import ToolCall
 
 __all__ = ["GenerativeRequestStats"]
@@ -66,7 +67,7 @@ class GenerativeRequestStats(StandardBaseDict):
     input_metrics: UsageMetrics = Field(
         description="Token usage statistics for the input prompt"
     )
-    response_metrics: dict[str, Any] | None = Field(
+    response_metrics: VLLMRequestMetrics | None = Field(
         default=None,
         description=(
             "Per-request metrics the backend reported alongside usage, passed through "

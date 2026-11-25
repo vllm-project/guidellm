@@ -123,6 +123,12 @@ class UsageMetrics(StandardBaseDict):
     text_tokens: int | None = Field(
         default=None, description="Number of text tokens processed/generated."
     )
+    reasoning_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        strict=True,
+        description="Server-reported reasoning tokens, a subset of output text tokens.",
+    )
     cached_tokens: int | None = Field(
         default=None,
         description=(
