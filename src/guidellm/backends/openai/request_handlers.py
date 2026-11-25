@@ -550,6 +550,20 @@ def _require_request_payload(
     )
 
 
+def _extract_text_tokens(
+    total_tokens: int | None, details: dict[str, int], text_key: str
+) -> int:
+    """Exclude separately recorded modalities, clamping inconsistent totals at zero."""
+    if total_tokens is not None:
+        modality_tokens = sum(
+            details.get(key) or 0
+            for key in ("image_tokens", "video_tokens", "audio_tokens")
+        )
+        return max(total_tokens - modality_tokens, 0)
+    text_tokens = details.get("text_tokens")
+    return text_tokens if text_tokens is not None else (details.get(text_key) or 0)
+
+
 @OpenAIRequestHandlerFactory.register("/v1/completions")
 class TextCompletionsRequestHandler(OpenAIRequestHandler):
     """
@@ -791,6 +805,9 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         """
         Extract input and output usage metrics from API response usage data.
 
+        Prompt modality counts may be flat or nested in vLLM's
+        ``multimodal_tokens``. Non-null flat counts take precedence, including zero.
+
         :param usage: Usage data dictionary from API response
         :param text: Generated text for calculating word and character counts.
             None means text is not applicable (metrics will be None);
@@ -814,16 +831,25 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
         input_details: dict[str, int] = cast(
             "dict[str, int]", usage.get("prompt_tokens_details", {}) or {}
         )
+        multimodal = input_details.get("multimodal_tokens")
+        if isinstance(multimodal, dict):
+            input_details = {
+                **input_details,
+                **{
+                    f"{key}_tokens": count
+                    for key, count in multimodal.items()
+                    if key in ("image", "video", "audio")
+                    and input_details.get(f"{key}_tokens") is None
+                },
+            }
         output_details: dict[str, int] = cast(
             "dict[str, int]", usage.get("completion_tokens_details", {}) or {}
         )
         usage_metrics: dict[str, int] = cast("dict[str, int]", usage)
 
         return UsageMetrics(
-            text_tokens=(
-                input_details.get("prompt_tokens")
-                or usage_metrics.get("prompt_tokens")
-                or 0
+            text_tokens=_extract_text_tokens(
+                usage_metrics.get("prompt_tokens"), input_details, "prompt_tokens"
             ),
             cached_tokens=input_details.get("cached_tokens"),
             image_tokens=input_details.get("image_tokens"),
@@ -831,10 +857,10 @@ class TextCompletionsRequestHandler(OpenAIRequestHandler):
             audio_tokens=input_details.get("audio_tokens"),
             audio_seconds=input_details.get("seconds"),
         ), UsageMetrics(
-            text_tokens=(
-                output_details.get("completion_tokens")
-                or usage_metrics.get("completion_tokens")
-                or 0
+            text_tokens=_extract_text_tokens(
+                usage_metrics.get("completion_tokens"),
+                output_details,
+                "completion_tokens",
             ),
             text_words=text_words,
             text_characters=text_chars,
@@ -2372,10 +2398,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
         )
 
         return UsageMetrics(
-            text_tokens=(
-                input_details.get("text_tokens")
-                or usage_metrics.get("input_tokens")
-                or 0
+            text_tokens=_extract_text_tokens(
+                usage_metrics.get("input_tokens"), input_details, "text_tokens"
             ),
             cached_tokens=input_details.get("cached_tokens"),
             image_tokens=input_details.get("image_tokens"),
@@ -2383,10 +2407,8 @@ class ResponsesRequestHandler(OpenAIRequestHandler):
             audio_tokens=input_details.get("audio_tokens"),
             audio_seconds=input_details.get("seconds"),
         ), UsageMetrics(
-            text_tokens=(
-                output_details.get("text_tokens")
-                or usage_metrics.get("output_tokens")
-                or 0
+            text_tokens=_extract_text_tokens(
+                usage_metrics.get("output_tokens"), output_details, "text_tokens"
             ),
             text_words=text_words,
             text_characters=text_chars,
