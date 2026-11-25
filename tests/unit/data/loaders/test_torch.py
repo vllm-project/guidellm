@@ -122,3 +122,116 @@ class TestTorchDataLoaderArgs:
         assert dumped["kind"] == "pytorch"
         assert dumped["samples"] == 100
         assert dumped["num_workers"] == 1
+
+
+class _EpochDataset:
+    """Iterable dataset whose rows depend on the epoch, like the synthetic dataset.
+
+    ## WRITTEN BY AI ##
+    """
+
+    def __init__(self, fail_from_epoch: int | None = None):
+        self.epoch = 0
+        self.fail_from_epoch = fail_from_epoch
+
+    def set_epoch(self, epoch: int):
+        if self.fail_from_epoch is not None and epoch >= self.fail_from_epoch:
+            raise RuntimeError(f"set_epoch failed at epoch {epoch}")
+        self.epoch = epoch
+
+    def __iter__(self):
+        row = 0
+        while True:
+            yield {"text": f"epoch{self.epoch}-row{row}"}
+            row += 1
+
+
+def _text_finalizer(row):
+    return row[0]["dataset"]["text"]
+
+
+def _epoch_iterator(samples: int, **dataset_kwargs) -> DatasetsIterator:
+    return DatasetsIterator(
+        data_samples=samples,
+        datasets=[_EpochDataset(**dataset_kwargs)],
+        preprocessors=[],
+        finalizer=_text_finalizer,
+    )
+
+
+def _take(iterator, count: int) -> list[str]:
+    return [row for _, row in zip(range(count), iterator, strict=False)]
+
+
+def _advance_epoch_and_take(iterator, epoch: int) -> list[str]:
+    iterator.set_epoch(epoch)
+    return _take(iterator, 1)
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("samples", [1, 3])
+def test_samples_cap_yields_fresh_rows_every_epoch(samples):
+    """A positive samples cap must still draw new rows for each epoch.
+
+    ## WRITTEN BY AI ##
+    """
+    iterator = _epoch_iterator(samples)
+    passes = []
+    for epoch in range(3):
+        iterator.set_epoch(epoch)
+        passes.append(list(iterator))
+
+    assert all(len(rows) == samples for rows in passes)
+    assert passes[0] == [f"epoch0-row{i}" for i in range(samples)]
+    assert len({tuple(rows) for rows in passes}) == 3
+
+
+@pytest.mark.regression
+def test_samples_cap_epochs_are_reproducible():
+    """The same epoch must give the same rows across runs and repeated passes.
+
+    ## WRITTEN BY AI ##
+    """
+    first, second = _epoch_iterator(3), _epoch_iterator(3)
+    for epoch in (0, 1, 2, 1):
+        first.set_epoch(epoch)
+        second.set_epoch(epoch)
+        assert list(first) == list(second)
+        assert list(first) == [f"epoch{epoch}-row{i}" for i in range(3)]
+
+
+@pytest.mark.regression
+def test_loader_samples_cap_yields_fresh_rows_for_each_pass():
+    """Each pass over the loader (one per strategy) must see different rows.
+
+    ## WRITTEN BY AI ##
+    """
+    loader = TorchDataLoader(
+        config=TorchDataLoaderArgs(samples=3, num_workers=1),
+        datasets=[_EpochDataset()],
+        preprocessors=[],
+        finalizer=_text_finalizer,
+    )
+
+    passes = [list(loader) for _ in range(3)]
+
+    assert [rows[0] for rows in passes] == [
+        "epoch0-row0",
+        "epoch1-row0",
+        "epoch2-row0",
+    ]
+
+
+@pytest.mark.regression
+@pytest.mark.parametrize("samples", [-1, 3])
+def test_set_epoch_failure_is_not_swallowed(samples):
+    """A dataset whose set_epoch fails must raise instead of replaying epoch 0.
+
+    ## WRITTEN BY AI ##
+    """
+    iterator = _epoch_iterator(samples, fail_from_epoch=1)
+    iterator.set_epoch(0)
+    assert _take(iterator, 1) == ["epoch0-row0"]
+
+    with pytest.raises(RuntimeError, match="set_epoch failed at epoch 1"):
+        _advance_epoch_and_take(iterator, 1)

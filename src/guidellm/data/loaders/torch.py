@@ -73,9 +73,11 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
                     datasets=self.datasets,
                 )
         self.finalizer = finalizer
+        self.data_samples = data_samples
         self.precache: list[Any] | None = (
             list(self.generator(data_samples)) if data_samples else None
         )
+        self.precache_epoch = 0
         self.epoch = 0
 
     def __iter__(self) -> Iterator[DataT]:
@@ -94,6 +96,9 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
 
     def set_epoch(self, epoch: int):
         self.epoch = epoch
+        if self.data_samples and epoch != self.precache_epoch:
+            self.precache = list(self.generator(self.data_samples, epoch=epoch))
+            self.precache_epoch = epoch
 
     def generator(  # noqa: C901
         self,
@@ -111,8 +116,7 @@ class DatasetsIterator(TorchIterableDataset[DataT]):
             dataset_iters = []
             for dataset in self.datasets:
                 if hasattr(dataset, "set_epoch"):
-                    with contextlib.suppress(Exception):
-                        dataset.set_epoch(epoch)
+                    dataset.set_epoch(epoch)
                 dataset_iters.append(iter(dataset))
 
             while max_items is None or gen_count < max_items:
