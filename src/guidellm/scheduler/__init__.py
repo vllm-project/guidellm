@@ -24,6 +24,8 @@ from .constraints import (
     OverSaturationConstraintInitializer,
     PydanticConstraintInitializer,
     SerializableConstraintInitializer,
+    TargetMoeConstraint,
+    TargetMoeConstraintInitializer,
     UnserializableConstraintInitializer,
 )
 from .environments import Environment, NonDistributedEnvironment
@@ -91,6 +93,8 @@ __all__ = [
     "SerializableConstraintInitializer",
     "StrategyT",
     "SynchronousStrategy",
+    "TargetMoeConstraint",
+    "TargetMoeConstraintInitializer",
     "ThroughputStrategy",
     "TraceReplayStrategy",
     "UnserializableConstraintInitializer",
