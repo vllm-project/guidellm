@@ -182,6 +182,80 @@ def test_run_constraint_missing_field_stays_specific():
     assert "Expected format" not in result.output
 
 
+@pytest.mark.sanity
+def test_run_websocket_backend_rtf_reaches_backend_args(monkeypatch):
+    """## WRITTEN BY AI ##"""
+    benchmark = AsyncMock()
+    monkeypatch.setattr("guidellm.entrypoints.benchmark_generative_text", benchmark)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            ("kind=openai_websocket,target=http://127.0.0.1:9,websocket_backend_rtf=1"),
+            "--data",
+            "kind=synthetic_text,prompt_tokens=8",
+            "--profile",
+            "kind=synchronous",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    benchmark.assert_awaited_once()
+    backend = benchmark.call_args.kwargs["args"].spec.backend
+    assert backend.websocket_backend_rtf == 1
+
+
+@pytest.mark.sanity
+@pytest.mark.parametrize("key", ["websocket-backend-rtf", "websocket_backend_RTF"])
+def test_run_websocket_backend_rtf_rejects_aliases(key):
+    """## WRITTEN BY AI ##"""
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            f"kind=openai_websocket,target=http://127.0.0.1:9,{key}=1",
+            "--data",
+            "kind=synthetic_text,prompt_tokens=8",
+            "--profile",
+            "kind=synchronous",
+        ],
+    )
+    assert result.exit_code != 0
+    assert key in result.output
+
+
+@pytest.mark.sanity
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ("-1", "greater than or equal to 0"),
+        ("inf", "finite"),
+        ("nan", "finite"),
+    ],
+)
+def test_run_websocket_backend_rtf_rejects_invalid_values(value, message):
+    """## WRITTEN BY AI ##"""
+    result = CliRunner().invoke(
+        cli,
+        [
+            "run",
+            "--backend",
+            (
+                "kind=openai_websocket,target=http://127.0.0.1:9,"
+                f"websocket_backend_rtf={value}"
+            ),
+            "--data",
+            "kind=synthetic_text,prompt_tokens=8",
+            "--profile",
+            "kind=synchronous",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "websocket_backend_rtf" in result.output
+    assert message in result.output
+
+
 @pytest.mark.regression
 def test_run_rejects_duplicate_backend_flags():
     """
