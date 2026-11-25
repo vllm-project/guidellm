@@ -28,6 +28,8 @@
     // Efficiency series: keep concurrency vs request-rate visually distinct.
     effByConcurrency: "#37a3a3", // teal-50
     effByRequest: "#5e40be", // purple-50
+    // Interactivity load curve.
+    interactivity: "#0066cc", // interaction-blue-50
   };
 
   // Canonical metric clauses. Glossary entries expand the acronym; chart tips
@@ -248,6 +250,15 @@
         "By request rate: total tokens/sec ÷ configured request rate (tok/s per intended request).",
         "Falling efficiency as load rises often means contention or saturation.",
         "On concurrency bars, hover for measured and achieved concurrency.",
+      ],
+    },
+    interactivity: {
+      title: "Interactivity",
+      lines: [
+        "Y: total output tokens per second the server sustains.",
+        "X: per-request interactivity, defined as 1 / ITL (inter-token latency in seconds), i.e. output tokens per second for one request. Higher is better.",
+        "Only streamed requests with at least two output tokens contribute, the same population as inter-token latency.",
+        "Points follow increasing load. When Y keeps rising while X falls, extra load is paid for with per-request responsiveness.",
       ],
     },
     tokens_per_request: {
@@ -635,8 +646,10 @@
   function fmt(value, digits) {
     if (value == null || Number.isNaN(value)) return "—";
     var n = Number(value);
-    if (Math.abs(n) >= 100) return n.toFixed(0);
-    if (Math.abs(n) >= 10) return n.toFixed(1);
+    var absN = Math.abs(n);
+    if (absN > 0 && absN < 0.01) return n.toExponential(2);
+    if (absN >= 100) return n.toFixed(0);
+    if (absN >= 10) return n.toFixed(1);
     return n.toFixed(digits == null ? 2 : digits);
   }
 
@@ -1212,8 +1225,21 @@
       }
     }
     var yExt = extent(ys);
+    if (options && options.yFromZero) yExt.min = Math.min(0, yExt.min);
+    var yPad = options && options.yPad;
+    if (yPad) {
+      var ySpan = yExt.max - yExt.min;
+      yExt.max += ySpan > 0 ? ySpan * yPad : Math.max(Math.abs(yExt.max) * yPad, 1);
+    }
     var y2Ext = hasRight ? extent(y2s) : null;
     if (y2Ext) y2Ext.min = Math.min(0, y2Ext.min);
+    var xPad = options && options.xPad;
+    if (xPad && xs.length) {
+      var xSpan = xExt.max - xExt.min;
+      var xPadding = xSpan > 0 ? xSpan * xPad : Math.max(Math.abs(xExt.max) * 0.1, 1e-12);
+      xExt.min -= xPadding;
+      xExt.max += xPadding;
+    }
     var svg = svgEl("svg", {
       viewBox: "0 0 " + width + " " + height,
       width: String(width),
@@ -1272,6 +1298,7 @@
           xLabel + ": " + fmt(rawPts[pi][0]),
           yLabel + ": " + fmt(rawPts[pi][1]),
         ];
+        if (rawPts[pi][2]) tipLines.push(String(rawPts[pi][2]));
         bindChartTip(hit, s.label || "Series", tipLines);
         if (marker) bindChartTip(marker, s.label || "Series", tipLines);
       });
@@ -2254,6 +2281,67 @@
     );
   }
 
+  /**
+   * Per-request interactivity against total output throughput.
+   * Hidden unless there are at least two runs to form a curve.
+   */
+  function renderInteractivity(rows) {
+    var card = el("card-interactivity");
+    if (!card) return;
+    var points = rows.filter(function (r) {
+      return (
+        r.interactivity != null &&
+        Number(r.interactivity) > 0 &&
+        r.output_tps != null &&
+        Number(r.output_tps) > 0
+      );
+    });
+    var show = isMultiRun() && points.length >= 2;
+    card.hidden = !show;
+    if (!show) return;
+
+    setTitleWithHelp(
+      "title-interactivity",
+      "Interactivity vs. total output throughput",
+      "interactivity"
+    );
+    setCopy(
+      "hint-interactivity",
+      "Total output throughput against per-request interactivity " +
+        "(1/ITL, in tokens/sec). Only streamed requests with at least two " +
+        "output tokens contribute. Higher and further right is better; up and " +
+        "left means more total throughput at the cost of interactivity."
+    );
+
+    points.sort(function (a, b) {
+      return (Number(a.concurrency) || 0) - (Number(b.concurrency) || 0);
+    });
+
+    var series = [
+      {
+        label: "Load points",
+        color: COLORS.interactivity,
+        shape: "circle",
+        points: points.map(function (r) {
+          var load = r.concurrency
+            ? fmt(r.concurrency) + " concurrent (measured)"
+            : "";
+          var tip = (r.label || r.strategy || "run") + (load ? " · " + load : "");
+          return [r.interactivity, r.output_tps, tip];
+        }),
+      },
+    ];
+
+    drawLineChart("chart-interactivity", series, {
+      xLabel: "Interactivity (1/ITL) tokens/sec",
+      yLabel: "Total output tok/s",
+      ariaLabel: "Interactivity versus total output throughput",
+      xPad: 0.08,
+      yFromZero: true,
+      yPad: 0.05,
+    });
+  }
+
 
   function renderSelectedRunCharts() {
     var details = data.details || {};
@@ -2456,6 +2544,7 @@
       renderSingleRunThroughput(selected);
     }
 
+    renderInteractivity(rows);
     renderSelectedRunCharts();
 
     // By turn: latency (left) + prompt median tokens (right, dashed).

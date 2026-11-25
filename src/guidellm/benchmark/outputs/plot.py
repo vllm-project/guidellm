@@ -8,6 +8,7 @@ visualization charts.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +51,7 @@ class _BenchmarkPoint:
     total_tps: float
     input_tps: float
     output_tps: float
+    interactivity: float
     ttft_median_ms: float
     ttft_p95_ms: float
     ttfo_median_ms: float
@@ -149,6 +151,17 @@ def _build_points(benchmarks: Sequence[GenerativeBenchmark]) -> list[_BenchmarkP
     for benchmark in benchmarks:
         metrics = benchmark.metrics
         request_totals = metrics.request_totals
+        output_tps = _get_val(metrics.output_tokens_per_second, status="total")
+        # Only the compiled per-request distribution is used. Reports written
+        # before the metric existed have none; inverting the token-weighted ITL
+        # distribution would report a different statistic, so those points are
+        # left without an interactivity value.
+        interactivity = _get_val(
+            metrics.interactivity,
+            is_median=True,
+            status="total",
+        )
+
         points.append(
             _BenchmarkPoint(
                 request_rate=_get_val(
@@ -161,7 +174,8 @@ def _build_points(benchmarks: Sequence[GenerativeBenchmark]) -> list[_BenchmarkP
                 ),
                 total_tps=_get_val(metrics.tokens_per_second, status="total"),
                 input_tps=_get_val(metrics.prompt_tokens_per_second, status="total"),
-                output_tps=_get_val(metrics.output_tokens_per_second, status="total"),
+                output_tps=output_tps,
+                interactivity=interactivity,
                 ttft_median_ms=_get_val(
                     metrics.time_to_first_token_ms,
                     is_median=True,
@@ -485,6 +499,85 @@ def plot_token_throughput_vs_concurrency(
     _show_legend(ax)
 
 
+def plot_interactivity(
+    ax: plot.Axes,
+    points: Sequence[_BenchmarkPoint],
+) -> None:
+    """
+    Plot per-request interactivity against total output throughput.
+
+    Interactivity is 1 / ITL, where ITL is inter-token latency in seconds.
+    Points are connected in increasing-concurrency order so the saturation
+    trade-off (throughput still rising, interactivity falling) is visible.
+
+    :param ax: Matplotlib axis to draw on
+    :param points: Benchmark points extracted from the report
+    """
+    sorted_points = _sort_by_concurrency(points)
+    interactivity = _series(sorted_points, lambda point: point.interactivity)
+    output_tps = _series(sorted_points, lambda point: point.output_tps)
+    valid = [
+        (point, x_value, y_value)
+        for point, x_value, y_value in zip(
+            sorted_points, interactivity, output_tps, strict=True
+        )
+        if x_value > 0.0 and y_value > 0.0
+    ]
+
+    if valid:
+        x_values = [x_value for _, x_value, _ in valid]
+        y_values = [y_value for _, _, y_value in valid]
+        _plot_line(
+            ax,
+            x_values,
+            y_values,
+            marker="o",
+            color=_GREEN,
+            linewidth=2,
+            label="Load points (increasing concurrency)",
+        )
+        for index, (point, x_value, y_value) in enumerate(valid):
+            ax.annotate(
+                _label_for_concurrency(point, index),
+                (x_value, y_value),
+                textcoords="offset points",
+                xytext=(6, 6),
+                fontsize=7,
+                color=_GRAY,
+            )
+
+        # Pad X so edge markers are not clipped, anchor Y at zero, and leave a
+        # little headroom above the peak so small differences are not
+        # visually exaggerated.
+        x_min, x_max = min(x_values), max(x_values)
+        x_span = x_max - x_min
+        x_padding = x_span * 0.08 if x_span > 0.0 else max(abs(x_max) * 0.1, 1e-12)
+        y_max = max(y_values)
+        y_padding = y_max * 0.05 if y_max > 0.0 else 1.0
+        ax.set_xlim(x_min - x_padding, x_max + x_padding)
+        ax.set_ylim(0.0, y_max + y_padding)
+    else:
+        ax.text(
+            0.5,
+            0.5,
+            "No interactivity data",
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            fontsize=10,
+            color=_GRAY,
+        )
+
+    _set_title(
+        ax,
+        "4. Interactivity vs. Total Output Throughput\n"
+        "(higher and further right is better)",
+    )
+    ax.set_xlabel("Interactivity (1/ITL) tokens/sec")
+    ax.set_ylabel("Total Output Throughput (Output Tokens/sec)")
+    _show_legend(ax)
+
+
 def plot_latency_vs_throughput(
     ax: plot.Axes, points: Sequence[_BenchmarkPoint]
 ) -> None:
@@ -520,7 +613,7 @@ def plot_latency_vs_throughput(
     _set_log_scale(ax, "y", _series(sorted_points, lambda point: point.ttft_p95_ms))
     _set_title(
         ax,
-        "4. Knee Plot: Latency vs. Throughput\n"
+        "5. Knee Plot: Latency vs. Throughput\n"
         "(lower latency + higher throughput is better)",
     )
     ax.set_xlabel("Throughput (Total Tokens/sec)")
@@ -564,7 +657,7 @@ def plot_request_status_counts(
         ha="right",
     )
     _set_title(
-        ax, "5. Request Status Counts vs. Concurrency\n(more complete is better)"
+        ax, "6. Request Status Counts vs. Concurrency\n(more complete is better)"
     )
     ax.set_xlabel("Concurrency (Active Requests)")
     ax.set_ylabel("Requests")
@@ -620,7 +713,7 @@ def plot_latency_breakdown_at_peak_throughput(
     ax.set_xticklabels(labels)
     _set_title(
         ax,
-        "6. Latency Breakdown at Peak Throughput\n(lower is better)",
+        "7. Latency Breakdown at Peak Throughput\n(lower is better)",
     )
     ax.set_xlabel("Latency Component")
     ax.set_ylabel("Latency (ms, Log Scale)")
@@ -657,7 +750,7 @@ def plot_throughput_efficiency_vs_concurrency(
     _set_log_scale(ax, "x", concurrency)
     _set_title(
         ax,
-        "7. Throughput Efficiency vs. Concurrency\n(higher is better)",
+        "8. Throughput Efficiency vs. Concurrency\n(higher is better)",
     )
     ax.set_xlabel("Concurrency (Active Requests, Log Scale)")
     ax.set_ylabel("Total Tokens/sec per Active Request")
@@ -703,7 +796,7 @@ def plot_token_throughput_mix_vs_request_rate(
     _set_log_scale(ax, "x", request_rate)
     _set_title(
         ax,
-        "8. Token Throughput Mix vs. Request Rate\n(higher is better)",
+        "9. Token Throughput Mix vs. Request Rate\n(higher is better)",
     )
     ax.set_xlabel("Request Rate (RPS, Log Scale)")
     ax.set_ylabel("Throughput (Tokens/sec)")
@@ -714,6 +807,7 @@ _PLOT_FUNCTIONS: tuple[_PlotFunction, ...] = (
     plot_latency_vs_request_rate,
     plot_generation_latency_vs_request_rate,
     plot_token_throughput_vs_concurrency,
+    plot_interactivity,
     plot_latency_vs_throughput,
     plot_request_status_counts,
     plot_latency_breakdown_at_peak_throughput,
@@ -782,7 +876,10 @@ class GenerativeBenchmarkerPlot(GenerativeBenchmarkerOutput):
 
         _set_plot_theme(self.dpi)
 
-        fig, axs = plot.plt.subplots(4, 2, figsize=(16, 22), facecolor="white")
+        plot_rows = math.ceil(len(_PLOT_FUNCTIONS) / 2)
+        fig, axs = plot.plt.subplots(
+            plot_rows, 2, figsize=(16, 5.5 * plot_rows), facecolor="white"
+        )
         fig.suptitle(
             "GuideLLM Benchmark Performance Visualization",
             fontsize=18,
@@ -791,11 +888,17 @@ class GenerativeBenchmarkerPlot(GenerativeBenchmarkerOutput):
             y=0.985,
         )
 
-        for ax in axs.flat:
+        axes = list(axs.flat)
+        for ax in axes:
             _style_axis(ax)
 
-        for ax, plot_function in zip(axs.flat, _PLOT_FUNCTIONS, strict=True):
+        for ax, plot_function in zip(
+            axes[: len(_PLOT_FUNCTIONS)], _PLOT_FUNCTIONS, strict=True
+        ):
             plot_function(ax, points)
+
+        for ax in axes[len(_PLOT_FUNCTIONS) :]:
+            ax.set_visible(False)
 
         fig.align_ylabels(axs[:, 0])
         fig.align_ylabels(axs[:, 1])

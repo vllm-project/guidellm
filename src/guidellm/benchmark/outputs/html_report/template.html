@@ -182,6 +182,15 @@ __GUIDELLM_REPORT_CSS__
           <div class="chart chart-hbar" id="chart-efficiency"></div>
           <div id="efficiency-stats" class="efficiency-stats" hidden></div>
         </article>
+        <article class="card card-wide" id="card-interactivity" hidden>
+          <h2 id="title-interactivity">Interactivity vs. total output throughput</h2>
+          <p class="hint" id="hint-interactivity">
+            Total output throughput against per-request interactivity
+            (1/ITL, in tokens/sec). Only streamed requests with at least two
+            output tokens contribute. Higher and further right is better.
+          </p>
+          <div class="chart chart-interactivity" id="chart-interactivity"></div>
+        </article>
       </div>
     </section>
 

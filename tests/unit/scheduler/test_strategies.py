@@ -242,7 +242,10 @@ class TestConcurrentStrategy:
 
     @pytest.mark.smoke
     def test_limits(self, valid_instances: tuple[ConcurrentStrategy, dict]):
-        """Test that ConcurrentStrategy returns correct limits."""
+        """Test that ConcurrentStrategy returns correct limits.
+
+        ## WRITTEN BY AI ##
+        """
         instance, constructor_args = valid_instances
         streams = constructor_args["streams"]
         assert instance.processes_limit == streams

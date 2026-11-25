@@ -432,6 +432,10 @@ h1 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.card-wide {
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 720px) {
   .grid.grid-2 {
     grid-template-columns: 1fr;
@@ -596,6 +600,11 @@ h1 {
 /* Solo full-width turn chart: taller on wide viewports, compact on narrow. */
 .chart.chart-turn {
   height: clamp(280px, 36vw, 400px);
+}
+
+/* Full-width interactivity curve: give the scatter room to breathe. */
+.chart.chart-interactivity {
+  height: clamp(300px, 34vw, 420px);
 }
 
 .chart svg { width: 100%; height: 100%; display: block; }

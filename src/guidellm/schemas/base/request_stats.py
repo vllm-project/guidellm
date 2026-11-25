@@ -365,6 +365,23 @@ class GenerativeRequestStats(StandardBaseDict):
 
     @computed_field  # type: ignore[misc]
     @property
+    def interactivity(self) -> float | None:
+        """
+        Per-request interactivity: 1 / ITL, where ITL is the inter-token
+        latency in seconds (milliseconds / 1000).
+
+        Populated only when inter-token latency is defined, matching the same
+        streamed, multi-token request population.
+
+        :return: Interactivity value, or None if unavailable
+        """
+        itl_ms = self.inter_token_latency_ms
+        if itl_ms is None or itl_ms <= 0:
+            return None
+        return 1.0 / (itl_ms / 1000.0)
+
+    @computed_field  # type: ignore[misc]
+    @property
     def tokens_per_second(self) -> float | None:
         """
         :return: Total tokens per second throughput, or None if unavailable

@@ -496,6 +496,12 @@ def _build_run_row(benchmark: GenerativeBenchmark, index: int) -> dict[str, Any]
         else None
     )
 
+    output_tps = _mean(metrics.output_tokens_per_second, status="total")
+    # Only the compiled per-request distribution is used. Reports written before
+    # the metric existed have none; inverting the token-weighted ITL
+    # distribution would report a different statistic, so the chart omits them.
+    interactivity = _median(metrics.interactivity, status="total")
+
     return {
         "index": index,
         "strategy": strategy_name,
@@ -506,7 +512,8 @@ def _build_run_row(benchmark: GenerativeBenchmark, index: int) -> dict[str, Any]
         "configured_request_rate": configured_request_rate,
         "total_tps": _mean(metrics.tokens_per_second, status="total"),
         "input_tps": _mean(metrics.prompt_tokens_per_second, status="total"),
-        "output_tps": _mean(metrics.output_tokens_per_second, status="total"),
+        "output_tps": output_tps,
+        "interactivity": interactivity,
         "request_latency_p95_ms": _ms(req_lat_p95),
         "request_latency_p99_ms": _ms(req_lat_p99),
         "ttft_p95_ms": _percentile(metrics.time_to_first_token_ms, "p95"),

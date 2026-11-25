@@ -126,6 +126,11 @@ Dispatch Delay, Turn Predecessor Delay, Turn Scheduling Delay, and Scheduled Lat
 - **Definition**: The average time between generating consecutive tokens in the output, excluding the first token. Measured only for streaming requests; a request without streamed token timings, such as one sent with `stream=false`, is left out of the distribution rather than counted as zero.
 - **Use Case**: Helps assess the smoothness and speed of token generation.
 
+### Interactivity
+
+- **Definition**: `interactivity` is defined per request as `1 / ITL`, where ITL is the inter-token latency in seconds (`inter_token_latency_ms / 1000`). It is the per-request output tokens per second and is populated only when inter-token latency is defined, so non-streaming and single-token requests are excluded. Each request contributes one observation, regardless of how many tokens it generated.
+- **Use Case**: Summarizes per-request generation responsiveness in a single number that is comparable across scheduling profiles. It powers the interactivity chart, which plots it against total output throughput.
+
 ### Time Per Output Token
 
 - **Definition**: The average time taken to generate each output token, including the first token.
@@ -208,11 +213,11 @@ The console shows the mean and the half-width of its interval together, for exam
 
 #### Which metrics report intervals
 
-Intervals are reported only for metrics recorded exactly once per request, where each value is one observation: request latency, TTFT, time to first output token, the round-trip metrics, the token counts, streaming iteration count, dispatch delay, and scheduled latency.
+Intervals are reported only for metrics recorded exactly once per request, where each value is one observation: request latency, TTFT, time to first output token, the round-trip metrics, the token counts, streaming iteration count, dispatch delay, scheduled latency, and interactivity.
 
 Two groups are reported without intervals:
 
-- **Inter-token latency and time per output token.** Their reported mean is weighted by output tokens, so it is a ratio of total generation time to total tokens rather than a mean over interchangeable observations. Note that their `count` is the summed token exposure, not the number of requests.
+- **Inter-token latency and time per output token.** Their reported mean is weighted by output tokens, so it is a ratio of total generation time to total tokens rather than a mean over interchangeable observations. Note that their `count` is the summed token exposure, not the number of requests. Interactivity is derived from ITL but is recorded once per request, so it is not in this group.
 - **Rate distributions**, such as requests per second and output tokens per second. These are derived from event timings rather than per-request observations.
 
 #### Why a percentile interval can be absent

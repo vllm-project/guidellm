@@ -1756,6 +1756,63 @@ class TestInterTokenLatencyWithoutTokenTimings:
         assert itl.mean == pytest.approx(10.0)
         assert itl.min == pytest.approx(10.0)
 
+    @pytest.mark.sanity
+    def test_interactivity_derives_from_itl_once_per_request(self):
+        """
+        Interactivity is 1 / ITL in seconds, one observation per streamed request.
+
+        ## WRITTEN BY AI ##
+        """
+        # Each streamed request has 10 ms between its first and its 11th token.
+        streamed = [
+            _make_streamed_request(
+                f"streamed-{index}", SCHEDULE_BASE_TIME + index, 0.05, 0.15, 8, 11
+            )
+            for index in range(3)
+        ]
+        non_streamed = [
+            _make_non_streamed_request(
+                f"non-streamed-{index}", SCHEDULE_BASE_TIME + index + 0.5, 0.2, 16
+            )
+            for index in range(3)
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(
+                [*streamed, *non_streamed],
+                SCHEDULE_BASE_TIME,
+                SCHEDULE_BASE_TIME + 10.0,
+            )
+        )
+
+        assert metrics.interactivity is not None
+        interactivity = metrics.interactivity.successful
+        # One observation per streamed request, not per token gap.
+        assert interactivity.count == 3
+        expected = 1.0 / (10.0 / 1000.0)
+        assert interactivity.mean == pytest.approx(expected)
+        assert interactivity.median == pytest.approx(expected)
+
+    @pytest.mark.smoke
+    def test_interactivity_is_optional_for_existing_reports(self):
+        """
+        Interactivity carries a default so reports written before it still load.
+
+        ## WRITTEN BY AI ##
+        """
+        streamed = [
+            _make_streamed_request("streamed", SCHEDULE_BASE_TIME, 0.05, 0.15, 8, 11)
+        ]
+        metrics = GenerativeMetrics.compile(
+            _make_accumulator(streamed, SCHEDULE_BASE_TIME, SCHEDULE_BASE_TIME + 10.0)
+        )
+        assert metrics.interactivity is not None
+
+        payload = metrics.model_dump()
+        payload.pop("interactivity", None)
+        restored = GenerativeMetrics.model_validate(payload)
+
+        assert restored.interactivity is None
+
     @pytest.mark.regression
     def test_turn_inter_token_latency_skips_non_streaming_requests(self):
         """
@@ -1828,6 +1885,7 @@ class TestReportedUncertainty:
         "total_token_count",
         "time_to_first_token_ms",
         "time_to_first_output_token_ms",
+        "interactivity",
     )
     # Weighted by output tokens, or derived from event timings, so an interval
     # assuming interchangeable observations would not apply.

@@ -90,6 +90,9 @@ def test_build_report_view_single_and_multi_run():
     assert "kpis" not in single_view
     assert "modalities" not in single_view["runs"][0]
     assert single_view["runs"][0]["total_tps"] == 40.0
+    assert single_view["runs"][0]["interactivity"] == pytest.approx(
+        1.0 / (14.0 / 1000.0)
+    )
 
     multi_report = _report(
         _make_benchmark(
@@ -97,12 +100,14 @@ def test_build_report_view_single_and_multi_run():
             rps=1.0,
             tps=20.0,
             measure_start=1_700_000_000.0,
+            itl_median_ms=10.0,
         ),
         _make_benchmark(
             strategy=ConcurrentStrategy(streams=4),
             rps=2.0,
             tps=50.0,
             measure_start=1_700_000_010.0,
+            itl_median_ms=28.0,
         ),
     )
     multi_view = build_report_view(multi_report)
@@ -116,6 +121,10 @@ def test_build_report_view_single_and_multi_run():
     assert multi_view["runs"][0]["configured_concurrency"] == 2
     assert multi_view["runs"][0]["configured_request_rate"] is None
     assert multi_view["runs"][1]["configured_request_rate"] is None
+    assert multi_view["runs"][0]["interactivity"] == pytest.approx(100.0)
+    assert multi_view["runs"][1]["interactivity"] == pytest.approx(
+        1.0 / (28.0 / 1000.0)
+    )
 
     throughput_report = _report(
         _make_benchmark(
@@ -139,6 +148,26 @@ def test_build_report_view_single_and_multi_run():
     unlimited_view = build_report_view(unlimited_throughput)
     assert unlimited_view["runs"][0]["configured_concurrency"] is None
     assert unlimited_view["runs"][0]["configured_request_rate"] is None
+
+
+@pytest.mark.sanity
+def test_build_report_view_omits_interactivity_without_compiled_metric():
+    """
+    The view omits interactivity when the compiled distribution is absent.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = _make_benchmark(
+        strategy=AsyncConstantStrategy(rate=2.0),
+        rps=2.0,
+        tps=40.0,
+        itl_median_ms=20.0,
+    )
+    benchmark.metrics.interactivity = None
+
+    row = build_report_view(_report(benchmark))["runs"][0]
+
+    assert row["interactivity"] is None
 
 
 @pytest.mark.sanity

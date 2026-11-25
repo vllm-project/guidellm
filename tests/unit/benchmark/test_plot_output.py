@@ -8,8 +8,11 @@ from pydantic import ValidationError
 from guidellm.benchmark.entrypoints import reimport_benchmarks_report
 from guidellm.benchmark.outputs.plot import (
     GenerativeBenchmarkerPlot,
+    _build_points,
+    plot_interactivity,
 )
 from guidellm.benchmark.schemas import GenerativeBenchmarksReport
+from guidellm.extras import plot
 from guidellm.schemas.benchmark import (
     BenchmarkOutputArgs,
     BenchmarkScenario,
@@ -77,6 +80,7 @@ class MockMetrics:
             median=14.0,
             p95=18.0,
         )
+        self.interactivity = None
         self.request_concurrency = MockStatusDistribution(mean=4.0)
         self.tokens_per_second = MockStatusDistribution(mean=30.0)
         self.prompt_tokens_per_second = MockStatusDistribution(mean=10.0)
@@ -345,3 +349,96 @@ async def test_reimport_benchmarks_report_multiple_sibling_file_path(
     assert expected_json.is_file()
     assert expected_png.exists()
     assert expected_png.is_file()
+
+
+@pytest.mark.sanity
+def test_plot_interactivity_draws_load_curve_and_annotations():
+    """
+    Test that the interactivity plot draws a load line and labels.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmarks = [MockBenchmark(), MockBenchmark(), MockBenchmark()]
+    # (median ITL ms, total output tokens/sec): interactivity falls as load
+    # rises while total throughput keeps increasing.
+    for benchmark, (itl, output_tps) in zip(
+        benchmarks,
+        [(10.0, 20.0), (20.0, 40.0), (40.0, 60.0)],
+        strict=True,
+    ):
+        interactivity = 1.0 / (itl / 1000.0)
+        benchmark.metrics.interactivity = MockStatusDistribution(
+            mean=interactivity, median=interactivity
+        )
+        benchmark.metrics.output_tokens_per_second = MockStatusDistribution(
+            mean=output_tps
+        )
+
+    points = _build_points(benchmarks)  # type: ignore[arg-type]
+    assert [point.interactivity for point in points] == pytest.approx(
+        [100.0, 50.0, 25.0]
+    )
+
+    plot.use("Agg")
+    fig, ax = plot.plt.subplots()
+    plot_interactivity(ax, points)
+
+    # One load line; one annotation per plotted point.
+    assert len(ax.lines) == 1
+    assert len(ax.texts) == 3
+    # Y runs from zero to 5% above the peak; X has 8% padding on each side.
+    assert ax.get_ylim() == pytest.approx((0.0, 63.0))
+    x_low, x_high = ax.get_xlim()
+    assert x_low == pytest.approx(19.0)
+    assert x_high == pytest.approx(106.0)
+    plot.plt.close(fig)
+
+
+@pytest.mark.sanity
+def test_build_points_prefers_compiled_interactivity_metric():
+    """
+    Test that the compiled interactivity distribution is used when present.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = MockBenchmark()
+    benchmark.metrics.interactivity = MockStatusDistribution(mean=1e-3, median=1e-3)
+    benchmark.metrics.inter_token_latency_ms = MockStatusDistribution(
+        mean=14.0, median=14.0, p95=18.0
+    )
+
+    points = _build_points([benchmark])  # type: ignore[list-item]
+
+    assert points[0].interactivity == pytest.approx(1e-3)
+
+
+@pytest.mark.sanity
+def test_build_points_omits_interactivity_without_compiled_metric():
+    """
+    Without the compiled distribution, no reciprocal-ITL approximation is used.
+
+    ## WRITTEN BY AI ##
+    """
+    benchmark = MockBenchmark()  # interactivity is None; ITL is populated
+
+    points = _build_points([benchmark])  # type: ignore[list-item]
+
+    assert points[0].interactivity == 0.0
+
+
+@pytest.mark.sanity
+def test_plot_interactivity_without_data_shows_note():
+    """
+    An empty interactivity series draws an explanatory note and no load line.
+
+    ## WRITTEN BY AI ##
+    """
+    points = _build_points([MockBenchmark()])  # type: ignore[list-item]
+
+    plot.use("Agg")
+    fig, ax = plot.plt.subplots()
+    plot_interactivity(ax, points)
+
+    assert len(ax.lines) == 0
+    assert [text.get_text() for text in ax.texts] == ["No interactivity data"]
+    plot.plt.close(fig)
