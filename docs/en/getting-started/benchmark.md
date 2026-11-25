@@ -171,7 +171,7 @@ Delay only gates turns *within* a conversation: when a session ends, the user im
 
 Because a user's slot stays idle for the think time instead of immediately scheduling another conversation, `users` can offer a lower request rate than `concurrent` with the same number of slots, and the conversations interleave differently.
 
-Trace datasets carry request timestamps and durations but not a `requeue_delay`, so a `users` run over a trace has no between-turn gap and behaves like `concurrent`. Use synthetic `delay*` data or the `replay` profile when between-turn pacing matters.
+Trace datasets derive a `requeue_delay` from request timestamps and durations by default, so a `users` run over a multi-turn trace paces turns by the recorded gap. Single-turn traces still have no between-turn gap. The `replay` profile ignores the derived delay and schedules from trace timestamps directly. Set `derive_requeue_delay=false` to restore the previous behavior where traces had no dataset think time.
 
 `rampup_duration` staggers only the first turn of each new session; follow-up turns are not ramped.
 

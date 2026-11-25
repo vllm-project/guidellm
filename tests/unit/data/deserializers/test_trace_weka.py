@@ -158,6 +158,7 @@ class TestWEKATraceFormat:
                 "tool_response_tokens_min",
                 "tool_response_tokens_max",
                 "max_context_len",
+                "derive_requeue_delay",
             ),
             kwargs,
         )
@@ -485,6 +486,51 @@ class TestWEKATraceFormat:
         assert [
             turn.columns["request_duration_column"][0] for turn in turns
         ] == pytest.approx([2.5])
+
+    @pytest.mark.sanity
+    def test_derives_requeue_delay_from_timestamps(self, tmp_path: Path, deserializer):
+        """Multi-turn gaps become parent requeue delays by default.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"id": "conv0", "requests": ['
+            '{"t": 0.0, "in": 128, "out": 5, "hash_ids": [1, 2], '
+            '"input_types": ["text"], "api_time": 1.0}, '
+            '{"t": 5.0, "in": 128, "out": 5, "hash_ids": [1, 2], '
+            '"input_types": ["text"], "api_time": 2.0}, '
+            '{"t": 15.0, "in": 128, "out": 5, "hash_ids": [1, 2], '
+            '"input_types": ["text"]}]}\n',
+        )
+        turns = load_graph_turns(next(iter(self.deserialize(deserializer, trace))))
+
+        assert [turn.node_id for turn in turns] == ["main_0", "main_1", "main_2"]
+        assert turns[0].columns["requeue_delay_column"] == pytest.approx([4.0])
+        assert turns[1].columns["requeue_delay_column"] == pytest.approx([8.0])
+        assert "requeue_delay_column" not in turns[2].columns
+
+    @pytest.mark.sanity
+    def test_derive_requeue_delay_can_be_disabled(self, tmp_path: Path, deserializer):
+        """Disabling the option leaves trace turns with no derived delay.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"id": "conv0", "requests": ['
+            '{"t": 0.0, "in": 128, "out": 5, "hash_ids": [1, 2], '
+            '"input_types": ["text"], "api_time": 1.0}, '
+            '{"t": 5.0, "in": 128, "out": 5, "hash_ids": [1, 2], '
+            '"input_types": ["text"]}]}\n',
+        )
+        turns = load_graph_turns(
+            next(
+                iter(self.deserialize(deserializer, trace, derive_requeue_delay=False))
+            )
+        )
+
+        assert all("requeue_delay_column" not in turn.columns for turn in turns)
 
     @pytest.mark.sanity
     def test_negative_api_time_raises(

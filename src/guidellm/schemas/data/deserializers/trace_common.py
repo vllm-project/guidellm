@@ -97,6 +97,17 @@ class TraceDataArgs(DataArgs):
             "values below 1.0 compress them."
         ),
     )
+    derive_requeue_delay: bool = Field(
+        default=True,
+        description=(
+            "Derive each turn's requeue_delay from the trace timeline: the gap "
+            "between the next turn's start and the latest recorded parent end "
+            "(timestamp + duration), stored on the parent turn so the DAG gates "
+            "its children. Used by think-time profiles such as users and "
+            "concurrent; the replay profile ignores it. Emitted only when "
+            "positive. Set false to leave trace turns with no dataset think time."
+        ),
+    )
     copies: int = Field(
         default=1,
         ge=1,

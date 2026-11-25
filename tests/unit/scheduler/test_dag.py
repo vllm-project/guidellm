@@ -885,6 +885,38 @@ class TestDAGExecutionStateRequeueDelay:
         assert nxt[0] == "n1"
         assert nxt[1] <= 50.0
 
+    @pytest.mark.smoke
+    def test_apply_requeue_delay_false_ignores_delay(self, monkeypatch):
+        """
+        Disabling requeue gating makes children immediately ready.
+
+        ## WRITTEN BY AI ##
+        """
+        now = 1000.0
+        monkeypatch.setattr("guidellm.scheduler.dag.time.time", lambda: now)
+
+        nodes = {
+            "n0": _make_node("n0", settings=RequestSettings(requeue_delay=0.5)),
+            "n1": _make_node("n1"),
+        }
+        edges = [
+            ConversationEdge(
+                source_node_id="n0",
+                target_node_id="n1",
+                history_context="full",
+            )
+        ]
+        state = DAGExecutionState(
+            ConversationGraph(graph_id="delay", nodes=nodes, edges=edges),
+            apply_requeue_delay=False,
+        )
+
+        state.mark_completed("n0", "r0", "resp0")
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "n1"
+        assert nxt[1] <= now
+
     @pytest.mark.sanity
     def test_join_think_timer_starts_when_last_parent_completes(self, monkeypatch):
         """

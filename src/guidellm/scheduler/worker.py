@@ -468,7 +468,10 @@ class WorkerProcess(Generic[RequestT, ResponseT]):
                         continue
                 else:
                     graph = await self.messaging.get()
-                state = DAGExecutionState(graph)
+                state = DAGExecutionState(
+                    graph,
+                    apply_requeue_delay=self.strategy.uses_dataset_requeue_delay,
+                )
                 self.turns_queue.append(state)
             finally:
                 self._sessions_pending -= 1

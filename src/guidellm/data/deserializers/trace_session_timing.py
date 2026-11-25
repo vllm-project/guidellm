@@ -1,8 +1,10 @@
-"""Rewrite trace conversation timestamps to clamp waits, pack sessions, and scale time.
+"""Rewrite trace conversation timestamps to clamp waits, pack sessions, scale time,
+and derive between-turn delays.
 
 Applied in the dataset path after each conversation graph is built. Wait and
 pack caps run in original trace seconds, then remaining
-``relative_timestamp`` values are multiplied by ``time_scale``.
+``relative_timestamp`` values are multiplied by ``time_scale``. Derived
+``requeue_delay`` values are computed from the final timeline.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from guidellm.data.schemas.conversation_graph_data import (
 
 __all__ = [
     "TraceSessionTiming",
+    "derive_requeue_delays",
     "graph_max_timestamp",
     "graph_min_timestamp",
     "shift_graph_timestamps",
@@ -307,6 +310,60 @@ def graph_max_timestamp(graph: ConversationGraphData) -> float:
         for timestamp in (_turn_timestamp(turn) for turn in graph.turns)
         if timestamp is not None
     )
+
+
+def derive_requeue_delays(  # noqa: C901
+    graph: ConversationGraphData,
+) -> ConversationGraphData:
+    """Set parent turns' ``requeue_delay_column`` from recorded turn gaps.
+
+    The DAG applies a completed parent's delay to its children, so each gap is
+    written on the parent turn. A gap is measured from the latest recorded
+    parent end (``relative_timestamp + request_duration``) to the child's
+    ``relative_timestamp``. Only positive gaps are stored because
+    ``RequestSettings.requeue_delay`` requires a value greater than zero. When a
+    parent has several children, the smallest positive gap is kept so a fork
+    does not serialize more than the trace did.
+
+    Runs after wait caps, packing, and time scaling so the derived value matches
+    the emitted timeline.
+
+    :param graph: Conversation whose turns may receive derived delays
+    :return: The same graph, after any delay columns are written
+    """
+    turns_by_id = {turn.node_id: turn for turn in graph.turns}
+    gaps_by_parent: dict[str, list[float]] = {}
+    for child in graph.turns:
+        if not child.parents:
+            continue
+        child_timestamp = _turn_timestamp(child)
+        if child_timestamp is None:
+            continue
+        parent_ends: list[tuple[ConversationTurnData, float]] = []
+        for parent_ref in child.parents:
+            parent = turns_by_id.get(parent_ref.parent_node_id)
+            if parent is None:
+                continue
+            parent_timestamp = _turn_timestamp(parent)
+            if parent_timestamp is None:
+                continue
+            parent_ends.append((parent, parent_timestamp + _turn_duration(parent)))
+        if not parent_ends:
+            continue
+        gap = child_timestamp - max(end for _, end in parent_ends)
+        if gap <= 0.0:
+            continue
+        for parent, _ in parent_ends:
+            gaps_by_parent.setdefault(parent.node_id, []).append(gap)
+
+    for node_id, gaps in gaps_by_parent.items():
+        parent = turns_by_id[node_id]
+        if "requeue_delay_column" in parent.columns:
+            continue
+        if parent.settings is not None and parent.settings.requeue_delay is not None:
+            continue
+        parent.columns["requeue_delay_column"] = [min(gaps)]
+    return graph
 
 
 def _idle_gap_turn_start(

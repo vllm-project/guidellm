@@ -4,6 +4,7 @@ import pytest
 
 from guidellm.data.deserializers.trace_session_timing import (
     TraceSessionTiming,
+    derive_requeue_delays,
     graph_max_timestamp,
     graph_min_timestamp,
     shift_graph_timestamps,
@@ -13,6 +14,7 @@ from guidellm.data.schemas.conversation_graph_data import (
     ConversationParentRef,
     ConversationTurnData,
 )
+from guidellm.schemas import RequestSettings
 
 
 def _graph_with_timestamps(
@@ -727,3 +729,194 @@ class TestPackAfterCopyPlacement:
         packer.apply_pack(second)
         assert _relative_timestamps(first) == pytest.approx([0.0, 10.0])
         assert _relative_timestamps(second) == pytest.approx([10.0, 20.0])
+
+
+class TestDeriveRequeueDelays:
+    """Derive between-turn delays from the trace timeline.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.sanity
+    def test_linear_chain_writes_delay_on_parent(self):
+        """Each gap is stored on the parent that unlocks the next turn.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = _graph_with_parent_chain([0.0, 5.0, 12.0], [1.0, 2.0, 3.0])
+
+        derive_requeue_delays(graph)
+
+        assert graph.turns[0].columns["requeue_delay_column"] == pytest.approx([4.0])
+        assert graph.turns[1].columns["requeue_delay_column"] == pytest.approx([5.0])
+        assert "requeue_delay_column" not in graph.turns[2].columns
+
+    @pytest.mark.sanity
+    def test_zero_and_negative_gaps_are_omitted(self):
+        """A child that starts inside its parent's duration gets no delay.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = _graph_with_parent_chain([0.0, 3.0, 4.0], [5.0, 1.0, 0.0])
+
+        derive_requeue_delays(graph)
+
+        assert "requeue_delay_column" not in graph.turns[0].columns
+        assert "requeue_delay_column" not in graph.turns[1].columns
+
+    @pytest.mark.sanity
+    def test_missing_duration_uses_timestamp_gap(self):
+        """Without durations, the full timestamp delta becomes the delay.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = ConversationGraphData(
+            turns=[
+                ConversationTurnData(
+                    node_id="n0",
+                    columns={"relative_timestamp_column": [0.0]},
+                ),
+                ConversationTurnData(
+                    node_id="n1",
+                    parents=[ConversationParentRef(parent_node_id="n0")],
+                    columns={"relative_timestamp_column": [5.0]},
+                ),
+            ]
+        )
+
+        derive_requeue_delays(graph)
+
+        assert graph.turns[0].columns["requeue_delay_column"] == pytest.approx([5.0])
+
+    @pytest.mark.sanity
+    def test_join_uses_latest_parent_end(self):
+        """A join gap is measured from the last recorded parent end.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = ConversationGraphData(
+            turns=[
+                ConversationTurnData(
+                    node_id="a",
+                    columns={
+                        "relative_timestamp_column": [0.0],
+                        "request_duration_column": [1.0],
+                    },
+                ),
+                ConversationTurnData(
+                    node_id="b",
+                    columns={
+                        "relative_timestamp_column": [5.0],
+                        "request_duration_column": [2.0],
+                    },
+                ),
+                ConversationTurnData(
+                    node_id="j",
+                    parents=[
+                        ConversationParentRef(parent_node_id="a"),
+                        ConversationParentRef(parent_node_id="b"),
+                    ],
+                    columns={"relative_timestamp_column": [9.0]},
+                ),
+            ]
+        )
+
+        derive_requeue_delays(graph)
+
+        assert graph.turns[0].columns["requeue_delay_column"] == pytest.approx([2.0])
+        assert graph.turns[1].columns["requeue_delay_column"] == pytest.approx([2.0])
+
+    @pytest.mark.sanity
+    def test_fan_out_uses_smallest_positive_gap(self):
+        """A fork keeps the earliest branch's think time on the parent.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = ConversationGraphData(
+            turns=[
+                ConversationTurnData(
+                    node_id="p",
+                    columns={
+                        "relative_timestamp_column": [0.0],
+                        "request_duration_column": [1.0],
+                    },
+                ),
+                ConversationTurnData(
+                    node_id="a",
+                    parents=[ConversationParentRef(parent_node_id="p")],
+                    columns={"relative_timestamp_column": [3.0]},
+                ),
+                ConversationTurnData(
+                    node_id="b",
+                    parents=[ConversationParentRef(parent_node_id="p")],
+                    columns={"relative_timestamp_column": [9.0]},
+                ),
+            ]
+        )
+
+        derive_requeue_delays(graph)
+
+        assert graph.turns[0].columns["requeue_delay_column"] == pytest.approx([2.0])
+
+    @pytest.mark.sanity
+    def test_explicit_delay_is_preserved(self):
+        """Explicit columns and settings win over derived values.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = _graph_with_parent_chain([0.0, 5.0], [1.0, 1.0])
+        graph.turns[0].columns["requeue_delay_column"] = [99.0]
+        graph.turns[1].settings = RequestSettings(requeue_delay=42.0)
+
+        derive_requeue_delays(graph)
+
+        assert graph.turns[0].columns["requeue_delay_column"] == [99.0]
+        assert "requeue_delay_column" not in graph.turns[1].columns
+
+    @pytest.mark.sanity
+    def test_dangling_parent_is_skipped(self):
+        """A parent reference outside the graph does not produce a delay.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = ConversationGraphData(
+            turns=[
+                ConversationTurnData(
+                    node_id="n0",
+                    parents=[ConversationParentRef(parent_node_id="missing")],
+                    columns={"relative_timestamp_column": [5.0]},
+                ),
+            ]
+        )
+
+        derive_requeue_delays(graph)
+
+        assert "requeue_delay_column" not in graph.turns[0].columns
+
+    @pytest.mark.sanity
+    def test_child_before_parent_is_order_independent(self):
+        """Turn list order does not affect the derived parent delay.
+
+        ## WRITTEN BY AI ##
+        """
+        graph = ConversationGraphData(
+            turns=[
+                ConversationTurnData(
+                    node_id="n1",
+                    parents=[ConversationParentRef(parent_node_id="n0")],
+                    columns={"relative_timestamp_column": [5.0]},
+                ),
+                ConversationTurnData(
+                    node_id="n0",
+                    columns={
+                        "relative_timestamp_column": [0.0],
+                        "request_duration_column": [1.0],
+                    },
+                ),
+            ]
+        )
+
+        derive_requeue_delays(graph)
+
+        n0 = next(turn for turn in graph.turns if turn.node_id == "n0")
+        assert n0.columns["requeue_delay_column"] == pytest.approx([4.0])
