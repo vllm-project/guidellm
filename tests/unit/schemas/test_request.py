@@ -18,20 +18,6 @@ from guidellm.schemas import (
 )
 
 
-@pytest.mark.regression
-def test_usage_metrics_include_audio_tokens_in_total():
-    """Include audio tokens in aggregate usage without inventing text tokens.
-
-    :return: None.
-    ## WRITTEN BY AI ##
-    """
-    metrics = UsageMetrics(audio_tokens=37, audio_samples=2400, audio_seconds=0.1)
-
-    assert metrics.total_tokens == 37
-    assert metrics.audio_samples == 2400
-    assert metrics.audio_seconds == pytest.approx(0.1)
-
-
 class TestGenerationRequestArguments:
     """Test cases for GenerationRequestArguments model."""
 
@@ -408,7 +394,7 @@ class TestUsageMetrics:
             {"unclassified_total_tokens": 125},
             {"text_tokens": 100, "text_words": 50},
             {"image_tokens": 200, "image_count": 5, "image_pixels": 1024},
-            {"audio_tokens": 150, "audio_seconds": 30.5},
+            {"audio_tokens": 150, "audio_samples": 2400, "audio_seconds": 30.5},
             {
                 "video_tokens": 75,
                 "video_frames": 300,
@@ -564,6 +550,7 @@ class TestUsageMetrics:
                 },
                 200,
             ),
+            ({"audio_tokens": 37}, 37),
             ({"image_tokens": 50, "video_tokens": 25}, 75),
             ({"unclassified_total_tokens": 100}, 100),
             ({"text_tokens": 40, "unclassified_total_tokens": 100}, 40),
@@ -583,6 +570,7 @@ class TestUsageMetrics:
             "text_only",
             "text_and_image",
             "all_modalities",
+            "audio_only",
             "image_and_video",
             "unclassified_fallback",
             "known_text_takes_precedence",

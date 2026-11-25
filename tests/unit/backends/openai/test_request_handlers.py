@@ -35,6 +35,7 @@ from guidellm.schemas import (
     GenerationRequestArguments,
     GenerationResponse,
     RequestInfo,
+    RequestTimings,
     ToolCall,
     ToolCallFunction,
     UsageMetrics,
@@ -7073,6 +7074,54 @@ class TestSpeechRequestHandler:
 
         with pytest.raises(ValueError, match="empty audio payload"):
             SpeechRequestHandler().post_validation(response)
+
+    @pytest.mark.regression
+    def test_speech_response_does_not_count_requested_text_limit_as_output(self):
+        """Keep the TTS token limit out of measured audio output statistics.
+
+        :param self: Current test class instance.
+        :return: None.
+        """
+        request = GenerationRequest(
+            columns={"text_column": ["Speak."]},
+            output_metrics=UsageMetrics(text_tokens=100),
+        )
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            request,
+            extras=GenerationRequestArguments(body={"response_format": "pcm"}),
+        )
+
+        # SpeechRequestHandler uses this as a generation limit.
+        assert arguments.body["max_new_tokens"] == 100
+
+        handler.set_response_headers(
+            {"X-Audio-Sample-Rate": "16000", "X-Audio-Channels": "1"}
+        )
+        pcm = b"\x00\x00" * 1600
+        response = handler.compile_non_streaming(request, arguments, pcm)
+        handler.post_validation(response)
+
+        info = RequestInfo(
+            request_id=request.request_id,
+            status="completed",
+            timings=RequestTimings(
+                request_start=10.0,
+                request_end=10.2,
+                resolve_end=10.2,
+            ),
+        )
+        stats = response.compile_stats(request, info)
+
+        assert response.use_request_output_metrics is False
+        assert stats.output_media == response.output_media
+        assert stats.output_metrics.text_tokens is None
+        assert stats.output_tokens is None
+        assert stats.time_per_output_token_ms is None
+        assert stats.inter_token_latency_ms is None
+        assert stats.output_metrics.audio_samples == 1600
+        assert stats.output_metrics.audio_seconds == pytest.approx(0.1)
+        assert stats.audio_rtf == pytest.approx(2.0)
 
     @pytest.mark.regression
     def test_non_streaming_pcm_uses_server_layout_and_usage_headers(
