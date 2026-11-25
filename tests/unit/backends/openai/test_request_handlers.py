@@ -5141,6 +5141,159 @@ class TestResponsesRequestHandler:
         assert fco_items[0]["call_id"] == "call_abc"
         assert fco_items[0]["output"] == '{"status": "ok"}'
 
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        ("text", "reasoning", "mode", "expected_content"),
+        [
+            ("Checking the weather.", None, False, "Checking the weather."),
+            (
+                "Checking the weather.",
+                "Use the weather tool.",
+                True,
+                "<think>Use the weather tool.</think>Checking the weather.",
+            ),
+            (
+                None,
+                "Use the weather tool.",
+                "Reasoning: {reasoning}\n",
+                "Reasoning: Use the weather tool.\n",
+            ),
+            (None, "Use the weather tool.", False, None),
+            ("", None, False, None),
+        ],
+    )
+    def test_history_preserves_text_with_tool_calls(
+        self, valid_instances, text, reasoning, mode, expected_content
+    ):
+        """Replay mixed tool responses without losing text or enabled reasoning.
+
+        ## WRITTEN BY AI ##
+        """
+        previous_request = GenerationRequest(
+            columns={"text_column": ["What is the weather?"]},
+            turn_type="client_tool_call",
+        )
+        previous_response = GenerationResponse(
+            request_id=previous_request.request_id,
+            request_args="{}",
+            text=text,
+            reasoning_text=reasoning,
+            tool_calls=[
+                ToolCall(
+                    id="call_weather",
+                    function=ToolCallFunction(name="get_weather", arguments="{}"),
+                )
+            ],
+        )
+        injection = GenerationRequest(
+            columns={"tool_response_column": ['{"weather": "sunny"}']},
+            turn_type="tool_response_injection",
+        )
+
+        result = valid_instances.format(
+            injection,
+            history=[(previous_request, previous_response)],
+            multiturn_reasoning=mode,
+        )
+
+        expected_history = [
+            {
+                "type": "function_call",
+                "call_id": "call_weather",
+                "name": "get_weather",
+                "arguments": "{}",
+            },
+            {
+                "type": "function_call_output",
+                "call_id": "call_weather",
+                "output": '{"weather": "sunny"}',
+            },
+        ]
+        if expected_content is not None:
+            expected_history.insert(
+                0, {"role": "assistant", "content": expected_content}
+            )
+        assert result.body["input"][1:] == expected_history
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("stream", [False, True])
+    def test_history_replays_parsed_reasoning_with_tool_calls(
+        self, valid_instances, stream
+    ):
+        """Replay vLLM reasoning formats through parsing and tool-result injection.
+
+        ## WRITTEN BY AI ##
+        """
+        instance = valid_instances
+        request = GenerationRequest(
+            columns={"text_column": ["What is the weather?"]},
+            turn_type="client_tool_call",
+        )
+        arguments = instance.format(request)
+        call = {
+            "type": "function_call",
+            "call_id": "call_weather",
+            "name": "get_weather",
+            "arguments": "{}",
+        }
+        response_body = {
+            "id": "resp_weather",
+            "output": [
+                {
+                    "type": "reasoning",
+                    "summary": [],
+                    "content": [{"type": "reasoning_text", "text": "Use the tool."}],
+                },
+                {
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": "Checking."}],
+                },
+                call,
+            ],
+            "usage": {"input_tokens": 5, "output_tokens": 8},
+        }
+        if stream:
+            events = [
+                {"type": "response.reasoning_text.delta", "delta": "Use the tool."},
+                {"type": "response.output_text.delta", "delta": "Checking."},
+                {
+                    "type": "response.output_item.added",
+                    "output_index": 2,
+                    "item": {**call, "arguments": ""},
+                },
+                {
+                    "type": "response.function_call_arguments.done",
+                    "output_index": 2,
+                    "arguments": "{}",
+                },
+                {"type": "response.completed", "response": response_body},
+            ]
+            for event in events:
+                instance.add_streaming_line(f"data: {json.dumps(event)}")
+            response = instance.compile_streaming(request, arguments)
+        else:
+            response = instance.compile_non_streaming(request, arguments, response_body)
+
+        assert response.text == "Checking."
+        assert response.reasoning_text == "Use the tool."
+        injection = GenerationRequest(
+            columns={"tool_response_column": ['{"weather":"sunny"}']},
+            turn_type="tool_response_injection",
+        )
+        result = instance.format(
+            injection, history=[(request, response)], multiturn_reasoning=True
+        )
+        assert result.body["input"][1:] == [
+            {"role": "assistant", "content": "<think>Use the tool.</think>Checking."},
+            call,
+            {
+                "type": "function_call_output",
+                "call_id": "call_weather",
+                "output": '{"weather":"sunny"}',
+            },
+        ]
+
 
 class TestEnsureChatCompletionsTool:
     """Tests for ChatCompletionsRequestHandler._ensure_tool_format normalizer.
