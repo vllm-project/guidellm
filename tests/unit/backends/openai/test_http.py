@@ -1468,7 +1468,6 @@ async def test_validate_and_models_send_extras_headers_and_params(
         assert sent.url.params["api-version"] == "2024-10-21"
 
 
-@pytest.mark.regression
 @pytest.mark.asyncio
 async def test_raw_speech_http_records_audio_timing(httpx2_mock: respx.Router):
     """Propagate response layout and audio timing over raw HTTP streaming.
@@ -1552,7 +1551,6 @@ def test_audio_response_timings_use_endpoint_boundary(
     assert response.output_metrics.audio_rtf == expected_rtf
 
 
-@pytest.mark.regression
 @pytest.mark.asyncio
 async def test_chat_audio_sse_records_audio_without_text_iterations(
     httpx2_mock: respx.Router,
@@ -1629,7 +1627,6 @@ async def test_chat_audio_sse_records_audio_without_text_iterations(
     )
 
 
-@pytest.mark.regression
 @pytest.mark.asyncio
 async def test_raw_speech_uses_configured_pcm_layout_without_headers(
     httpx2_mock: respx.Router,

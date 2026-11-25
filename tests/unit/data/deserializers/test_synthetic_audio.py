@@ -12,7 +12,7 @@ from guidellm.data.deserializers import DatasetDeserializerFactory
 from guidellm.schemas.data import DataArgs, SyntheticAudioDataArgs
 
 
-@pytest.mark.regression
+@pytest.mark.smoke
 def test_synthetic_audio_factory_yields_canonical_rows(monkeypatch):
     """Dispatch the typed config and yield indexed canonical audio records.
 
@@ -91,7 +91,7 @@ def test_synthetic_audio_factory_yields_canonical_rows(monkeypatch):
     assert all(call["sample_rate"] == 8000 for call in calls)
 
 
-@pytest.mark.regression
+@pytest.mark.sanity
 @pytest.mark.parametrize(
     ("options", "field"),
     [

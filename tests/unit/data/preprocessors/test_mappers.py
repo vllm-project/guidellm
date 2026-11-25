@@ -9,7 +9,6 @@ from guidellm.data.preprocessors.mappers import GenerativeColumnMapper
 from guidellm.schemas.data.preprocessors import GenerativeColumnMapperArgs
 
 
-@pytest.mark.regression
 @pytest.mark.parametrize(
     ("source_column", "expected_text"),
     [("ref_text", "short transcript"), ("reference_text", "long transcript")],
@@ -31,7 +30,6 @@ def test_default_mapper_maps_reference_text_aliases(source_column, expected_text
     assert mapped == [{"ref_text_column": [expected_text]}]
 
 
-@pytest.mark.regression
 def test_mapper_accepts_explicit_reference_transcript_column():
     """Honor an explicit source name for the reference transcript.
 

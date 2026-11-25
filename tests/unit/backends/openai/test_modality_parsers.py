@@ -12,7 +12,6 @@ from guidellm.backends.openai.modality_parsers import (
 )
 
 
-@pytest.mark.regression
 def test_audio_parser_is_registered_and_ignores_content_parts():
     """Register audio parsing while leaving content-list items unclaimed.
 
@@ -26,7 +25,6 @@ def test_audio_parser_is_registered_and_ignores_content_parts():
     assert parser.parse_dedicated_field(None) is None
 
 
-@pytest.mark.regression
 def test_create_returns_none_for_unregistered_modality():
     """Raise when the requested modality parser is not registered.
 
@@ -37,7 +35,7 @@ def test_create_returns_none_for_unregistered_modality():
         ModalityParserRegistry.create("unknown-modality")
 
 
-@pytest.mark.regression
+@pytest.mark.smoke
 def test_audio_parser_normalizes_dedicated_audio_field():
     """Decode audio bytes and preserve optional response metadata.
 
@@ -68,7 +66,7 @@ def test_audio_parser_normalizes_dedicated_audio_field():
     }
 
 
-@pytest.mark.regression
+@pytest.mark.sanity
 @pytest.mark.parametrize(
     ("value", "message"),
     [

@@ -6714,7 +6714,6 @@ def test_responses_stream_final_arguments_override_fragments(final_arguments, ex
 class TestSpeechRequestHandler:
     """Regression coverage for generated speech requests and responses."""
 
-    @pytest.mark.regression
     def test_format_combines_text_reference_audio_and_token_limit(self):
         """Build a voice-cloning request from the mapped audio columns.
 
@@ -6764,7 +6763,6 @@ class TestSpeechRequestHandler:
         )
         assert overridden.body["max_new_tokens"] == 40
 
-    @pytest.mark.regression
     def test_format_sends_single_reference_audio_as_string(self):
         """Use the endpoint's string shape when there is one reference clip.
 
@@ -6779,7 +6777,6 @@ class TestSpeechRequestHandler:
 
         assert arguments.body["ref_audio"] == "data:audio/wav;base64,cmVmZXJlbmNl"
 
-    @pytest.mark.regression
     @pytest.mark.parametrize("audio_item", [{"audio": b""}, {"audio": "not-bytes"}, {}])
     def test_format_rejects_invalid_reference_audio(self, audio_item):
         """Reject reference audio items without non-empty byte payloads.
@@ -6793,7 +6790,6 @@ class TestSpeechRequestHandler:
         with pytest.raises(ValueError, match="Reference audio must contain"):
             SpeechRequestHandler().format(request)
 
-    @pytest.mark.regression
     @pytest.mark.parametrize("reference_text", [["first", "second"], [4], [None]])
     def test_format_requires_one_string_reference_transcript(self, reference_text):
         """Require exactly one textual transcript for voice-cloning audio.
@@ -6807,7 +6803,6 @@ class TestSpeechRequestHandler:
         with pytest.raises(ValueError, match="one reference transcript"):
             SpeechRequestHandler().format(request)
 
-    @pytest.mark.regression
     def test_format_rejects_multiturn_history(self, generation_request):
         """Reject conversation history for the single-turn speech endpoint.
 
@@ -6827,7 +6822,6 @@ class TestSpeechRequestHandler:
                 history=[(generation_request, previous_response)],
             )
 
-    @pytest.mark.regression
     def test_response_header_layout_rejects_invalid_or_changing_values(self):
         """Reject invalid PCM layout headers and changes during a response.
 
@@ -6842,7 +6836,6 @@ class TestSpeechRequestHandler:
         with pytest.raises(ValueError, match="audio sample_rate changed"):
             handler.set_response_headers({"X-Audio-Sample-Rate": "24000"})
 
-    @pytest.mark.regression
     @pytest.mark.parametrize("audio_format", ["pcm", "wav"])
     def test_raw_chunks_are_not_duplicated(self, generation_request, audio_format):
         """Preserve streamed bytes once and exclude WAV headers from frames.
@@ -6885,7 +6878,6 @@ class TestSpeechRequestHandler:
             handler.streaming_audio_arrivals
         )
 
-    @pytest.mark.regression
     def test_streaming_wav_accepts_omni_unknown_length_header(
         self,
         generation_request,
@@ -6921,7 +6913,6 @@ class TestSpeechRequestHandler:
         assert result.output_metrics.audio_samples == 1000
         assert result.output_metrics.audio_seconds == pytest.approx(1000 / 16000)
 
-    @pytest.mark.regression
     @pytest.mark.parametrize("audio_format", ["mp3", "flac"])
     def test_encoded_stream_chunks_are_retained_without_pcm_ttfp(
         self, generation_request, audio_format
@@ -7011,7 +7002,6 @@ class TestSpeechRequestHandler:
             with pytest.raises(ValueError, match="before speech.audio.done"):
                 handler.post_validation(result)
 
-    @pytest.mark.regression
     def test_speech_sse_rejects_invalid_base64(self, generation_request):
         """Reject malformed base64 in a speech audio delta.
 
@@ -7027,7 +7017,6 @@ class TestSpeechRequestHandler:
                 'data: {"type":"speech.audio.delta","audio":"%%%"}'
             )
 
-    @pytest.mark.regression
     def test_speech_sse_error_event_raises(self):
         """Surface the endpoint's explicit speech.audio.error event.
 
@@ -7041,7 +7030,6 @@ class TestSpeechRequestHandler:
                 'data: {"type":"speech.audio.error","error":{"message":"failed"}}'
             )
 
-    @pytest.mark.regression
     def test_speech_generic_sse_error_still_raises(self):
         """Surface generic SSE error payloads for speech responses.
 
@@ -7055,7 +7043,6 @@ class TestSpeechRequestHandler:
         ):
             handler.add_streaming_line('data: {"error":{"message":"failed"}}')
 
-    @pytest.mark.regression
     @pytest.mark.parametrize(
         "output_media", [None, [], [{"modality": "audio", "data": b""}]]
     )
@@ -7075,7 +7062,7 @@ class TestSpeechRequestHandler:
         with pytest.raises(ValueError, match="empty audio payload"):
             SpeechRequestHandler().post_validation(response)
 
-    @pytest.mark.regression
+    @pytest.mark.sanity
     def test_speech_response_does_not_count_requested_text_limit_as_output(self):
         """Keep the TTS token limit out of measured audio output statistics.
 
@@ -7123,7 +7110,7 @@ class TestSpeechRequestHandler:
         assert stats.output_metrics.audio_seconds == pytest.approx(0.1)
         assert stats.audio_rtf == pytest.approx(2.0)
 
-    @pytest.mark.regression
+    @pytest.mark.smoke
     def test_non_streaming_pcm_uses_server_layout_and_usage_headers(
         self, generation_request
     ):
@@ -7162,7 +7149,6 @@ class TestSpeechRequestHandler:
         assert result.input_metrics.audio_tokens == 11
         assert result.use_request_output_metrics is False
 
-    @pytest.mark.regression
     def test_non_streaming_pcm_uses_configured_layout_without_headers(
         self, generation_request
     ):
@@ -7193,7 +7179,6 @@ class TestSpeechRequestHandler:
         assert result.output_metrics.audio_samples == 2400
         assert result.output_metrics.audio_seconds == pytest.approx(0.1)
 
-    @pytest.mark.regression
     def test_non_streaming_pcm_without_layout_preserves_audio(self, generation_request):
         """Keep non-streaming PCM when no layout metadata or hints are available.
 
@@ -7231,7 +7216,6 @@ class TestSpeechRequestHandler:
         assert result.output_metrics.audio_samples is None
         assert result.output_metrics.audio_seconds is None
 
-    @pytest.mark.regression
     def test_non_streaming_wav_uses_embedded_layout(self, generation_request):
         """Read WAV sample rate and frames directly from its container header.
 
@@ -7307,7 +7291,7 @@ class TestSpeechRequestHandler:
             )
 
     @pytest.mark.asyncio
-    @pytest.mark.regression
+    @pytest.mark.sanity
     @pytest.mark.parametrize("audio_format", ["wav", "mp3", "flac", "opus"])
     async def test_non_pcm_response_formats_use_container_decoder(
         self, generation_request, audio_format
@@ -7345,7 +7329,6 @@ class TestSpeechRequestHandler:
         assert result.output_metrics.audio_samples == 2400
         assert result.output_metrics.audio_seconds == pytest.approx(0.1)
 
-    @pytest.mark.regression
     @pytest.mark.parametrize("stream_format", ["audio", "sse"])
     def test_completed_pcm_stream_without_layout_preserves_audio(
         self, generation_request, stream_format
@@ -7400,7 +7383,6 @@ class TestSpeechRequestHandler:
         assert result.output_metrics.audio_seconds is None
 
     @pytest.mark.asyncio
-    @pytest.mark.regression
     async def test_decode_failure_is_not_swallowed(self, generation_request):
         """Surface a decoder error for a completed encoded response.
 
@@ -7425,7 +7407,6 @@ class TestSpeechRequestHandler:
                 generation_request, arguments, b"X" * 44
             )
 
-    @pytest.mark.regression
     @pytest.mark.parametrize(
         ("payload", "channels", "message"),
         [
@@ -7499,7 +7480,6 @@ class TestSpeechRequestHandler:
         assert result.output_metrics.audio_underrun_seconds == 0
         assert result.output_metrics.audio_continuity_ok == 1
 
-    @pytest.mark.regression
     def test_raw_pcm_without_layout_keeps_duration_unknown(self, generation_request):
         """Leave frame count and duration unset until PCM layout is available.
 
@@ -7525,7 +7505,6 @@ class TestSpeechRequestHandler:
 class TestChatAudioOutput:
     """Regression coverage for audio emitted by chat completions."""
 
-    @pytest.mark.regression
     def test_non_streaming_audio_is_collected_from_single_choice(
         self, generation_request
     ):
@@ -7669,7 +7648,6 @@ class TestChatAudioOutput:
         assert result.output_metrics.text_tokens is None
         assert result.output_media[0]["data"] == audio
 
-    @pytest.mark.regression
     def test_chat_packets_are_measured_without_joining_containers(self):
         """Sum independent WAV packets while preserving their valid headers.
 
@@ -7695,7 +7673,6 @@ class TestChatAudioOutput:
         assert metrics.audio_bytes == sum(len(packet["data"]) for packet in packets)
         assert all(packet["data"].startswith(b"RIFF") for packet in packets)
 
-    @pytest.mark.regression
     def test_chat_compressed_packet_uses_its_own_bytes(self):
         """Decode compressed packet bytes when metadata is unavailable.
 
@@ -7748,7 +7725,6 @@ class TestChatAudioOutput:
         assert input_metrics.audio_tokens is None
         assert output_metrics.text_tokens is None
 
-    @pytest.mark.regression
     @pytest.mark.parametrize("transcript", [None, "Spoken response."])
     def test_audio_only_history_can_be_replayed(self, transcript):
         """Replay generated audio from transcript text or its encoded bytes.
@@ -7784,7 +7760,6 @@ class TestChatAudioOutput:
             assert audio_part["type"] == "input_audio"
             assert base64.b64decode(audio_part["input_audio"]["data"]) == audio
 
-    @pytest.mark.regression
     def test_audio_delta_does_not_increment_text_token_iterations(self):
         """Keep audio deltas distinct from text token timing.
 
@@ -7816,7 +7791,6 @@ class TestChatAudioOutput:
         assert not handler.last_iteration_had_audio
         assert handler.last_iteration_had_content
 
-    @pytest.mark.regression
     def test_dedicated_delta_audio_object_is_parsed(self):
         """Parse audio carried in the dedicated chat delta.audio field.
 
@@ -7859,7 +7833,6 @@ class TestChatAudioOutput:
         assert result.output_media[0]["transcript"] == "Speak."
         assert result.output_metrics.audio_seconds == pytest.approx(0.1)
 
-    @pytest.mark.regression
     def test_metadata_only_delta_audio_is_ignored_without_modality(self):
         """Ignore an ID/expiry-only audio update without raising.
 
@@ -7884,7 +7857,6 @@ class TestChatAudioOutput:
         assert handler.add_streaming_line("data: " + json.dumps(event)) == 0
         assert handler.streaming_media_packets == []
 
-    @pytest.mark.regression
     def test_transcript_only_delta_audio_is_preserved(self):
         """Preserve transcript-only audio deltas and attach them to audio output.
 
@@ -7977,7 +7949,6 @@ class TestChatAudioOutput:
         messages = handler._build_turn_messages(request, response, None)
         assert messages[-1]["content"] == "Speak now."
 
-    @pytest.mark.regression
     def test_transcript_only_stream_without_audio_uses_response_text(self):
         """Use transcript deltas as response text when no audio packet arrives.
 
@@ -8015,7 +7986,6 @@ class TestChatAudioOutput:
         assert response.text == "Speak now."
         assert response.output_media is None
 
-    @pytest.mark.regression
     def test_transcript_only_delta_does_not_duplicate_existing_text(self):
         """Keep ordinary streamed text when the audio transcript repeats it.
 
@@ -8053,7 +8023,7 @@ class TestChatAudioOutput:
         assert response.text == "Speak now."
         assert response.output_media is None
 
-    @pytest.mark.regression
+    @pytest.mark.sanity
     def test_streamed_multimodal_from_single_choice_preserves_audio_metrics(self):
         """Collect streamed text and audio from the same chat choice.
 
@@ -8108,7 +8078,6 @@ class TestChatAudioOutput:
         assert response.output_metrics.audio_seconds == pytest.approx(0.1)
         assert response.output_metrics.audio_bytes == len(audio)
 
-    @pytest.mark.regression
     def test_streamed_audio_continuity_uses_packet_arrivals(self):
         """Measure playback continuity from ordered streamed packet timestamps.
 
@@ -8223,7 +8192,6 @@ class TestChatAudioOutput:
         ):
             handler.post_validation(response)
 
-    @pytest.mark.regression
     def test_audio_only_pcm_history_is_wrapped_as_wav(self):
         """Convert raw PCM into replayable WAV input for chat history.
 
@@ -8254,7 +8222,6 @@ class TestChatAudioOutput:
         assert wav_bytes.startswith(b"RIFF")
         assert wav_bytes[8:12] == b"WAVE"
 
-    @pytest.mark.regression
     def test_audio_only_pcm_history_requires_layout(self):
         """Reject replay of raw PCM when its rate and channel count are unknown.
 

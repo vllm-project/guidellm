@@ -88,7 +88,6 @@ def _render_latency_table_headers() -> str:
     return " ".join(str(header) for header in captured["headers"])  # type: ignore[union-attr]
 
 
-@pytest.mark.regression
 def test_audio_tables_include_audio_quality_distributions(monkeypatch):
     """Wire audio latency and continuity summaries into the console output.
 

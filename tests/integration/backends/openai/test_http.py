@@ -229,7 +229,7 @@ class _LocalSpeechServer:
         await writer.drain()
 
 
-@pytest.mark.regression
+@pytest.mark.sanity
 @pytest.mark.asyncio
 @pytest.mark.timeout(10)
 @pytest.mark.parametrize("mode", ["non_streaming_headerless", "sse"])

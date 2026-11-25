@@ -66,7 +66,6 @@ def _make_audio_update(
     return response, request, info
 
 
-@pytest.mark.regression
 @pytest.mark.parametrize("clear_outputs", [False, True])
 def test_audio_payload_follows_output_retention_policy(clear_outputs):
     """Clear retained audio bytes with text while keeping measured metrics.
@@ -86,7 +85,6 @@ def test_audio_payload_follows_output_retention_policy(clear_outputs):
     assert stats.output_metrics.audio_seconds == 0.1
 
 
-@pytest.mark.regression
 def test_sample_size_zero_clears_audio_payload_but_keeps_measurement():
     """Apply zero-sized request sampling to audio payload retention.
 
@@ -104,7 +102,6 @@ def test_sample_size_zero_clears_audio_payload_but_keeps_measurement():
     assert stats.output_metrics.audio_seconds == 0.1
 
 
-@pytest.mark.regression
 def test_reservoir_eviction_clears_audio_payload(monkeypatch):
     """Release evicted audio bytes while preserving request audio metrics.
 

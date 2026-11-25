@@ -31,7 +31,7 @@ from guidellm.schemas import (
 from guidellm.schemas.benchmark import GoodputSLO
 
 
-@pytest.mark.regression
+@pytest.mark.smoke
 def test_audio_metrics_summary_preserves_measurements_and_zero_quality_values():
     """Aggregate audio metrics, including a measured zero underrun and failure.
 

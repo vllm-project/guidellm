@@ -675,7 +675,6 @@ def test_encode_audio_follows_redirects(httpx2_mock, status_code):
     assert len(httpx2_mock.calls) == 2
 
 
-@pytest.mark.regression
 def test_compute_audio_continuity_reports_playback_gap():
     """Measure the largest playback deficit between packet arrivals.
 
@@ -693,7 +692,6 @@ def test_compute_audio_continuity_reports_playback_gap():
     assert result.is_continuous is False
 
 
-@pytest.mark.regression
 def test_compute_audio_continuity_handles_insufficient_or_invalid_layout():
     """Treat fewer than two packets and invalid layouts as no measured gap.
 
@@ -722,7 +720,7 @@ def test_compute_audio_continuity_handles_insufficient_or_invalid_layout():
     assert one_packet.max_underrun_seconds == 0
 
 
-@pytest.mark.regression
+@pytest.mark.sanity
 @pytest.mark.parametrize(
     ("arrivals", "expected_underrun", "expected_events"),
     [
@@ -749,7 +747,6 @@ def test_compute_audio_continuity_tracks_buffer_exhaustion(
     assert result.is_continuous is (expected_underrun <= 0.05)
 
 
-@pytest.mark.regression
 def test_synthesize_audio_is_repeatable_and_reports_sample_metadata():
     """Generate deterministic per-row waveforms and canonical audio metadata.
 
@@ -794,7 +791,6 @@ def test_synthesize_audio_is_repeatable_and_reports_sample_metadata():
     assert first["file_name"] == "synthetic_audio_81_4.wav"
 
 
-@pytest.mark.regression
 def test_synthesize_audio_silence_is_zero_valued():
     """Produce zero-valued samples for the silence content option.
 
@@ -812,7 +808,6 @@ def test_synthesize_audio_silence_is_zero_valued():
     assert torch.count_nonzero(waveform).item() == 0
 
 
-@pytest.mark.regression
 def test_synthesize_audio_noise_is_seeded():
     """Generate reproducible noise for the same seed and row index.
 
@@ -841,7 +836,6 @@ def test_synthesize_audio_noise_is_seeded():
     assert torch.count_nonzero(first).item() > 0
 
 
-@pytest.mark.regression
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [

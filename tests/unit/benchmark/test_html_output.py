@@ -46,7 +46,6 @@ from tests.unit.benchmark.html_report_fixtures import (
 )
 
 
-@pytest.mark.regression
 def test_audio_html_report_exposes_quality_metrics_and_zero_values():
     """Render audio quality distributions, retaining a measured zero value.
 

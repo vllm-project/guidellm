@@ -17,7 +17,6 @@ from guidellm.schemas import (
 from tests.unit.testing_utils import async_timeout
 
 
-@pytest.mark.regression
 def test_audio_rtf_uses_measured_value_or_request_latency_fallback():
     """Prefer an explicit audio RTF and derive it from request latency otherwise.
 

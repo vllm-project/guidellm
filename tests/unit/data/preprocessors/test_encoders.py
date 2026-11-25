@@ -63,7 +63,7 @@ def test_encode_audio_array_from_formatted_dataset(format_type):
         assert decoded.getframerate() == 16000
 
 
-@pytest.mark.regression
+@pytest.mark.smoke
 def test_media_encoder_preserves_canonical_audio_file_dict():
     """Pass synthetic or already-encoded audio through without re-encoding.
 

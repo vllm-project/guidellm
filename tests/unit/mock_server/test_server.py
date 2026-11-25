@@ -1396,7 +1396,6 @@ async def test_handles_list_content_with_huggingface_processor(
 class TestOmniAudioMock:
     """Regression coverage for mock generated-audio responses."""
 
-    @pytest.mark.regression
     @pytest.mark.asyncio
     async def test_non_streaming_chat_returns_audio_only_choice(
         self, mock_server_instance
@@ -1429,7 +1428,6 @@ class TestOmniAudioMock:
         assert choice["audio_metadata"]["frame_count"] > 0
         assert response.json()["usage"]["completion_tokens"] == 0
 
-    @pytest.mark.regression
     @pytest.mark.asyncio
     async def test_streaming_chat_returns_audio(self, mock_server_instance):
         """Emit separately encoded audio packets and terminal usage in chat SSE.
@@ -1468,7 +1466,6 @@ class TestOmniAudioMock:
             assert choice["audio_metadata"]["frame_count"] > 0
         assert events[-1]["usage"]["completion_tokens"] == 0
 
-    @pytest.mark.regression
     @pytest.mark.asyncio
     async def test_streaming_chat_can_mix_text_and_audio(self, mock_server_instance):
         """Emit text deltas and independently encoded audio packets together.
@@ -1511,7 +1508,6 @@ class TestOmniAudioMock:
         assert text_events
         assert events[-1]["usage"]["completion_tokens"] == 2
 
-    @pytest.mark.regression
     @pytest.mark.asyncio
     async def test_non_streaming_pcm_speech_reports_layout(self, mock_server_instance):
         """Return non-streaming PCM and advertise its sample layout.
@@ -1538,7 +1534,6 @@ class TestOmniAudioMock:
         assert response.headers["X-Audio-Channels"] == "1"
         assert len(response.content) == 24000 * 2 * 0.4
 
-    @pytest.mark.regression
     @pytest.mark.asyncio
     async def test_raw_streaming_wav_speech_preserves_container(
         self, mock_server_instance
@@ -1567,7 +1562,6 @@ class TestOmniAudioMock:
         assert response.content.startswith(b"RIFF")
         assert response.content[8:12] == b"WAVE"
 
-    @pytest.mark.regression
     @pytest.mark.asyncio
     async def test_sse_speech_finishes_with_audio_done(self, mock_server_instance):
         """Emit base64 speech deltas followed by the terminal usage event.
