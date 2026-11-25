@@ -30,6 +30,7 @@ from guidellm.data.deserializers.deserializer import (
 )
 from guidellm.data.deserializers.trace_session_timing import (
     TraceSessionTiming,
+    derive_requeue_delays,
     graph_max_timestamp,
     graph_min_timestamp,
     shift_graph_timestamps,
@@ -432,6 +433,8 @@ class TraceExamplesIterable(_BaseExamplesIterable):
                 copy_max = max(copy_max, graph_max_timestamp(graph_data))
                 packer.apply_pack(graph_data)
                 scaler.apply_scale(graph_data)
+                if self.config.derive_requeue_delay:
+                    derive_requeue_delays(graph_data)
                 samples_count += len(graph_data.turns)
                 payload = json.dumps(graph_data.model_dump(mode="json"))
                 yield (
@@ -560,7 +563,8 @@ def _handle_column_search(config: TraceDataArgs, trace_format: TraceFormatBase) 
             )
         logger.warning(
             "Trace duration column '{}' is missing; schedule_turn=idle_gap "
-            "will treat each request as instantaneous.{}",
+            "and derived requeue delays will treat each request as "
+            "instantaneous.{}",
             trace_format.config.duration_column,
             packing_suffix,
         )

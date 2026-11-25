@@ -106,7 +106,7 @@ These metrics provide a breakdown of the overall request statuses, helping users
 
 ### Turn Scheduling Delay
 
-- **Definition**: `turn_scheduling_delay` is Dispatch Delay minus Turn Predecessor Delay. It is the wait after the request was both due and no longer blocked by a predecessor, including time to deserialize the trace, time spent queued, and worker turnaround. Think time (`requeue_delay`) that runs past the target is included here. Trace replay does not set think time. Under the users profile this metric is null: the strategy targets the benchmark start like `throughput` (see [Applicability of Dispatch Delay and Scheduled Latency](#applicability-of-dispatch-delay-and-scheduled-latency)), so think time shows up as the gap between a response and the next turn's dispatch rather than as scheduling delay.
+- **Definition**: `turn_scheduling_delay` is Dispatch Delay minus Turn Predecessor Delay. It is the wait after the request was both due and no longer blocked by a predecessor, including time to deserialize the trace, time spent queued, and worker turnaround. Think time (`requeue_delay`) that runs past the target is included here. Trace replay ignores the dataset's trace-derived `requeue_delay` and keeps its own timestamp/idle-gap scheduling. Under the users profile this metric is null: the strategy targets the benchmark start like `throughput` (see [Applicability of Dispatch Delay and Scheduled Latency](#applicability-of-dispatch-delay-and-scheduled-latency)), so think time shows up as the gap between a response and the next turn's dispatch rather than as scheduling delay.
 - **Use Case**: Can indicate when GuideLLM could not keep up or the machine was undersized for the benchmark.
 
 ### Scheduled Latency

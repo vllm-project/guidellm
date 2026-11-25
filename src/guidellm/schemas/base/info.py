@@ -173,7 +173,8 @@ class RequestSettings(StandardBaseDict):
         gt=0,
         description=(
             "Delay in seconds before requeueing the conversation. This number is a "
-            "lower bound on the delay, subject to scheduling."
+            "lower bound on the delay, subject to scheduling. Trace datasets derive "
+            "it from recorded timestamps and durations by default."
         ),
     )
     trace_duration: float | None = Field(

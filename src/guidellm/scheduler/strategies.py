@@ -167,6 +167,20 @@ class SchedulingStrategy(PydanticClassRegistryMixin["SchedulingStrategy"], InfoM
         """
         return False
 
+    @property
+    def uses_dataset_requeue_delay(self) -> bool:
+        """
+        Whether the DAG applies dataset ``requeue_delay`` between turns.
+
+        Strategies that derive their own between-turn timing, such as trace
+        replay, return False so their scheduling is not also gated by the
+        dataset delay.
+
+        :return: True when completed turns gate their children by
+            ``RequestSettings.requeue_delay``
+        """
+        return True
+
     def init_processes_timings(
         self,
         worker_count: PositiveInt,
@@ -455,8 +469,9 @@ class UsersStrategy(SchedulingStrategy):
 
     Models multiple people (defined by ``users``) sharing the server: each user
     owns one conversation and waits out the dataset ``requeue_delay`` between
-    turns (for example synthetic text's ``delay`` options), starting the next
-    conversation immediately after one finishes. Unlike ``concurrent``,
+    turns (for example synthetic text's ``delay`` options or a trace's derived
+    gaps), starting the next conversation immediately after one finishes.
+    Unlike ``concurrent``,
     the user's slot stays bound to the session across the delay. It does
     not pull another conversation while the modeled user waits.
 
@@ -899,6 +914,9 @@ class TraceReplayStrategy(SchedulingStrategy):
     gap after each predecessor's recorded duration, measured from when that
     predecessor actually finished. ``schedule_turn=timestamp`` targets
     ``start_time + time_scale * relative_timestamp``.
+
+    This strategy computes its own between-turn timing and therefore ignores
+    any dataset ``requeue_delay``; the DAG does not gate replay turns by it.
     """
 
     type_: Literal["trace"] = "trace"  # type: ignore[assignment]
@@ -929,6 +947,13 @@ class TraceReplayStrategy(SchedulingStrategy):
         :return: Always True; targets are derived from an arrival schedule
         """
         return True
+
+    @property
+    def uses_dataset_requeue_delay(self) -> bool:
+        """
+        :return: Always False; replay computes its own between-turn timing
+        """
+        return False
 
     @property
     def processes_limit(self) -> PositiveInt | None:

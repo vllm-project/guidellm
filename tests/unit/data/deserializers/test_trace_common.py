@@ -24,7 +24,10 @@ from guidellm.data.deserializers.trace_common import (
     tokenizer_supports_block_concat,
 )
 from guidellm.data.deserializers.trace_minimal import MinimalTraceFormat
-from guidellm.data.deserializers.trace_session_timing import TraceSessionTiming
+from guidellm.data.deserializers.trace_session_timing import (
+    TraceSessionTiming,
+    derive_requeue_delays,
+)
 from guidellm.data.finalizers.generative import GenerativeRequestFinalizer
 from guidellm.data.schemas import InvalidRowError
 from guidellm.data.schemas.conversation_graph_data import (
@@ -314,6 +317,7 @@ class TestTraceDatasetDeserializer:
                 "min_concurrent_sessions",
                 "max_concurrent_sessions",
                 "time_scale",
+                "derive_requeue_delay",
                 "copies",
                 "copy_offset",
             ),
@@ -1020,6 +1024,95 @@ class TestTraceDurationColumn:
         assert finalized.nodes["main_1"].settings.relative_timestamp == pytest.approx(
             10.0
         )
+
+
+class TestTraceDerivedRequeueDelay:
+    """Trace timing derives per-turn think time by default.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @pytest.mark.smoke
+    def test_option_defaults_true(self, tmp_path: Path):
+        """The derived-delay option is enabled by default.
+
+        ## WRITTEN BY AI ##
+        """
+        source = trace_file_source(write_trace(tmp_path, ""))
+        config = MinimalTraceFormatArgs(kind="trace_synthetic", source=source)
+        assert config.derive_requeue_delay is True
+        assert (
+            MinimalTraceFormatArgs(
+                kind="trace_synthetic",
+                source=source,
+                derive_requeue_delay=False,
+            ).derive_requeue_delay
+            is False
+        )
+
+    @pytest.mark.sanity
+    def test_derived_delay_scales_and_lifts_to_settings(self, tmp_path: Path):
+        """The derived gap uses scaled timestamps and reaches RequestSettings.
+
+        ## WRITTEN BY AI ##
+        """
+        source = trace_file_source(write_trace(tmp_path, ""))
+        config = MinimalTraceFormatArgs(
+            kind="trace_synthetic",
+            source=source,
+            time_scale=2.0,
+        )
+        dataset = Dataset.from_dict(
+            {
+                "timestamp": [10.0, 15.0],
+                "input_length": [4, 4],
+                "output_length": [1, 1],
+                "duration": [1.0, 0.5],
+            }
+        )
+        trace_format = MinimalTraceFormat(config, dataset)
+        graph = TraceFormatBase.build_conversation_graph(
+            trace_format,
+            dataset,
+            mock_processor(),
+            Faker(),
+        )
+        TraceSessionTiming(time_scale=config.time_scale).apply_scale(graph)
+        derive_requeue_delays(graph)
+
+        finalized = GenerativeRequestFinalizer(GenerativeRequestFinalizerArgs())(
+            [{"conversation_turns_column": [graph.model_dump(mode="json")]}]
+        )
+
+        assert isinstance(finalized, GenerativeConversationGraph)
+        # parent runs 0..2 after scaling, child starts at 10
+        assert finalized.nodes["main_0"].settings.requeue_delay == pytest.approx(8.0)
+        assert finalized.nodes["main_1"].settings.requeue_delay is None
+
+    @pytest.mark.sanity
+    def test_single_turn_trace_has_no_derived_delay(self, tmp_path: Path):
+        """Independent single-turn rows have no parent to gate.
+
+        ## WRITTEN BY AI ##
+        """
+        trace = write_trace(
+            tmp_path,
+            '{"timestamp": 0.0, "input_length": 4, "output_length": 1, '
+            '"duration": 1.0}\n'
+            '{"timestamp": 5.0, "input_length": 4, "output_length": 1, '
+            '"duration": 1.0}\n',
+        )
+        deserializer = TraceDatasetDeserializer()
+        dataset = deserializer(
+            config=MinimalTraceFormatArgs(source=trace_file_source(trace)),
+            processor_factory=mock_processor,
+            random_seed=42,
+        )
+
+        turns = [turn for row in dataset for turn in load_graph_turns(row)]
+
+        assert turns
+        assert all("requeue_delay_column" not in turn.columns for turn in turns)
 
 
 def concat_processor() -> Mock:

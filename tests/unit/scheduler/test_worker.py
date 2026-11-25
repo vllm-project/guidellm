@@ -18,6 +18,7 @@ from guidellm import configure_logger, logger
 from guidellm.scheduler import (
     BackendInterface,
     SynchronousStrategy,
+    TraceReplayStrategy,
     UsersStrategy,
     WorkerProcess,
 )
@@ -1183,6 +1184,93 @@ class TestWorkerProcessSessionCap:
         assert nxt[0] == "r1"
         # the dataset's 30 second requeue delay gates the child
         assert nxt[1] > time.time() + 25.0
+
+
+class TestWorkerProcessTraceRequeueOptOut:
+    """Trace replay workers do not apply dataset requeue delays.
+
+    ## WRITTEN BY AI ##
+    """
+
+    @staticmethod
+    def _trace_worker(schedule_turn: str) -> WorkerProcess:
+        """Worker running trace replay without a session cap.
+
+        ## WRITTEN BY AI ##
+        """
+        return WorkerProcess(
+            worker_index=0,
+            messaging=MockMessaging(),
+            backend=MockBackend(),
+            strategy=TraceReplayStrategy(
+                schedule_turn=schedule_turn,
+                time_scale=0.5,
+            ),
+            async_limit=2,
+            fut_scheduling_time_limit=10.0,
+            startup_barrier=Barrier(2),
+            requests_generated_event=Event(),
+            constraint_reached_event=Event(),
+            shutdown_event=Event(),
+            error_event=Event(),
+            stdout_conn=None,
+            stderr_conn=None,
+            parent_logger=None,
+        )
+
+    @pytest.mark.regression
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("schedule_turn", ["idle_gap", "timestamp"])
+    async def test_trace_worker_skips_dataset_requeue_gate(self, schedule_turn):
+        """A large dataset delay does not gate replay's next turn.
+
+        ## WRITTEN BY AI ##
+        """
+        worker = self._trace_worker(schedule_turn)
+        graph = ConversationGraph(
+            graph_id="trace-gated",
+            nodes={
+                "r0": ConversationNode(
+                    node_id="r0",
+                    agent_id="a",
+                    request="rr0",
+                    settings=RequestSettings(
+                        relative_timestamp=0.0,
+                        requeue_delay=30.0,
+                    ),
+                ),
+                "r1": ConversationNode(
+                    node_id="r1",
+                    agent_id="a",
+                    request="rr1",
+                    settings=RequestSettings(relative_timestamp=100.0),
+                ),
+            },
+            edges=[
+                ConversationEdge(
+                    source_node_id="r0",
+                    target_node_id="r1",
+                    history_context="full",
+                )
+            ],
+            request_infos={
+                "r0": RequestInfo(request_id="ir0", node_id="r0"),
+                "r1": RequestInfo(request_id="ir1", node_id="r1"),
+            },
+        )
+        await worker.messaging.put(graph)
+
+        state, node_id = await asyncio.wait_for(
+            worker._get_next_ready_node(), timeout=2.0
+        )
+        assert node_id == "r0"
+
+        worker._finalize_node(state, "r0", "rr0", state.request_infos["r0"], "resp")
+        nxt = state.next_node_ready_at()
+        assert nxt is not None
+        assert nxt[0] == "r1"
+        # trace replay ignores requeue_delay; only dependency gating remains
+        assert nxt[1] <= time.time()
 
 
 class _ChildMockMessaging:

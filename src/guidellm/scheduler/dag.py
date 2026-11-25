@@ -55,10 +55,19 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
     where the entire graph executes within a single worker process.
 
     :param graph: The conversation graph to execute.
+    :param apply_requeue_delay: Whether a completed turn's ``requeue_delay``
+        gates its children. Strategies that compute their own timing, such as
+        trace replay, pass False.
     """
 
-    def __init__(self, graph: ConversationGraph[_RequestT]):
+    def __init__(
+        self,
+        graph: ConversationGraph[_RequestT],
+        *,
+        apply_requeue_delay: bool = True,
+    ):
         self._graph = graph
+        self._apply_requeue_delay = apply_requeue_delay
 
         # Pre-compute adjacency structures for efficient lookups
         self._incoming_edges: dict[str, list[ConversationEdge]] = {
@@ -170,8 +179,9 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         Mark a node as completed and return newly dependency-satisfied children.
 
         When a child's last parent completes, think time starts: the child's
-        ``available_after`` is set to ``now + unlocking_parent.requeue_delay``.
-        Returned children may still be time-gated and not yet schedulable.
+        ``available_after`` is set to ``now + unlocking_parent.requeue_delay``
+        when requeue gating is enabled. Returned children may still be
+        time-gated and not yet schedulable.
 
         :param node_id: The ID of the completed node.
         :param request: The request that was executed.
@@ -188,7 +198,11 @@ class DAGExecutionState(Generic[_RequestT, _ResponseT]):
         self._completed[node_id] = CompletedNodeData(request, response)
         self._in_progress.discard(node_id)
 
-        delay = self._graph.nodes[node_id].settings.requeue_delay or 0.0
+        delay = (
+            (self._graph.nodes[node_id].settings.requeue_delay or 0.0)
+            if self._apply_requeue_delay
+            else 0.0
+        )
         parent_completed_at = time.time()
         unlock_at = parent_completed_at + delay
 

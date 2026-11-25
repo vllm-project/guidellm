@@ -61,19 +61,20 @@ guidellm run \
 
 All trace formats can accept the following optional data arguments:
 
-| Argument                  | Default                       | Description                                                                                                                                                     |
-| ------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `timestamp_column`        | "timestamp"                   | Column name for timestamps in the trace file                                                                                                                    |
-| `prompt_tokens_column`    | "input_length"                | Column name for prompt token counts in the trace file                                                                                                           |
-| `output_tokens_column`    | "output_length"               | Column name for output token counts in the trace file                                                                                                           |
-| `duration_column`         | "duration" (WEKA: "api_time") | Optional column for how long each request ran, in seconds. Used by `schedule_turn=idle_gap` and concurrent-session options                                      |
-| `time_scale`              | 1.0                           | Scale remaining relative timestamps after wait and pack caps                                                                                                    |
-| `max_wait`                | unset                         | Maximum gap in original trace seconds between consecutive requests in one session                                                                               |
-| `max_session_wait`        | unset                         | Maximum idle in original trace seconds from the previous session's last request to this session                                                                 |
-| `min_concurrent_sessions` | unset                         | Pack sessions so at least this many overlap during steady state                                                                                                 |
-| `max_concurrent_sessions` | unset                         | Delay sessions so at most this many overlap; lanes run through recorded request durations. Single-request traces need a duration column for this to take effect |
-| `copies`                  | 1                             | Sequential full-dataset replays; pass k+1 starts at pass k's last scheduled request                                                                             |
-| `copy_offset`             | 1.0                           | Where the next copy starts relative to the prior span: 0 at the start, 1 at the end, >1 a gap                                                                   |
+| Argument                  | Default                       | Description                                                                                                                                                          |
+| ------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `timestamp_column`        | "timestamp"                   | Column name for timestamps in the trace file                                                                                                                         |
+| `prompt_tokens_column`    | "input_length"                | Column name for prompt token counts in the trace file                                                                                                                |
+| `output_tokens_column`    | "output_length"               | Column name for output token counts in the trace file                                                                                                                |
+| `duration_column`         | "duration" (WEKA: "api_time") | Optional column for how long each request ran, in seconds. Used by `schedule_turn=idle_gap` and concurrent-session options                                           |
+| `derive_requeue_delay`    | true                          | Derive a per-turn `requeue_delay` from the gap after the latest recorded predecessor end; used by think-time profiles such as `users`. The replay profile ignores it |
+| `time_scale`              | 1.0                           | Scale remaining relative timestamps after wait and pack caps                                                                                                         |
+| `max_wait`                | unset                         | Maximum gap in original trace seconds between consecutive requests in one session                                                                                    |
+| `max_session_wait`        | unset                         | Maximum idle in original trace seconds from the previous session's last request to this session                                                                      |
+| `min_concurrent_sessions` | unset                         | Pack sessions so at least this many overlap during steady state                                                                                                      |
+| `max_concurrent_sessions` | unset                         | Delay sessions so at most this many overlap; lanes run through recorded request durations. Single-request traces need a duration column for this to take effect      |
+| `copies`                  | 1                             | Sequential full-dataset replays; pass k+1 starts at pass k's last scheduled request                                                                                  |
+| `copy_offset`             | 1.0                           | Where the next copy starts relative to the prior span: 0 at the start, 1 at the end, >1 a gap                                                                        |
 
 These are passed through the `--data` argument like below:
 
@@ -85,6 +86,8 @@ guidellm run \
 ```
 
 `trace_synthetic` can be thought of as the format-agnostic option, only looking for the timestamp, prompt token count and output token count columns and ignoring all other features contained in a dataset. While primarily used for testing, `trace_synthetic` may be used as a fallback for trace formats not currently supported by GuideLLM.
+
+By default, trace formats derive a per-turn `requeue_delay` from the final timeline so think-time profiles such as `users` and `concurrent` pace turns like the trace did. The delay is the gap between a turn's start and the latest recorded parent end (timestamp plus duration). It is stored on the parent turn because the scheduler applies a completed turn's delay to its children. Only positive gaps are emitted; a parent with several children keeps its smallest positive gap. Without a duration column, the gap is the full timestamp delta. Trace replay ignores the derived delay and keeps its own `schedule_turn` timing. Set `derive_requeue_delay=false` to disable derivation.
 
 The replay profile's `schedule_turn` argument selects how those timestamps are applied. `idle_gap` (the default) keeps the idle gap after `duration_column`: a request recorded as 1 second with the next timestamp 5 seconds later starts that next request 4 seconds after this one actually finishes. `idle_gap` is more forgiving for when the server gets overloaded, since late requests all get sent as soon as the prior turns end. If `duration_column` is missing, the loader logs one warning, and each request is treated as instantaneous; the same warning notes that the concurrent-session options cannot spread single-request sessions without recorded durations. This results in the actual gap being marginally longer. `timestamp` starts each request at its trace time, waiting only if the prior turn is still running.
 

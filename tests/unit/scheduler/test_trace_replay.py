@@ -5,7 +5,11 @@ from multiprocessing import get_context
 
 import pytest
 
-from guidellm.scheduler import SchedulingStrategy, TraceReplayStrategy
+from guidellm.scheduler import (
+    SchedulingStrategy,
+    TraceReplayStrategy,
+    UsersStrategy,
+)
 from guidellm.schemas import RequestInfo, RequestSettings
 
 TRACE_TIMESTAMPS = [0.0, 0.0, 0.0, 0.1, 0.1, 1.5, 2.0, 2.0, 3.5, 7.0]
@@ -23,6 +27,15 @@ class TestTraceReplayStrategy:
         restored = SchedulingStrategy.model_validate(strategy.model_dump())
         assert isinstance(restored, TraceReplayStrategy)
         assert restored.time_scale == 2.0
+
+    @pytest.mark.smoke
+    def test_replay_ignores_dataset_requeue_delay(self):
+        """Trace replay computes its own timing and opts out of the DAG gate.
+
+        ## WRITTEN BY AI ##
+        """
+        assert TraceReplayStrategy().uses_dataset_requeue_delay is False
+        assert UsersStrategy(users=1).uses_dataset_requeue_delay is True
 
     @pytest.mark.smoke
     def test_resolve_dequeued_target_start_applies_trace_offset(self):

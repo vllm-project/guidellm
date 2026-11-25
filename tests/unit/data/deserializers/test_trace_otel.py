@@ -386,6 +386,63 @@ class TestOTELTraceFormat:
             random_seed=42,
         )
 
+    @pytest.mark.sanity
+    def test_derives_requeue_delay_from_span_times(self, tmp_path: Path):
+        """Span gaps become parent requeue delays by default.
+
+        ## WRITTEN BY AI ##
+        """
+        first = ibm_chat_span(
+            span_id="s0",
+            trace_id="t0",
+            start_time="2024-01-01T12:00:00+00:00",
+            prompt_tokens=10,
+            completion_tokens=5,
+        )
+        first["duration"] = 1.0
+        second = ibm_chat_span(
+            span_id="s1",
+            trace_id="t0",
+            start_time="2024-01-01T12:00:05+00:00",
+            prompt_tokens=10,
+            completion_tokens=5,
+        )
+        trace = write_jsonl(tmp_path, [ibm_session_line("t0", [first, second])])
+
+        turns = load_graph_turns(next(iter(deserialize(trace))))
+
+        assert turns[0].columns["requeue_delay_column"] == pytest.approx([4.0])
+        assert "requeue_delay_column" not in turns[1].columns
+
+    @pytest.mark.sanity
+    def test_derive_requeue_delay_can_be_disabled(self, tmp_path: Path):
+        """Disabling the option leaves OTEL turns with no derived delay.
+
+        ## WRITTEN BY AI ##
+        """
+        first = ibm_chat_span(
+            span_id="s0",
+            trace_id="t0",
+            start_time="2024-01-01T12:00:00+00:00",
+            prompt_tokens=10,
+            completion_tokens=5,
+        )
+        first["duration"] = 1.0
+        second = ibm_chat_span(
+            span_id="s1",
+            trace_id="t0",
+            start_time="2024-01-01T12:00:05+00:00",
+            prompt_tokens=10,
+            completion_tokens=5,
+        )
+        trace = write_jsonl(tmp_path, [ibm_session_line("t0", [first, second])])
+
+        turns = load_graph_turns(
+            next(iter(deserialize(trace, derive_requeue_delay=False)))
+        )
+
+        assert all("requeue_delay_column" not in turn.columns for turn in turns)
+
     @pytest.mark.smoke
     @pytest.mark.parametrize("kind", ["otel", "opentelemetry"])
     def test_kind_aliases_load(self, tmp_path: Path, kind: str):
