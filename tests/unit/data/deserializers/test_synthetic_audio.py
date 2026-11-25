@@ -73,7 +73,6 @@ def test_synthetic_audio_factory_yields_canonical_rows(monkeypatch):
             "sample_rate": 8000,
             "content": "noise",
             "format": "wav",
-            "seed": 21,
         }
     )
 
@@ -88,7 +87,7 @@ def test_synthetic_audio_factory_yields_canonical_rows(monkeypatch):
     assert isinstance(dataset, IterableDataset)
     assert [row["audio"]["audio"] for row in rows] == [b"\x00", b"\x01", b"\x02"]
     assert [call["row_index"] for call in calls] == [0, 1, 2]
-    assert all(call["seed"] == 21 for call in calls)
+    assert all(call["seed"] == 99 for call in calls)
     assert all(call["sample_rate"] == 8000 for call in calls)
 
 

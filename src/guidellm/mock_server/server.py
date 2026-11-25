@@ -21,7 +21,7 @@ from functools import partial
 from typing import Any, cast
 
 from sanic import Sanic, response
-from sanic.exceptions import NotFound
+from sanic.exceptions import BadRequest, NotFound
 from sanic.log import logger
 from sanic.logging.formatter import LegacyAccessFormatter, LegacyFormatter
 from sanic.request import File, Request
@@ -234,7 +234,15 @@ class MockServer:
         :param request: Speech request containing format and streaming options.
         :return: Audio response, stream response, or a validation error response.
         """
-        body = request.json or {}
+        try:
+            body = request.json
+        except BadRequest:
+            return response.json(
+                {"error": "Invalid JSON in request body"},
+                status=400,
+            )
+
+        body = body or {}
         if not isinstance(body, dict):
             return response.json({"error": "Expected a JSON object"}, status=400)
 

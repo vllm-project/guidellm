@@ -35,7 +35,3 @@ class SyntheticAudioDataArgs(DataArgs):
         default="wav",
         description="Encoded audio format.",
     )
-    seed: int = Field(
-        default=42,
-        description="Base random seed for reproducible generated audio.",
-    )

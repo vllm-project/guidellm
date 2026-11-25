@@ -383,7 +383,7 @@ class TestRealtimeTranscriptionWSRequestHandler:
         resp = handler.compile_streaming(req, args)
         assert resp.text == "hi"
         assert resp.request_id == "r1"
-        assert resp.input_metrics.audio_tokens is None
+        assert resp.input_metrics.audio_tokens == 5
         assert resp.output_metrics.text_tokens == 1
         assert '"model":"m1"' in resp.request_args
         assert "audio_chunks" not in resp.request_args
@@ -2747,7 +2747,12 @@ class TestAudioRequestHandler:
         result = valid_instances.compile_non_streaming(request, arguments, response)
 
         assert result.response_id == "transcription-1"
+        # in the general case, handled by AudioRequestHandlers - there is no evidence
+        #  that all prompt_tokens are audio (unlike the realtimeWS handler).
+        # To keep the audio metrics precise, in this case the prompt_tokens add to the
+        # total_tokens but not to the audio_tokens.
         assert result.input_metrics.audio_tokens is None
+        assert result.input_metrics.unclassified_total_tokens == 10
         assert result.output_metrics.text_tokens == 2
 
     @pytest.mark.regression
@@ -7407,6 +7412,43 @@ class TestSpeechRequestHandler:
 
         with pytest.raises(ValueError, match=message):
             handler.compile_non_streaming(generation_request, arguments, payload)
+
+    @pytest.mark.regression
+    def test_split_pcm_sample_starts_continuity_when_frame_is_complete(
+        self,
+        generation_request,
+    ):
+        """Start playback timing when a split PCM sample becomes playable.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(
+                body={"response_format": "pcm", "stream_format": "audio"}
+            ),
+            audio_output_sample_rate=16000,
+            audio_output_channels=1,
+        )
+
+        handler.set_streaming_arrival_time(0.0)
+        handler.add_streaming_chunk(b"\x00")
+        assert handler.last_iteration_had_audio is False
+
+        handler.set_streaming_arrival_time(1.0)
+        handler.add_streaming_chunk(b"\x00")
+        assert handler.last_iteration_had_audio is True
+
+        handler.mark_stream_complete()
+        result = handler.compile_streaming(generation_request, arguments)
+        handler.post_validation(result)
+
+        assert result.output_metrics.audio_samples == 1
+        assert result.output_metrics.audio_seconds == pytest.approx(1 / 16000)
+        assert result.output_metrics.audio_underrun_seconds == 0
+        assert result.output_metrics.audio_continuity_ok == 1
 
     @pytest.mark.regression
     def test_raw_pcm_without_layout_keeps_duration_unknown(self, generation_request):

@@ -550,6 +550,52 @@ def _pcm16_layout(
     return sample_rate, channels, header_bytes, payload_bytes // bytes_per_frame
 
 
+def _playable_pcm_chunk_timings(
+    chunks: list[bytes],
+    arrivals: list[float | None],
+    header_bytes: int,
+    bytes_per_frame: int,
+) -> tuple[list[float], list[int]] | None:
+    """Group network chunks by when they complete playable PCM frames.
+
+    :param chunks: Audio byte chunks in arrival order.
+    :param arrivals: Arrival timestamp for each corresponding chunk.
+    :param header_bytes: Leading container bytes to exclude, such as a WAV header.
+    :param bytes_per_frame: Bytes required to complete one PCM frame.
+    :return: Arrival times and aligned byte counts, or None if a playable chunk
+        has no arrival timestamp.
+    :raises ValueError: If bytes_per_frame is not positive or the chunk and
+        arrival lists have different lengths.
+    """
+    if bytes_per_frame <= 0:
+        raise ValueError("bytes_per_frame must be positive")
+
+    header_remaining: int = header_bytes
+    pending_frame_bytes: int = 0
+    times: list[float] = []
+    sizes: list[int] = []
+
+    for chunk, arrival in zip(chunks, arrivals, strict=True):
+        skipped: int = min(len(chunk), header_remaining)
+        header_remaining -= skipped
+        pcm_bytes: int = len(chunk) - skipped
+
+        available_bytes: int = pending_frame_bytes + pcm_bytes
+        playable_bytes: int = available_bytes - available_bytes % bytes_per_frame
+        pending_frame_bytes = available_bytes - playable_bytes
+
+        # A partial frame cannot be played yet; carry its bytes to the next chunk.
+        if playable_bytes == 0:
+            continue
+        if arrival is None:
+            return None
+
+        times.append(arrival)
+        sizes.append(playable_bytes)
+
+    return times, sizes
+
+
 class WSEventResult(Enum):
     """Classification of a processed WebSocket streaming event."""
 
@@ -3408,34 +3454,26 @@ class SpeechRequestHandler(OpenAIRequestHandler):
 
         if self._stream_complete and layout is not None:
             sample_rate, channels, header_bytes, _ = layout
-            header_remaining = header_bytes
-            times: list[float] = []
-            sizes: list[int] = []
-            complete_timing = True
-            for chunk, arrival in zip(
+            chunk_timings = _playable_pcm_chunk_timings(
                 self.streaming_audio_chunks,
                 self.streaming_audio_arrivals,
-                strict=True,
-            ):
-                skipped = min(len(chunk), header_remaining)
-                header_remaining -= skipped
-                pcm_bytes = len(chunk) - skipped
-                if pcm_bytes:
-                    if arrival is None:
-                        complete_timing = False
-                        break
-                    times.append(arrival)
-                    sizes.append(pcm_bytes)
+                header_bytes,
+                PCM16_BYTES_PER_SAMPLE * channels,
+            )
 
-            if complete_timing and sizes:
-                continuity = compute_audio_continuity(
-                    times,
-                    sizes,
-                    sample_rate=sample_rate,
-                    channels=channels,
-                )
-                output_metrics.audio_underrun_seconds = continuity.max_underrun_seconds
-                output_metrics.audio_continuity_ok = int(continuity.is_continuous)
+            if chunk_timings is not None:
+                times, sizes = chunk_timings
+                if sizes:
+                    continuity = compute_audio_continuity(
+                        times,
+                        sizes,
+                        sample_rate=sample_rate,
+                        channels=channels,
+                    )
+                    output_metrics.audio_underrun_seconds = (
+                        continuity.max_underrun_seconds
+                    )
+                    output_metrics.audio_continuity_ok = int(continuity.is_continuous)
 
         return GenerationResponse(
             request_id=request.request_id,
@@ -3643,6 +3681,13 @@ class RealtimeTranscriptionWSRequestHandler(OpenAIWSRequestHandler):
         inp, outp = self._audio_metrics.extract_metrics(
             self._streaming_usage, full_text
         )
+        # This handler sends audio only, so if modality breakdown wasn't
+        # sent - aggregate input total can be (correctly) classified as audio.
+        if inp.unclassified_total_tokens is not None:
+            inp.audio_tokens = inp.unclassified_total_tokens
+            inp.unclassified_total_tokens = None
+
+        body = dict(arguments.body or {})
         body = dict(arguments.body or {})
         body.pop(WS_AUDIO_CHUNKS_BODY_KEY, None)
         request_args = arguments.model_copy(update={"body": body or None})

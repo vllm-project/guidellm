@@ -25,9 +25,10 @@ __all__ = [
 class _SyntheticAudioExamplesIterable(_BaseExamplesIterable):
     """Examples iterable that yields rows of synthetic audio."""
 
-    def __init__(self, config: SyntheticAudioDataArgs):
+    def __init__(self, config: SyntheticAudioDataArgs, random_seed: int):
         super().__init__()
         self.config = config
+        self.random_seed = random_seed
         self._state_dict: dict
 
     def __iter__(self) -> Iterator[tuple[int, dict[str, Any]]]:
@@ -39,7 +40,7 @@ class _SyntheticAudioExamplesIterable(_BaseExamplesIterable):
                     sample_rate=self.config.sample_rate,
                     content=self.config.content,
                     audio_format=self.config.format,
-                    seed=self.config.seed,
+                    seed=self.random_seed,
                     row_index=row_index,
                 )
             }
@@ -93,10 +94,17 @@ class _SyntheticAudioExamplesIterable(_BaseExamplesIterable):
 
 
 class SyntheticAudioDataset(IterableDataset):
-    def __init__(self, config: SyntheticAudioDataArgs):
+    def __init__(
+        self,
+        config: SyntheticAudioDataArgs,
+        random_seed: int = 42,
+    ):
         self.config = config
 
-        synth_audio_iterable = _SyntheticAudioExamplesIterable(config)
+        synth_audio_iterable = _SyntheticAudioExamplesIterable(
+            config=config,
+            random_seed=random_seed,
+        )
         super().__init__(
             ex_iterable=synth_audio_iterable,
             info=DatasetInfo(
@@ -104,6 +112,13 @@ class SyntheticAudioDataset(IterableDataset):
                 features=synth_audio_iterable.features,
             ),
         )
+
+    def is_infinite(self) -> bool:
+        """Report that synthetic audio generation is unbounded.
+
+        :return: True because the dataset generates rows indefinitely.
+        """
+        return True
 
 
 @DatasetDeserializerFactory.register("synthetic_audio")
@@ -114,5 +129,8 @@ class SyntheticAudioDatasetDeserializer(DatasetDeserializer):
         processor_factory: Callable[[], PreTrainedTokenizerBase],
         random_seed: int,
     ) -> IterableDataset:
-        _ = processor_factory, random_seed
-        return SyntheticAudioDataset(config)
+        _ = processor_factory
+        return SyntheticAudioDataset(
+            config=config,
+            random_seed=random_seed,
+        )

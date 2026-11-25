@@ -223,6 +223,13 @@ class ChatCompletionsHandler:
             sample_number(self.config.output_tokens, self.config.output_tokens_std),
             max_tokens,
         )
+        if (
+            req.modalities
+            and "audio" in req.modalities
+            and "text" not in req.modalities
+            and not self._should_return_tool_calls(req)
+        ):
+            completion_tokens_count = 0
 
         # ITL delay
         itl_delay = 0.0
