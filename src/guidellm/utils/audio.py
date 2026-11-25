@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -14,10 +15,17 @@ from guidellm.extras import torch
 from guidellm.logger import logger
 
 __all__ = [
+    "AudioContinuityStats",
+    "compute_audio_continuity",
+    "decode_audio",
+    "decode_audio_with_metadata",
     "encode_audio",
     "is_url",
     "pcm16_append_b64_chunks",
+    "synthesize_audio",
 ]
+
+DEFAULT_AUDIO_UNDERRUN_THRESHOLD_SEC = 0.1
 
 
 def is_url(text: Any) -> bool:
@@ -144,6 +152,21 @@ def decode_audio(audio: bytes):
     # torchcodec decodes audio on CPU, so .data is always
     # a CPU torch.Tensor. .cpu() is a no-op on CPU tensors.
     return audio_samples.data.cpu().numpy()
+
+
+def decode_audio_with_metadata(audio: bytes) -> tuple[Any, int, float]:
+    """
+    Decode audio and plus return its sample rate and duration.
+
+    :param audio: Raw encoded audio bytes (wav/mp3/flac/etc.).
+    :return: Tuple of (sample_np_array, sample_rate, duration_sec).
+    """
+    audio_samples, _ = _decode_audio(audio)
+    return (
+        audio_samples.data.cpu().numpy(),
+        audio_samples.sample_rate,
+        audio_samples.duration_seconds,
+    )
 
 
 def _decode_audio(  # noqa: C901, PLR0912, PLR0915
@@ -395,3 +418,155 @@ def pcm16_append_b64_chunks(
     if not out:
         raise ValueError("Decoded audio produced no PCM data")
     return out
+
+
+@dataclass(frozen=True)
+class AudioContinuityStats:
+    """
+    Result of simulating realtime playback against actual chunk arrivals.
+
+    :param max_underrun_seconds: Worst-case wall-clock seconds the simulated
+        player was starved waiting for data.
+    :param underrun_event_count: Number of inter-chunk gaps where the
+        simulated buffer went negative.
+    :param is_continuous: True when max_underrun_seconds <= threshold_seconds.
+    """
+
+    max_underrun_seconds: float
+    underrun_event_count: int
+    is_continuous: bool
+
+
+def compute_audio_continuity(
+    chunk_arrival_times_s: list[float],
+    chunk_bytes: list[int],
+    sample_rate: int,
+    sample_width: int = 2,
+    channels: int = 1,
+    threshold_s: float = DEFAULT_AUDIO_UNDERRUN_THRESHOLD_SEC,
+) -> AudioContinuityStats:
+    """
+    Simulate a realtime PCM playback buffer against actual chunk arrivals.
+
+    Given the wall-clock arrival time of each streamed audio chunk and its
+    byte size, simulates a player consuming PCM at realtime rate starting
+    from the first chunk, and returns the worst-case buffer deficit. A
+    deficit greater than threshold_s at any point is an audible gap.
+
+    :param chunk_arrival_times_s: Wall-clock seconds (since request start)
+        at which each non-empty chunk's last byte arrived. Must be
+        monotonically non-decreasing.
+    :param chunk_bytes: Byte length of each chunk, same order as arrival times.
+    :param sample_rate: PCM sample rate in Hz.
+    :param sample_width: Bytes per sample (2 = s16le).
+    :param channels: PCM channel count (1 = mono).
+    :param threshold_s: Underrun budget; default matches vLLM-Omni's own
+        continuity-metric default.
+    :return: AudioContinuityStats. Fewer than 2 chunks -> trivially continuous.
+    """
+    n = len(chunk_arrival_times_s)
+    min_chunks_itl = 2
+    if n < min_chunks_itl or n != len(chunk_bytes):
+        return AudioContinuityStats(0.0, 0, True)
+
+    bytes_per_second = sample_rate * sample_width * channels
+    if bytes_per_second <= 0:
+        return AudioContinuityStats(0.0, 0, True)
+
+    # Wall-clock time when the currently buffered audio will run out.
+    t0 = chunk_arrival_times_s[0]
+    buffer_empty_at_sec = t0 + chunk_bytes[0] / bytes_per_second
+    max_underrun_s = 0.0
+    event_count = 0
+
+    for i in range(1, n):
+        arrival = chunk_arrival_times_s[i]
+        if arrival > buffer_empty_at_sec:
+            max_underrun_s = max(max_underrun_s, arrival - buffer_empty_at_sec)
+            event_count += 1
+            buffer_empty_at_sec = arrival
+
+        buffer_empty_at_sec += chunk_bytes[i] / bytes_per_second
+
+    return AudioContinuityStats(
+        max_underrun_seconds=max_underrun_s,
+        underrun_event_count=event_count,
+        is_continuous=max_underrun_s <= threshold_s,
+    )
+
+
+def synthesize_audio(
+    duration_seconds: float,
+    sample_rate: int = 16000,
+    *,
+    content: str = "sine",
+    audio_format: str = "wav",
+    seed: int = 12,
+    row_index: int = 0,
+) -> dict[str, Any]:
+    """
+    Synthesize a short waveform and return the canonical encoded dict.
+
+    Matches the shape of :func:`encode_audio` output format
+    so it flows through the same column-mapper/finalizer pipeline.
+
+    :param duration_seconds: Clip duration in seconds.
+    :param sample_rate: PCM sample rate in Hz.
+    :param content: "sine" (default, per-row randomized freq) /"noise" / "silence".
+    :param audio_format: Output container format ("wav" default).
+    :param seed: Base seed for reproducibility ("12" is current default).
+    :param row_index: Row index, varies the RNG stream per row so successive
+        rows are byte-different with the same seed.
+    """
+
+    if duration_seconds <= 0:
+        raise ValueError(f"duration_seconds must be positive, got {duration_seconds}")
+    if sample_rate <= 0:
+        raise ValueError(f"sample_rate must be positive, got {sample_rate}")
+    if content not in ("sine", "noise", "silence"):
+        raise ValueError(
+            f"Unsupported synthetic audio content '{content}', "
+            "expected one of ('sine', 'noise', 'silence')"
+        )
+
+    num_samples = max(1, round(duration_seconds * sample_rate))
+    seed_seq = np.random.SeedSequence([int(seed) & 0xFFFFFFFF, int(row_index)])
+    rng = np.random.Generator(np.random.PCG64(seed_seq))
+
+    waveform: np.ndarray
+    if content == "silence":
+        waveform = np.zeros(num_samples, dtype=np.float32)
+    elif content == "noise":
+        waveform = rng.uniform(-0.3, 0.3, size=num_samples).astype(np.float32)
+    else:  # "sine": per-row randomized frequency
+        frequency_hz = float(rng.uniform(220.0, 880.0))
+        t = np.arange(num_samples, dtype=np.float64) / sample_rate
+        waveform = (0.3 * np.sin(2 * np.pi * frequency_hz * t)).astype(np.float32)
+
+    data = torch.from_numpy(waveform).unsqueeze(0)  # (channels=1, samples)
+    duration = num_samples / sample_rate
+
+    # use torchcodec for samples generation
+    samples = libs.AudioSamples(
+        data=data,
+        pts_seconds=0.0,
+        duration_seconds=duration,
+        sample_rate=sample_rate,
+    )
+    fmt = audio_format.lower()
+    encoded_audio = _encode_audio(
+        samples=samples,
+        resample_rate=sample_rate,
+        audio_format=fmt,
+        mono=True,
+    )
+    return {
+        "type": "audio_file",
+        "audio": encoded_audio,
+        "file_name": f"synthetic_audio_{seed}_{row_index}.{fmt}",
+        "format": fmt,
+        "mimetype": f"audio/{fmt}",
+        "audio_samples": num_samples,
+        "audio_seconds": duration,
+        "audio_bytes": len(encoded_audio),
+    }

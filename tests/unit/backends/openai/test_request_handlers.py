@@ -6,9 +6,10 @@ Unit tests for OpenAI request handlers.
 
 from __future__ import annotations
 
+import base64
 import json
 import json as stdlib_json
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -22,16 +23,19 @@ from guidellm.backends.openai.request_handlers import (
     PoolingRequestHandler,
     RealtimeTranscriptionWSRequestHandler,
     ResponsesRequestHandler,
+    SpeechRequestHandler,
     TextCompletionsRequestHandler,
     WSEventResult,
 )
 from guidellm.data.finalizers.generative import GenerativeRequestFinalizer
+from guidellm.mock_server.multimodal import mock_pcm16, mock_wav
 from guidellm.scheduler.schemas.conversation_graph import GenerativeConversationGraph
 from guidellm.schemas import (
     GenerationRequest,
     GenerationRequestArguments,
     GenerationResponse,
     RequestInfo,
+    RequestTimings,
     ToolCall,
     ToolCallFunction,
     UsageMetrics,
@@ -66,6 +70,7 @@ class TestOpenAIRequestHandler:
         assert hasattr(OpenAIRequestHandler, "compile_non_streaming")
         assert hasattr(OpenAIRequestHandler, "add_streaming_line")
         assert hasattr(OpenAIRequestHandler, "compile_streaming")
+        assert OpenAIRequestHandler.raw_streaming is False
 
 
 class TestOpenAIRequestHandlerFactory:
@@ -93,6 +98,7 @@ class TestOpenAIRequestHandlerFactory:
             ("/v1/responses", None, ResponsesRequestHandler),
             ("/v1/audio/transcriptions", None, AudioRequestHandler),
             ("/v1/audio/translations", None, AudioRequestHandler),
+            ("/v1/audio/speech", None, SpeechRequestHandler),
             ("/pooling", None, PoolingRequestHandler),
             ("/v1/embeddings", None, EmbeddingsRequestHandler),
             (
@@ -107,6 +113,7 @@ class TestOpenAIRequestHandlerFactory:
             "/v1/responses",
             "/v1/audio/transcriptions",
             "/v1/audio/translations",
+            "/v1/audio/speech",
             "/pooling",
             "/v1/embeddings",
             "override_text_completions",
@@ -381,6 +388,38 @@ class TestRealtimeTranscriptionWSRequestHandler:
         assert resp.output_metrics.text_tokens == 1
         assert '"model":"m1"' in resp.request_args
         assert "audio_chunks" not in resp.request_args
+
+    def test_compile_streaming_reads_realtime_audio_token_details(self) -> None:
+        """Extract audio tokens from an explicit Realtime usage breakdown.
+
+        ## WRITTEN BY AI ##
+        """
+        handler = RealtimeTranscriptionWSRequestHandler()
+        req = GenerationRequest(
+            request_id="r1",
+            columns={"audio_column": [{"audio": b"x"}]},
+        )
+        args = handler.format(
+            req,
+            model="m1",
+            websocket_path="/v1/realtime",
+            chunk_samples=1600,
+        )
+        handler.add_streaming_event(
+            {
+                "type": "transcription.done",
+                "text": "hi",
+                "usage": {
+                    "input_tokens": 5,
+                    "input_token_details": {"audio_tokens": 5},
+                    "output_tokens": 1,
+                },
+            }
+        )
+
+        resp = handler.compile_streaming(req, args)
+        assert resp.input_metrics.audio_tokens == 5
+        assert resp.output_metrics.text_tokens == 1
 
 
 class TestResponseMetricsPassthrough:
@@ -2410,8 +2449,27 @@ class TestAudioRequestHandler:
             RequestInfo(request_id=request.request_id, status="completed"),
         )
 
+        assert stats.input_metrics.text_tokens is None
+        assert stats.input_metrics.audio_tokens is None
+        assert stats.input_metrics.unclassified_total_tokens == 100
         assert stats.output_tokens == 5
         assert (stats.prompt_tokens, stats.total_tokens) == (100, 105)
+
+    @pytest.mark.regression
+    def test_extract_metrics_uses_known_modality_counts(self):
+        """Use known text/audio counts when the backend also reports a total."""
+        handler = AudioRequestHandler()
+        usage = {
+            "prompt_tokens": 100,
+            "prompt_tokens_details": {"audio_tokens": 60},
+        }
+
+        input_metrics, _ = handler.extract_metrics(usage, "transcript")
+
+        assert input_metrics.text_tokens == 40
+        assert input_metrics.audio_tokens == 60
+        assert input_metrics.unclassified_total_tokens is None
+        assert input_metrics.total_tokens == 100
 
     @pytest.fixture
     def valid_instances(self):
@@ -2690,7 +2748,12 @@ class TestAudioRequestHandler:
         result = valid_instances.compile_non_streaming(request, arguments, response)
 
         assert result.response_id == "transcription-1"
-        assert result.input_metrics.audio_tokens == 10
+        # in the general case, handled by AudioRequestHandlers - there is no evidence
+        #  that all prompt_tokens are audio (unlike the realtimeWS handler).
+        # To keep the audio metrics precise, in this case the prompt_tokens add to the
+        # total_tokens but not to the audio_tokens.
+        assert result.input_metrics.audio_tokens is None
+        assert result.input_metrics.unclassified_total_tokens == 10
         assert result.output_metrics.text_tokens == 2
 
     @pytest.mark.regression
@@ -2740,11 +2803,22 @@ class TestAudioRequestHandler:
             (
                 {"prompt_tokens": 538, "total_tokens": 982, "completion_tokens": 444},
                 "Hello world",
-                538,
+                None,
                 444,
             ),
             (None, "Hello", None, None),
             ({}, "", None, None),
+            (
+                {
+                    "input_tokens": 538,
+                    "input_token_details": {"audio_tokens": 538},
+                    "output_tokens": 444,
+                    "total_tokens": 982,
+                },
+                "Hello world",
+                538,
+                444,
+            ),
         ],
     )
     def test_extract_metrics(
@@ -6028,6 +6102,7 @@ class TestChatCompletionsToolResponseColumn:
         ]
         tool_call_response.text = None
         tool_call_response.reasoning_text = None
+        tool_call_response.output_media = None
 
         injection_request = GenerationRequest(
             columns={"tool_response_column": ['{"result": "custom data"}']},
@@ -6037,6 +6112,7 @@ class TestChatCompletionsToolResponseColumn:
         injection_response.tool_calls = None
         injection_response.text = "The tool returned custom data."
         injection_response.reasoning_text = None
+        injection_response.output_media = None
 
         current_request = GenerationRequest(
             columns={"text_column": ["now respond"]},
@@ -6076,6 +6152,7 @@ class TestChatCompletionsToolResponseColumn:
         ]
         tool_call_response.text = None
         tool_call_response.reasoning_text = None
+        tool_call_response.output_media = None
 
         injection_request = GenerationRequest(
             columns={},
@@ -6085,6 +6162,7 @@ class TestChatCompletionsToolResponseColumn:
         injection_response.tool_calls = None
         injection_response.text = "Ok."
         injection_response.reasoning_text = None
+        injection_response.output_media = None
 
         current_request = GenerationRequest(
             columns={"text_column": ["now respond"]},
@@ -6123,6 +6201,7 @@ class TestChatCompletionsToolResponseColumn:
         ]
         tool_call_response.text = None
         tool_call_response.reasoning_text = None
+        tool_call_response.output_media = None
 
         injection_request = GenerationRequest(
             columns={"tool_response_column": [b'{"result": "bytes data"}']},
@@ -6132,6 +6211,7 @@ class TestChatCompletionsToolResponseColumn:
         injection_response.tool_calls = None
         injection_response.text = "Done."
         injection_response.reasoning_text = None
+        injection_response.output_media = None
 
         current_request = GenerationRequest(
             columns={"text_column": ["now respond"]},
@@ -6629,3 +6709,1533 @@ def test_responses_stream_final_arguments_override_fragments(final_arguments, ex
         (call.id, call.function.name, call.function.arguments)
         for call in response.tool_calls
     ] == [("call_2", "save", expected)]
+
+
+class TestSpeechRequestHandler:
+    """Regression coverage for generated speech requests and responses."""
+
+    def test_format_combines_text_reference_audio_and_token_limit(self):
+        """Build a voice-cloning request from the mapped audio columns.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        request = GenerationRequest(
+            columns={
+                "prefix_column": ["Prefix."],
+                "text_column": ["Speak this."],
+                "ref_text_column": ["Reference transcript."],
+                "audio_column": [
+                    {"audio": b"first", "format": "wav"},
+                    {"audio": b"second", "format": "flac"},
+                ],
+            },
+            output_metrics=UsageMetrics(text_tokens=20),
+        )
+        handler = SpeechRequestHandler()
+
+        arguments = handler.format(
+            request,
+            model="tts-model",
+            max_tokens=30,
+            extras=GenerationRequestArguments(body={"voice": "test-voice"}),
+        )
+
+        assert arguments.body["model"] == "tts-model"
+        assert arguments.body["input"] == "Prefix. Speak this."
+        assert arguments.body["ref_text"] == "Reference transcript."
+        assert arguments.body["ref_audio"] == [
+            "data:audio/wav;base64,Zmlyc3Q=",
+            "data:audio/flac;base64,c2Vjb25k",
+        ]
+        assert arguments.body["max_new_tokens"] == 20
+        assert arguments.body["voice"] == "test-voice"
+
+        fallback = handler.format(
+            GenerationRequest(columns={"text_column": ["Speak."]}),
+            max_tokens=30,
+        )
+        assert fallback.body["max_new_tokens"] == 30
+
+        overridden = handler.format(
+            request,
+            extras=GenerationRequestArguments(body={"max_new_tokens": 40}),
+        )
+        assert overridden.body["max_new_tokens"] == 40
+
+    def test_format_sends_single_reference_audio_as_string(self):
+        """Use the endpoint's string shape when there is one reference clip.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        arguments = SpeechRequestHandler().format(
+            GenerationRequest(
+                columns={"audio_column": [{"audio": b"reference", "format": "wav"}]}
+            )
+        )
+
+        assert arguments.body["ref_audio"] == "data:audio/wav;base64,cmVmZXJlbmNl"
+
+    @pytest.mark.parametrize("audio_item", [{"audio": b""}, {"audio": "not-bytes"}, {}])
+    def test_format_rejects_invalid_reference_audio(self, audio_item):
+        """Reject reference audio items without non-empty byte payloads.
+
+        :param audio_item: Reference audio item to validate.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        request = GenerationRequest(columns={"audio_column": [audio_item]})
+
+        with pytest.raises(ValueError, match="Reference audio must contain"):
+            SpeechRequestHandler().format(request)
+
+    @pytest.mark.parametrize("reference_text", [["first", "second"], [4], [None]])
+    def test_format_requires_one_string_reference_transcript(self, reference_text):
+        """Require exactly one textual transcript for voice-cloning audio.
+
+        :param reference_text: Reference transcript column values to validate.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        request = GenerationRequest(columns={"ref_text_column": reference_text})
+
+        with pytest.raises(ValueError, match="one reference transcript"):
+            SpeechRequestHandler().format(request)
+
+    def test_format_rejects_multiturn_history(self, generation_request):
+        """Reject conversation history for the single-turn speech endpoint.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        previous_response = GenerationResponse(
+            request_id=generation_request.request_id,
+            request_args=None,
+            text="previous",
+        )
+
+        with pytest.raises(ValueError, match="does not support multiturn"):
+            SpeechRequestHandler().format(
+                generation_request,
+                history=[(generation_request, previous_response)],
+            )
+
+    def test_response_header_layout_rejects_invalid_or_changing_values(self):
+        """Reject invalid PCM layout headers and changes during a response.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        with pytest.raises(ValueError, match="invalid audio sample_rate"):
+            SpeechRequestHandler().set_response_headers({"X-Audio-Sample-Rate": "0"})
+
+        handler = SpeechRequestHandler()
+        handler.set_response_headers({"X-Audio-Sample-Rate": "16000"})
+        with pytest.raises(ValueError, match="audio sample_rate changed"):
+            handler.set_response_headers({"X-Audio-Sample-Rate": "24000"})
+
+    @pytest.mark.parametrize("audio_format", ["pcm", "wav"])
+    def test_raw_chunks_are_not_duplicated(self, generation_request, audio_format):
+        """Preserve streamed bytes once and exclude WAV headers from frames.
+
+        :param generation_request: Basic generation request fixture.
+        :param audio_format: Raw response format under test.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        pcm = mock_pcm16(sample_rate=16000, seconds=0.4)
+        payload = mock_wav(pcm, sample_rate=16000) if audio_format == "wav" else pcm
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(
+                body={"response_format": audio_format, "stream_format": "audio"}
+            ),
+        )
+        handler.set_response_headers(
+            {"X-Audio-Sample-Rate": "16000", "X-Audio-Channels": "1"}
+        )
+        chunks = [payload[:44], payload[44:]] if audio_format == "wav" else [payload]
+
+        for index, chunk in enumerate(chunks):
+            handler.set_streaming_arrival_time(float(index))
+            assert handler.add_streaming_chunk(chunk) == 0
+            if audio_format == "wav" and index == 0:
+                assert not handler.last_iteration_had_audio
+
+        handler.mark_stream_complete()
+        result = handler.compile_streaming(generation_request, arguments)
+        handler.post_validation(result)
+
+        assert arguments.stream is True
+        assert handler.raw_streaming is True
+        assert result.output_media[0]["data"] == payload
+        assert result.output_metrics.audio_samples == 6400
+        assert result.output_metrics.audio_seconds == pytest.approx(0.4)
+        assert len(handler.streaming_audio_chunks) == len(
+            handler.streaming_audio_arrivals
+        )
+
+    def test_streaming_wav_accepts_omni_unknown_length_header(
+        self,
+        generation_request,
+    ):
+        """Accept Omni's unknown-length WAV sizes on a stream.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        pcm = mock_pcm16(sample_rate=16000, seconds=0.0625)
+        wav_header = bytearray(mock_wav(b"", sample_rate=16000))
+        wav_header[4:8] = (0xFFFFFFFF).to_bytes(4, "little")
+        wav_header[40:44] = (0xFFFFFFFF).to_bytes(4, "little")
+
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(
+                body={"response_format": "wav", "stream_format": "audio"}
+            ),
+        )
+        handler.set_response_headers(
+            {"X-Audio-Sample-Rate": "16000", "X-Audio-Channels": "1"}
+        )
+        handler.add_streaming_chunk(bytes(wav_header))
+        handler.add_streaming_chunk(pcm)
+        handler.mark_stream_complete()
+
+        result = handler.compile_streaming(generation_request, arguments)
+        handler.post_validation(result)
+
+        assert result.output_metrics.audio_samples == 1000
+        assert result.output_metrics.audio_seconds == pytest.approx(1000 / 16000)
+
+    @pytest.mark.parametrize("audio_format", ["mp3", "flac"])
+    def test_encoded_stream_chunks_are_retained_without_pcm_ttfp(
+        self, generation_request, audio_format
+    ):
+        """Retain encoded chunks without interpreting them as PCM frames.
+
+        :param generation_request: Basic generation request fixture.
+        :param audio_format: Encoded format outside the PCM/WAV streaming contract.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        handler.format(
+            generation_request,
+            audio_output_channels=1,
+            extras=GenerationRequestArguments(
+                body={
+                    "response_format": audio_format,
+                    "stream_format": "audio",
+                }
+            ),
+        )
+        payload = b"encoded audio packet"
+        handler.set_streaming_arrival_time(1.0)
+
+        assert handler.add_streaming_chunk(payload) == 0
+        assert handler.streaming_audio_chunks == [payload]
+        assert handler.streaming_audio_arrivals == [1.0]
+        assert not handler.last_iteration_had_audio
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize("terminal", [False, True])
+    def test_speech_sse_requires_terminal_event(self, generation_request, terminal):
+        """Require speech.audio.done before accepting an SSE response.
+
+        :param generation_request: Basic generation request fixture.
+        :param terminal: Whether a speech completion event is present.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(
+                body={"response_format": "pcm", "stream_format": "sse"}
+            ),
+        )
+        handler.set_streaming_arrival_time(1.0)
+        handler.add_streaming_line(
+            "data: "
+            + json.dumps(
+                {
+                    "type": "speech.audio.delta",
+                    "audio": base64.b64encode(b"\x00\x00" * 100).decode("ascii"),
+                    "response_format": "pcm",
+                    "sample_rate": 1000,
+                    "channels": 1,
+                }
+            )
+        )
+        if terminal:
+            handler.add_streaming_line(
+                "data: "
+                + json.dumps(
+                    {
+                        "type": "speech.audio.done",
+                        "usage": {
+                            "input_token_details": {
+                                "text_tokens": 3,
+                                "audio_tokens": 4,
+                            },
+                            "output_tokens": 2,
+                        },
+                    }
+                )
+            )
+
+        handler.mark_stream_complete()
+        result = handler.compile_streaming(generation_request, arguments)
+        if terminal:
+            handler.post_validation(result)
+            assert result.output_metrics.audio_seconds == pytest.approx(0.1)
+            assert result.input_metrics.text_tokens == 3
+            assert result.input_metrics.audio_tokens == 4
+            assert result.output_metrics.audio_tokens == 2
+        else:
+            with pytest.raises(ValueError, match="before speech.audio.done"):
+                handler.post_validation(result)
+
+    def test_speech_sse_rejects_invalid_base64(self, generation_request):
+        """Reject malformed base64 in a speech audio delta.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        handler.format(generation_request)
+
+        with pytest.raises(ValueError, match="invalid speech audio delta"):
+            handler.add_streaming_line(
+                'data: {"type":"speech.audio.delta","audio":"%%%"}'
+            )
+
+    def test_speech_sse_error_event_raises(self):
+        """Surface the endpoint's explicit speech.audio.error event.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+
+        with pytest.raises(ValueError, match="Streaming speech response returned"):
+            handler.add_streaming_line(
+                'data: {"type":"speech.audio.error","error":{"message":"failed"}}'
+            )
+
+    def test_speech_generic_sse_error_still_raises(self):
+        """Surface generic SSE error payloads for speech responses.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+
+        with pytest.raises(
+            ValueError, match="Streaming response returned an error: failed"
+        ):
+            handler.add_streaming_line('data: {"error":{"message":"failed"}}')
+
+    @pytest.mark.parametrize(
+        "output_media", [None, [], [{"modality": "audio", "data": b""}]]
+    )
+    def test_post_validation_rejects_empty_audio(self, output_media):
+        """Reject responses that contain no usable generated audio bytes.
+
+        :param output_media: Audio response media value being validated.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        response = GenerationResponse(
+            request_id="empty-audio",
+            request_args=None,
+            output_media=output_media,
+        )
+
+        with pytest.raises(ValueError, match="empty audio payload"):
+            SpeechRequestHandler().post_validation(response)
+
+    @pytest.mark.sanity
+    def test_speech_response_does_not_count_requested_text_limit_as_output(self):
+        """Keep the TTS token limit out of measured audio output statistics.
+
+        :param self: Current test class instance.
+        :return: None.
+        """
+        request = GenerationRequest(
+            columns={"text_column": ["Speak."]},
+            output_metrics=UsageMetrics(text_tokens=100),
+        )
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            request,
+            extras=GenerationRequestArguments(body={"response_format": "pcm"}),
+        )
+
+        # SpeechRequestHandler uses this as a generation limit.
+        assert arguments.body["max_new_tokens"] == 100
+
+        handler.set_response_headers(
+            {"X-Audio-Sample-Rate": "16000", "X-Audio-Channels": "1"}
+        )
+        pcm = b"\x00\x00" * 1600
+        response = handler.compile_non_streaming(request, arguments, pcm)
+        handler.post_validation(response)
+
+        info = RequestInfo(
+            request_id=request.request_id,
+            status="completed",
+            timings=RequestTimings(
+                request_start=10.0,
+                request_end=10.2,
+                resolve_end=10.2,
+            ),
+        )
+        stats = response.compile_stats(request, info)
+
+        assert response.use_request_output_metrics is False
+        assert stats.output_media == response.output_media
+        assert stats.output_metrics.text_tokens is None
+        assert stats.output_tokens is None
+        assert stats.time_per_output_token_ms is None
+        assert stats.inter_token_latency_ms is None
+        assert stats.output_metrics.audio_samples == 1600
+        assert stats.output_metrics.audio_seconds == pytest.approx(0.1)
+        assert stats.audio_rtf == pytest.approx(2.0)
+
+    @pytest.mark.smoke
+    def test_non_streaming_pcm_uses_server_layout_and_usage_headers(
+        self, generation_request
+    ):
+        """Prefer returned PCM layout and preserve server token usage.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            audio_output_sample_rate=16000,
+            audio_output_channels=1,
+            extras=GenerationRequestArguments(body={"response_format": "pcm"}),
+        )
+        handler.set_response_headers(
+            {
+                "X-Audio-Sample-Rate": "24000",
+                "X-Audio-Channels": "2",
+                "X-Vllm-Omni-Input-Text-Tokens": "7",
+                "X-Vllm-Omni-Input-Audio-Tokens": "11",
+                "X-Vllm-Omni-Output-Tokens": "13",
+            }
+        )
+
+        result = handler.compile_non_streaming(
+            generation_request, arguments, b"\x00" * 9600
+        )
+
+        assert result.output_metrics.audio_samples == 2400
+        assert result.output_metrics.audio_seconds == pytest.approx(0.1)
+        assert result.output_metrics.audio_bytes == 9600
+        assert result.output_metrics.audio_tokens == 13
+        assert result.input_metrics.text_tokens == 7
+        assert result.input_metrics.audio_tokens == 11
+        assert result.use_request_output_metrics is False
+
+    def test_non_streaming_pcm_uses_configured_layout_without_headers(
+        self, generation_request
+    ):
+        """Measure headerless PCM from the configured sample-rate and channels.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            audio_output_sample_rate=24000,
+            audio_output_channels=1,
+            extras=GenerationRequestArguments(body={"response_format": "pcm"}),
+        )
+
+        result = handler.compile_non_streaming(
+            generation_request,
+            arguments,
+            b"\x00\x00" * 2400,
+        )
+        handler.post_validation(result)
+
+        assert result.output_media[0]["data"] == b"\x00\x00" * 2400
+        assert result.output_media[0]["format"] == "pcm"
+        assert result.output_metrics.audio_bytes == 4800
+        assert result.output_metrics.audio_samples == 2400
+        assert result.output_metrics.audio_seconds == pytest.approx(0.1)
+
+    def test_non_streaming_pcm_without_layout_preserves_audio(self, generation_request):
+        """Keep non-streaming PCM when no layout metadata or hints are available.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(body={"response_format": "pcm"}),
+        )
+        payload = b"\x00\x00" * 100
+
+        with (
+            patch(
+                "guidellm.backends.openai.request_handlers.decode_audio_with_metadata"
+            ) as decode_audio,
+            patch(
+                "guidellm.backends.openai.request_handlers.logger.warning"
+            ) as warning,
+        ):
+            result = handler.compile_non_streaming(
+                generation_request, arguments, payload
+            )
+        handler.post_validation(result)
+
+        decode_audio.assert_not_called()
+        warning.assert_called_once()
+        assert "leaving sample count and duration unknown" in str(
+            warning.call_args.args[0]
+        )
+        assert result.output_media[0]["data"] == payload
+        assert result.output_metrics.audio_bytes == len(payload)
+        assert result.output_metrics.audio_samples is None
+        assert result.output_metrics.audio_seconds is None
+
+    def test_non_streaming_wav_uses_embedded_layout(self, generation_request):
+        """Read WAV sample rate and frames directly from its container header.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        audio = mock_wav(mock_pcm16(sample_rate=24000, seconds=0.25), sample_rate=24000)
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(body={"response_format": "wav"}),
+        )
+
+        result = handler.compile_non_streaming(generation_request, arguments, audio)
+
+        assert result.output_media[0]["data"] == audio
+        assert result.output_metrics.audio_samples == 6000
+        assert result.output_metrics.audio_seconds == pytest.approx(0.25)
+
+    @pytest.mark.regression
+    def test_non_streaming_wav_ignores_trailing_junk_chunk(self, generation_request):
+        """Exclude a trailing JUNK chunk from WAV audio frames.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        pcm = mock_pcm16(sample_rate=16000, seconds=0.0625)
+        audio = bytearray(mock_wav(pcm, sample_rate=16000))
+        junk_payload = b"metadata"
+        audio.extend(b"JUNK" + len(junk_payload).to_bytes(4, "little") + junk_payload)
+        audio[4:8] = (len(audio) - 8).to_bytes(4, "little")
+
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(body={"response_format": "wav"}),
+        )
+
+        result = handler.compile_non_streaming(
+            generation_request,
+            arguments,
+            bytes(audio),
+        )
+
+        assert result.output_metrics.audio_samples == 1000
+        assert result.output_metrics.audio_seconds == pytest.approx(1000 / 16000)
+
+    @pytest.mark.regression
+    def test_non_streaming_wav_rejects_truncated_data_chunk(self, generation_request):
+        """Reject a WAV whose declared audio data is truncated.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        pcm = mock_pcm16(sample_rate=16000, seconds=0.0625)
+        complete_audio = mock_wav(pcm, sample_rate=16000)
+        truncated_audio = complete_audio[: 44 + len(pcm) // 2]
+
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(body={"response_format": "wav"}),
+        )
+
+        with pytest.raises(ValueError, match="truncated WAV data chunk"):
+            handler.compile_non_streaming(
+                generation_request,
+                arguments,
+                truncated_audio,
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.sanity
+    @pytest.mark.parametrize("audio_format", ["wav", "mp3", "flac", "opus"])
+    async def test_non_pcm_response_formats_use_container_decoder(
+        self, generation_request, audio_format
+    ):
+        """Decode supported non-streaming containers and retain their original bytes.
+
+        :param generation_request: Basic generation request fixture.
+        :param audio_format: Documented encoded speech response format.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(body={"response_format": audio_format}),
+        )
+        payload = b"encoded response bytes"
+        decoded_samples = MagicMock()
+        decoded_samples.shape = (1, 2400)
+
+        with patch(
+            "guidellm.backends.openai.request_handlers.decode_audio_with_metadata",
+            return_value=(decoded_samples, 24000, 0.1),
+        ) as decode_audio:
+            result = await handler.compile_non_streaming_async(
+                generation_request,
+                arguments,
+                payload,
+            )
+
+        decode_audio.assert_called_once_with(payload)
+        handler.post_validation(result)
+        assert result.output_media[0]["data"] == payload
+        assert result.output_media[0]["format"] == audio_format
+        assert result.output_metrics.audio_samples == 2400
+        assert result.output_metrics.audio_seconds == pytest.approx(0.1)
+
+    @pytest.mark.parametrize("stream_format", ["audio", "sse"])
+    def test_completed_pcm_stream_without_layout_preserves_audio(
+        self, generation_request, stream_format
+    ):
+        """Keep completed streamed PCM when the server omits layout metadata.
+
+        :param generation_request: Basic generation request fixture.
+        :param stream_format: Raw-byte or SSE speech streaming mode.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(
+                body={"response_format": "pcm", "stream_format": stream_format}
+            ),
+        )
+        payload = b"\x00\x00" * 100
+
+        if stream_format == "audio":
+            handler.add_streaming_chunk(payload)
+            handler.mark_stream_complete()
+        else:
+            delta = {
+                "type": "speech.audio.delta",
+                "audio": base64.b64encode(payload).decode("ascii"),
+                "response_format": "pcm",
+            }
+            handler.add_streaming_line("data: " + json.dumps(delta))
+            handler.add_streaming_line('data: {"type":"speech.audio.done","usage":{}}')
+
+        with (
+            patch(
+                "guidellm.backends.openai.request_handlers.decode_audio_with_metadata"
+            ) as decode_audio,
+            patch(
+                "guidellm.backends.openai.request_handlers.logger.warning"
+            ) as warning,
+        ):
+            result = handler.compile_streaming(generation_request, arguments)
+        handler.post_validation(result)
+
+        decode_audio.assert_not_called()
+        warning.assert_called_once()
+        assert "leaving sample count and duration unknown" in str(
+            warning.call_args.args[0]
+        )
+        assert result.output_media[0]["data"] == payload
+        assert result.output_metrics.audio_bytes == len(payload)
+        assert result.output_metrics.audio_samples is None
+        assert result.output_metrics.audio_seconds is None
+
+    @pytest.mark.asyncio
+    async def test_decode_failure_is_not_swallowed(self, generation_request):
+        """Surface a decoder error for a completed encoded response.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(body={"response_format": "wav"}),
+        )
+
+        with (
+            patch(
+                "guidellm.backends.openai.request_handlers.decode_audio_with_metadata",
+                side_effect=ValueError("invalid container"),
+            ),
+            pytest.raises(ValueError, match="audio decoding failed"),
+        ):
+            await handler.compile_non_streaming_async(
+                generation_request, arguments, b"X" * 44
+            )
+
+    @pytest.mark.parametrize(
+        ("payload", "channels", "message"),
+        [
+            (b"\x00", None, "incomplete PCM16 sample"),
+            (b"\x00\x00", 2, "incomplete PCM16 frame"),
+        ],
+    )
+    def test_incomplete_pcm16_sample_or_frame_is_rejected(
+        self,
+        generation_request,
+        payload,
+        channels,
+        message,
+    ):
+        """Reject PCM16 data that ends inside a sample or known channel frame.
+
+        :param generation_request: Basic generation request fixture.
+        :param payload: PCM bytes ending before a complete sample or frame.
+        :param channels: Known channel count, or None when it is unavailable.
+        :param message: Expected validation error text.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        format_kwargs = {"audio_output_sample_rate": 24000}
+        if channels is not None:
+            format_kwargs["audio_output_channels"] = channels
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(body={"response_format": "pcm"}),
+            **format_kwargs,
+        )
+
+        with pytest.raises(ValueError, match=message):
+            handler.compile_non_streaming(generation_request, arguments, payload)
+
+    @pytest.mark.regression
+    def test_split_pcm_sample_starts_continuity_when_frame_is_complete(
+        self,
+        generation_request,
+    ):
+        """Start playback timing when a split PCM sample becomes playable.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(
+                body={"response_format": "pcm", "stream_format": "audio"}
+            ),
+            audio_output_sample_rate=16000,
+            audio_output_channels=1,
+        )
+
+        handler.set_streaming_arrival_time(0.0)
+        handler.add_streaming_chunk(b"\x00")
+        assert handler.last_iteration_had_audio is False
+
+        handler.set_streaming_arrival_time(1.0)
+        handler.add_streaming_chunk(b"\x00")
+        assert handler.last_iteration_had_audio is True
+
+        handler.mark_stream_complete()
+        result = handler.compile_streaming(generation_request, arguments)
+        handler.post_validation(result)
+
+        assert result.output_metrics.audio_samples == 1
+        assert result.output_metrics.audio_seconds == pytest.approx(1 / 16000)
+        assert result.output_metrics.audio_underrun_seconds == 0
+        assert result.output_metrics.audio_continuity_ok == 1
+
+    def test_raw_pcm_without_layout_keeps_duration_unknown(self, generation_request):
+        """Leave frame count and duration unset until PCM layout is available.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = SpeechRequestHandler()
+        arguments = handler.format(
+            generation_request,
+            extras=GenerationRequestArguments(
+                body={"response_format": "pcm", "stream_format": "audio"}
+            ),
+        )
+        handler.add_streaming_chunk(b"\x00\x00" * 10)
+
+        result = handler.compile_streaming(generation_request, arguments)
+
+        assert result.output_metrics.audio_samples is None
+        assert result.output_metrics.audio_seconds is None
+
+
+class TestChatAudioOutput:
+    """Regression coverage for audio emitted by chat completions."""
+
+    def test_non_streaming_audio_is_collected_from_single_choice(
+        self, generation_request
+    ):
+        """Collect text and audio fields from one chat completion choice.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        audio = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+        response = {
+            "id": "chat-audio",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Hello.",
+                        "audio": {
+                            "id": "audio-1",
+                            "data": base64.b64encode(audio).decode("ascii"),
+                            "transcript": "",
+                        },
+                    },
+                    "audio_metadata": {
+                        "format": "wav",
+                        "sample_rate_hz": 16000,
+                        "frame_count": 1600,
+                        "channels": 1,
+                    },
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 4,
+                "completion_tokens": 2,
+                "total_tokens": 6,
+            },
+        }
+
+        result = ChatCompletionsRequestHandler().compile_non_streaming(
+            generation_request, GenerationRequestArguments(), response
+        )
+
+        assert result.text == "Hello."
+        assert result.output_media is not None
+        assert len(result.output_media) == 1
+        assert result.output_media[0]["data"] == audio
+        assert result.output_media[0]["choice_index"] == 0
+        assert result.output_metrics.audio_samples == 1600
+        assert result.output_metrics.audio_seconds == pytest.approx(0.1)
+        assert result.output_metrics.audio_bytes == len(audio)
+        assert result.use_request_output_metrics is True
+
+    @pytest.mark.regression
+    def test_chat_wav_rejects_truncated_data_chunk_with_metadata(
+        self,
+        generation_request,
+    ):
+        """Reject truncated chat WAV even when audio metadata is present.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        pcm = mock_pcm16(sample_rate=16000, seconds=0.0625)
+        complete_audio = mock_wav(pcm, sample_rate=16000)
+        truncated_audio = complete_audio[: 44 + len(pcm) // 2]
+        response = {
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "audio": {
+                            "id": "audio-1",
+                            "data": base64.b64encode(truncated_audio).decode("ascii"),
+                            "format": "wav",
+                        },
+                    },
+                    "audio_metadata": {
+                        "format": "wav",
+                        "sample_rate_hz": 16000,
+                        "frame_count": 1000,
+                        "channels": 1,
+                    },
+                }
+            ],
+            "usage": {},
+        }
+
+        with pytest.raises(ValueError, match="truncated WAV data chunk"):
+            ChatCompletionsRequestHandler().compile_non_streaming(
+                generation_request,
+                GenerationRequestArguments(),
+                response,
+            )
+
+    @pytest.mark.regression
+    def test_audio_only_response_does_not_report_text_tokens(self, generation_request):
+        """Do not treat audio-only chat completion usage as output text.
+
+        :param generation_request: Basic generation request fixture.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        audio = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+        result = ChatCompletionsRequestHandler().compile_non_streaming(
+            generation_request,
+            GenerationRequestArguments(),
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "audio": {
+                                "data": base64.b64encode(audio).decode("ascii"),
+                                "transcript": "",
+                            },
+                        },
+                        "audio_metadata": {
+                            "format": "wav",
+                            "sample_rate_hz": 16000,
+                            "frame_count": 1600,
+                            "channels": 1,
+                        },
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 4,
+                    "completion_tokens": 2,
+                    "total_tokens": 6,
+                },
+            },
+        )
+
+        assert result.text is None
+        assert result.use_request_output_metrics is False
+        assert result.output_metrics.text_tokens is None
+        assert result.output_media[0]["data"] == audio
+
+    def test_chat_packets_are_measured_without_joining_containers(self):
+        """Sum independent WAV packets while preserving their valid headers.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        pcm = mock_pcm16(sample_rate=16000, seconds=0.1)
+        packets = [
+            {
+                "modality": "audio",
+                "data": mock_wav(pcm, sample_rate=16000),
+                "format": "wav",
+            }
+            for _ in range(2)
+        ]
+        metrics = UsageMetrics()
+
+        handler._augment_media_output_metrics(metrics, packets)
+
+        assert metrics.audio_samples == 3200
+        assert metrics.audio_seconds == pytest.approx(0.2)
+        assert metrics.audio_bytes == sum(len(packet["data"]) for packet in packets)
+        assert all(packet["data"].startswith(b"RIFF") for packet in packets)
+
+    def test_chat_compressed_packet_uses_its_own_bytes(self):
+        """Decode compressed packet bytes when metadata is unavailable.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        decoded = MagicMock()
+        decoded.shape = (1, 2400)
+        decoded.ndim = 2
+        metrics = UsageMetrics()
+
+        with patch(
+            "guidellm.backends.openai.request_handlers.decode_audio_with_metadata",
+            return_value=(decoded, 24000, 0.1),
+        ) as decode:
+            ChatCompletionsRequestHandler()._augment_media_output_metrics(
+                metrics,
+                [{"modality": "audio", "data": b"encoded-packet", "format": "flac"}],
+            )
+
+        decode.assert_called_once_with(b"encoded-packet")
+        assert metrics.audio_samples == 2400
+        assert metrics.audio_seconds == pytest.approx(0.1)
+
+    @pytest.mark.regression
+    def test_audio_usage_details_are_not_double_counted(self):
+        """Separate input audio tokens from the total prompt count once.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        for details in (
+            {"multimodal_tokens": {"audio": 60}},
+            {"audio_tokens": 60},
+            {"prompt_tokens": 40, "audio_tokens": 60},
+        ):
+            input_metrics, output_metrics = handler.extract_metrics(
+                {"prompt_tokens": 100, "prompt_tokens_details": details}, "answer"
+            )
+            assert input_metrics.text_tokens == 40
+            assert input_metrics.audio_tokens == 60
+            assert input_metrics.total_tokens == 100
+            assert output_metrics.text_tokens == 0
+
+        input_metrics, output_metrics = AudioRequestHandler().extract_metrics(
+            {"seconds": 3}, "transcribed words"
+        )
+        assert input_metrics.audio_seconds == 3
+        assert input_metrics.audio_tokens is None
+        assert output_metrics.text_tokens is None
+
+    @pytest.mark.parametrize("transcript", [None, "Spoken response."])
+    def test_audio_only_history_can_be_replayed(self, transcript):
+        """Replay generated audio from transcript text or its encoded bytes.
+
+        :param transcript: Optional transcript for the generated audio.
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        request = GenerationRequest(columns={"text_column": ["Speak."]})
+        audio = mock_wav(mock_pcm16())
+        response = GenerationResponse(
+            request_id=request.request_id,
+            request_args=None,
+            output_media=[
+                {
+                    "modality": "audio",
+                    "data": audio,
+                    "format": "wav",
+                    "transcript": transcript,
+                }
+            ],
+        )
+
+        messages = handler._build_turn_messages(request, response, None)
+        assistant = messages[-1]
+
+        assert assistant["role"] == "assistant"
+        if transcript is not None:
+            assert assistant["content"] == transcript
+        else:
+            audio_part = assistant["content"][0]
+            assert audio_part["type"] == "input_audio"
+            assert base64.b64decode(audio_part["input_audio"]["data"]) == audio
+
+    def test_audio_delta_does_not_increment_text_token_iterations(self):
+        """Keep audio deltas distinct from text token timing.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        encoded = base64.b64encode(mock_wav(mock_pcm16())).decode("ascii")
+
+        assert (
+            handler.add_streaming_line(
+                "data: "
+                + json.dumps(
+                    {
+                        "modality": "audio",
+                        "choices": [{"index": 0, "delta": {"content": encoded}}],
+                    }
+                )
+            )
+            == 0
+        )
+        assert handler.last_iteration_had_audio
+        assert (
+            handler.add_streaming_line(
+                'data: {"choices":[{"index":0,"delta":{"content":"Text"}}]}'
+            )
+            == 1
+        )
+        assert not handler.last_iteration_had_audio
+        assert handler.last_iteration_had_content
+
+    def test_dedicated_delta_audio_object_is_parsed(self):
+        """Parse audio carried in the dedicated chat delta.audio field.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        audio = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+        event = {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "audio": {
+                            "id": "delta-audio",
+                            "data": base64.b64encode(audio).decode("ascii"),
+                            "transcript": "Speak.",
+                        }
+                    },
+                    "audio_metadata": {
+                        "format": "wav",
+                        "sample_rate_hz": 16000,
+                        "frame_count": 1600,
+                        "channels": 1,
+                    },
+                }
+            ]
+        }
+
+        assert handler.add_streaming_line("data: " + json.dumps(event)) == 0
+        assert handler.last_iteration_had_audio
+        handler.mark_stream_complete()
+        result = handler.compile_streaming(
+            GenerationRequest(columns={"text_column": ["Speak."]}),
+            GenerationRequestArguments(),
+        )
+
+        assert result.output_media[0]["id"] == "delta-audio"
+        assert result.output_media[0]["data"] == audio
+        assert result.output_media[0]["transcript"] == "Speak."
+        assert result.output_metrics.audio_seconds == pytest.approx(0.1)
+
+    def test_metadata_only_delta_audio_is_ignored_without_modality(self):
+        """Ignore an ID/expiry-only audio update without raising.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        event = {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {
+                        "audio": {
+                            "id": "delta-audio",
+                            "expires_at": 1_700_000_000,
+                        }
+                    },
+                }
+            ]
+        }
+
+        assert handler.add_streaming_line("data: " + json.dumps(event)) == 0
+        assert handler.streaming_media_packets == []
+
+    def test_transcript_only_delta_audio_is_preserved(self):
+        """Preserve transcript-only audio deltas and attach them to audio output.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        request = GenerationRequest(columns={"text_column": ["Prompt."]})
+        arguments = GenerationRequestArguments()
+        packet_one = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+        packet_two = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+        encoded_one = base64.b64encode(packet_one).decode("ascii")
+        encoded_two = base64.b64encode(packet_two).decode("ascii")
+        audio_metadata = {
+            "format": "wav",
+            "sample_rate_hz": 16000,
+            "frame_count": 1600,
+            "channels": 1,
+        }
+        events = [
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "audio": {
+                                "id": "delta-audio",
+                                "transcript": "Speak ",
+                            }
+                        },
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"transcript": "now."}},
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"data": encoded_one}},
+                        "audio_metadata": audio_metadata,
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"data": encoded_two}},
+                        "audio_metadata": audio_metadata,
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "audio": {
+                                "id": "delta-audio",
+                                "expires_at": 1_700_000_000,
+                            }
+                        },
+                    }
+                ]
+            },
+        ]
+
+        for event in events:
+            assert handler.add_streaming_line("data: " + json.dumps(event)) == 0
+
+        handler.mark_stream_complete()
+        response = handler.compile_streaming(request, arguments)
+
+        assert response.text is None
+        assert len(response.output_media) == 2
+        assert response.output_media[0]["data"] == packet_one
+        assert response.output_media[1]["data"] == packet_two
+        assert response.output_media[0]["id"] == "delta-audio"
+        assert response.output_media[0]["expires_at"] == 1_700_000_000
+        assert response.output_media[0]["transcript"] == "Speak now."
+        assert response.output_media[1].get("transcript") is None
+
+        messages = handler._build_turn_messages(request, response, None)
+        assert messages[-1]["content"] == "Speak now."
+
+    def test_transcript_only_stream_without_audio_uses_response_text(self):
+        """Use transcript deltas as response text when no audio packet arrives.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        request = GenerationRequest(columns={"text_column": ["Prompt."]})
+        arguments = GenerationRequestArguments()
+        events = [
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"transcript": "Speak "}},
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"transcript": "now."}},
+                    }
+                ]
+            },
+        ]
+
+        for event in events:
+            assert handler.add_streaming_line("data: " + json.dumps(event)) == 0
+
+        handler.mark_stream_complete()
+        response = handler.compile_streaming(request, arguments)
+
+        assert response.text == "Speak now."
+        assert response.output_media is None
+
+    def test_transcript_only_delta_does_not_duplicate_existing_text(self):
+        """Keep ordinary streamed text when the audio transcript repeats it.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        request = GenerationRequest(columns={"text_column": ["Prompt."]})
+        arguments = GenerationRequestArguments()
+        events = [
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": "Speak now."},
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"audio": {"transcript": "Speak now."}},
+                    }
+                ]
+            },
+        ]
+
+        assert handler.add_streaming_line("data: " + json.dumps(events[0])) == 1
+        assert handler.add_streaming_line("data: " + json.dumps(events[1])) == 0
+
+        handler.mark_stream_complete()
+        response = handler.compile_streaming(request, arguments)
+
+        assert response.text == "Speak now."
+        assert response.output_media is None
+
+    @pytest.mark.sanity
+    def test_streamed_multimodal_from_single_choice_preserves_audio_metrics(self):
+        """Collect streamed text and audio from the same chat choice.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        request = GenerationRequest(columns={"text_column": ["Prompt."]})
+        arguments = GenerationRequestArguments()
+        audio = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+        encoded_audio = base64.b64encode(audio).decode("ascii")
+        audio_metadata = {
+            "format": "wav",
+            "sample_rate_hz": 16000,
+            "frame_count": 1600,
+            "channels": 1,
+        }
+        sse_payloads = [
+            {
+                "modality": "text",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": "Hello."},
+                    }
+                ],
+            },
+            {
+                "modality": "audio",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": encoded_audio},
+                        "audio_metadata": audio_metadata,
+                    }
+                ],
+            },
+        ]
+
+        assert handler.add_streaming_line("data: " + json.dumps(sse_payloads[0])) == 1
+        assert handler.add_streaming_line("data: " + json.dumps(sse_payloads[1])) == 0
+
+        handler.mark_stream_complete()
+        response = handler.compile_streaming(request, arguments)
+
+        assert response.text == "Hello."
+        assert response.output_media is not None
+        assert len(response.output_media) == 1
+        assert response.output_media[0]["data"] == audio
+        assert response.output_media[0]["choice_index"] == 0
+        assert response.output_metrics.audio_samples == 1600
+        assert response.output_metrics.audio_seconds == pytest.approx(0.1)
+        assert response.output_metrics.audio_bytes == len(audio)
+
+    def test_streamed_audio_continuity_uses_packet_arrivals(self):
+        """Measure playback continuity from ordered streamed packet timestamps.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        handler = ChatCompletionsRequestHandler()
+        request: GenerationRequest = GenerationRequest(
+            columns={"text_column": ["Speak."]}
+        )
+        arguments: GenerationRequestArguments = handler.format(
+            request,
+            stream=True,
+            extras=GenerationRequestArguments(body={"modalities": ["audio"]}),
+        )
+
+        for arrival, frame_count in ((0.0, 1600), (0.05, 1600)):
+            packet = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+            event = {
+                "modality": "audio",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": base64.b64encode(packet).decode("ascii")},
+                        "audio_metadata": {
+                            "format": "wav",
+                            "sample_rate_hz": 16000,
+                            "frame_count": frame_count,
+                            "channels": 1,
+                        },
+                    }
+                ],
+            }
+            handler.set_streaming_arrival_time(arrival)
+            handler.add_streaming_line("data: " + json.dumps(event))
+
+        finish_event = {
+            "choices": [
+                {"index": 0, "delta": {}, "finish_reason": "stop"},
+            ]
+        }
+        assert handler.add_streaming_line("data: " + json.dumps(finish_event)) == 0
+        assert handler.add_streaming_line("data: [DONE]") is None
+        handler.mark_stream_complete()
+
+        result = handler.compile_streaming(request, arguments)
+        handler.post_validation(result)
+
+        assert result.output_metrics.audio_samples == 3200
+        assert result.output_metrics.audio_underrun_seconds == 0
+        assert result.output_metrics.audio_continuity_ok == 1
+        assert len(result.output_media) == 2
+        assert all(item["data"].startswith(b"RIFF") for item in result.output_media)
+
+    @pytest.mark.regression
+    @pytest.mark.parametrize(
+        "terminal_events",
+        [(), ("finish_reason",), ("done",)],
+        ids=["neither-marker", "missing-done", "missing-finish-reason"],
+    )
+    def test_streamed_audio_rejects_incomplete_protocol(
+        self, terminal_events: tuple[str, ...]
+    ):
+        """Reject audio streams missing either chat completion marker.
+
+        :param terminal_events: Protocol markers present before transport EOF.
+        :return: None.
+        """
+        handler: ChatCompletionsRequestHandler = ChatCompletionsRequestHandler()
+        request: GenerationRequest = GenerationRequest(
+            columns={"text_column": ["Speak."]}
+        )
+        arguments: GenerationRequestArguments = handler.format(
+            request,
+            stream=True,
+            extras=GenerationRequestArguments(body={"modalities": ["audio"]}),
+        )
+        packet = mock_wav(mock_pcm16(sample_rate=16000, seconds=0.1))
+        audio_event = {
+            "modality": "audio",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": base64.b64encode(packet).decode("ascii")},
+                    "audio_metadata": {
+                        "format": "wav",
+                        "sample_rate_hz": 16000,
+                        "frame_count": 1600,
+                        "channels": 1,
+                    },
+                }
+            ],
+        }
+        assert handler.add_streaming_line("data: " + json.dumps(audio_event)) == 0
+
+        if "finish_reason" in terminal_events:
+            finish_event = {
+                "choices": [
+                    {"index": 0, "delta": {}, "finish_reason": "stop"},
+                ]
+            }
+            assert handler.add_streaming_line("data: " + json.dumps(finish_event)) == 0
+        if "done" in terminal_events:
+            assert handler.add_streaming_line("data: [DONE]") is None
+
+        handler.mark_stream_complete()
+        response = handler.compile_streaming(request, arguments)
+
+        with pytest.raises(
+            ValueError,
+            match=r"both a choice finish_reason and the \[DONE\] marker",
+        ):
+            handler.post_validation(response)
+
+    def test_audio_only_pcm_history_is_wrapped_as_wav(self):
+        """Convert raw PCM into replayable WAV input for chat history.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        request = GenerationRequest(columns={"text_column": ["Speak."]})
+        response = GenerationResponse(
+            request_id=request.request_id,
+            request_args=None,
+            output_media=[
+                {
+                    "modality": "audio",
+                    "data": b"\x00\x00" * 100,
+                    "format": "pcm",
+                    "sample_rate": 1000,
+                    "channels": 1,
+                }
+            ],
+        )
+
+        messages = ChatCompletionsRequestHandler()._build_turn_messages(
+            request, response, None
+        )
+        encoded_wav = messages[-1]["content"][0]["input_audio"]["data"]
+        wav_bytes = base64.b64decode(encoded_wav)
+
+        assert wav_bytes.startswith(b"RIFF")
+        assert wav_bytes[8:12] == b"WAVE"
+
+    def test_audio_only_pcm_history_requires_layout(self):
+        """Reject replay of raw PCM when its rate and channel count are unknown.
+
+        :return: None.
+        ## WRITTEN BY AI ##
+        """
+        request = GenerationRequest(columns={"text_column": ["Speak."]})
+        response = GenerationResponse(
+            request_id=request.request_id,
+            request_args=None,
+            output_media=[{"modality": "audio", "data": b"\x00\x00", "format": "pcm"}],
+        )
+
+        with pytest.raises(ValueError, match="without sample rate and channels"):
+            ChatCompletionsRequestHandler()._build_turn_messages(
+                request, response, None
+            )

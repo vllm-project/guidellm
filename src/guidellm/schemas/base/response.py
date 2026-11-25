@@ -81,12 +81,27 @@ class GenerationResponse(StandardBaseModel):
         default_factory=UsageMetrics,
         description="Token usage statistics from the generated output.",
     )
+    use_request_output_metrics: bool = Field(
+        default=True,
+        description=(
+            "Whether requested output metrics may fill missing response metrics. "
+            "False when requested counts are limits rather than measured output."
+        ),
+    )
     response_metrics: dict[str, Any] | None = Field(
         default=None,
         description=(
             "Per-request metrics the backend reported alongside usage, passed through "
             "as received. vLLM populates this with its `metrics` object, which carries "
             "server-side timings and speculative-decoding acceptance."
+        ),
+    )
+    output_media: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "Generated non-text output artifacts, one dict per item, tagged "
+            "by 'modality' ('audio', 'image', 'video'); None for text-only "
+            "responses."
         ),
     )
 
@@ -126,6 +141,40 @@ class GenerationResponse(StandardBaseModel):
             if is_tool_call_turn:
                 request.output_metrics.tool_call_count = 0
 
+        input_metrics_dict, output_metrics_dict = self._compile_metrics(
+            request=request,
+            prefer_response=prefer_response,
+        )
+
+        out_stats = GenerativeRequestStats(
+            request_id=self.request_id,
+            response_id=self.response_id,
+            request_args=self.request_args,
+            output=self.text,
+            reasoning_output=self.reasoning_text,
+            tool_calls=self.tool_calls,
+            output_media=self.output_media,
+            info=info,
+            input_metrics=UsageMetrics(**input_metrics_dict),
+            output_metrics=UsageMetrics(**output_metrics_dict),
+            response_metrics=self.response_metrics,
+        )
+        if out_stats.output_metrics.audio_rtf is None:
+            out_stats.output_metrics.audio_rtf = out_stats.audio_rtf
+
+        return out_stats
+
+    def _compile_metrics(
+        self,
+        request: GenerationRequest,
+        prefer_response: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Merge request and response metrics using the selected precedence.
+
+        :param request: Original request and its input/output metrics.
+        :param prefer_response: Whether response metrics take precedence.
+        :return: Merged input metrics and output metrics.
+        """
         base_input = request.input_metrics if prefer_response else self.input_metrics
         override_input = (
             self.input_metrics if prefer_response else request.input_metrics
@@ -134,6 +183,9 @@ class GenerationResponse(StandardBaseModel):
         override_output = (
             self.output_metrics if prefer_response else request.output_metrics
         )
+        if not self.use_request_output_metrics:
+            base_output = UsageMetrics()
+            override_output = self.output_metrics
 
         input_metrics_dict = base_input.model_dump()
         for key, value in override_input.model_dump().items():
@@ -153,15 +205,4 @@ class GenerationResponse(StandardBaseModel):
         ):
             output_metrics_dict["tool_call_count"] = 0
 
-        return GenerativeRequestStats(
-            request_id=self.request_id,
-            response_id=self.response_id,
-            request_args=self.request_args,
-            output=self.text,
-            reasoning_output=self.reasoning_text,
-            tool_calls=self.tool_calls,
-            info=info,
-            input_metrics=UsageMetrics(**input_metrics_dict),
-            output_metrics=UsageMetrics(**output_metrics_dict),
-            response_metrics=self.response_metrics,
-        )
+        return input_metrics_dict, output_metrics_dict

@@ -9,9 +9,10 @@ from __future__ import annotations
 import pytest
 from datasets import Dataset
 
+from guidellm.data.deserializers.synthetic_audio import SyntheticAudioDataset
 from guidellm.data.loaders.loader import DataLoaderRegistry
 from guidellm.data.loaders.torch import DatasetsIterator, TorchDataLoader
-from guidellm.schemas.data import TorchDataLoaderArgs
+from guidellm.schemas.data import SyntheticAudioDataArgs, TorchDataLoaderArgs
 
 
 @pytest.mark.regression
@@ -47,6 +48,35 @@ def test_loader_rejects_rows_with_only_empty_results():
 
     with pytest.raises(ValueError, match="processed 1 rows but yielded zero results"):
         list(iterator)
+
+
+@pytest.mark.regression
+def test_loader_detects_synthetic_audio_infinity_and_sample_limit() -> None:
+    """Detect unbounded synthetic audio unless the loader has a sample cap.
+
+    :return: None.
+    """
+    unlimited_dataset = SyntheticAudioDataset(
+        SyntheticAudioDataArgs(duration_seconds=0.001, sample_rate=8000)
+    )
+    unlimited_loader = TorchDataLoader(
+        config=TorchDataLoaderArgs(samples=0),
+        datasets=[unlimited_dataset],
+        preprocessors=[],
+        finalizer=list,
+    )
+    assert unlimited_loader.is_infinite() is True
+
+    limited_dataset = SyntheticAudioDataset(
+        SyntheticAudioDataArgs(duration_seconds=0.001, sample_rate=8000)
+    )
+    limited_loader = TorchDataLoader(
+        config=TorchDataLoaderArgs(samples=1),
+        datasets=[limited_dataset],
+        preprocessors=[],
+        finalizer=list,
+    )
+    assert limited_loader.is_infinite() is False
 
 
 class TestTorchDataLoaderArgs:
