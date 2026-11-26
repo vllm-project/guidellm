@@ -28,6 +28,8 @@ pip install guidellm[vision]
 ```bash
 guidellm run \
   --backend "kind=openai_http,target=http://localhost:8000" \
+  --profile "kind=concurrent,streams=4" \
+  --constraint kind=max_duration,seconds=60 \
   --data "kind=synthetic_text,prompt_tokens=200" \
   --data "kind=synthetic_image,resolution=720p,output_tokens=64"
 ```
@@ -37,6 +39,8 @@ guidellm run \
 ```bash
 guidellm run \
   --backend "kind=openai_http,target=http://localhost:8000" \
+  --profile "kind=concurrent,streams=4" \
+  --constraint kind=max_duration,seconds=60 \
   --data "kind=synthetic_text,prompt_tokens=200" \
   --data "kind=synthetic_image,width=1280,height=720,format=jpeg,images_per_request=2,output_tokens=64"
 ```
@@ -65,6 +69,8 @@ guidellm run \
 ```bash
 guidellm run \
   --backend "kind=openai_http,target=http://localhost:8000" \
+  --profile "kind=concurrent,streams=4" \
+  --constraint kind=max_duration,seconds=60 \
   --data "kind=synthetic_text,prompt_tokens=64" \
   --data "kind=synthetic_video,width=854,height=480,frames=6,fps=1,output_tokens=128"
 ```
@@ -74,6 +80,8 @@ guidellm run \
 ```bash
 guidellm run \
   --backend "kind=openai_http,target=http://localhost:8000" \
+  --profile "kind=concurrent,streams=4" \
+  --constraint kind=max_duration,seconds=60 \
   --data "kind=synthetic_text,prompt_tokens=64" \
   --data "kind=synthetic_video,width=1280,height=720,frames=12,fps=3,video_bitrate=2M,output_tokens=128"
 ```

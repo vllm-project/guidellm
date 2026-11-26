@@ -59,6 +59,17 @@ GuideLLM 支持多种图像数据加载方式。首先，数据源整体必须�
 
 `encode_media` 数据预处理器会在后端构造请求前编码图像。使用 `--data-preprocessor` 配置预处理器，并将编码选项放在 `image_kwargs` 中。
 
+例如，将图像最长边限制为 512 像素：
+
+```bash
+guidellm run \
+  --backend "kind=openai_http,target=http://localhost:8000" \
+  --profile kind=synchronous \
+  --data '{"kind":"huggingface","source":"lmms-lab/MMBench_EN","load_kwargs":{"split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"image_column":"image"}}' \
+  --data-preprocessor kind=encode_media,image_kwargs.max_size=512
+```
+
 #### `image_kwargs`
 
 支持的参数包括：
@@ -181,7 +192,6 @@ guidellm run \
 ✔ Benchmarking complete, generated 1 benchmark(s)
 …   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
 …   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 ```
 
 ### 2. 图像描述
@@ -231,5 +241,4 @@ guidellm run \
 ✔ Benchmarking complete, generated 1 benchmark(s)
 …   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
 …   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 ```
