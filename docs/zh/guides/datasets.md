@@ -313,14 +313,33 @@ guidellm run \
 #### 使用示例
 
 ```python
+import asyncio
+
 from guidellm.benchmark import benchmark_generative_text
+from guidellm.schemas.benchmark import BenchmarkScenario
 
-data = [
-    {"prompt": "Hello", "output": "Hi"},
-    {"prompt": "How are you?", "output": "I'm fine."}
-]
+def main():
+    data = [
+        {"prompt": "Hello", "output": "Hi"},
+        {"prompt": "How are you?", "output": "I'm fine."},
+    ]
 
-benchmark_generative_text(data=data, ...)
+    scenario = BenchmarkScenario.create(
+        spec={
+            "backend": {"kind": "openai_http", "target": "http://localhost:8000"},
+            "profile": {"kind": "synchronous"},
+            "data": [{"kind": "in_memory_dict_list", "data": data}],
+            "constraints": [{"kind": "max_requests", "count": 2}],
+            "outputs": [{"kind": "json", "path": "benchmarks.json"}],
+        },
+        scenario=(),
+    )
+
+    asyncio.run(benchmark_generative_text(args=scenario, progress=False))
+
+
+if __name__ == "__main__":
+    main()
 ```
 
 #### 说明

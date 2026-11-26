@@ -26,6 +26,7 @@ vllm serve BAAI/bge-small-en-v1.5 --port 8000
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000/v1,model=BAAI/bge-small-en-v1.5,request_format=/v1/embeddings \
   --data kind=synthetic_text,prompt_tokens=128 \
+  --profile kind=concurrent,streams=4 \
   --constraint kind=max_requests,count=100
 ```
 
