@@ -39,6 +39,7 @@ guidellm run --<option> kind=<TYPE>,key=value,...
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
   --constraint kind=max_duration,seconds=60
 ```
@@ -148,6 +149,15 @@ guidellm run --profile kind=concurrent,streams=10
 | `max_concurrency` | 可调度的最大并发请求数       | `--profile kind=concurrent,streams=10,max_concurrency=10`                                       |
 
 你可以使用 `--override` 选项指定一组 stream 值，从而以不同 stream 数运行多种并发“策略”（子基准测试）。例如，`--profile kind=concurrent --override profile.streams 10,20,30` 会分别以 10、20 和 30 个 stream 运行并发策略。
+
+#### Users 配置
+
+使用固定数量的用户模拟会话。每个用户会持续使用当前对话，直到对话结束后才开始新对话；可用它评估服务能够支持的并发用户数。
+
+```bash
+guidellm run --profile kind=users,users=10 \
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128,turns=5,delay=5
+```
 
 #### Knee 配置
 
@@ -351,11 +361,14 @@ spec:
   profile:
     kind: concurrent
   constraints:
-    kind: max_duration
+  - kind: max_duration
+    seconds: 60
   tokenizer:
     kind: huggingface_auto
   data:
-    kind: synthetic_text
+  - kind: synthetic_text
+    prompt_tokens: 256
+    output_tokens: 128
   data_column_mapper:
     kind: generative_column_mapper
   data_preprocessors:
@@ -367,7 +380,7 @@ spec:
   seed:
     kind: static
     value: 42
-  output:
+  outputs:
   - kind: json
     path: output.json
   - kind: csv

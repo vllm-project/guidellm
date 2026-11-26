@@ -23,12 +23,28 @@ source_sha256: !!str "1a3dd094af8e280879f426978ac60dd8d91556a397e9fdd08f08235d8e
 例如：
 
 ```
-Benchmarks Metadata
-------------------
-Args:        {"backend_type": "openai", "target": "http://localhost:8000", "model": "Meta-Llama-3.1-8B-Instruct-quantized", ...}
-Worker:      {"type_": "generative", "backend_type": "openai", "backend_args": {"timeout": 120.0, ...}, ...}
-Request Loader: {"type_": "generative", "data_args": {"prompt_tokens": 256, "output_tokens": 128, ...}, ...}
-Extras:      {}
+✔ OpenAIHTTPBackend backend validated with model Qwen/Qwen3-0.6B
+  {'kind': 'openai_http', 'target': 'http://localhost:8000', 'model': 'Qwen/Qwen3-0.6B', 'request_format': '/v1/chat/completions', 'api_key': None, 'api_routes': {'/health': 'health',
+  '/v1/models': 'v1/models', '/v1/completions': 'v1/completions', '/v1/chat/completions': 'v1/chat/completions', '/v1/embeddings': 'v1/embeddings', '/v1/responses': 'v1/responses', '/v1/audio/transcriptions':
+  'v1/audio/transcriptions', '/v1/audio/translations': 'v1/audio/translations', '/pooling': 'pooling'}, 'timeout': None, 'timeout_connect': 5.0, 'http2': True, 'follow_redirects': True, 'verify': False, 'validate_backend': True,
+  'stream': True, 'extras': None, 'max_tokens': None, 'server_history': False, 'tool_call_missing_behavior': 'error_stop', 'multiturn_reasoning': False}
+✔ Tokenizer resolved, using model 'Qwen/Qwen3-0.6B' as tokenizer
+  {'kind': 'huggingface_auto', 'model': 'Qwen/Qwen3-0.6B', 'load_kwargs': {}}
+✔ 1 datasets resolved
+  [{'kind': 'synthetic_text', 'load_kwargs': {}, 'prompt_tokens': 128, 'prompt_tokens_stdev': 4, 'prompt_tokens_min': None, 'prompt_tokens_max': None, 'output_tokens': 128, 'output_tokens_stdev': None, 'output_tokens_min': None,
+  'output_tokens_max': None, 'first_prompt_tokens': None, 'first_prompt_tokens_stdev': None, 'first_prompt_tokens_min': None, 'first_prompt_tokens_max': None, 'first_output_tokens': None, 'first_output_tokens_stdev': None,
+  'first_output_tokens_min': None, 'first_output_tokens_max': None, 'delay': None, 'delay_stdev': None, 'delay_min': None, 'delay_max': None, 'turns': 1, 'tool_call_turns': [], 'tools': None, 'tool_response_tokens': None,
+  'tool_response_tokens_stdev': None, 'tool_response_tokens_min': None, 'tool_response_tokens_max': None, 'server_tool_call_turns': [], 'branches': [], 'prefix_buckets': None}]
+✔ 2 preprocessors resolved
+  [{'kind': 'generative_column_mapper', 'column_mappings': None}, {'kind': 'encode_media', 'audio_kwargs': {}, 'image_kwargs': {}, 'video_kwargs': {}}]
+✔ Finalizer resolved
+  {'kind': 'generative', 'tool_call_mode': 'client'}
+✔ Request loader resolved with inf unique requests
+  {'kind': 'pytorch', 'samples': -1, 'shuffle': False, 'num_workers': 1, 'prefetch_factor': 4096}
+✔ ConcurrentProfile profile resolved
+  {'kind': 'concurrent', 'rampup_duration': 0.0, 'prefetch': 0, 'warmup': {'percent': None, 'value': None, 'mode': 'prefer_duration'}, 'cooldown': {'percent': None, 'value': None, 'mode': 'prefer_duration'}, 'streams': [20]}
+✔ Output formats resolved
+  [{'kind': 'json', 'path': '/home/dbutenho/ai/cleanup/benchmarks.json'}, {'kind': 'csv', 'path': '/home/dbutenho/ai/cleanup/benchmarks.csv'}]
 ```
 
 ### 2. 基准测试概况
@@ -94,8 +110,12 @@ for benchmark in report.benchmarks:
 
     # Access metrics
     print(f"Avg RPS: {benchmark.metrics.requests_per_second.successful.mean}")
-    print(f"p99 latency: {benchmark.metrics.request_latency.successful.percentiles.p99}")
-    print(f"TTFT (p99): {benchmark.metrics.time_to_first_token_ms.successful.percentiles.p99}")
+    print(
+        f"p99 latency: {benchmark.metrics.request_latency.successful.percentiles.p99}"
+    )
+    print(
+        f"TTFT (p99): {benchmark.metrics.time_to_first_token_ms.successful.percentiles.p99}"
+    )
 ```
 
 ## 关键性能指标
@@ -129,11 +149,15 @@ for benchmark in report.benchmarks:
 guidellm run \
   --backend kind=openai_http,target=http://server1:8000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
   --output kind=json,path=model1/benchmarks.json
 
 guidellm run \
   --backend kind=openai_http,target=http://server2:8000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
   --output kind=json,path=model2/benchmarks.json
 ```
 

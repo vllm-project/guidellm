@@ -23,7 +23,33 @@ from guidellm.schemas.benchmark.transient import TransientPhaseConfig
 from guidellm.schemas.scheduler.prefetch import PrefetchType
 from guidellm.utils.imports import json
 
-__all__ = ["ProfileArgs"]
+__all__ = ["ProfileArgs", "coerce_int_list"]
+
+
+def coerce_int_list(value: Any, field_name: str) -> Any:
+    """
+    Normalize a single number, JSON array, list, or tuple to a list of integers.
+
+    Floats are truncated to integers.
+
+    :param value: Raw field value
+    :param field_name: Field name used in error messages
+    :return: List of integers derived from the input value
+    :raises ValueError: If the value is empty or not number-shaped
+    """
+    if isinstance(value, str):
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
+            value = json.loads(value)
+    if not value:
+        raise ValueError(f"{field_name} requires at least one value")
+    if isinstance(value, list | tuple):
+        return [int(item) for item in value]
+    if isinstance(value, int | float):
+        return [int(value)]
+    raise ValueError(
+        f"{field_name} must be a number or a list of numeric values, "
+        f"got {type(value).__name__}"
+    )
 
 
 class ProfileArgs(PydanticClassRegistryMixin["ProfileArgs"], ABC):

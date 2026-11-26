@@ -9,17 +9,23 @@ Rules live on the generative metrics configuration, under `metrics.warnings`. Se
 These rules run when `metrics.warnings` is omitted:
 
 - `generation_delay_ttft`:
-  - Warn when the mean `generation_delay` is more than 1% of mean \`time_to_first_token_ms.total
+  - Warn when the mean `generation_delay` is more than 1% of mean `time_to_first_token_ms.total`.
   - Means that the data generation is lagging by a great enough fraction of the server's TTFT that it's likely slowing down the benchmark. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
 - `worker_loop_lag_ttft`:
   - Warn when the 95th percentile of `worker_loop_lag` is more than 10% of mean `time_to_first_token_ms.total`.
   - This means that GuideLLM's worker event loops ran late, which may overstate time to first token. Run GuideLLM with more CPU, or raise `GUIDELLM__MAX_WORKER_PROCESSES` (default 10). Short bursts, such as every stream of a fixed-length concurrent run receiving its first token at once, can overstate time to first token without raising the 95th percentile.
-- `root_late`:
-  - Warn when the 95th percentile of `root_dispatch_delay` is greater than 0.75 seconds, or when the mean is greater than 0.25 seconds.
-  - This means that the first turn of conversations arrived later than the scheduler scheduled them. Often due to data lag. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
+- `root_late_p95`:
+  - Warn when the 95th percentile of `root_dispatch_delay` is greater than 0.75 seconds.
+  - This means that the first turn of some conversations arrived later than the scheduler scheduled them, often due to data lag. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
+- `root_late_mean`:
+  - Warn when the mean `root_dispatch_delay` is greater than 0.25 seconds.
+  - This means that the first turn of conversations arrived later than the scheduler scheduled them, often due to data lag. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
 - `dataset_incomplete`:
   - Warn when `dataset_incomplete` is true during trace strategies.
   - This means that the trace dataset was not fully loaded, which can result in late and missing arrivals of trace conversations, as many trace conversations have turns that are supposed to start at the beginning of the benchmark. See [Requests load after they are due](troubleshooting.md#requests-load-after-they-are-due).
+- `error_rate`:
+  - Warn when `request_totals.errored` is more than 5% of `request_totals.total`.
+  - The latency and token tables cover only the requests that succeeded, while the throughput table counts errored requests too. When every request errored, the latency tables have nothing to summarize and the run still finishes normally, so this warning is the signal to check the backend.
 
 See `default_warning_rules()` in `src/guidellm/schemas/benchmark/warnings.py` for where the defaults are set.
 
@@ -32,12 +38,12 @@ Each entry in `metrics.warnings` has:
 - `metric.statistic`: `mean`, `max`, `p95`, or `sum`. The default is `mean`.
 - `relative_to`: optional second metric. When set, the observed value is `metric / relative_to` and `threshold` is a fraction. When omitted, the observed value is the metric itself and `threshold` is in that metric's units.
 - `threshold`: warn when the observed value is greater than this.
-- `scale`: multiply the statistic before comparing. The default is `1`. Use `0.001` when a millisecond metric is compared with a seconds metric.
+- `metric.scale` / `relative_to.scale`: multiply the statistic before comparing. The default is `1`. Use `0.001` when a millisecond metric is compared with a seconds metric.
 - `enabled`: set to `false` to keep the rule in the file without reporting it.
 - `note`: extra context printed under the measured sentence. Use it for what to change, or for a link.
 - `when`: optional path and value. The rule runs only when that path equals the value. The comparison uses the value itself, so it can match text such as a strategy type.
 
-A boolean metric compares as true or false. `True` is greater than a threshold of `0`, and `False` is not. The warning unit is `boolean`.
+A boolean metric compares as true or false. `True` is greater than a threshold of `0`, and `False` is not. The warning unit is `boolean`. A path that ends on a count, such as `request_totals.errored`, is used as that number: the statistic does not apply, the count prints as a whole number, and the warning unit is `count`.
 
 A status breakdown is not one distribution. `time_to_first_token_ms` has a separate summary for `successful`, `incomplete`, `errored`, and `total`. The path segment `.total` selects the summary that includes every status. `statistic: mean` then selects the mean of that summary. The two are independent, so the mean of time to first token is `time_to_first_token_ms.total` with `statistic: mean`. `request_latency.total` has the same shape. `generation_delay` is already one distribution, so its path has no status segment.
 
@@ -47,6 +53,7 @@ A path that is not on the compiled schemas is logged and printed with the other 
 
 - `generation_delay`: seconds spent waiting for the dataset to yield the next conversation. Scheduler metric.
 - `request_latency.total`: request duration in seconds, across every status.
+- `request_totals.total`, `request_totals.successful`, `request_totals.incomplete`, `request_totals.errored`: request counts by status.
 - `time_to_first_token_ms.total`: time to first token, in milliseconds.
 - `time_to_first_output_token_ms.total`: time to the first content token, in milliseconds.
 - `time_per_output_token_ms.total`: average time per output token, in milliseconds.
@@ -101,7 +108,10 @@ Load it with the rest of the scenario:
 ```bash
 guidellm run \
   --config scenario.yaml \
-  --backend kind=openai_http,target=http://localhost:8000
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
+  --data kind=synthetic_text,prompt_tokens=128,output_tokens=256
 ```
 
 `metrics.warnings` replaces the [built-in rules](#built-in-rules). Include every rule you still want.

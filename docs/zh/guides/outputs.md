@@ -19,6 +19,8 @@ GuideLLM 提供灵活的基准测试结果输出方式，既支持在控制台�
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
   --output kind=json \
   --output kind=csv \
   --output kind=html

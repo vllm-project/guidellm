@@ -22,13 +22,16 @@ from guidellm.benchmark.schemas.warnings import BenchmarkWarning
 from guidellm.benchmark.warnings import BenchmarkWarningAnalyzer
 from guidellm.scheduler.strategies import (
     AsyncConstantStrategy,
+    AsyncPoissonStrategy,
     ConcurrentStrategy,
     TraceReplayStrategy,
+    UsersStrategy,
 )
 from guidellm.schemas import (
     DistributionSummary,
     GenerativeRequestStats,
     RequestInfo,
+    StatusBreakdown,
     UsageMetrics,
 )
 from guidellm.schemas.benchmark.warnings import (
@@ -83,6 +86,7 @@ class _MetricsFixture(BaseModel):
     request_latency: _LatencyBreakdown | None = None
     time_to_first_token_ms: _LatencyBreakdown | None = None
     root_dispatch_delay: DistributionSummary | None = None
+    request_totals: StatusBreakdown[int, int, int, int] | None = None
 
 
 def _distribution(values: list[float]) -> DistributionSummary | None:
@@ -130,6 +134,7 @@ def _analyze(
     time_to_first_token_ms: list[float] | None = None,
     dataset_incomplete: bool = False,
     worker_loop_lag: list[float] | None = None,
+    request_totals: StatusBreakdown[int, int, int, int] | None = None,
 ):
     """
     Evaluate rules against the given generation and request-latency samples.
@@ -160,7 +165,12 @@ def _analyze(
                 total=DistributionSummary.from_values(time_to_first_token_ms)
             )
         ),
-        root_dispatch_delay=root_dispatch_delay_distribution(requests or []),
+        root_dispatch_delay=(
+            root_dispatch_delay_distribution(requests or [])
+            if strategy.defines_arrival_schedule
+            else None
+        ),
+        request_totals=request_totals,
     )
     return BenchmarkWarningAnalyzer(rules).analyze(
         scheduler_metrics=cast("SchedulerMetrics", scheduler_metrics),
@@ -377,6 +387,139 @@ def test_ratio_message_keeps_sub_millisecond_precision():
     assert "0.012s" in message
 
 
+def _error_rate_rule(threshold: float) -> WarningRuleArgs:
+    """
+    :param threshold: Fraction of all requests that errored
+    :return: An error-rate rule with an explicit threshold
+
+    ## WRITTEN BY AI ##
+    """
+    return WarningRuleArgs(
+        code="error_rate",
+        metric=MetricRef(name="request_totals.errored"),
+        relative_to=MetricRef(name="request_totals.total"),
+        threshold=threshold,
+    )
+
+
+def _totals(errored: int, total: int) -> StatusBreakdown[int, int, int, int]:
+    """
+    :param errored: Requests that errored
+    :param total: Requests of every status
+    :return: Request counts with the remainder successful
+
+    ## WRITTEN BY AI ##
+    """
+    return StatusBreakdown(
+        successful=total - errored, incomplete=0, errored=errored, total=total
+    )
+
+
+@pytest.mark.sanity
+def test_error_rate_warns_as_a_fraction_of_requests():
+    """
+    Errored requests above the configured share of all requests warn, and the
+    counts print as whole numbers without a statistic.
+
+    ## WRITTEN BY AI ##
+    """
+    warned = _analyze(
+        [_error_rate_rule(0.05)],
+        ConcurrentStrategy(streams=1),
+        [],
+        [],
+        request_totals=_totals(errored=10, total=10),
+    )
+    at_threshold = _analyze(
+        [_error_rate_rule(0.05)],
+        ConcurrentStrategy(streams=1),
+        [],
+        [],
+        request_totals=_totals(errored=1, total=20),
+    )
+    quiet = _analyze(
+        [_error_rate_rule(0.05)],
+        ConcurrentStrategy(streams=1),
+        [],
+        [],
+        request_totals=_totals(errored=0, total=10),
+    )
+    no_requests = _analyze(
+        [_error_rate_rule(0.05)],
+        ConcurrentStrategy(streams=1),
+        [],
+        [],
+        request_totals=_totals(errored=0, total=0),
+    )
+    assert len(warned) == 1
+    warning = warned[0]
+    assert warning.code == "error_rate"
+    assert warning.unit == "ratio"
+    assert warning.observed == pytest.approx(1.0)
+    assert warning.sample_count == 10
+    assert warning.message == (
+        "request totals.errored was 100% of request totals.total "
+        "(10 / 10; threshold 5%)."
+    )
+    assert at_threshold == []
+    assert quiet == []
+    assert no_requests == []
+
+
+@pytest.mark.sanity
+def test_count_rule_compares_the_count_itself():
+    """
+    A rule on a count without a baseline prints the count and the threshold as
+    configured, in the count unit.
+
+    ## WRITTEN BY AI ##
+    """
+    rule = WarningRuleArgs(
+        code="any_error",
+        metric=MetricRef(name="request_totals.errored"),
+        threshold=2.5,
+    )
+    warned = _analyze(
+        [rule],
+        ConcurrentStrategy(streams=1),
+        [],
+        [],
+        request_totals=_totals(errored=3, total=10),
+    )
+    quiet = _analyze(
+        [rule],
+        ConcurrentStrategy(streams=1),
+        [],
+        [],
+        request_totals=_totals(errored=2, total=10),
+    )
+    assert len(warned) == 1
+    warning = warned[0]
+    assert warning.unit == "count"
+    assert warning.observed == pytest.approx(3.0)
+    assert warning.sample_count == 3
+    assert warning.message == "request totals.errored was 3 (threshold 2.5)."
+    assert quiet == []
+
+
+@pytest.mark.sanity
+def test_default_rules_warn_when_every_request_errors():
+    """
+    The built-in rules report the error rate of a run with no successful request.
+
+    ## WRITTEN BY AI ##
+    """
+    warned = _analyze(
+        default_warning_rules(),
+        ConcurrentStrategy(streams=1),
+        [],
+        [],
+        request_totals=_totals(errored=10, total=10),
+    )
+    assert [warning.code for warning in warned] == ["error_rate"]
+    assert warned[0].observed == pytest.approx(1.0)
+
+
 def _dataset_incomplete_rule() -> WarningRuleArgs:
     """
     :return: The incomplete-dataset rule limited to trace replay
@@ -506,9 +649,18 @@ def test_trace_root_lateness_uses_the_configured_statistic():
 
 
 @pytest.mark.sanity
-def test_first_turn_dispatch_delay_includes_every_profile():
+@pytest.mark.parametrize(
+    "strategy",
+    [
+        AsyncConstantStrategy(rate=1.0),
+        AsyncPoissonStrategy(rate=1.0),
+        TraceReplayStrategy(),
+    ],
+    ids=["constant", "poisson", "trace"],
+)
+def test_first_turn_dispatch_delay_includes_every_arrival_schedule(strategy):
     """
-    First-turn dispatch delay is measured for any profile, not only trace replay.
+    First-turn dispatch delay is measured for every arrival-schedule strategy.
 
     ## WRITTEN BY AI ##
     """
@@ -520,7 +672,7 @@ def test_first_turn_dispatch_delay_includes_every_profile():
                 threshold=0.1,
             )
         ],
-        ConcurrentStrategy(streams=1),
+        strategy,
         [],
         [],
         [
@@ -533,6 +685,38 @@ def test_first_turn_dispatch_delay_includes_every_profile():
     warning = warnings[0]
     assert warning.observed == pytest.approx(10.0)
     assert warning.sample_count == 1
+
+
+@pytest.mark.sanity
+@pytest.mark.parametrize(
+    "strategy",
+    [ConcurrentStrategy(streams=1), UsersStrategy(users=1)],
+    ids=["concurrent", "users"],
+)
+def test_closed_loop_profiles_have_no_root_dispatch_delay(strategy):
+    """
+    ASAP-style targets do not produce a root dispatch delay warning.
+
+    ## WRITTEN BY AI ##
+    """
+    warnings = _analyze(
+        [
+            WarningRuleArgs(
+                code="trace_root_late",
+                metric=MetricRef(name="root_dispatch_delay", statistic="max"),
+                threshold=0.1,
+            )
+        ],
+        strategy,
+        [],
+        [],
+        [
+            _request(start=10.0, targeted=0.0, preceding_nodes=0),
+            _request(start=20.0, targeted=0.0, preceding_nodes=1),
+        ],
+    )
+
+    assert warnings == []
 
 
 @pytest.mark.smoke

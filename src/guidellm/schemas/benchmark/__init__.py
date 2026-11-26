@@ -10,6 +10,7 @@ from guidellm.schemas.benchmark.collectors import (
     PrometheusGaugeSeries,
     PrometheusHistogramSeries,
     PrometheusSummary,
+    VLLMServerInfoCollectorArgs,
 )
 from guidellm.schemas.benchmark.entrypoints import (
     BenchmarkArgs,
@@ -43,6 +44,7 @@ from guidellm.schemas.benchmark.profiles import (
     SweepProfileArgs,
     SynchronousProfileArgs,
     ThroughputProfileArgs,
+    UsersProfileArgs,
 )
 from guidellm.schemas.benchmark.random import RandomArgs, StaticRandomArgs
 from guidellm.schemas.benchmark.scenarios import SCENARIO_DIR, get_builtin_scenarios
@@ -88,6 +90,8 @@ __all__ = [
     "SynchronousProfileArgs",
     "ThroughputProfileArgs",
     "TransientPhaseConfig",
+    "UsersProfileArgs",
+    "VLLMServerInfoCollectorArgs",
     "WarningCondition",
     "WarningRuleArgs",
     "YAMLBenchmarkOutputArgs",

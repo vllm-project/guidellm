@@ -41,12 +41,18 @@ Synthetic multiturn data (including single-turn and branched sub-agent configs) 
 When executing a multiturn benchmark, GuideLLM:
 
 1. **Sends a turn** (prefix + prompt_0) to the model and captures the response
-2. **Return the request** Store the request/response in the aggregator as a single request
+2. **Records the exchange** Stores the request and response in the aggregator as a single request
 3. **Builds conversation history** by combining the requests and the model's responses
 4. **Sends the next turn** (prompt_i) along with the conversation history
 5. **Repeat from (2)** for the `n` given turns
 
 For `/v1/chat/completions`, the conversation history is passed as a messages array with alternating user and assistant roles. For `/v1/responses`, the history is either passed as alternating user and assistant roles, or as a previous request ID. For `/v1/completions`, the history is concatenated as a single prompt string.
+
+### Simulated Users
+
+The [users profile](../getting-started/benchmark.md#users-profile) keeps each conversation bound to one simulated user for its whole session: the user sends a turn, waits out the dataset `requeue_delay`, and sends the next turn of the same conversation, only starting a new conversation when the current one finishes. Unlike the `concurrent` profile, the slot is held for multi-turn data rather than scheduling other requests during the gap.
+
+A conversation with parallel branches (sub-agent forks) can occupy more than one request slot while its branches are in flight. Request slots are shared among the users on a worker and are not reserved per user, so a wide fan-out can delay another user's next turn. Each session is capped by its conversation graph (one user slot per session), not by a limit of one in-flight request per session.
 
 For more information see [Request Formatting](#request-formatting) and [Server-Side Conversation History](#server-side-conversation-history-v1responses-only).
 
@@ -247,7 +253,9 @@ Enable server-side history in the backend configuration:
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,request_format=/v1/responses,server_history=true \
-  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3 \
+  --profile kind=concurrent,streams=5 \
+  --constraint kind=max_duration,seconds=60
 ```
 
 When enabled, GuideLLM sends only the current turn's input and references the previous response by ID. The server reconstructs the full conversation context internally.
@@ -460,24 +468,26 @@ guidellm run \
 
 ### 5. Using TurnPivot with Multiple Datasets
 
-This example demonstrates using the TurnPivot preprocessor to build a synthetic dataset where each turn follows a different distribution.
+This example uses TurnPivot to combine three single-turn datasets into a three-turn conversation. Each dataset supplies the prompt and output token limit for one turn. The inline datasets below each contain one row; JSONL or Hugging Face datasets with ordinary prompt columns can be used the same way.
+
+Use `turn_pivot` with mapped row columns, not with `synthetic_text` sources. Synthetic sources already emit packed conversation graphs, and TurnPivot does not merge those graphs into a longer conversation. For synthetic multiturn data, use the `turns` parameter described above.
 
 **Command:**
 
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
-  --profile kind=concurrent,streams=10 \
-  --constraint kind=max_requests,count=150 \
-  --data kind=synthetic_text,prefix_tokens=512,prompt_tokens=128,output_tokens=256 \
-  --data kind=synthetic_text,prompt_tokens=256,prompt_token_stdev=32,output_tokens=128 \
-  --data kind=synthetic_text,prompt_tokens=64,output_tokens=128,output_tokens_stdev=16 \
+  --profile kind=synchronous \
+  --constraint kind=max_requests,count=3 \
+  --data '{"kind":"in_memory_dict_list","data":[{"prompt":"Explain how a solar panel works.","output_tokens_count":256}]}' \
+  --data '{"kind":"in_memory_dict_list","data":[{"prompt":"What affects its efficiency?","output_tokens_count":128}]}' \
+  --data '{"kind":"in_memory_dict_list","data":[{"prompt":"Summarize the key points.","output_tokens_count":64}]}' \
   --data-preprocessor kind=turn_pivot
 ```
 
 **Key Parameters:**
 
-- `--constraint kind=max_requests,count=150`: Maximum number of requests (150 requests ~= 50 conversations with 3 turns each)
+- `--constraint kind=max_requests,count=3`: Maximum of three requests for the three turns
 - `--data`: Specified separately for each dataset; can also be specified once as an array
 - `--data-preprocessor kind=turn_pivot`: Transpose datasets and turn columns
 

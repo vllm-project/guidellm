@@ -12,6 +12,8 @@ Output configuration follows the typed registry-backed CLI pattern. Specifying a
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000 \
   --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
   --output kind=json \
   --output kind=csv \
   --output kind=html
@@ -21,14 +23,15 @@ Choose from the [supported file formats](#supported-file-formats) and see [confi
 
 ## Console Output
 
-By default, GuideLLM displays benchmark results and progress directly in the console. Console output is an implicit default: it is not replaced by explicit `--output` options, and specifying `--output kind=console` has no additional effect. The console progress and outputs are divided into multiple sections:
+By default, GuideLLM displays benchmark results and progress directly in the console. Console output is an implicit default: it is not replaced by explicit `--output` options. While `console` is a registered output kind, it is rarely useful to pass it explicitly because the console prints the final report regardless; providing a file output instead adds a report format without changing the console display. Use `--disable-console-interactive` or `--disable-console` to control console output, as described below. The console progress and outputs are divided into multiple sections:
 
 1. **Initial Setup Progress**: Displays the progress of the initial setup, including server connection and data preparation.
 2. **Benchmark Progress**: Shows the progress of the benchmark runs, including the number of requests completed and the current rate.
 3. **Final Results**: Summarizes the benchmark results, including average latency, throughput, and other key metrics.
-   1. **Benchmarks Metadata**: Summarizes the benchmark run, including server details, data configurations, and profile arguments.
-   2. **Benchmarks Info**: Provides a high-level overview of each benchmark, including request statuses, token counts, and durations.
-   3. **Benchmarks Stats**: Displays detailed statistics for each benchmark, such as request rates, concurrency, latency, and token-level metrics.
+   1. **Run Summary Info**: Strategy, timings, request totals, and input/output token totals.
+   2. **Modality Statistics**: Text, image, video, audio, and tool-call metrics for the data in the run.
+   3. **Request Latency Statistics**: Request latency, TTFT, TTFOT, ITL, and TPOT.
+   4. **Server Throughput Statistics**: Concurrency, requests per second, token throughput, and SLO attainment or goodput when objectives are configured.
 
 ### Disabling Console Output
 
@@ -68,7 +71,11 @@ GuideLLM supports saving benchmark results to files in various formats, includin
 | `html`          | `benchmarks.html` | A self-contained report with throughput and latency charts and tables. CSS and JavaScript are embedded for offline sharing.                       |
 | `plot`          | `benchmarks.png`  | Static benchmark performance graphs.                                                                                                              |
 
-For PLOT, the `path` extension selects the image format: PNG, JPG/JPEG, SVG, or PDF. For example, `--output kind=plot,path=benchmarks.pdf` creates a PDF. A path without an extension defaults to `.png`; unsupported extensions raise an error. The `dpi` parameter (default `100`) controls image resolution, for example `--output kind=plot,path=benchmarks.jpg,dpi=72`.
+For `plot`, the `path` extension selects the image format: PNG, JPG/JPEG, SVG, or PDF. For example, `--output kind=plot,path=benchmarks.pdf` creates a PDF. A path without an extension defaults to `.png`; unsupported extensions raise an error. The `dpi` parameter (default `100`) controls image resolution, for example `--output kind=plot,path=benchmarks.jpg,dpi=72`.
+
+CSV preserves measured zero values in statistics and confidence intervals. Statuses with no measurements do not produce statistics columns.
+
+Round-trip latency distributions include only requests with recorded send and receive timings. Backends without those timings report no round-trip observations in JSON (`count: 0`), and CSV omits the corresponding statistics and confidence intervals.
 
 ### Configuring File Outputs
 

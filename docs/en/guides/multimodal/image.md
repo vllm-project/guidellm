@@ -51,53 +51,44 @@ If you are combining multiple datasets (e.g., for prompts and images), prepend t
 --data-column-mapper '{"kind":"generative_column_mapper","column_mappings": {"1.image_column": "photo"}}'
 ```
 
-### Request Formatting
+### Media Encoding and Request Options
 
-Across the supported endpoints, a request formatter encodes image data and formats the request payload. This uses reasonable defaults out of the box, but can be customized as needed. The following options are available for image request formatting via the `--request-formatter-kwargs` argument, provided as a JSON string.
-
-#### "encode_kwargs"
-
-A dictionary of arguments passed to the image encoder that controls how image data is preprocessed before being included in the request.
-
-**Note on Nesting:**
-
-- For **Chat Completions** (`chat_completions`), image arguments must be nested under an `image` key within `encode_kwargs`.
-
-Supported arguments include:
-
-- "max_size": Maximum size of the longest edge of the image (in pixels). Useful for downscaling large images while maintaining aspect ratio.
-- "max_width": Maximum width of the image (in pixels). Maintain aspect ratio unless height is also specified.
-- "max_height": Maximum height of the image (in pixels). Maintain aspect ratio unless width is also specified.
-- "width": Force resize to specific width (in pixels).
-- "height": Force resize to specific height (in pixels).
-- "encode_type": How to include the image in the request.
-  - "base64" (default): Downloads (if URL) or reads the image, processes it (resize), and encodes it as a base64 string.
-  - "url": Sends the image URL directly in the request. This requires the inference server to have network access to the image URL. Resizing options cannot be used with this type.
-
-**Examples:**
-
-For **Chat Completions**, resizing images to a maximum of 512 pixels:
+Image data is encoded by the `encode_media` data preprocessor, which is part of the default data pipeline. Pass `image_kwargs` to control how images are preprocessed before they are included in requests. For example, to limit the longest image edge to 512 pixels:
 
 ```bash
---request-formatter-kwargs '{"encode_kwargs": {"image": {"max_size": 512}}}'
+guidellm run \
+  --backend "kind=openai_http,target=http://localhost:8000" \
+  --profile kind=synchronous \
+  --data '{"kind":"huggingface","source":"lmms-lab/MMBench_EN","load_kwargs":{"split":"test"}}' \
+  --data-column-mapper '{"kind":"generative_column_mapper","column_mappings":{"image_column":"image"}}' \
+  --data-preprocessor kind=encode_media,image_kwargs.max_size=512
 ```
 
-#### "extras"
-
-A dictionary of extra arguments to include directly in the request. Within extras, you can specify where to include the extra arguments:
-
-- "headers": Include in request headers
-- "params" / "body": Include in request parameters or body
-
-For example, to specify a specific system prompt or other body parameter:
+Or using JSON:
 
 ```bash
---request-formatter-kwargs '{"extras": {"body": {"temperature": 0.7}}}'
+--data-preprocessor '{"kind":"encode_media","image_kwargs":{"max_size":512}}'
 ```
 
-#### "stream"
+Supported `image_kwargs` include:
 
-Turn streaming responses on or off (if supported by the backend) using a boolean value. By default, streaming is enabled. Pass `stream=false` in the backend configuration:
+- `max_size`: Maximum length of the longest edge of the image, in pixels.
+- `max_width` / `max_height`: Maximum width or height in pixels, preserving aspect ratio.
+- `width` / `height`: Force a specific width or height in pixels.
+- `encode_type`: `base64` (default) downloads URL inputs and encodes the image bytes; `url` sends the URL directly. Resizing options cannot be used with `encode_type=url`.
+
+> [!WARNING]\
+> Specifying any `--data-preprocessor` replaces the default preprocessors except for the column mapper. Include every preprocessor the run needs, for example `--data-preprocessor kind=encode_media,image_kwargs.max_size=512`.
+
+Request body parameters and headers are configured on the backend `extras` field. For example, to set `temperature` in the request body:
+
+```bash
+--backend '{"kind":"openai_http","target":"http://localhost:8000","extras":{"body":{"temperature":0.7}}}'
+```
+
+`extras` supports the `body`, `content`, `headers`, `params`, and `files` fields; see [Structured Chat Content Payloads](../backends.md#structured-chat-content-payloads).
+
+To disable streaming responses (when the backend supports it), pass `stream=false` in the backend configuration:
 
 ```bash
 --backend kind=openai_http,target=http://localhost:8000,stream=false
@@ -110,8 +101,8 @@ GuideLLM captures comprehensive metrics across the entire request lifecycle, sto
 ### Output Files
 
 - **`benchmarks.json`**: The complete hierarchical statistics object containing scheduler timings, request distributions, and detailed metric summaries for text and images.
-- **`benchmarks.csv`**: A row-per-request export of `GenerativeRequestStats`, useful for analyzing individual request performance, latency, and specific input/output configurations.
-- **`benchmarks.html`**: A visual report summarizing performance.
+- **`benchmarks.csv`**: A one-row-per-benchmark export of summary metrics and distributions, useful for comparing strategies and sharing results.
+- **`benchmarks.html`**: An optional visual report summarizing performance, written when `--output kind=html` is requested.
 
 ### Captured Metrics
 
@@ -184,7 +175,6 @@ The above command benchmarks the chat/completions endpoint on the target server 
 ✔ Benchmarking complete, generated 1 benchmark(s)
 …   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
 …   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 ```
 
 ### 2. Image Captioning
@@ -234,5 +224,4 @@ The above command benchmarks the chat/completions endpoint on the target server 
 ✔ Benchmarking complete, generated 1 benchmark(s)
 …   json    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.json
 …   csv     : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.csv
-…   html    : /Users/markkurtz/code/github/vllm-project/guidellm/benchmarks.html
 ```
