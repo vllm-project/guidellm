@@ -1,5 +1,5 @@
 ---
-source_sha256: !!str "462c154b627b2bcba5ff2a1aba9581eab5dd76fcc1157092b8fa952211613367"
+source_sha256: !!str "6ca5d23c2e8083d8bf583bffc179187305bddbc1cc5eee2112fa48b5929b2915"
 title: 홈
 weight: 100
 ---
@@ -45,7 +45,7 @@ weight: 100
 
   효과적인 LLM 벤치마킹을 위한 백엔드, 데이터셋, 평가 지표 및 서비스 수준 목표(SLO)를 자세히 다룹니다.
 
-  [:octicons-arrow-right-24: 가이드 보기(영문)](../guides/)
+  [:octicons-arrow-right-24: 가이드 보기](./guides/)
 
 - :material-code-tags:{ .lg .middle } 사용 예제
 

@@ -1,6 +1,6 @@
 ---
 weight: -6
-source_sha256: !!str "d64cbc0db514bbf97f1c0bd79be3e0930d38940f6c66cd5944c8463f7e8e3895"
+source_sha256: !!str "954a18be2f267134a44a709563abb84ffcfe9ddc6d7358fa0b7f587dffea4b3a"
 ---
 
 # 벤치마크 실행
@@ -16,11 +16,11 @@ source_sha256: !!str "d64cbc0db514bbf97f1c0bd79be3e0930d38940f6c66cd5944c8463f7e
 > [!NOTE]\
 > 백엔드별 입력 항목을 제외하면, 이 가이드의 모든 내용은 두 백엔드에 동일하게 적용됩니다.
 >
-> 이 가이드는 OpenAI 호환 LLM 서버와 함께 OpenAI HTTP 백엔드 사용을 전제로 합니다. vLLM Python 백엔드 사용 방법은 [vLLM Python 백엔드(영문)](../../guides/vllm-python-backend.md)를 참고하세요.
+> 이 가이드는 OpenAI 호환 LLM 서버와 함께 OpenAI HTTP 백엔드 사용을 전제로 합니다. vLLM Python 백엔드 사용 방법은 [vLLM Python 백엔드](../guides/vllm-python-backend.md)를 참고하세요.
 
 [서버 시작](server.md) 이후에는 벤치마크를 실행하여 배포한 LLM의 성능을 평가할 수 있습니다.
 
-## CLI 옵션 형식
+## CLI 옵션 형식 {#cli-option-format}
 
 GuideLLM CLI는 레지스트리 기반의 공통 형식으로 옵션을 제공합니다. `kind=<type>`으로 등록된 구현체를 선택하고, key=value 쌍으로 파라미터를 설정합니다:
 
@@ -29,8 +29,6 @@ guidellm run --<option> kind=<TYPE>,key=value,...
 ```
 
 중첩 구조가 없는 설정에는 쉼표로 구분한 key=value 쌍을 사용하세요(예: `--data kind=synthetic_text,prompt_tokens=256,output_tokens=128`). 값에 중첩 구조가 포함되어 있다면 JSON 또는 YAML로 직렬화한 문자열을 사용하세요(예: `--data '{"kind":"huggingface","source":"org/dataset","loader_kwargs":{"split":"test"}}'`). 동일한 옵션 안에서 인라인 key=value 형식과 JSON/YAML 형식을 혼용하지 마세요. 일부 옵션은 여러 번 지정하여 여러 값을 전달할 수 있습니다(예: `--data`나 `--constraint` 여러 번 지정 가능).
-
-`--config`(별칭: `--scenario`, `-c`)를 사용하면 저장된 시나리오(YAML 또는 JSON 파일)를 불러올 수 있습니다. CLI 옵션은 시나리오에 설정된 값보다 우선 적용됩니다.
 
 ### 기본 예제
 
@@ -55,7 +53,7 @@ guidellm run \
 
 ![벤치마크 진행 상황](../../assets/sample-benchmarks.gif)
 
-데이터셋 옵션에 대한 자세한 내용은 [데이터셋 문서(영문)](../../guides/datasets.md)를, 백엔드 설정에 대한 자세한 내용은 [백엔드 문서(영문)](../../guides/backends.md)를 참고하세요.
+데이터셋 옵션에 대한 자세한 내용은 [데이터셋 문서](../guides/datasets.md)를, 백엔드 설정에 대한 자세한 내용은 [백엔드 문서](../guides/backends.md)를 참고하세요.
 
 ## 벤치마크 옵션 이해하기
 
@@ -98,13 +96,13 @@ GuideLLM은 벤치마크를 원하는 대로 구성할 수 있도록 다양한 �
 
 예를 들어, `--constraint kind=max_requests,count=1000`을 `--profile kind=sweep`과 함께 사용하면 Sweep의 각 실행 구성(동기식, 처리량, 중간 요청률)에 대해 최대 1000개의 요청을 실행합니다. `--constraint kind=min_requests,count=1000`은 `max_requests`와 비슷하지만, 요청 1000개가 처리될 때까지 큐에 요청을 계속 추가하여 요청률 기반 벤치마크의 종료 시점에 처리량이 감소하는 현상을 방지합니다. `--constraint kind=max_duration,seconds=30`을 `--profile '{"kind":"concurrent","streams":[10,20]}'`과 함께 사용하면 동시 스트림 10개로 30초 동안 실행한 다음, 동시 스트림 20개로 30초 동안 실행합니다.
 
-과포화 제약 조건에 대한 자세한 내용은 [과포화 시 중단(영문)](../../guides/over_saturation_stopping.md)을 참고하세요.
+과포화 제약 조건에 대한 자세한 내용은 [과포화 시 중단](../guides/over_saturation_stopping.md)을 참고하세요.
 
 ### 하위 벤치마크(실행 구성별) 제약 조건
 
 `sweep` 프로파일을 사용하거나, `async`/`constant`/`poisson` 프로파일에서 여러 `rate` 값을 지정하거나, `concurrent` 프로파일에서 여러 `streams` 값을 지정하면 하나의 프로파일 안에서 여러 "벤치마크 실행 구성"을 실행하게 됩니다. GuideLLM에서는 `--override` 옵션을 사용하여 제약 조건의 제어 파라미터를 실행 구성별로 다르게 지정할 수 있습니다. 예를 들어, `--profile kind=sweep,sweep_size=5 --constraint kind=max_duration,seconds=30`은 5개의 실행 구성(동기식, 처리량 및 중간 단계별 고정 요청률을 적용한 구성 3개)을 각각 30초 동안 실행합니다. 여기에 `--override constraint[0].seconds 10,20,10,15,20`을 사용하면 동기식 구성은 10초, 처리량 구성은 20초, 중간 고정 요청률을 적용한 구성 3개는 각각 10초, 15초, 20초 동안 실행됩니다. `--override constraint[0].seconds 10,20,10`처럼 값을 더 적게 지정하면, 마지막 값인 10초가 세 고정 요청률 구성에 모두 적용됩니다.
 
-### 벤치마크 프로파일 (`--profile`)
+### 벤치마크 프로파일 (`--profile`) {#benchmark-profiles-profile}
 
 GuideLLM은 아래에서 자세히 설명하는 여러 벤치마크 프로파일을 지원합니다. 프로파일별 파라미터는 동일한 설정 문자열에서 `kind=<type>` 뒤에 지정합니다.
 
@@ -158,7 +156,7 @@ guidellm run \
   --profile '{"kind":"knee","initial_streams":[1,5,10,20,40,80,160],"adaptive":true,"points_each_side":5,"max_step":3}'
 ```
 
-이 프로파일은 두 단계 모두 동시 실행 구성을 사용하며, 초기 분석 결과, 적응형 측정 계획, 최종 분석 결과를 보고서의 `conclusions` 리스트에 저장합니다. 설정 및 계산 방식에 대한 자세한 내용은 [Knee 프로파일 가이드(영문)](../../guides/knee_detection.md)를 참고하세요.
+이 프로파일은 두 단계 모두 동시 실행 구성을 사용하며, 초기 분석 결과, 적응형 측정 계획, 최종 분석 결과를 보고서의 `conclusions` 리스트에 저장합니다. 설정 및 계산 방식에 대한 자세한 내용은 [Knee 프로파일 가이드](../guides/knee_detection.md)를 참고하세요.
 
 초기 동시 스트림 수를 일정한 간격으로 설정하려면 `--profile '{"kind":"knee","min_streams":1,"max_streams":9,"count":5}'`를 사용하세요. 각 측정 지점의 동시 스트림 수를 직접 지정하려면 `initial_streams`를 사용하세요.
 
@@ -256,11 +254,11 @@ guidellm run \
   --profile kind=constant,rate=5
 ```
 
-표준편차, 최솟값, 최댓값 등의 추가 파라미터로 합성 데이터 생성을 조정할 수 있습니다. 자세한 내용은 [데이터셋 문서의 합성 데이터 항목(영문)](../../guides/datasets.md#synthetic-data)을 참고하세요.
+표준편차, 최솟값, 최댓값 등의 추가 파라미터로 합성 데이터 생성을 조정할 수 있습니다. 자세한 내용은 [데이터셋 문서의 합성 데이터 항목](../guides/datasets.md#synthetic-data)을 참고하세요.
 
 ### Trace 재생 벤치마킹 {#trace-replay-benchmarking}
 
-실제 환경과 유사한 부하 테스트를 수행하려면 각 행의 타임스탬프와 토큰 길이를 사용하여 trace 이벤트를 재생하세요. Trace 데이터는 지원되는 [Trace 파일 형식(영문)](../../guides/trace_replay.md#supported-formats)을 사용하며, `--data`의 중첩된 `source` 설정을 통해 로컬 파일이나 HuggingFace 데이터셋에서 불러옵니다. 타임스탬프는 절대 시각 또는 단조 시계 기준의 값일 수 있습니다. GuideLLM은 타임스탬프를 정렬하고 첫 번째 이벤트를 기준으로 한 상대 시간으로 변환한 후 요청을 스케줄링합니다:
+실제 환경과 유사한 부하 테스트를 수행하려면 각 행의 타임스탬프와 토큰 길이를 사용하여 trace 이벤트를 재생하세요. Trace 데이터는 지원되는 [Trace 파일 형식](../guides/trace_replay.md#supported-formats)을 사용하며, `--data`의 중첩된 `source` 설정을 통해 로컬 파일이나 HuggingFace 데이터셋에서 불러옵니다. 타임스탬프는 절대 시각 또는 단조 시계 기준의 값일 수 있습니다. GuideLLM은 타임스탬프를 정렬하고 첫 번째 이벤트를 기준으로 한 상대 시간으로 변환한 후 요청을 스케줄링합니다:
 
 ```json
 {"timestamp": 1234500.0, "input_length": 256, "output_length": 128}
@@ -299,7 +297,7 @@ guidellm run \
   --profile kind=replay
 ```
 
-이 기능은 특정 형식에서 요구하는 열에도 적용됩니다. 이러한 추가 열과 형식별 인자에 대한 설명은 [Trace 파일 형식 문서(영문)](../../guides/trace_replay.md)를 참고하세요.
+이 기능은 특정 형식에서 요구하는 열에도 적용됩니다. 이러한 추가 열과 형식별 인자에 대한 설명은 [Trace 파일 형식 문서](../guides/trace_replay.md)를 참고하세요.
 
 ### 실제 데이터 사용하기
 
@@ -323,7 +321,7 @@ guidellm run \
 
 ## 출력 옵션
 
-기본적으로 벤치마크 결과는 `benchmarks.json`과 `benchmarks.csv`에 저장됩니다. `--output`을 지정하면 기본 설정 대신 지정한 출력 설정을 사용합니다. 출력 형식을 선택하는 예시는 [출력 설정(영문)](../../guides/outputs.md#cli-output-configuration)을, 기본 디렉터리와 사용자 지정 경로에 대한 내용은 [파일 출력 설정(영문)](../../guides/outputs.md#configuring-file-outputs)을 참고하세요.
+기본적으로 벤치마크 결과는 `benchmarks.json`과 `benchmarks.csv`에 저장됩니다. `--output`을 지정하면 기본 설정 대신 지정한 출력 설정을 사용합니다. 출력 형식을 선택하는 예시는 [출력 설정](../guides/outputs.md#cli-output-configuration)을, 기본 디렉터리와 사용자 지정 경로에 대한 내용은 [파일 출력 설정](../guides/outputs.md#configuring-file-outputs)을 참고하세요.
 
 ### 진행 상황 logging
 
@@ -333,8 +331,87 @@ Rich 진행 상황 표시는 logging과 함께 계속 작동합니다. `--disabl
 
 ## 인증
 
-OpenAI API처럼 인증이 필요한 서버를 대상으로 벤치마크를 실행할 때는 백엔드 설정에 API 키를 지정하세요. 자세한 내용은 백엔드 문서의 [API 키 설정(영문)](../../guides/backends.md#api-key-configuration) 항목을 참고하세요.
+OpenAI API처럼 인증이 필요한 서버를 대상으로 벤치마크를 실행할 때는 백엔드 설정에 API 키를 지정하세요. 자세한 내용은 백엔드 문서의 [API 키 설정](../guides/backends.md#api-key-configuration) 항목을 참고하세요.
+
+## 설정 파일("시나리오") 사용하기
+
+`--config`(별칭: `--scenario`, `-c`)를 사용하면 저장된 시나리오(YAML 또는 JSON 파일)를 불러와 동일한 GuideLLM 테스트 설정을 반복해서 사용할 수 있습니다.
+
+설정 파일은 GuideLLM의 `BenchmarkScenario` 객체 내부 형식을 따르며, 다음과 같이 작성합니다:
+
+```yaml
+---
+metadata:
+  labels:
+    key1: value1
+    key2: value2
+spec:
+  backend:
+    kind: openai_http
+    target: http://localhost:8000
+  profile:
+    kind: concurrent
+  constraints:
+    kind: max_duration
+  tokenizer:
+    kind: huggingface_auto
+  data:
+    kind: synthetic_text
+  data_column_mapper:
+    kind: generative_column_mapper
+  data_preprocessors:
+  - kind: encode_media
+  data_finalizer:
+    kind: generative
+  data_loader:
+    kind: pytorch
+  seed:
+    kind: static
+    value: 42
+  output:
+  - kind: json
+    path: output.json
+  - kind: csv
+    path: output.csv
+  metrics:
+    kind: generative
+benchmarks:
+- profile.streams: 1
+```
+
+CLI 옵션은 시나리오에 설정된 값보다 우선 적용됩니다.
+
+### 설정 파일 병합하기
+
+설정을 차례로 적용하면 나중에 적용한 설정이 이전 설정의 옵션을 대체합니다. 리스트(예: 여러 `--output` 옵션)는 일반적으로 병합되지 않고 대체됩니다. 다만 유형이 지정된 옵션의 `kind=` 값이 같으면 해당 옵션의 파라미터를 덮어쓸 수 있습니다. 예를 들어, 기본 설정에서 `openai_http` 백엔드에 `request_format=/v1/chat/completions`와 다른 옵션을 지정한 뒤, 다른 설정 파일을 추가로 적용하여 대상 URL이나 API 키 같은 개별 파라미터를 추가하거나 덮어쓸 수 있습니다:
+
+```yaml
+---
+spec:
+  backend:
+    kind: openai_http
+    target: http://localhost:8000
+    api_key: "your-api-key"
+```
+
+여러 설정 파일과 CLI 옵션을 함께 사용할 수 있습니다. 예를 들어, 기본 워크로드 설정에 두 번째 설정 파일로 대상을 지정하고, 세 번째 설정 파일로 제약 조건을 지정할 수 있습니다.
+
+### 내장 설정 파일
+
+#### Red Hat AI Inference Server 설정
+
+기업용 추론 환경에서 일반적으로 사용하는 테스트 시나리오를 정의한 설정 모음입니다. 이 설정을 기본으로 사용하고, 다른 설정 파일이나 CLI 옵션으로 파라미터를 덮어쓸 수 있습니다.
+
+이 이름들은 GuideLLM에 내장되어 있습니다. `rhaiis/concurrent-1k-1k-equal`처럼 아래에 표시된 전체 이름을 지정하세요.
+
+- `rhaiis/concurrent-1k-1k-equal`: Prefill/Decode 균형 시나리오. 프롬프트 토큰과 출력 토큰이 각각 1,000개인 동시 워크로드입니다.
+- `rhaiis/concurrent-1k-1k-multiturn`: 접두사 캐싱을 사용하는 멀티턴 대화 시나리오. 입력 토큰과 출력 토큰이 각각 1,000개이고, 접두사 토큰 512개가 추가되는 5턴 대화입니다.
+- `rhaiis/concurrent-2ki-128-equal`: Prefill 중심 시나리오. 입력 토큰은 2k개, 출력 토큰은 128개입니다.
+- `rhaiis/concurrent-8k-1k-equal`: 긴 컨텍스트 시나리오. 입력 토큰은 8,000개, 출력 토큰은 1,000개입니다.
+- `rhaiis/concurrent-8k-800-norm`: 시퀀스 길이에 분산이 있는 긴 컨텍스트 시나리오. 입력 토큰은 평균 8,000개, 출력 토큰은 평균 800개이며, 통계적 분산이 큽니다.
+- `rhaiis/concurrent-100k-1k-equal`: 매우 긴 컨텍스트 시나리오. 프롬프트 토큰은 100,000개, 출력 토큰은 1,000개입니다.
+- `rhaiis/concurrent-512-2ki-norm`: 시퀀스 길이에 분산이 있는 생성 중심 시나리오. 프롬프트 토큰은 평균 512개, 출력 토큰은 평균 1k개이며, 통계적 분산이 매우 큽니다.
 
 ## 문제 해결
 
-일반적인 문제는 [문제 해결 가이드(영문)](../../guides/troubleshooting.md)를 참고하세요.
+일반적인 문제는 [문제 해결 가이드](../guides/troubleshooting.md)를 참고하세요.
