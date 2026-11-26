@@ -108,7 +108,9 @@ huggingface-cli download openai/gpt-oss-20b --include "*.json" --local-dir gpt-o
 ```bash
 guidellm run \
   --backend kind=openai_http,target=https://api.openai.com/v1,api_key=sk-...,model=gpt-3.5-turbo \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60
 ```
 
 也可以使用 JSON：
@@ -133,7 +135,9 @@ API key 用于设置发送给后端服务器的 HTTP 请求头 `Authorization: B
 ```bash
 guidellm run \
   --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"meta-llama/Meta-Llama-3.1-8B-Instruct","extras":{"body":{"temperature":0.6,"top_p":0.95,"top_k":20}}}' \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60
 ```
 
 这样，发送给服务器的每个请求体中都会包含 `temperature`、`top_p` 和 `top_k`。
@@ -147,7 +151,9 @@ guidellm run \
 ```bash
 guidellm run \
   --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"openai/gpt-oss-20b","extras":{"body":{"ignore_eos":false}}}' \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60
 ```
 
 也可以使用 GuideLLM 的简写 `key=value` 解析格式：
@@ -155,7 +161,9 @@ guidellm run \
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000/v1,model=openai/gpt-oss-20b,extras.body.ignore_eos=false \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60
 ```
 
 `extras.body` 中的值会合并到请求体，并覆盖默认值，因此 `ignore_eos: false` 会覆盖内置的 `true`。对于可以安全忽略序列结束 token 的模型，保持 `ignore_eos` 未设置（默认值），让 GuideLLM 控制准确的输出长度。
@@ -181,6 +189,7 @@ guidellm run \
     }
   }' \
   --data kind=synthetic_text,prompt_tokens=1000,output_tokens=1000 \
+  --profile kind=sweep \
   --constraint kind=max_duration,seconds=60
 ```
 
@@ -198,7 +207,9 @@ guidellm run \
 ```bash
 guidellm run \
   --backend '{"kind":"openai_http","target":"http://localhost:8000/v1","model":"meta-llama/Meta-Llama-3.1-8B-Instruct","api_key":"sk-...","extras":{"body":{"temperature":0.8,"top_p":0.9}}}' \
-  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128
+  --data kind=synthetic_text,prompt_tokens=256,output_tokens=128 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60
 ```
 
 ## 扩展后端支持
