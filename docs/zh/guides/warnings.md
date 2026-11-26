@@ -101,7 +101,10 @@ spec:
 ```bash
 guidellm run \
   --config scenario.yaml \
-  --backend kind=openai_http,target=http://localhost:8000
+  --backend kind=openai_http,target=http://localhost:8000 \
+  --profile kind=sweep \
+  --constraint kind=max_duration,seconds=60 \
+  --data kind=synthetic_text,prompt_tokens=128,output_tokens=256
 ```
 
 `metrics.warnings` 会替换[内置规则](#built-in-rules)。请包含所有仍需使用的规则。

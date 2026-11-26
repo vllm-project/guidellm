@@ -33,6 +33,7 @@ guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,model=ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11,request_format=/pooling \
   --data kind=json_file,path=flood_detection_dataset.jsonl \
   --data-column-mapper kind=pooling_column_mapper \
+  --profile kind=synchronous \
   --constraint kind=max_requests,count=10 \
   --output kind=json,path=results.json
 ```
@@ -106,6 +107,7 @@ guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,model=ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11,request_format=/pooling \
   --data kind=json_file,path=flood_detection_dataset.jsonl \
   --data-column-mapper kind=pooling_column_mapper \
+  --profile kind=synchronous \
   --constraint kind=max_requests,count=100 \
   --output kind=json,path=results.json
 ```
@@ -127,6 +129,7 @@ vllm bench serve \
   --percentile-metrics e2el \
   --metric-percentiles 25,75,99 \
   --num-prompts 10 \
+  --max-concurrency 1 \
   --dataset-path flood_detection_dataset.jsonl
 ```
 
@@ -137,6 +140,7 @@ guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,model=ibm-nasa-geospatial/Prithvi-EO-2.0-300M-TL-Sen1Floods11,request_format=/pooling \
   --data kind=json_file,path=flood_detection_dataset.jsonl \
   --data-column-mapper kind=pooling_column_mapper \
+  --profile kind=synchronous \
   --constraint kind=max_requests,count=10 \
   --output kind=json,path=results.json
 ```

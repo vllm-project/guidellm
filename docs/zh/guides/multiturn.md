@@ -252,7 +252,9 @@ prefix content prompt_0 content response to prompt_0 prompt_1 content response t
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,request_format=/v1/responses,server_history=true \
-  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3
+  --data kind=synthetic_text,prompt_tokens=200,output_tokens=100,turns=3 \
+  --profile kind=concurrent,streams=5 \
+  --constraint kind=max_duration,seconds=60
 ```
 
 启用后，GuideLLM 只会发送当前轮次的输入，并通过 ID 引用上一条响应。服务器会在内部重建完整的对话上下文。
@@ -465,24 +467,26 @@ guidellm run \
 
 ### 5. 使用 TurnPivot 处理多个数据集
 
-此示例展示如何使用 TurnPivot 预处理器构建合成数据集，让每一轮遵循不同的分布。
+此示例使用 TurnPivot 将三个单轮数据集合并为一个三轮对话。每个数据集提供一轮的提示和输出 token 上限。下面的内联数据集各包含一行；也可以使用包含普通提示列的 JSONL 或 Hugging Face 数据集。
+
+请将 `turn_pivot` 用于映射后的行列，而不要用于 `synthetic_text` 数据源。合成数据源已经生成打包的对话图，TurnPivot 不会将这些图合并为更长的对话。对于合成多轮数据，请使用上文介绍的 `turns` 参数。
 
 **命令：**
 
 ```bash
 guidellm run \
   --backend kind=openai_http,target=http://localhost:8000,model=meta-llama/Llama-3.1-8B-Instruct,request_format=/v1/chat/completions \
-  --profile kind=concurrent,streams=10 \
-  --constraint kind=max_requests,count=150 \
-  --data kind=synthetic_text,prefix_tokens=512,prompt_tokens=128,output_tokens=256 \
-  --data kind=synthetic_text,prompt_tokens=256,prompt_token_stdev=32,output_tokens=128 \
-  --data kind=synthetic_text,prompt_tokens=64,output_tokens=128,output_tokens_stdev=16 \
+  --profile kind=synchronous \
+  --constraint kind=max_requests,count=3 \
+  --data '{"kind":"in_memory_dict_list","data":[{"prompt":"Explain how a solar panel works.","output_tokens_count":256}]}' \
+  --data '{"kind":"in_memory_dict_list","data":[{"prompt":"What affects its efficiency?","output_tokens_count":128}]}' \
+  --data '{"kind":"in_memory_dict_list","data":[{"prompt":"Summarize the key points.","output_tokens_count":64}]}' \
   --data-preprocessor kind=turn_pivot
 ```
 
 **关键参数：**
 
-- `--constraint kind=max_requests,count=150`：请求数上限为 150（150 个请求约等于 50 个各含 3 轮的对话）
+- `--constraint kind=max_requests,count=3`：三轮对话最多发送三个请求
 - `--data`：为每个数据集分别指定；也可以一次性将它们指定为数组
 - `--data-preprocessor kind=turn_pivot`：对数据集和轮次列进行转置
 

@@ -82,10 +82,10 @@ pip install -e .
 安装后，可以运行以下命令验证 GuideLLM 是否可用：
 
 ```bash
-guidellm --help
+guidellm --version
 ```
 
-该命令应显示 GuideLLM 的帮助信息。
+该命令会显示已安装的 GuideLLM 版本。运行 `guidellm --help` 可查看可用命令和选项。
 
 如需使用 vLLM Python 后端（进程内推理），请参阅 [vLLM Python 后端](../guides/vllm-python-backend.md)文档，了解推荐的安装方式，包括使用容器、现有 vLLM 环境或 pip。
 
