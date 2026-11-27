@@ -143,21 +143,28 @@ class GenerativeBenchmarksReport(StandardBaseModel):
         :raises FileNotFoundError: If specified file does not exist
         """
         file_path = GenerativeBenchmarksReport._resolve_path(path)
-        file_type = type_ or file_path.suffix.lower()[1:]
+        if type_ is not None and type_ not in ("json", "yaml", "yml"):
+            raise ValueError(f"Unsupported file type: {type_} for {file_path}.")
 
+        file_type = type_ or file_path.suffix.lower()[1:]
         with file_path.open("r") as file:
-            if file_type == "json":
-                model_dict = json.loads(file.read())
-            elif file_type in ["yaml", "yml"]:
-                model_dict = yaml.safe_load(file)
-            elif type_ is None:
-                contents = file.read()
+            if file_type not in ("yaml", "yml"):
+                # PyYAML can load JSON but interprets numbers like 1e-9 as strings.
                 try:
-                    model_dict = json.loads(contents)
+                    model_dict = json.load(file)
                 except json.JSONDecodeError:
-                    model_dict = yaml.safe_load(contents)
-            else:
-                raise ValueError(f"Unsupported file type: {file_type} for {file_path}.")
+                    if file_type == "json":
+                        raise
+                    file.seek(0)
+                else:
+                    return GenerativeBenchmarksReport.model_validate(model_dict)
+
+            try:
+                model_dict = yaml.safe_load(file)
+            except yaml.YAMLError as err:
+                raise ValueError(
+                    f"Could not parse benchmark report {file_path} as YAML: {err}"
+                ) from err
 
         return GenerativeBenchmarksReport.model_validate(model_dict)
 

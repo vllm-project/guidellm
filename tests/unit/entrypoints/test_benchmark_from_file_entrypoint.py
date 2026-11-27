@@ -108,6 +108,23 @@ async def test_loads_saved_report(
 
 
 @pytest.mark.asyncio
+@pytest.mark.regression
+async def test_reports_parse_error_for_invalid_report(tmp_path: Path):
+    """
+    An unreadable report identifies the input file in the parse error.
+
+    ## WRITTEN BY AI ##
+    """
+    report = tmp_path / "broken-report"
+    report.write_text("[unterminated")
+
+    with pytest.raises(
+        ValueError, match="Could not parse benchmark report .*broken-report as YAML"
+    ):
+        await reimport_benchmarks_report(report, [])
+
+
+@pytest.mark.asyncio
 @pytest.mark.sanity
 async def test_loads_report_from_directory(
     report_directory: Path, sample_report: GenerativeBenchmarksReport
