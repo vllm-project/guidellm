@@ -1,6 +1,7 @@
 import filecmp
 import json
 import os
+from typing import Literal
 
 import pytest
 import yaml
@@ -78,37 +79,49 @@ def report_directory(tmp_path: Path, sample_report: GenerativeBenchmarksReport) 
 
 @pytest.mark.asyncio
 @pytest.mark.sanity
-async def test_loads_json_report(
-    saved_json_report: Path, sample_report: GenerativeBenchmarksReport
+@pytest.mark.parametrize(
+    ("filename", "format_type"),
+    [
+        ("benchmarks.json", "json"),
+        ("benchmarks.yaml", "yaml"),
+        ("run1", "json"),
+        ("report.txt", "yaml"),
+    ],
+)
+async def test_loads_saved_report(
+    filename: str,
+    format_type: Literal["json", "yaml"],
+    tmp_path: Path,
+    sample_report: GenerativeBenchmarksReport,
 ):
     """
-    Loading a JSON report returns the saved configuration and benchmark list.
+    Loading a saved JSON or YAML report preserves its contents.
 
     ## WRITTEN BY AI ##
     """
-    report, output_results = await reimport_benchmarks_report(saved_json_report, [])
+    sample_report.conclusions = [{"ratio": 1e-9}]
+    saved_report = sample_report.save_file(tmp_path / filename, type_=format_type)
+    report, output_results = await reimport_benchmarks_report(saved_report, [])
 
     assert output_results == []
-    assert report.config == sample_report.config
-    assert report.benchmarks == []
-    assert report.metadata.version == 2
+    assert report == sample_report
 
 
 @pytest.mark.asyncio
-@pytest.mark.sanity
-async def test_loads_yaml_report(
-    saved_yaml_report: Path, sample_report: GenerativeBenchmarksReport
-):
+@pytest.mark.regression
+async def test_reports_parse_error_for_invalid_report(tmp_path: Path):
     """
-    Loading a YAML report returns the saved configuration and benchmark list.
+    An unreadable report identifies the input file in the parse error.
 
     ## WRITTEN BY AI ##
     """
-    report, output_results = await reimport_benchmarks_report(saved_yaml_report, [])
+    report = tmp_path / "broken-report"
+    report.write_text("[unterminated")
 
-    assert output_results == []
-    assert report.config == sample_report.config
-    assert report.benchmarks == []
+    with pytest.raises(
+        ValueError, match="Could not parse benchmark report .*broken-report as YAML"
+    ):
+        await reimport_benchmarks_report(report, [])
 
 
 @pytest.mark.asyncio

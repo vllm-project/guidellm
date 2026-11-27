@@ -120,7 +120,13 @@ The `--metrics` option also accepts `prefer_response_metrics` (default `true`), 
 
 ### Reloading Results
 
-JSON files can be reloaded into Python for further analysis using the `GenerativeBenchmarksReport` class. Below is a sample code snippet for reloading results:
+Use `guidellm export` to load a saved JSON or YAML report and generate new outputs. GuideLLM uses the format specified by a `.json`, `.yaml`, or `.yml` extension. For other filenames, it detects the format from the file contents.
+
+```bash
+guidellm export results/run1 --output kind=json,path=copy.json
+```
+
+To reload a report into Python for further analysis, use the `GenerativeBenchmarksReport` class.
 
 ```python
 from guidellm.benchmark import GenerativeBenchmarksReport
